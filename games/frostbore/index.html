@@ -350,7 +350,7 @@ function buy(id){
 }
 
 // ---------------- input ----------------
-var keyStack=[],dpadDir=null,dpadPid=null,botDir=null,buttons=[],buttonsScreen='',pointers={};
+var keyStack=[],dpadDir=null,dpadPid=null,dpadAnchor=null,botDir=null,buttons=[],buttonsScreen='',pointers={};
 var KEYMAP={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',w:'up',s:'down',a:'left',d:'right',W:'up',S:'down',A:'left',D:'right'};
 function keyDown(e){
   var k=e.key;var d=KEYMAP[k];
@@ -372,7 +372,7 @@ function primary(){
 var started=false;
 function firstTouch(){if(!started){started=true;}initAudio();resumeAudio();}
 function ptPos(e){var r=canvas.getBoundingClientRect?canvas.getBoundingClientRect():{left:0,top:0};return {x:e.clientX-r.left,y:e.clientY-r.top};}
-function dpadFromPoint(x,y){var dx=x-L.dp.cx,dy=y-L.dp.cy,d=Math.sqrt(dx*dx+dy*dy);if(d<12)return dpadDir;if(Math.abs(dx)>Math.abs(dy))return dx>0?'right':'left';return dy>0?'down':'up';}
+function dpadFromPoint(x,y){var c=dpadAnchor||L.dp,dx=x-c.cx,dy=y-c.cy,d=Math.sqrt(dx*dx+dy*dy);if(d<12)return dpadDir;if(Math.abs(dx)>Math.abs(dy))return dx>0?'right':'left';return dy>0?'down':'up';}
 function inDpad(x,y){var dx=x-L.dp.cx,dy=y-L.dp.cy;return Math.sqrt(dx*dx+dy*dy)<=L.dp.r*2.0;}
 function onDown(e){
   if(e.preventDefault)e.preventDefault();
@@ -383,8 +383,9 @@ function onDown(e){
   if(buttonsScreen!==G.screen){buttons=[];}
   for(var i=buttons.length-1;i>=0;i--){var b=buttons[i];if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h){if(!b.disabled){b.fn();if(!b.quiet)SFX.click();}return;}}
   if(G.screen==='dive'){
-    if(inDpad(p.x,p.y)){dpadPid=id;dpadDir=dpadFromPoint(p.x,p.y);return;}
-    // tap elsewhere (right side) = also usable as dpad with swipe-ish feel: treat as thrust (up) area? keep simple: nothing
+    if(inDpad(p.x,p.y)){dpadAnchor=null;dpadPid=id;dpadDir=dpadFromPoint(p.x,p.y);return;}
+    // touch anywhere else = floating D-pad anchored at the touch point; drag from it to steer (mouse keeps old behaviour)
+    if(e.pointerType!=='mouse'){dpadAnchor={cx:p.x,cy:p.y};dpadPid=id;dpadDir=null;return;}
   }else if(G.screen==='title'){startDive();}
   else if(G.screen==='result'&&R&&R.anim>0.6&&p.y<L.h*0.5){/* ignore */}
 }
@@ -392,7 +393,7 @@ function onMove(e){
   var id=e.pointerId!==undefined?e.pointerId:'m';
   if(dpadPid===id){var p=ptPos(e);pointers[id]=p;var nd=dpadFromPoint(p.x,p.y);if(nd)dpadDir=nd;}
 }
-function onUp(e){var id=e.pointerId!==undefined?e.pointerId:'m';delete pointers[id];if(dpadPid===id){dpadPid=null;dpadDir=null;}}
+function onUp(e){var id=e.pointerId!==undefined?e.pointerId:'m';delete pointers[id];if(dpadPid===id){dpadPid=null;dpadDir=null;dpadAnchor=null;}}
 
 // ---------------- drawing: tiles ----------------
 function depthTint(y){return clamp(y/320,0,1);}
@@ -609,15 +610,10 @@ function drawHUD(){
   // message
   if(G.msg){var a=clamp(G.msg.t/0.3,0,1);ctx.globalAlpha=a;ctx.fillStyle='rgba(0,0,0,0.6)';var my=top+100;rr(w/2-150,my,300,34,10);ctx.fill();ctx.fillStyle='#fff';ctx.font=F(15,'800');ctx.textAlign='center';ctx.fillText(G.msg.s,w/2,my+17);ctx.globalAlpha=1;}
   if(G.hint){var ha=clamp(G.hint.t/0.4,0,1)*(0.7+0.3*Math.sin(G.t*5));ctx.globalAlpha=ha;ctx.fillStyle='#fff';ctx.font=F(20,'900');ctx.textAlign='center';ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=4;var hy=L.h*0.36;ctx.strokeText(G.hint.s,w/2,hy);ctx.fillText(G.hint.s,w/2,hy);ctx.globalAlpha=1;}
-  // dpad
+  // dpad (fixed, plus the floating one at its anchor while a finger holds it)
   var dp=L.dp,r=dp.r;
-  ctx.save();ctx.globalAlpha=0.85;
-  var dirs=[['up',0,-1],['down',0,1],['left',-1,0],['right',1,0]];
-  for(i=0;i<dirs.length;i++){var d=dirs[i],cx=dp.cx+d[1]*r*1.08,cy=dp.cy+d[2]*r*1.08,act=dirInput()===d[0];
-    ctx.fillStyle=act?'rgba(255,140,60,0.9)':'rgba(30,45,75,0.75)';ctx.beginPath();ctx.arc(cx,cy,r*0.52,0,6.283);ctx.fill();ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=2;ctx.stroke();
-    ctx.fillStyle='#fff';ctx.beginPath();var ar=r*0.22;ctx.moveTo(cx+d[1]*ar,cy+d[2]*ar);ctx.lineTo(cx-d[1]*ar*0.5+d[2]*ar*0.8,cy-d[2]*ar*0.5+d[1]*ar*0.8);ctx.lineTo(cx-d[1]*ar*0.5-d[2]*ar*0.8,cy-d[2]*ar*0.5-d[1]*ar*0.8);ctx.closePath();ctx.fill();}
-  ctx.fillStyle='rgba(30,45,75,0.5)';ctx.beginPath();ctx.arc(dp.cx,dp.cy,r*0.34,0,6.283);ctx.fill();
-  ctx.restore();
+  drawDpad(dp,r);
+  if(dpadAnchor&&dpadPid!==null)drawDpad(dpadAnchor,r);
   // flare button
   var fb=Math.max(60,r*1.0),fx=w-L.inR-16-fb,fy=dp.cy-fb/2+r*0.3;
   var can=SV.flares>0&&P.y>=0;
@@ -630,6 +626,15 @@ function drawHUD(){
   // low heat vignette
   if(hf<0.25&&P.frozen<0){var va=(0.25-hf)/0.25*(0.35+0.25*Math.sin(G.t*8));var vg=ctx.createRadialGradient(w/2,L.h/2,L.h*0.25,w/2,L.h/2,L.h*0.75);vg.addColorStop(0,'rgba(255,40,40,0)');vg.addColorStop(1,'rgba(255,40,40,'+va+')');ctx.fillStyle=vg;ctx.fillRect(0,0,w,L.h);}
   if(P.frozen>=0){ctx.fillStyle='rgba(150,210,255,'+Math.min(0.55,P.frozen*0.6)+')';ctx.fillRect(0,0,w,L.h);}
+}
+function drawDpad(dp,r){
+  ctx.save();ctx.globalAlpha=0.85;
+  var dirs=[['up',0,-1],['down',0,1],['left',-1,0],['right',1,0]];
+  for(var i=0;i<dirs.length;i++){var d=dirs[i],cx=dp.cx+d[1]*r*1.08,cy=dp.cy+d[2]*r*1.08,act=dirInput()===d[0];
+    ctx.fillStyle=act?'rgba(255,140,60,0.9)':'rgba(30,45,75,0.75)';ctx.beginPath();ctx.arc(cx,cy,r*0.52,0,6.283);ctx.fill();ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#fff';ctx.beginPath();var ar=r*0.22;ctx.moveTo(cx+d[1]*ar,cy+d[2]*ar);ctx.lineTo(cx-d[1]*ar*0.5+d[2]*ar*0.8,cy-d[2]*ar*0.5+d[1]*ar*0.8);ctx.lineTo(cx-d[1]*ar*0.5-d[2]*ar*0.8,cy-d[2]*ar*0.5-d[1]*ar*0.8);ctx.closePath();ctx.fill();}
+  ctx.fillStyle='rgba(30,45,75,0.5)';ctx.beginPath();ctx.arc(dp.cx,dp.cy,r*0.34,0,6.283);ctx.fill();
+  ctx.restore();
 }
 function ctxWidthGuess(s,size){return s.length*size*0.6;}
 function drawPaused(){ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(0,0,L.w,L.h);ctx.fillStyle='#fff';ctx.font=F(34,'900');ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('PAUSED',L.w/2,L.h/2-20);ctx.font=F(16,'700');ctx.fillStyle='#9fc3ff';ctx.fillText('Tap to resume',L.w/2,L.h/2+22);}

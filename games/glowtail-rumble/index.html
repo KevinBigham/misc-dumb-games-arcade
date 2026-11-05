@@ -197,15 +197,16 @@ const DEFAULT_SAVE={bestRank:0,bestLen:0,bestKills:0,bestCombo:0,totalKills:0,wi
 function loadSave(){
   let s=null;
   try{ const raw=localStorage.getItem(SAVE_KEY); if(raw) s=JSON.parse(raw); }catch(e){ s=null; }
-  const out=Object.assign({},DEFAULT_SAVE,(s&&typeof s==='object')?s:{});
-  if(!Array.isArray(out.unlocked)) out.unlocked=[0];
-  if(!out.unlocked.includes(0)) out.unlocked.push(0);
-  for(const k of ['bestRank','bestLen','bestKills','bestCombo','totalKills','wins','matches','skin']){ if(typeof out[k]!=='number'||!isFinite(out[k])) out[k]=DEFAULT_SAVE[k]; }
-  out.muted=!!out.muted;
+  if(!s||typeof s!=='object'||Array.isArray(s)) s={};
+  // check each field on its own: a wrong type or range falls back to its default, the rest are kept
+  const out=Object.assign({},DEFAULT_SAVE,{unlocked:[0]});
+  for(const k of ['bestRank','bestLen','bestKills','bestCombo','totalKills','wins','matches']){ const v=s[k]; if(typeof v==='number'&&isFinite(v)) out[k]=clamp(Math.floor(v),0,1e9); }
+  if(Array.isArray(s.unlocked)) for(const id of s.unlocked){ if(Number.isInteger(id)&&id>=0&&id<SKINS.length&&!out.unlocked.includes(id)) out.unlocked.push(id); }
+  if(Number.isInteger(s.skin)&&s.skin>=0&&s.skin<SKINS.length&&out.unlocked.includes(s.skin)) out.skin=s.skin;
+  if(typeof s.muted==='boolean') out.muted=s.muted;
   return out;
 }
 function storeSave(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(save)); }catch(e){} }
-let save=loadSave();
 
 // ============================================================ skins & bots
 const SKINS=[
@@ -219,6 +220,7 @@ const SKINS=[
   {id:7,name:'Voidwyrm',body:'#1c1230',hi:'#6a4aa8',pat:'dots',patColor:'#c45bff',need:{k:'wins',v:3,label:'Win 3 matches'}},
   {id:8,name:'Prism',body:'rainbow',hi:'#ffffff',pat:'none',patColor:'#ffffff',need:{k:'totalKills',v:100,label:'Eat 100 rivals in total'}},
 ];
+let save=loadSave(); // after SKINS, which the save checks use
 function skinColor(s){
   if(s.body==='rainbow') return {rainbow:true,body:'#ffffff',hi:s.hi,dark:'#1a1030',pat:s.pat,patColor:s.patColor};
   return {rainbow:false,body:s.body,hi:s.hi,dark:shade(s.body,-0.6),pat:s.pat,patColor:s.patColor};

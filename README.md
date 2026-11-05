@@ -46,6 +46,6 @@ games/<game-slug>/index.html    one folder per game, fully self-contained
 ## Notes
 
 - Games save progress in the player's own browser (`localStorage`) only. Nothing is sent anywhere.
-- Outside requests: Google Fonts on some games, and Wobble Bakery loads the matter-js physics library from cdnjs.
+- Outside requests: Google Fonts on some games. Wobble Bakery bundles the MIT-licensed matter-js physics library inline.
 - All art, music, and sound effects are generated in code. No third-party game assets are used.
 - Games were tested with automated bots on desktop. Phone play has not been hand-tested yet.
