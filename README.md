@@ -28,6 +28,8 @@ A small arcade of free browser games. Every game is a single static page: no bui
 | Slipstreak | Drift racer | [Play](https://kevinbigham.github.io/misc-dumb-games-arcade/games/slipstreak/) | Hold, slide, and chain drifts from the pier loop to the rooftops. |
 | Frostbore | Mining | [Play](https://kevinbigham.github.io/misc-dumb-games-arcade/games/frostbore/) | Drill the glacier, bank the relics, and fly back up before the heat runs out. |
 | Clockbreak | Brick breaker | [Play](https://kevinbigham.github.io/misc-dumb-games-arcade/games/clockbreak/) | A roguelite brick breaker. Pick perks and break the wall before it creeps down. |
+| Loopskate | Trail loop arcade | [Play](https://kevinbigham.github.io/misc-dumb-games-arcade/games/loopskate/) | Drag to skate and close loops with your trail to catch the critters inside. |
+| Dual Meet | Swim strategy | [Play](https://kevinbigham.github.io/misc-dumb-games-arcade/games/dual-meet/) | Set the lineup and out-think the other coach. One meet a day. All swimmers and schools are made up. |
 
 ## Layout
 
@@ -48,4 +50,4 @@ games/<game-slug>/index.html    one folder per game, fully self-contained
 - Games save progress in the player's own browser (`localStorage`) only. Nothing is sent anywhere.
 - Outside requests: Google Fonts on some games. Wobble Bakery bundles the MIT-licensed matter-js physics library inline.
 - All art, music, and sound effects are generated in code. No third-party game assets are used.
-- Games were tested with automated bots on desktop. Phone play has not been hand-tested yet.
+- Games were tested with automated bots. Loopskate and Dual Meet have also been played on a phone.
