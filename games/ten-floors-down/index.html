@@ -1,0 +1,3581 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game 10: Ten Floors Down — Shattered Alchemy Roguelike</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #090d16;
+        color: #e2e8f0;
+        min-height: 100vh;
+      }
+      #game-root {
+        max-width: 1280px;
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-root"></div>
+    <script type="module">
+// games/10-ten-floors-down/src/config.ts
+var GAME_CONFIG = {
+  ID: "10-ten-floors-down",
+  TITLE: "Ten Floors Down",
+  SUBTITLE: "10-Floor Tactical Alchemy Roguelike",
+  MAX_FLOORS: 10,
+  MINI_BOSS_FLOOR: 5,
+  FINAL_BOSS_FLOOR: 10,
+  GRID_WIDTH: 26,
+  GRID_HEIGHT: 18,
+  FOV_RADIUS: 6,
+  MAX_INVENTORY_SLOTS: 6,
+  THROW_RANGE: 6,
+  DEFAULT_MOVE_TICKS: 10,
+  ROGUE_MOVE_TICKS: 8,
+  WAIT_TICKS: 10,
+  POTION_USE_TICKS: 10,
+  SCROLL_USE_TICKS: 10,
+  ALCHEMY_USE_TICKS: 10,
+  STORAGE_KEY_ACTIVE_RUN: "argon_g10_ten_floors_active_run_v1",
+  STORAGE_KEY_CHRONICLES: "argon_g10_ten_floors_chronicles_v1",
+  ACCENT_COLOR: "#10b981"
+};
+
+// games/10-ten-floors-down/src/persistence.ts
+function getSafeStorage() {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+function saveActiveRun(state) {
+  const storage = getSafeStorage();
+  if (!storage) return;
+  if (state.status !== "playing") {
+    clearActiveRun();
+    if (state.epitaph) {
+      recordEpitaph(state.epitaph);
+    }
+    return;
+  }
+  try {
+    const envelope = {
+      version: 1,
+      savedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      state
+    };
+    storage.setItem(GAME_CONFIG.STORAGE_KEY_ACTIVE_RUN, JSON.stringify(envelope));
+  } catch {
+  }
+}
+function loadActiveRun() {
+  const storage = getSafeStorage();
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(GAME_CONFIG.STORAGE_KEY_ACTIVE_RUN);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed.version !== 1 || !parsed.state || parsed.state.status !== "playing" || !parsed.state.hero || !parsed.state.floor) {
+      return null;
+    }
+    return parsed.state;
+  } catch {
+    return null;
+  }
+}
+function clearActiveRun() {
+  const storage = getSafeStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(GAME_CONFIG.STORAGE_KEY_ACTIVE_RUN);
+  } catch {
+  }
+}
+function recordEpitaph(epitaph) {
+  const storage = getSafeStorage();
+  if (!storage) return;
+  try {
+    const current = loadChronicles();
+    const deduped = current.filter((e) => e.id !== epitaph.id);
+    deduped.unshift(epitaph);
+    const trimmed = deduped.slice(0, 25);
+    const envelope = {
+      version: 1,
+      epitaphs: trimmed
+    };
+    storage.setItem(GAME_CONFIG.STORAGE_KEY_CHRONICLES, JSON.stringify(envelope));
+  } catch {
+  }
+}
+function loadChronicles() {
+  const storage = getSafeStorage();
+  if (!storage) return [];
+  try {
+    const raw = storage.getItem(GAME_CONFIG.STORAGE_KEY_CHRONICLES);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (parsed.version !== 1 || !Array.isArray(parsed.epitaphs)) {
+      return [];
+    }
+    return parsed.epitaphs;
+  } catch {
+    return [];
+  }
+}
+function exportRunSnapshot(state) {
+  const envelope = {
+    version: 1,
+    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    state
+  };
+  return JSON.stringify(envelope, null, 2);
+}
+function importRunSnapshot(jsonStr) {
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (parsed.version !== 1 || !parsed.state || typeof parsed.state.seed !== "number" || !parsed.state.hero || !parsed.state.floor || !parsed.state.colorToEffect) {
+      return null;
+    }
+    return parsed.state;
+  } catch {
+    return null;
+  }
+}
+
+// games/10-ten-floors-down/src/rng.ts
+var SeededRng = class {
+  state;
+  constructor(seed) {
+    this.state = seed >>> 0 || 322420463;
+  }
+  /** Returns a float in [0, 1) using Mulberry32 */
+  next() {
+    let t = this.state += 1831565813;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    this.state = t >>> 0;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+  /** Returns an integer in [min, maxInclusive] */
+  nextInt(min, maxInclusive) {
+    if (maxInclusive <= min) return min;
+    return min + Math.floor(this.next() * (maxInclusive - min + 1));
+  }
+  /** Picks a random element from a non-empty array */
+  pick(items) {
+    return items[this.nextInt(0, items.length - 1)];
+  }
+  /** Returns a new shuffled copy of an array using Fisher-Yates */
+  shuffle(items) {
+    const copy = [...items];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = this.nextInt(0, i);
+      const tmp = copy[i];
+      copy[i] = copy[j];
+      copy[j] = tmp;
+    }
+    return copy;
+  }
+  getState() {
+    return this.state >>> 0;
+  }
+};
+function hashSeedString(input) {
+  let h = 2166136261 >>> 0;
+  const trimmed = input.trim() || "2026-11-06";
+  for (let i = 0; i < trimmed.length; i++) {
+    h ^= trimmed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0 || 101010;
+}
+function getDailySeedString(now = /* @__PURE__ */ new Date()) {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+function getDailySeedNumber(dateStr = getDailySeedString()) {
+  return hashSeedString(`TEN_FLOORS_DAILY_${dateStr}`);
+}
+
+// games/10-ten-floors-down/src/content.ts
+var POTION_COLORS = [
+  {
+    id: "crimson",
+    label: "Crimson Vial",
+    hex: "#ef4444",
+    liquidDesc: "Swirling ruby-red alchemical fluid"
+  },
+  {
+    id: "amber",
+    label: "Amber Vial",
+    hex: "#f59e0b",
+    liquidDesc: "Viscous golden-ochre draught"
+  },
+  {
+    id: "viridian",
+    label: "Viridian Vial",
+    hex: "#10b981",
+    liquidDesc: "Luminescent emerald distillate"
+  },
+  {
+    id: "azure",
+    label: "Azure Vial",
+    hex: "#38bdf8",
+    liquidDesc: "Frost-rimmed sapphire tincture"
+  },
+  {
+    id: "violet",
+    label: "Violet Vial",
+    hex: "#a855f7",
+    liquidDesc: "Fuming amethyst vapor-essence"
+  },
+  {
+    id: "obsidian",
+    label: "Obsidian Vial",
+    hex: "#94a3b8",
+    liquidDesc: "Dense midnight-black suspension"
+  }
+];
+var POTION_EFFECTS = {
+  mending: {
+    id: "mending",
+    name: "Potion of Mending",
+    shortName: "Mending",
+    isHarmfulToDrink: false,
+    preferThrow: false,
+    drinkSummary: "Restores 45% Max HP (min 28) & cures Poison, Burn, and Chill.",
+    throwSummary: "Splashes restorative mist on target tile, healing any unit hit."
+  },
+  liquid_flame: {
+    id: "liquid_flame",
+    name: "Potion of Liquid Flame",
+    shortName: "Liquid Flame",
+    isHarmfulToDrink: true,
+    preferThrow: true,
+    drinkSummary: "HAZARD: Sets YOU on fire for 30 ticks (18 dmg), though grants +3 Fire ATK.",
+    throwSummary: "Shatters in a 3x3 firestorm (12 fire dmg + ignites tiles & enemies for 30 ticks)."
+  },
+  frost_mist: {
+    id: "frost_mist",
+    name: "Potion of Frost Mist",
+    shortName: "Frost Mist",
+    isHarmfulToDrink: true,
+    preferThrow: true,
+    drinkSummary: "Chills self (+3 tick action penalty for 20 ticks, douses fire, +5 Ice Armor).",
+    throwSummary: "Freezes enemies in a 3x3 blast (8 cold dmg + Stuns/Freezes for 20 ticks)."
+  },
+  might: {
+    id: "might",
+    name: "Potion of Might",
+    shortName: "Might",
+    isHarmfulToDrink: false,
+    preferThrow: false,
+    drinkSummary: "Permanently grants +2 Base Attack, +12 Max HP, and heals 12 HP.",
+    throwSummary: "Shatters harmlessly on stone (wastes the draught, but identifies the color)."
+  },
+  shadow_veil: {
+    id: "shadow_veil",
+    name: "Potion of Shadow Veil",
+    shortName: "Shadow Veil",
+    isHarmfulToDrink: false,
+    preferThrow: false,
+    drinkSummary: "Grants 50 ticks of Invisibility; next strike or throw deals 2.0x Ambush Crit!",
+    throwSummary: "Releases dark fog in 3x3 area, stunning monsters for 15 ticks."
+  },
+  caustic_gas: {
+    id: "caustic_gas",
+    name: "Potion of Caustic Gas",
+    shortName: "Caustic Gas",
+    isHarmfulToDrink: true,
+    preferThrow: true,
+    drinkSummary: "HAZARD: Chokes YOU with corrosive poison (21 dmg over 30 ticks).",
+    throwSummary: "Blankets a 3x3 room area in toxic gas (9 dmg + Poison & -2 DEF for 40 ticks)."
+  }
+};
+var POTION_EFFECT_ORDER = [
+  "mending",
+  "liquid_flame",
+  "frost_mist",
+  "might",
+  "shadow_veil",
+  "caustic_gas"
+];
+var WEAPON_CATALOG = [
+  {
+    id: "iron_broadsword",
+    name: "Iron Broadsword",
+    tier: 1,
+    attackBonus: 3,
+    attackTicks: 10,
+    description: "Balanced legion blade (10 ticks per strike)."
+  },
+  {
+    id: "twin_night_daggers",
+    name: "Twin Night Daggers",
+    tier: 1,
+    attackBonus: 3,
+    attackTicks: 8,
+    description: "Swift dual stilettos (8 ticks per strike; outpaces standard monsters)."
+  },
+  {
+    id: "runed_catalyst_staff",
+    name: "Runed Catalyst Staff",
+    tier: 1,
+    attackBonus: 2,
+    attackTicks: 9,
+    description: "Channeling stave tipped with alchemical brass (9 ticks per strike)."
+  },
+  {
+    id: "serrated_gladius",
+    name: "Serrated Gladius",
+    tier: 2,
+    attackBonus: 6,
+    attackTicks: 9,
+    description: "Fast, razor-toothed shortblade found in mid-depth vaults (9 ticks)."
+  },
+  {
+    id: "warhammer_of_breach",
+    name: "Breach Warhammer",
+    tier: 2,
+    attackBonus: 8,
+    attackTicks: 12,
+    description: "Heavy crushing maul (12 ticks \u2014 watch the turn clock against fast foes!)."
+  },
+  {
+    id: "whisper_kris",
+    name: "Whisper Assassin Kris",
+    tier: 3,
+    attackBonus: 8,
+    attackTicks: 8,
+    description: "Masterwork 8-tick blade that slices before monsters can counter."
+  },
+  {
+    id: "executioner_greataxe",
+    name: "Executioner Greataxe",
+    tier: 3,
+    attackBonus: 12,
+    attackTicks: 12,
+    description: "Massive two-handed cleaver (12 ticks; devastating single hits)."
+  },
+  {
+    id: "sunforged_halberd",
+    name: "Sunforged Halberd",
+    tier: 4,
+    attackBonus: 14,
+    attackTicks: 10,
+    description: "Relic polearm of the deep sanctuary (10 ticks, +14 ATK)."
+  }
+];
+var ARMOR_CATALOG = [
+  {
+    id: "riveted_mail",
+    name: "Riveted Brigandine",
+    tier: 1,
+    defenseBonus: 2,
+    maxHpBonus: 0,
+    description: "Sturdy iron-studded tunic."
+  },
+  {
+    id: "shadow_cloak",
+    name: "Shadowweave Cloak",
+    tier: 1,
+    defenseBonus: 1,
+    maxHpBonus: 4,
+    description: "Light, soundless mantle woven for subterranean stealth."
+  },
+  {
+    id: "alchemist_coat",
+    name: "Lead-Lined Greatcoat",
+    tier: 1,
+    defenseBonus: 2,
+    maxHpBonus: 4,
+    description: "Acid-resistant leather coat with reinforced vial loops."
+  },
+  {
+    id: "warden_chainmail",
+    name: "Warden Chainmail",
+    tier: 2,
+    defenseBonus: 4,
+    maxHpBonus: 10,
+    description: "Interlinked steel rings forged for dungeon sentries."
+  },
+  {
+    id: "dwarven_plate",
+    name: "Dwarven Runed Plate",
+    tier: 3,
+    defenseBonus: 7,
+    maxHpBonus: 18,
+    description: "Heavy rune-etched breastplate that shrugs off brutal blows."
+  },
+  {
+    id: "abyssal_aegis",
+    name: "Abyssal Aegis Armor",
+    tier: 4,
+    defenseBonus: 10,
+    maxHpBonus: 28,
+    description: "Mythic obsidian carapace recovered from the lower depths."
+  }
+];
+var HERO_CLASSES = {
+  vanguard: {
+    id: "vanguard",
+    name: "Ironclad Vanguard",
+    title: "Frontline Bastion",
+    accentColor: "#f59e0b",
+    glyph: "V",
+    baseHp: 94,
+    baseAttack: 10,
+    baseDefense: 3,
+    moveTicks: 10,
+    startingWeapon: WEAPON_CATALOG[0],
+    startingArmor: ARMOR_CATALOG[0],
+    preIdentifiedEffects: ["mending"],
+    startingPotions: ["mending", "liquid_flame"],
+    startsWithUpgradeScroll: true,
+    alchemyBonusCharges: 0,
+    thrownPotionMultiplier: 1,
+    abilityName: "Shield Bash",
+    abilityCooldownTicks: 80,
+    abilityCostTicks: 8,
+    abilityDescription: "Slam an adjacent foe for 1.4x melee damage, Stun it for 20 ticks, and cancel any Boss Telegraph.",
+    passiveDescription: "Starts with Potion of Mending pre-identified, high HP (94), and +1 bonus HP per Scroll of Upgrade."
+  },
+  rogue: {
+    id: "rogue",
+    name: "Shadow Rogue",
+    title: "8-Tick Ambush Tactician",
+    accentColor: "#38bdf8",
+    glyph: "R",
+    baseHp: 74,
+    baseAttack: 9,
+    baseDefense: 1,
+    moveTicks: 8,
+    startingWeapon: WEAPON_CATALOG[1],
+    startingArmor: ARMOR_CATALOG[1],
+    preIdentifiedEffects: ["shadow_veil"],
+    startingPotions: ["shadow_veil", "caustic_gas"],
+    startsWithUpgradeScroll: true,
+    alchemyBonusCharges: 0,
+    thrownPotionMultiplier: 1.15,
+    abilityName: "Smoke Bomb",
+    abilityCooldownTicks: 75,
+    abilityCostTicks: 6,
+    abilityDescription: "Vanish for 35 ticks of Shadow Veil Invisibility (next strike deals 2.0x Ambush Crit) & stun adjacent foes for 15 ticks.",
+    passiveDescription: "Moves & strikes in 8 Ticks (vs standard 10). Starts with Potion of Shadow Veil pre-identified."
+  },
+  alchemist: {
+    id: "alchemist",
+    name: "Arcane Alchemist",
+    title: "Master of Volatile Vials",
+    accentColor: "#a855f7",
+    glyph: "A",
+    baseHp: 80,
+    baseAttack: 8,
+    baseDefense: 2,
+    moveTicks: 10,
+    startingWeapon: WEAPON_CATALOG[2],
+    startingArmor: ARMOR_CATALOG[2],
+    preIdentifiedEffects: ["liquid_flame", "frost_mist"],
+    startingPotions: ["liquid_flame", "frost_mist", "mending"],
+    startsWithUpgradeScroll: true,
+    alchemyBonusCharges: 1,
+    thrownPotionMultiplier: 1.35,
+    abilityName: "Arcane Catalyst Bolt",
+    abilityCooldownTicks: 65,
+    abilityCostTicks: 8,
+    abilityDescription: "Fires an arcane bolt at the nearest visible monster (range 5) for 12 + 2*Floor damage & -2 DEF.",
+    passiveDescription: "Starts with Liquid Flame & Frost Mist pre-identified, +35% Thrown Vial damage, and +1 Alchemy Desk charge per floor."
+  }
+};
+var MONSTER_TEMPLATES = [
+  {
+    id: "sewer_rat",
+    name: "Albino Sewer Rat",
+    glyph: "r",
+    color: "#cbd5e1",
+    minFloor: 1,
+    maxFloor: 2,
+    maxHp: 22,
+    attack: 7,
+    defense: 0,
+    moveTicks: 8,
+    attackTicks: 8,
+    description: "Fast 8-tick scavenger that can double-attack slow weapon swingers."
+  },
+  {
+    id: "gnoll_scout",
+    name: "Gnoll Spear-Scout",
+    glyph: "g",
+    color: "#f59e0b",
+    minFloor: 1,
+    maxFloor: 3,
+    maxHp: 30,
+    attack: 9,
+    defense: 1,
+    moveTicks: 10,
+    attackTicks: 10,
+    description: "Aggressive hyena-kin patrolling the upper stonework."
+  },
+  {
+    id: "plague_swarm",
+    name: "Carrion Fly Swarm",
+    glyph: "s",
+    color: "#84cc16",
+    minFloor: 2,
+    maxFloor: 4,
+    maxHp: 34,
+    attack: 8,
+    defense: 0,
+    moveTicks: 9,
+    attackTicks: 9,
+    inflictsStatus: "poison",
+    description: "Venomous insect cloud that inflicts Poison on hit."
+  },
+  {
+    id: "skeleton_guard",
+    name: "Ossuary Skeleton",
+    glyph: "k",
+    color: "#e2e8f0",
+    minFloor: 3,
+    maxFloor: 6,
+    maxHp: 44,
+    attack: 12,
+    defense: 3,
+    moveTicks: 10,
+    attackTicks: 10,
+    description: "Animated legionary with hardened bone armor."
+  },
+  {
+    id: "prison_brute",
+    name: "Shackled Brute",
+    glyph: "B",
+    color: "#f97316",
+    minFloor: 4,
+    maxFloor: 7,
+    maxHp: 62,
+    attack: 16,
+    defense: 3,
+    moveTicks: 11,
+    attackTicks: 12,
+    description: "Lumbering 12-tick bruiser that hits like a battering ram."
+  },
+  {
+    id: "cinder_shaman",
+    name: "Cinder Pyromancer",
+    glyph: "c",
+    color: "#ef4444",
+    minFloor: 6,
+    maxFloor: 9,
+    maxHp: 48,
+    attack: 14,
+    defense: 2,
+    moveTicks: 10,
+    attackTicks: 11,
+    rangedRange: 3,
+    inflictsStatus: "burn",
+    description: "Hurls searing embers from up to 3 tiles away."
+  },
+  {
+    id: "void_stalker",
+    name: "Void Stalker",
+    glyph: "v",
+    color: "#c084fc",
+    minFloor: 7,
+    maxFloor: 10,
+    maxHp: 56,
+    attack: 17,
+    defense: 3,
+    moveTicks: 8,
+    attackTicks: 8,
+    description: "Lethal 8-tick shadow predator of the lower halls."
+  },
+  {
+    id: "golem_sentinel",
+    name: "Runic Automaton",
+    glyph: "G",
+    color: "#38bdf8",
+    minFloor: 8,
+    maxFloor: 10,
+    maxHp: 84,
+    attack: 21,
+    defense: 6,
+    moveTicks: 13,
+    attackTicks: 14,
+    description: "Slow 14-tick construct with massive armor plating."
+  },
+  {
+    id: "iron_warden",
+    name: "The Iron Warden",
+    glyph: "W",
+    color: "#fbbf24",
+    minFloor: 5,
+    maxFloor: 5,
+    maxHp: 135,
+    attack: 18,
+    defense: 4,
+    moveTicks: 10,
+    attackTicks: 10,
+    isBoss: true,
+    bossFloor: 5,
+    description: "Floor 5 Mini-Boss: Telegraphs a 3x3 Seismic Chain Slam every 3 turns. Step out of red warning tiles or stun him!"
+  },
+  {
+    id: "abyssal_core",
+    name: "The Abyssal Core",
+    glyph: "\u03A9",
+    color: "#f43f5e",
+    minFloor: 10,
+    maxFloor: 10,
+    maxHp: 210,
+    attack: 22,
+    defense: 5,
+    moveTicks: 10,
+    attackTicks: 10,
+    isBoss: true,
+    bossFloor: 10,
+    description: "Floor 10 Final Boss: Ancient heart of the dungeon. Telegraphs multi-tile Abyssal Void Eruptions across the chamber."
+  }
+];
+
+// games/10-ten-floors-down/src/simulation.ts
+function buildPotionColorMap(seed) {
+  const rng = new SeededRng((seed ^ 2654435769) >>> 0);
+  const shuffledEffects = rng.shuffle(POTION_EFFECT_ORDER);
+  const colorToEffect = {};
+  const effectToColor = {};
+  POTION_COLORS.forEach((colorDef, idx) => {
+    const effect = shuffledEffects[idx];
+    colorToEffect[colorDef.id] = effect;
+    effectToColor[effect] = colorDef.id;
+  });
+  return { colorToEffect, effectToColor };
+}
+function isWalkableTile(tile) {
+  return tile !== "wall";
+}
+function findShortestPath(tiles, start, goal) {
+  const height = tiles.length;
+  const width = tiles[0]?.length ?? 0;
+  if (start.x < 0 || start.x >= width || start.y < 0 || start.y >= height || goal.x < 0 || goal.x >= width || goal.y < 0 || goal.y >= height) {
+    return null;
+  }
+  if (!isWalkableTile(tiles[start.y][start.x]) || !isWalkableTile(tiles[goal.y][goal.x])) {
+    return null;
+  }
+  const visited = Array.from(
+    { length: height },
+    () => Array(width).fill(false)
+  );
+  const parent = Array.from(
+    { length: height },
+    () => Array(width).fill(null)
+  );
+  const queue = [{ x: start.x, y: start.y }];
+  visited[start.y][start.x] = true;
+  const dirs = [
+    { dx: 1, dy: 0 },
+    { dx: -1, dy: 0 },
+    { dx: 0, dy: 1 },
+    { dx: 0, dy: -1 }
+  ];
+  while (queue.length > 0) {
+    const curr = queue.shift();
+    if (curr.x === goal.x && curr.y === goal.y) {
+      const path = [];
+      let step = curr;
+      while (step) {
+        path.push(step);
+        step = parent[step.y][step.x];
+      }
+      path.reverse();
+      return path;
+    }
+    for (const d of dirs) {
+      const nx = curr.x + d.dx;
+      const ny = curr.y + d.dy;
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height && !visited[ny][nx] && isWalkableTile(tiles[ny][nx])) {
+        visited[ny][nx] = true;
+        parent[ny][nx] = curr;
+        queue.push({ x: nx, y: ny });
+      }
+    }
+  }
+  return null;
+}
+function carveCorridor(tiles, from, to, rng) {
+  let x = from.x;
+  let y = from.y;
+  const horizontalFirst = rng.next() < 0.5;
+  const stepTile = (cx, cy) => {
+    if (cy > 0 && cy < tiles.length - 1 && cx > 0 && cx < tiles[0].length - 1 && tiles[cy][cx] === "wall") {
+      tiles[cy][cx] = "floor";
+    }
+  };
+  if (horizontalFirst) {
+    while (x !== to.x) {
+      stepTile(x, y);
+      x += x < to.x ? 1 : -1;
+    }
+    while (y !== to.y) {
+      stepTile(x, y);
+      y += y < to.y ? 1 : -1;
+    }
+    stepTile(to.x, to.y);
+  } else {
+    while (y !== to.y) {
+      stepTile(x, y);
+      y += y < to.y ? 1 : -1;
+    }
+    while (x !== to.x) {
+      stepTile(x, y);
+      x += x < to.x ? 1 : -1;
+    }
+    stepTile(to.x, to.y);
+  }
+}
+function generateFloor(floorNumber, seed, effectToColor, heroClassId = "vanguard") {
+  const width = GAME_CONFIG.GRID_WIDTH;
+  const height = GAME_CONFIG.GRID_HEIGHT;
+  const floorSeed = (seed ^ Math.imul(floorNumber, 2246822507)) >>> 0 || 1;
+  const rng = new SeededRng(floorSeed);
+  const tiles = Array.from(
+    { length: height },
+    () => Array(width).fill("wall")
+  );
+  const explored = Array.from(
+    { length: height },
+    () => Array(width).fill(false)
+  );
+  const visible = Array.from(
+    { length: height },
+    () => Array(width).fill(false)
+  );
+  const hazards = Array.from(
+    { length: height },
+    () => Array(width).fill(null)
+  );
+  const sectors = [
+    { sx: 1, sy: 1, sw: 7, sh: 7 },
+    { sx: 9, sy: 1, sw: 7, sh: 7 },
+    { sx: 17, sy: 1, sw: 8, sh: 7 },
+    { sx: 1, sy: 9, sw: 7, sh: 8 },
+    { sx: 9, sy: 9, sw: 7, sh: 8 },
+    { sx: 17, sy: 9, sw: 8, sh: 8 }
+  ];
+  const startTopLeft = rng.next() < 0.5;
+  const orderedSectors = startTopLeft ? [sectors[0], sectors[3], sectors[1], sectors[4], sectors[2], sectors[5]] : [sectors[3], sectors[0], sectors[4], sectors[1], sectors[5], sectors[2]];
+  const rooms = [];
+  orderedSectors.forEach((sec, idx) => {
+    const isBossRoom = idx === orderedSectors.length - 1 && (floorNumber === GAME_CONFIG.MINI_BOSS_FLOOR || floorNumber === GAME_CONFIG.FINAL_BOSS_FLOOR);
+    const rw = isBossRoom ? Math.min(sec.sw, 6) : rng.nextInt(4, Math.min(6, sec.sw));
+    const rh = isBossRoom ? Math.min(sec.sh, 6) : rng.nextInt(4, Math.min(6, sec.sh));
+    const rx = sec.sx + rng.nextInt(0, Math.max(0, sec.sw - rw));
+    const ry = sec.sy + rng.nextInt(0, Math.max(0, sec.sh - rh));
+    let kind = "combat";
+    if (idx === 0) kind = "entrance";
+    else if (idx === orderedSectors.length - 1) kind = "exit";
+    else if (idx === 2) kind = "alchemy";
+    else if (idx === 3) kind = "vault";
+    const room = { x: rx, y: ry, w: rw, h: rh, kind };
+    rooms.push(room);
+    for (let y = ry; y < ry + rh; y++) {
+      for (let x = rx; x < rx + rw; x++) {
+        if (y > 0 && y < height - 1 && x > 0 && x < width - 1) {
+          tiles[y][x] = "floor";
+        }
+      }
+    }
+  });
+  const roomCenter = (r) => ({
+    x: Math.floor(r.x + r.w / 2),
+    y: Math.floor(r.y + r.h / 2)
+  });
+  for (let i = 0; i < rooms.length - 1; i++) {
+    carveCorridor(tiles, roomCenter(rooms[i]), roomCenter(rooms[i + 1]), rng);
+  }
+  carveCorridor(tiles, roomCenter(rooms[1]), roomCenter(rooms[4]), rng);
+  carveCorridor(tiles, roomCenter(rooms[0]), roomCenter(rooms[2]), rng);
+  for (const r of rooms) {
+    for (let x = r.x; x < r.x + r.w; x++) {
+      const topY = r.y - 1;
+      if (topY > 1 && tiles[topY][x] === "floor" && tiles[topY][x - 1] === "wall" && tiles[topY][x + 1] === "wall") {
+        tiles[topY][x] = "door";
+      }
+      const botY = r.y + r.h;
+      if (botY < height - 2 && tiles[botY][x] === "floor" && tiles[botY][x - 1] === "wall" && tiles[botY][x + 1] === "wall") {
+        tiles[botY][x] = "door";
+      }
+    }
+  }
+  const entranceRoom = rooms[0];
+  const exitRoom = rooms[rooms.length - 1];
+  const alchemyRoom = rooms.find((r) => r.kind === "alchemy") ?? rooms[2];
+  const vaultRoom = rooms.find((r) => r.kind === "vault") ?? rooms[3];
+  const entrancePos = roomCenter(entranceRoom);
+  const stairsDownPos = roomCenter(exitRoom);
+  tiles[entrancePos.y][entrancePos.x] = "stairs_up";
+  tiles[stairsDownPos.y][stairsDownPos.x] = "stairs_down";
+  if (!findShortestPath(tiles, entrancePos, stairsDownPos)) {
+    carveCorridor(tiles, entrancePos, stairsDownPos, rng);
+    tiles[entrancePos.y][entrancePos.x] = "stairs_up";
+    tiles[stairsDownPos.y][stairsDownPos.x] = "stairs_down";
+  }
+  const alchemyPos = {
+    x: alchemyRoom.x + Math.min(alchemyRoom.w - 1, 1),
+    y: alchemyRoom.y + Math.min(alchemyRoom.h - 1, 1)
+  };
+  if (alchemyPos.x === entrancePos.x && alchemyPos.y === entrancePos.y || alchemyPos.x === stairsDownPos.x && alchemyPos.y === stairsDownPos.y) {
+    alchemyPos.x = Math.min(width - 2, alchemyPos.x + 1);
+  }
+  tiles[alchemyPos.y][alchemyPos.x] = "alchemy_desk";
+  const alchemyCharges = 1 + HERO_CLASSES[heroClassId].alchemyBonusCharges;
+  const occupied = /* @__PURE__ */ new Set([
+    `${entrancePos.x},${entrancePos.y}`,
+    `${stairsDownPos.x},${stairsDownPos.y}`,
+    `${alchemyPos.x},${alchemyPos.y}`
+  ]);
+  const pickFreeRoomTile = (room) => {
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const px = rng.nextInt(room.x, room.x + room.w - 1);
+      const py = rng.nextInt(room.y, room.y + room.h - 1);
+      const key = `${px},${py}`;
+      if (!occupied.has(key) && isWalkableTile(tiles[py][px])) {
+        occupied.add(key);
+        return { x: px, y: py };
+      }
+    }
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const key = `${x},${y}`;
+        if (!occupied.has(key) && tiles[y][x] === "floor") {
+          occupied.add(key);
+          return { x, y };
+        }
+      }
+    }
+    return { x: entrancePos.x + 1, y: entrancePos.y };
+  };
+  const groundItems = [];
+  let itemSeq = 1;
+  const healRoom = rng.pick([rooms[1], alchemyRoom, vaultRoom]);
+  const healPos = pickFreeRoomTile(healRoom);
+  groundItems.push({
+    id: `f${floorNumber}_item_${itemSeq++}`,
+    x: healPos.x,
+    y: healPos.y,
+    kind: "potion",
+    color: effectToColor.mending
+  });
+  const progPos = pickFreeRoomTile(vaultRoom);
+  if (floorNumber % 2 === 1) {
+    groundItems.push({
+      id: `f${floorNumber}_item_${itemSeq++}`,
+      x: progPos.x,
+      y: progPos.y,
+      kind: "scroll_upgrade"
+    });
+  } else {
+    groundItems.push({
+      id: `f${floorNumber}_item_${itemSeq++}`,
+      x: progPos.x,
+      y: progPos.y,
+      kind: "potion",
+      color: effectToColor.might
+    });
+  }
+  const tacticalEffects = [
+    "liquid_flame",
+    "frost_mist",
+    "caustic_gas",
+    "shadow_veil"
+  ];
+  const chosenTactical = rng.pick(tacticalEffects);
+  const tacRoom = rng.pick([rooms[1], rooms[2], rooms[4]]);
+  const tacPos = pickFreeRoomTile(tacRoom);
+  groundItems.push({
+    id: `f${floorNumber}_item_${itemSeq++}`,
+    x: tacPos.x,
+    y: tacPos.y,
+    kind: "potion",
+    color: effectToColor[chosenTactical]
+  });
+  if (floorNumber % 2 === 0 && floorNumber <= 8) {
+    const targetTier = Math.min(4, Math.floor(floorNumber / 2) + 1);
+    const gearPos = pickFreeRoomTile(vaultRoom);
+    if (floorNumber % 4 === 2) {
+      const candidates = WEAPON_CATALOG.filter((w) => w.tier === targetTier);
+      const weapon = candidates.length > 0 ? rng.pick(candidates) : WEAPON_CATALOG[3];
+      groundItems.push({
+        id: `f${floorNumber}_item_${itemSeq++}`,
+        x: gearPos.x,
+        y: gearPos.y,
+        kind: "weapon",
+        weapon
+      });
+    } else {
+      const candidates = ARMOR_CATALOG.filter((a) => a.tier === targetTier);
+      const armor = candidates.length > 0 ? rng.pick(candidates) : ARMOR_CATALOG[3];
+      groundItems.push({
+        id: `f${floorNumber}_item_${itemSeq++}`,
+        x: gearPos.x,
+        y: gearPos.y,
+        kind: "armor",
+        armor
+      });
+    }
+  }
+  const monsters = [];
+  let monsterSeq = 1;
+  const eligibleTemplates = MONSTER_TEMPLATES.filter(
+    (m) => !m.isBoss && floorNumber >= m.minFloor && floorNumber <= m.maxFloor
+  );
+  const fallbackPool = eligibleTemplates.length > 0 ? eligibleTemplates : [MONSTER_TEMPLATES[0]];
+  const spawnRooms = rooms.slice(1);
+  for (let i = 0; i < spawnRooms.length; i++) {
+    const room = spawnRooms[i];
+    const isExit = room.kind === "exit";
+    if (isExit && (floorNumber === GAME_CONFIG.MINI_BOSS_FLOOR || floorNumber === GAME_CONFIG.FINAL_BOSS_FLOOR)) {
+      const bossTemplate = MONSTER_TEMPLATES.find(
+        (m) => m.isBoss && m.bossFloor === floorNumber
+      );
+      const bossPos = pickFreeRoomTile(room);
+      monsters.push({
+        id: `f${floorNumber}_boss_${monsterSeq++}`,
+        templateId: bossTemplate.id,
+        name: bossTemplate.name,
+        glyph: bossTemplate.glyph,
+        color: bossTemplate.color,
+        x: bossPos.x,
+        y: bossPos.y,
+        hp: bossTemplate.maxHp,
+        maxHp: bossTemplate.maxHp,
+        attack: bossTemplate.attack,
+        defense: bossTemplate.defense,
+        moveTicks: bossTemplate.moveTicks,
+        attackTicks: bossTemplate.attackTicks,
+        isBoss: true,
+        nextActTick: bossTemplate.moveTicks,
+        stunnedTicks: 0,
+        burningTicks: 0,
+        poisonedTicks: 0,
+        sunderedDefense: 0,
+        telegraph: null,
+        telegraphCooldown: 0,
+        alerted: false
+      });
+      continue;
+    }
+    const count = i === 2 && floorNumber >= 3 ? 2 : 1;
+    for (let c = 0; c < count; c++) {
+      const tpl = rng.pick(fallbackPool);
+      const mPos = pickFreeRoomTile(room);
+      monsters.push({
+        id: `f${floorNumber}_mon_${monsterSeq++}`,
+        templateId: tpl.id,
+        name: tpl.name,
+        glyph: tpl.glyph,
+        color: tpl.color,
+        x: mPos.x,
+        y: mPos.y,
+        hp: tpl.maxHp,
+        maxHp: tpl.maxHp,
+        attack: tpl.attack,
+        defense: tpl.defense,
+        moveTicks: tpl.moveTicks,
+        attackTicks: tpl.attackTicks,
+        rangedRange: tpl.rangedRange,
+        inflictsStatus: tpl.inflictsStatus,
+        isBoss: false,
+        nextActTick: tpl.moveTicks,
+        stunnedTicks: 0,
+        burningTicks: 0,
+        poisonedTicks: 0,
+        sunderedDefense: 0,
+        telegraph: null,
+        telegraphCooldown: 0,
+        alerted: false
+      });
+    }
+  }
+  return {
+    floorNumber,
+    width,
+    height,
+    tiles,
+    explored,
+    visible,
+    hazards,
+    rooms,
+    entrancePos,
+    stairsDownPos,
+    alchemyPos,
+    alchemyCharges,
+    monsters,
+    groundItems
+  };
+}
+function updateFieldOfView(floor, heroX, heroY) {
+  const radius = GAME_CONFIG.FOV_RADIUS;
+  for (let y = 0; y < floor.height; y++) {
+    for (let x = 0; x < floor.width; x++) {
+      floor.visible[y][x] = false;
+    }
+  }
+  const hasLineOfSight = (x0, y0, x1, y1) => {
+    let cx = x0;
+    let cy = y0;
+    const dx = Math.abs(x1 - x0);
+    const dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+    while (true) {
+      if (cx === x1 && cy === y1) return true;
+      if (!(cx === x0 && cy === y0) && (floor.tiles[cy][cx] === "wall" || floor.tiles[cy][cx] === "door")) {
+        return false;
+      }
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        cx += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        cy += sy;
+      }
+    }
+  };
+  for (let y = Math.max(0, heroY - radius); y <= Math.min(floor.height - 1, heroY + radius); y++) {
+    for (let x = Math.max(0, heroX - radius); x <= Math.min(floor.width - 1, heroX + radius); x++) {
+      const distSq = (x - heroX) * (x - heroX) + (y - heroY) * (y - heroY);
+      if (distSq <= radius * radius && hasLineOfSight(heroX, heroY, x, y)) {
+        floor.visible[y][x] = true;
+        floor.explored[y][x] = true;
+      }
+    }
+  }
+}
+function createInitialGameState(options) {
+  const seed = options.seed >>> 0 || 20261106;
+  const seedLabel = options.seedLabel ?? String(seed);
+  const heroClassId = options.heroClass ?? "vanguard";
+  const classDef = HERO_CLASSES[heroClassId];
+  const { colorToEffect, effectToColor } = buildPotionColorMap(seed);
+  const identifiedColors = {
+    crimson: false,
+    amber: false,
+    viridian: false,
+    azure: false,
+    violet: false,
+    obsidian: false
+  };
+  for (const eff of classDef.preIdentifiedEffects) {
+    const color = effectToColor[eff];
+    identifiedColors[color] = true;
+  }
+  const inventory = [];
+  let initItemSeq = 1;
+  for (const eff of classDef.startingPotions) {
+    inventory.push({
+      id: `init_item_${initItemSeq++}`,
+      kind: "potion",
+      color: effectToColor[eff]
+    });
+  }
+  if (classDef.startsWithUpgradeScroll) {
+    inventory.push({
+      id: `init_item_${initItemSeq++}`,
+      kind: "scroll_upgrade"
+    });
+  }
+  const floor = generateFloor(1, seed, effectToColor, heroClassId);
+  const maxHp = classDef.baseHp + classDef.startingArmor.maxHpBonus;
+  const hero = {
+    classId: heroClassId,
+    name: classDef.name,
+    x: floor.entrancePos.x,
+    y: floor.entrancePos.y,
+    hp: maxHp,
+    maxHp,
+    baseAttack: classDef.baseAttack,
+    baseDefense: classDef.baseDefense,
+    moveTicks: classDef.moveTicks,
+    weapon: { ...classDef.startingWeapon },
+    weaponUpgrades: 0,
+    armor: { ...classDef.startingArmor },
+    armorUpgrades: 0,
+    abilityUpgrades: 0,
+    abilityCooldownTicks: 0,
+    nextActTick: 0,
+    invisibleTicks: 0,
+    burningTicks: 0,
+    poisonedTicks: 0,
+    chilledTicks: 0,
+    firebrandTicks: 0,
+    iceArmorHp: 0,
+    inventory
+  };
+  updateFieldOfView(floor, hero.x, hero.y);
+  const preIdNames = classDef.preIdentifiedEffects.map((e) => `${POTION_EFFECTS[e].name} (${effectToColor[e].toUpperCase()})`).join(", ");
+  return {
+    seed,
+    seedLabel,
+    rngState: seed,
+    status: "playing",
+    currentTick: 0,
+    turnsTaken: 0,
+    monstersSlain: 0,
+    upgradesApplied: 0,
+    colorToEffect,
+    effectToColor,
+    identifiedColors,
+    hero,
+    floor,
+    combatLog: [
+      `[Tick 0] ${classDef.name} descends to Floor 1 (Seed: ${seedLabel}).`,
+      `[Tick 0] Class Knowledge: ${preIdNames} is pre-identified!`
+    ],
+    recentTurnSummaries: [],
+    epitaph: null,
+    debugRevealAll: Boolean(options.debug)
+  };
+}
+function getHeroAttackPower(hero) {
+  const fireBonus = hero.firebrandTicks > 0 ? 3 : 0;
+  return hero.baseAttack + hero.weapon.attackBonus + hero.weaponUpgrades * 2 + fireBonus;
+}
+function getHeroDefense(hero) {
+  return hero.baseDefense + hero.armor.defenseBonus + hero.armorUpgrades * 2;
+}
+function getHeroAttackTicks(hero) {
+  const reduced = Math.max(7, hero.weapon.attackTicks - Math.floor(hero.weaponUpgrades / 2));
+  return reduced + (hero.chilledTicks > 0 ? 3 : 0);
+}
+function getHeroMoveTicks(hero) {
+  return hero.moveTicks + (hero.chilledTicks > 0 ? 3 : 0);
+}
+function getPotionDisplayName(state, color) {
+  const effect = state.colorToEffect[color];
+  const identified = state.identifiedColors[color] || state.debugRevealAll;
+  const colorDef = POTION_COLORS.find((c) => c.id === color);
+  if (identified) {
+    return {
+      title: `${POTION_EFFECTS[effect].name} [${colorDef.label}]`,
+      identified: true,
+      effect
+    };
+  }
+  return {
+    title: `Unidentified ${colorDef.label}`,
+    identified: false,
+    effect
+  };
+}
+function getActionTickPreview(state) {
+  const moveTicks = getHeroMoveTicks(state.hero);
+  const attackTicks = getHeroAttackTicks(state.hero);
+  const classDef = HERO_CLASSES[state.hero.classId];
+  const abilityTicks = classDef.abilityCostTicks;
+  const doubleTurnMonstersOnAttack = [];
+  const doubleTurnMonstersOnMove = [];
+  for (const m of state.floor.monsters) {
+    if (m.hp <= 0 || m.stunnedTicks > 0) continue;
+    const isVis = state.floor.visible[m.y]?.[m.x] || Math.abs(m.x - state.hero.x) + Math.abs(m.y - state.hero.y) <= 2;
+    if (!isVis) continue;
+    const firstAct = m.nextActTick;
+    const secondAct = firstAct + Math.min(m.moveTicks, m.attackTicks);
+    if (secondAct <= state.currentTick + attackTicks) {
+      doubleTurnMonstersOnAttack.push(m.name);
+    }
+    if (secondAct <= state.currentTick + moveTicks) {
+      doubleTurnMonstersOnMove.push(m.name);
+    }
+  }
+  return {
+    moveTicks,
+    attackTicks,
+    abilityTicks,
+    doubleTurnMonstersOnAttack,
+    doubleTurnMonstersOnMove
+  };
+}
+function logEvent(state, message) {
+  const formatted = `[Tick ${state.currentTick}] ${message}`;
+  state.combatLog.push(formatted);
+  if (state.combatLog.length > 80) {
+    state.combatLog.shift();
+  }
+  state.recentTurnSummaries.push(formatted);
+  if (state.recentTurnSummaries.length > 5) {
+    state.recentTurnSummaries.shift();
+  }
+}
+function damageHero(state, rawAmount, sourceName) {
+  if (state.status !== "playing" || rawAmount <= 0) return;
+  let remaining = rawAmount;
+  if (state.hero.iceArmorHp > 0) {
+    const absorbed = Math.min(state.hero.iceArmorHp, remaining);
+    state.hero.iceArmorHp -= absorbed;
+    remaining -= absorbed;
+  }
+  if (remaining <= 0) {
+    logEvent(state, `Ice Armor absorbs ${rawAmount} damage from ${sourceName}!`);
+    return;
+  }
+  state.hero.hp = Math.max(0, state.hero.hp - remaining);
+  if (state.hero.hp <= 0) {
+    finalizePermadeath(state, sourceName);
+  }
+}
+function finalizePermadeath(state, killedBy) {
+  state.status = "defeat";
+  logEvent(state, `PERMADEATH: Slain on Floor ${state.floor.floorNumber} by ${killedBy}!`);
+  const hasMendingInBag = state.hero.inventory.some(
+    (item) => item.kind === "potion" && state.colorToEffect[item.color] === "mending"
+  );
+  const identifiedCount = Object.values(state.identifiedColors).filter(Boolean).length;
+  let tacticalLesson = "Use corridor doorways to fight monsters 1-on-1 and watch the Action-Cost Tick Preview to avoid enemy double-turns.";
+  if (killedBy.includes("Potion of")) {
+    tacticalLesson = "Drinking unknown vials at low HP is lethal if they contain Liquid Flame or Caustic Gas. Test unknown colors at an Alchemy Desk or THROW them at enemies first!";
+  } else if (killedBy.includes("Slam") || killedBy.includes("Eruption")) {
+    tacticalLesson = "Bosses telegraph multi-tile slams 1 turn in advance. Step out of red warning tiles or use Shield Bash / Frost Mist to stun the boss and cancel the slam!";
+  } else if (hasMendingInBag) {
+    tacticalLesson = "You fell with a Potion of Mending still in your pack! Drink healing draughts before dropping into critical single-hit range.";
+  }
+  state.epitaph = {
+    id: `epitaph_${state.seed}_${state.currentTick}`,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    seed: state.seed,
+    seedLabel: state.seedLabel,
+    heroClass: state.hero.classId,
+    heroClassName: state.hero.name,
+    outcome: "defeat",
+    floorReached: state.floor.floorNumber,
+    totalTicks: state.currentTick,
+    turnsTaken: state.turnsTaken,
+    monstersSlain: state.monstersSlain,
+    potionsIdentified: identifiedCount,
+    upgradesApplied: state.upgradesApplied,
+    killedBy,
+    lastFiveTurns: [...state.recentTurnSummaries],
+    tacticalLesson
+  };
+}
+function finalizeVictory(state) {
+  state.status = "victory";
+  logEvent(
+    state,
+    `VICTORY! ${state.hero.name} conquered all 10 floors and ascended from the Abyssal Core!`
+  );
+  const identifiedCount = Object.values(state.identifiedColors).filter(Boolean).length;
+  state.epitaph = {
+    id: `victory_${state.seed}_${state.currentTick}`,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    seed: state.seed,
+    seedLabel: state.seedLabel,
+    heroClass: state.hero.classId,
+    heroClassName: state.hero.name,
+    outcome: "victory",
+    floorReached: state.floor.floorNumber,
+    totalTicks: state.currentTick,
+    turnsTaken: state.turnsTaken,
+    monstersSlain: state.monstersSlain,
+    potionsIdentified: identifiedCount,
+    upgradesApplied: state.upgradesApplied,
+    killedBy: "Survived & Conquered Floor 10",
+    lastFiveTurns: [...state.recentTurnSummaries],
+    tacticalLesson: "Masterful alchemy and turn-tick control! Try racing the same seed with another Hero Class."
+  };
+}
+function pickupItemsAtHero(state) {
+  const { hero, floor } = state;
+  const remaining = [];
+  for (const item of floor.groundItems) {
+    if (item.x !== hero.x || item.y !== hero.y) {
+      remaining.push(item);
+      continue;
+    }
+    if (item.kind === "weapon") {
+      const currentScore = hero.weapon.attackBonus - (hero.weapon.attackTicks - 10);
+      const newScore = item.weapon.attackBonus - (item.weapon.attackTicks - 10);
+      if (newScore >= currentScore) {
+        hero.weapon = { ...item.weapon };
+        logEvent(
+          state,
+          `Equipped ${item.weapon.name} (+${item.weapon.attackBonus} ATK, ${item.weapon.attackTicks}t)!`
+        );
+      } else {
+        logEvent(state, `Inspected ${item.weapon.name} (kept superior ${hero.weapon.name}).`);
+      }
+    } else if (item.kind === "armor") {
+      if (item.armor.defenseBonus >= hero.armor.defenseBonus) {
+        const hpDiff = item.armor.maxHpBonus - hero.armor.maxHpBonus;
+        hero.armor = { ...item.armor };
+        if (hpDiff > 0) {
+          hero.maxHp += hpDiff;
+          hero.hp += hpDiff;
+        }
+        logEvent(
+          state,
+          `Equipped ${item.armor.name} (+${item.armor.defenseBonus} DEF, +${item.armor.maxHpBonus} Max HP)!`
+        );
+      } else {
+        logEvent(state, `Inspected ${item.armor.name} (kept superior ${hero.armor.name}).`);
+      }
+    } else {
+      if (hero.inventory.length < GAME_CONFIG.MAX_INVENTORY_SLOTS) {
+        if (item.kind === "potion") {
+          hero.inventory.push({ id: item.id, kind: "potion", color: item.color });
+          const disp = getPotionDisplayName(state, item.color);
+          logEvent(state, `Picked up ${disp.title}.`);
+        } else {
+          hero.inventory.push({ id: item.id, kind: "scroll_upgrade" });
+          logEvent(state, `Picked up Scroll of Upgrade!`);
+        }
+      } else {
+        logEvent(state, `Inventory full (6/6)! Drink or throw a vial to make room.`);
+        remaining.push(item);
+      }
+    }
+  }
+  floor.groundItems = remaining;
+}
+function checkMonsterDeath(state, monster) {
+  if (monster.hp > 0) return;
+  state.monstersSlain += 1;
+  monster.telegraph = null;
+  logEvent(state, `Defeated ${monster.name}!`);
+  if (monster.isBoss) {
+    const heal = Math.min(state.hero.maxHp - state.hero.hp, 24);
+    if (heal > 0) {
+      state.hero.hp += heal;
+    }
+    if (state.floor.floorNumber === GAME_CONFIG.MINI_BOSS_FLOOR) {
+      state.floor.groundItems.push({
+        id: `boss_reward_${state.currentTick}`,
+        x: monster.x,
+        y: monster.y,
+        kind: "scroll_upgrade"
+      });
+      logEvent(
+        state,
+        `The Iron Warden collapses! Floor 5 Stairs unlocked & Scroll of Upgrade dropped!`
+      );
+    } else if (state.floor.floorNumber === GAME_CONFIG.FINAL_BOSS_FLOOR) {
+      logEvent(
+        state,
+        `THE ABYSSAL CORE SHATTERS! Step onto the Sanctuary Stairs (>) to claim Victory!`
+      );
+    }
+  }
+  state.floor.monsters = state.floor.monsters.filter((m) => m.hp > 0);
+}
+function performHeroMeleeAttack(state, monster) {
+  const { hero } = state;
+  const costTicks = getHeroAttackTicks(hero);
+  const isAmbush = hero.invisibleTicks > 0;
+  if (isAmbush) {
+    hero.invisibleTicks = 0;
+  }
+  const rawAtk = getHeroAttackPower(hero);
+  const multiplier = isAmbush ? 2 : 1;
+  const effectiveDef = Math.max(0, monster.defense - monster.sunderedDefense);
+  const dmg = Math.max(2, Math.round(rawAtk * multiplier) - effectiveDef);
+  monster.hp = Math.max(0, monster.hp - dmg);
+  monster.alerted = true;
+  logEvent(
+    state,
+    `${isAmbush ? "AMBUSH CRIT! " : ""}You strike ${monster.name} with ${hero.weapon.name} for ${dmg} dmg (${costTicks} ticks).`
+  );
+  checkMonsterDeath(state, monster);
+  return costTicks;
+}
+function buildBossTelegraph(state, boss) {
+  const tiles = [];
+  const centerX = state.hero.x;
+  const centerY = state.hero.y;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const tx = centerX + dx;
+      const ty = centerY + dy;
+      if (tx >= 1 && tx < state.floor.width - 1 && ty >= 1 && ty < state.floor.height - 1 && isWalkableTile(state.floor.tiles[ty][tx])) {
+        tiles.push({ x: tx, y: ty });
+      }
+    }
+  }
+  if (boss.templateId === "abyssal_core") {
+    const rays = [
+      { dx: 2, dy: 0 },
+      { dx: -2, dy: 0 },
+      { dx: 0, dy: 2 },
+      { dx: 0, dy: -2 }
+    ];
+    for (const r of rays) {
+      const tx = centerX + r.dx;
+      const ty = centerY + r.dy;
+      if (tx >= 1 && tx < state.floor.width - 1 && ty >= 1 && ty < state.floor.height - 1 && isWalkableTile(state.floor.tiles[ty][tx])) {
+        tiles.push({ x: tx, y: ty });
+      }
+    }
+    return {
+      name: "Abyssal Void Eruption",
+      tiles,
+      damage: 28,
+      stunTicks: 10
+    };
+  }
+  return {
+    name: "Seismic Chain Slam",
+    tiles,
+    damage: 24,
+    stunTicks: 10
+  };
+}
+function advanceTimelineAndResolveActors(state, heroActionCostTicks) {
+  const { hero, floor } = state;
+  const targetHeroTick = state.currentTick + heroActionCostTicks;
+  hero.nextActTick = targetHeroTick;
+  state.turnsTaken += 1;
+  if (hero.abilityCooldownTicks > 0) {
+    hero.abilityCooldownTicks = Math.max(0, hero.abilityCooldownTicks - heroActionCostTicks);
+  }
+  if (hero.invisibleTicks > 0) {
+    hero.invisibleTicks = Math.max(0, hero.invisibleTicks - heroActionCostTicks);
+  }
+  if (hero.chilledTicks > 0) {
+    hero.chilledTicks = Math.max(0, hero.chilledTicks - heroActionCostTicks);
+  }
+  if (hero.firebrandTicks > 0) {
+    hero.firebrandTicks = Math.max(0, hero.firebrandTicks - heroActionCostTicks);
+  }
+  const heroTileHazard = floor.hazards[hero.y]?.[hero.x];
+  if (heroTileHazard?.type === "fire") {
+    hero.burningTicks = Math.max(hero.burningTicks, 20);
+  } else if (heroTileHazard?.type === "caustic") {
+    hero.poisonedTicks = Math.max(hero.poisonedTicks, 20);
+  }
+  if (hero.burningTicks > 0) {
+    hero.burningTicks = Math.max(0, hero.burningTicks - heroActionCostTicks);
+    logEvent(state, `Flames scorch you for 5 fire damage!`);
+    damageHero(state, 5, "Burning Flames (Potion of Liquid Flame)");
+    if (state.status !== "playing") return;
+  }
+  if (hero.poisonedTicks > 0) {
+    hero.poisonedTicks = Math.max(0, hero.poisonedTicks - heroActionCostTicks);
+    logEvent(state, `Caustic venom deals 5 poison damage!`);
+    damageHero(state, 5, "Caustic Poison (Potion of Caustic Gas)");
+    if (state.status !== "playing") return;
+  }
+  for (let y = 0; y < floor.height; y++) {
+    for (let x = 0; x < floor.width; x++) {
+      const h = floor.hazards[y][x];
+      if (h) {
+        h.remainingTicks -= heroActionCostTicks;
+        if (h.remainingTicks <= 0) {
+          floor.hazards[y][x] = null;
+        }
+      }
+    }
+  }
+  let safetyCounter = 0;
+  while (state.status === "playing" && safetyCounter < 60) {
+    safetyCounter += 1;
+    const readyMonsters = floor.monsters.filter((m) => m.hp > 0 && m.nextActTick <= targetHeroTick).sort((a, b) => a.nextActTick - b.nextActTick);
+    if (readyMonsters.length === 0) break;
+    const mon = readyMonsters[0];
+    state.currentTick = mon.nextActTick;
+    const monHazard = floor.hazards[mon.y]?.[mon.x];
+    if (monHazard?.type === "fire") {
+      mon.burningTicks = Math.max(mon.burningTicks, 20);
+    } else if (monHazard?.type === "caustic") {
+      mon.poisonedTicks = Math.max(mon.poisonedTicks, 20);
+      mon.sunderedDefense = Math.max(mon.sunderedDefense, 2);
+    }
+    if (mon.burningTicks > 0) {
+      mon.burningTicks = Math.max(0, mon.burningTicks - 10);
+      mon.hp = Math.max(0, mon.hp - 6);
+      logEvent(state, `${mon.name} burns for 6 fire damage!`);
+      if (mon.hp <= 0) {
+        checkMonsterDeath(state, mon);
+        continue;
+      }
+    }
+    if (mon.poisonedTicks > 0) {
+      mon.poisonedTicks = Math.max(0, mon.poisonedTicks - 10);
+      mon.hp = Math.max(0, mon.hp - 6);
+      logEvent(state, `${mon.name} takes 6 caustic gas damage!`);
+      if (mon.hp <= 0) {
+        checkMonsterDeath(state, mon);
+        continue;
+      }
+    }
+    if (mon.stunnedTicks > 0) {
+      mon.stunnedTicks = Math.max(0, mon.stunnedTicks - 10);
+      mon.telegraph = null;
+      mon.nextActTick += mon.moveTicks;
+      continue;
+    }
+    if (mon.telegraph) {
+      const tg = mon.telegraph;
+      mon.telegraph = null;
+      mon.telegraphCooldown = 2;
+      const hitHero = tg.tiles.some((t) => t.x === hero.x && t.y === hero.y);
+      if (hitHero) {
+        const reduced = Math.max(6, tg.damage - Math.floor(getHeroDefense(hero) / 2));
+        logEvent(
+          state,
+          `BOSS SLAM! ${mon.name}'s ${tg.name} crushes you for ${reduced} damage!`
+        );
+        damageHero(state, reduced, `${mon.name}'s ${tg.name}`);
+      } else {
+        logEvent(
+          state,
+          `You dodged ${mon.name}'s ${tg.name} as it shatters the flagstones!`
+        );
+      }
+      mon.nextActTick += mon.attackTicks;
+      continue;
+    }
+    const distManhattan = Math.abs(mon.x - hero.x) + Math.abs(mon.y - hero.y);
+    const chebyshevDist = Math.max(Math.abs(mon.x - hero.x), Math.abs(mon.y - hero.y));
+    if (floor.visible[mon.y]?.[mon.x] && hero.invisibleTicks <= 0) {
+      mon.alerted = true;
+    }
+    if (!mon.alerted || hero.invisibleTicks > 0) {
+      mon.nextActTick += mon.moveTicks;
+      continue;
+    }
+    if (mon.isBoss && chebyshevDist <= 3) {
+      if (mon.telegraphCooldown <= 0) {
+        mon.telegraph = buildBossTelegraph(state, mon);
+        logEvent(
+          state,
+          `WARNING! ${mon.name} raises its weapon for ${mon.telegraph.name} \u2014 move out of red danger tiles!`
+        );
+        mon.nextActTick += mon.attackTicks;
+        continue;
+      } else {
+        mon.telegraphCooldown -= 1;
+      }
+    }
+    const canMelee = chebyshevDist === 1;
+    const canRanged = Boolean(mon.rangedRange) && chebyshevDist <= (mon.rangedRange ?? 1) && floor.visible[mon.y]?.[mon.x];
+    if (canMelee || canRanged) {
+      const heroDef = getHeroDefense(hero);
+      const dmg = Math.max(1, mon.attack - heroDef);
+      logEvent(
+        state,
+        `${mon.name} ${canRanged && !canMelee ? "blasts" : "strikes"} you for ${dmg} dmg!`
+      );
+      if (mon.inflictsStatus === "poison" && hero.poisonedTicks <= 0) {
+        hero.poisonedTicks = 20;
+        logEvent(state, `${mon.name} inflicts Poison!`);
+      } else if (mon.inflictsStatus === "burn" && hero.burningTicks <= 0) {
+        hero.burningTicks = 20;
+        logEvent(state, `${mon.name}'s embers ignite you!`);
+      }
+      damageHero(state, dmg, mon.name);
+      mon.nextActTick += mon.attackTicks;
+      continue;
+    }
+    if (distManhattan <= 12) {
+      const stepCandidates = [];
+      const dx = Math.sign(hero.x - mon.x);
+      const dy = Math.sign(hero.y - mon.y);
+      if (dx !== 0) stepCandidates.push({ x: mon.x + dx, y: mon.y });
+      if (dy !== 0) stepCandidates.push({ x: mon.x, y: mon.y + dy });
+      if (dx !== 0 && dy !== 0) stepCandidates.push({ x: mon.x + dx, y: mon.y + dy });
+      let moved = false;
+      for (const cand of stepCandidates) {
+        if (cand.x >= 0 && cand.x < floor.width && cand.y >= 0 && cand.y < floor.height && isWalkableTile(floor.tiles[cand.y][cand.x]) && !(cand.x === hero.x && cand.y === hero.y) && !floor.monsters.some((other) => other.hp > 0 && other.x === cand.x && other.y === cand.y)) {
+          mon.x = cand.x;
+          mon.y = cand.y;
+          moved = true;
+          break;
+        }
+      }
+      if (!moved) {
+        const path = findShortestPath(floor.tiles, { x: mon.x, y: mon.y }, { x: hero.x, y: hero.y });
+        if (path && path.length >= 2) {
+          const nextStep = path[1];
+          if (!(nextStep.x === hero.x && nextStep.y === hero.y) && !floor.monsters.some(
+            (other) => other.hp > 0 && other.x === nextStep.x && other.y === nextStep.y
+          )) {
+            mon.x = nextStep.x;
+            mon.y = nextStep.y;
+          }
+        }
+      }
+    }
+    mon.nextActTick += mon.moveTicks;
+  }
+  state.currentTick = targetHeroTick;
+  updateFieldOfView(floor, hero.x, hero.y);
+}
+function applyCommand(state, command) {
+  if (state.status !== "playing") return state;
+  const { hero, floor } = state;
+  switch (command.type) {
+    case "MOVE": {
+      const tx = hero.x + command.dx;
+      const ty = hero.y + command.dy;
+      if (tx < 0 || tx >= floor.width || ty < 0 || ty >= floor.height) {
+        return state;
+      }
+      const monsterAtTarget = floor.monsters.find(
+        (m) => m.hp > 0 && m.x === tx && m.y === ty
+      );
+      if (monsterAtTarget) {
+        const atkCost = performHeroMeleeAttack(state, monsterAtTarget);
+        advanceTimelineAndResolveActors(state, atkCost);
+        return state;
+      }
+      if (!isWalkableTile(floor.tiles[ty][tx])) {
+        return state;
+      }
+      hero.x = tx;
+      hero.y = ty;
+      pickupItemsAtHero(state);
+      if (floor.tiles[ty][tx] === "alchemy_desk" && floor.alchemyCharges > 0) {
+        logEvent(
+          state,
+          `Standing at Alchemy Desk (${floor.alchemyCharges} charge${floor.alchemyCharges > 1 ? "s" : ""} left) \u2014 click [Identify Vial] to test an unknown potion safely!`
+        );
+      } else if (floor.tiles[ty][tx] === "stairs_down") {
+        logEvent(
+          state,
+          `Standing on Stairs Down (>) \u2014 press [>] or click [Descend Floor] to advance!`
+        );
+      }
+      const moveCost = getHeroMoveTicks(hero);
+      advanceTimelineAndResolveActors(state, moveCost);
+      return state;
+    }
+    case "WAIT": {
+      const visibleThreats = floor.monsters.some(
+        (m) => m.hp > 0 && floor.visible[m.y]?.[m.x]
+      );
+      if (!visibleThreats && hero.hp < hero.maxHp && hero.burningTicks === 0 && hero.poisonedTicks === 0) {
+        hero.hp = Math.min(hero.maxHp, hero.hp + 1);
+      }
+      logEvent(state, `You wait and steady your breathing (${GAME_CONFIG.WAIT_TICKS} ticks).`);
+      advanceTimelineAndResolveActors(state, GAME_CONFIG.WAIT_TICKS);
+      return state;
+    }
+    case "DRINK_POTION": {
+      const item = hero.inventory[command.slotIndex];
+      if (!item || item.kind !== "potion") return state;
+      hero.inventory.splice(command.slotIndex, 1);
+      const color = item.color;
+      const effect = state.colorToEffect[color];
+      const wasIdentified = state.identifiedColors[color];
+      state.identifiedColors[color] = true;
+      const effectDef = POTION_EFFECTS[effect];
+      if (!wasIdentified) {
+        logEvent(
+          state,
+          `IDENTIFIED! ${color.toUpperCase()} VIAL is ${effectDef.name}!`
+        );
+      }
+      switch (effect) {
+        case "mending": {
+          const heal = Math.max(28, Math.round(hero.maxHp * 0.45));
+          hero.hp = Math.min(hero.maxHp, hero.hp + heal);
+          hero.burningTicks = 0;
+          hero.poisonedTicks = 0;
+          hero.chilledTicks = 0;
+          logEvent(
+            state,
+            `Drank ${effectDef.name}: Restored +${heal} HP and cleansed all ailments!`
+          );
+          break;
+        }
+        case "might": {
+          hero.baseAttack += 2;
+          hero.maxHp += 12;
+          hero.hp = Math.min(hero.maxHp, hero.hp + 12);
+          logEvent(
+            state,
+            `Drank ${effectDef.name}: Permanently gained +2 Base Attack and +12 Max HP!`
+          );
+          break;
+        }
+        case "shadow_veil": {
+          hero.invisibleTicks = 50;
+          logEvent(
+            state,
+            `Drank ${effectDef.name}: Cloaked in Invisibility for 50 ticks (next attack deals 2.0x Ambush Crit)!`
+          );
+          break;
+        }
+        case "liquid_flame": {
+          hero.burningTicks = 30;
+          hero.firebrandTicks = 40;
+          logEvent(
+            state,
+            `HAZARD! Drank ${effectDef.name} \u2014 it scorches your throat (Burning for 30t, +3 Fire ATK)! Throw this color at enemies instead!`
+          );
+          damageHero(state, 6, `Self-Drunk ${effectDef.name}`);
+          break;
+        }
+        case "frost_mist": {
+          hero.chilledTicks = 20;
+          hero.burningTicks = 0;
+          hero.iceArmorHp = 6;
+          logEvent(
+            state,
+            `Drank ${effectDef.name} \u2014 chills your limbs (+3t action cost for 20t, +6 Ice Armor)! Throw this color to freeze enemies!`
+          );
+          break;
+        }
+        case "caustic_gas": {
+          hero.poisonedTicks = 30;
+          logEvent(
+            state,
+            `HAZARD! Drank ${effectDef.name} \u2014 corrosive fumes choke you! Throw this color at enemy packs instead!`
+          );
+          damageHero(state, 7, `Self-Drunk ${effectDef.name}`);
+          break;
+        }
+      }
+      if (state.status === "playing") {
+        advanceTimelineAndResolveActors(state, GAME_CONFIG.POTION_USE_TICKS);
+      }
+      return state;
+    }
+    case "THROW_POTION": {
+      const item = hero.inventory[command.slotIndex];
+      if (!item || item.kind !== "potion") return state;
+      const tx = Math.max(1, Math.min(floor.width - 2, command.targetX));
+      const ty = Math.max(1, Math.min(floor.height - 2, command.targetY));
+      hero.inventory.splice(command.slotIndex, 1);
+      const color = item.color;
+      const effect = state.colorToEffect[color];
+      const wasIdentified = state.identifiedColors[color];
+      state.identifiedColors[color] = true;
+      const effectDef = POTION_EFFECTS[effect];
+      const classMult = HERO_CLASSES[hero.classId].thrownPotionMultiplier;
+      if (!wasIdentified) {
+        logEvent(
+          state,
+          `IDENTIFIED! Thrown ${color.toUpperCase()} VIAL is ${effectDef.name}!`
+        );
+      }
+      const affectedMonsters = [];
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const ax = tx + dx;
+          const ay = ty + dy;
+          if (ax < 0 || ax >= floor.width || ay < 0 || ay >= floor.height) continue;
+          if (!isWalkableTile(floor.tiles[ay][ax])) continue;
+          if (effect === "liquid_flame") {
+            floor.hazards[ay][ax] = { type: "fire", remainingTicks: 30 };
+          } else if (effect === "frost_mist") {
+            floor.hazards[ay][ax] = { type: "frost", remainingTicks: 20 };
+          } else if (effect === "caustic_gas") {
+            floor.hazards[ay][ax] = { type: "caustic", remainingTicks: 40 };
+          }
+          const mon = floor.monsters.find((m) => m.hp > 0 && m.x === ax && m.y === ay);
+          if (mon) affectedMonsters.push(mon);
+        }
+      }
+      switch (effect) {
+        case "liquid_flame": {
+          const burstDmg = Math.round(12 * classMult);
+          for (const mon of affectedMonsters) {
+            mon.hp = Math.max(0, mon.hp - burstDmg);
+            mon.burningTicks = 30;
+            mon.alerted = true;
+            checkMonsterDeath(state, mon);
+          }
+          logEvent(
+            state,
+            `Threw ${effectDef.name} at (${tx},${ty}): Ignited 3x3 firestorm (${burstDmg} fire dmg + 30t burn to ${affectedMonsters.length} foe(s))!`
+          );
+          break;
+        }
+        case "frost_mist": {
+          const coldDmg = Math.round(8 * classMult);
+          for (const mon of affectedMonsters) {
+            mon.hp = Math.max(0, mon.hp - coldDmg);
+            mon.stunnedTicks = 20;
+            mon.telegraph = null;
+            mon.alerted = true;
+            checkMonsterDeath(state, mon);
+          }
+          logEvent(
+            state,
+            `Threw ${effectDef.name} at (${tx},${ty}): Froze ${affectedMonsters.length} foe(s) solid for 20 ticks!`
+          );
+          break;
+        }
+        case "caustic_gas": {
+          const acidDmg = Math.round(9 * classMult);
+          for (const mon of affectedMonsters) {
+            mon.hp = Math.max(0, mon.hp - acidDmg);
+            mon.poisonedTicks = 40;
+            mon.sunderedDefense = 2;
+            mon.alerted = true;
+            checkMonsterDeath(state, mon);
+          }
+          logEvent(
+            state,
+            `Threw ${effectDef.name} at (${tx},${ty}): Corrosive cloud hits ${affectedMonsters.length} foe(s) (${acidDmg} dmg, Poison & -2 DEF)!`
+          );
+          break;
+        }
+        case "shadow_veil": {
+          for (const mon of affectedMonsters) {
+            mon.stunnedTicks = 15;
+            mon.telegraph = null;
+          }
+          logEvent(
+            state,
+            `Threw ${effectDef.name} at (${tx},${ty}): Blinded ${affectedMonsters.length} foe(s) for 15 ticks!`
+          );
+          break;
+        }
+        case "mending": {
+          if (Math.abs(tx - hero.x) <= 1 && Math.abs(ty - hero.y) <= 1) {
+            const splashHeal = 18;
+            hero.hp = Math.min(hero.maxHp, hero.hp + splashHeal);
+            logEvent(state, `Threw ${effectDef.name} nearby: Splash mist healed +${splashHeal} HP.`);
+          } else {
+            logEvent(
+              state,
+              `Threw ${effectDef.name} at (${tx},${ty}) \u2014 drink this color directly for full +45% HP healing!`
+            );
+          }
+          break;
+        }
+        case "might": {
+          logEvent(
+            state,
+            `Threw ${effectDef.name} at (${tx},${ty}) \u2014 the vial shatters! Drink this color next time for permanent +2 ATK & +12 Max HP!`
+          );
+          break;
+        }
+      }
+      advanceTimelineAndResolveActors(state, GAME_CONFIG.POTION_USE_TICKS);
+      return state;
+    }
+    case "USE_SCROLL_UPGRADE": {
+      const item = hero.inventory[command.slotIndex];
+      if (!item || item.kind !== "scroll_upgrade") return state;
+      hero.inventory.splice(command.slotIndex, 1);
+      state.upgradesApplied += 1;
+      const vanguardBonusHp = hero.classId === "vanguard" ? 2 : 0;
+      if (command.choice === "weapon") {
+        hero.weaponUpgrades += 1;
+        if (vanguardBonusHp > 0) {
+          hero.maxHp += vanguardBonusHp;
+          hero.hp += vanguardBonusHp;
+        }
+        logEvent(
+          state,
+          `Scroll of Upgrade reforges ${hero.weapon.name} +${hero.weaponUpgrades} (+2 ATK, ${getHeroAttackTicks(hero)}t speed)!`
+        );
+      } else if (command.choice === "armor") {
+        hero.armorUpgrades += 1;
+        const hpGain = 10 + vanguardBonusHp;
+        hero.maxHp += hpGain;
+        hero.hp = Math.min(hero.maxHp, hero.hp + hpGain);
+        logEvent(
+          state,
+          `Scroll of Upgrade reinforces ${hero.armor.name} +${hero.armorUpgrades} (+2 DEF, +${hpGain} Max HP)!`
+        );
+      } else {
+        hero.abilityUpgrades += 1;
+        hero.abilityCooldownTicks = 0;
+        logEvent(
+          state,
+          `Scroll of Upgrade empowers ${HERO_CLASSES[hero.classId].abilityName} +${hero.abilityUpgrades} & resets cooldown!`
+        );
+      }
+      advanceTimelineAndResolveActors(state, GAME_CONFIG.SCROLL_USE_TICKS);
+      return state;
+    }
+    case "USE_CLASS_ABILITY": {
+      const classDef = HERO_CLASSES[hero.classId];
+      if (hero.abilityCooldownTicks > 0) {
+        logEvent(
+          state,
+          `${classDef.abilityName} is on cooldown (${hero.abilityCooldownTicks} ticks remaining).`
+        );
+        return state;
+      }
+      if (hero.classId === "vanguard") {
+        const adj = floor.monsters.find(
+          (m) => m.hp > 0 && Math.max(Math.abs(m.x - hero.x), Math.abs(m.y - hero.y)) <= 1
+        );
+        if (!adj) {
+          logEvent(state, `Shield Bash requires an adjacent monster within 1 tile!`);
+          return state;
+        }
+        const dmg = Math.max(
+          4,
+          Math.round(getHeroAttackPower(hero) * (1.4 + hero.abilityUpgrades * 0.2)) - adj.defense
+        );
+        adj.hp = Math.max(0, adj.hp - dmg);
+        adj.stunnedTicks = 20 + hero.abilityUpgrades * 5;
+        adj.telegraph = null;
+        hero.abilityCooldownTicks = Math.max(
+          40,
+          classDef.abilityCooldownTicks - hero.abilityUpgrades * 10
+        );
+        logEvent(
+          state,
+          `SHIELD BASH! Slammed ${adj.name} for ${dmg} dmg and Stunned it for ${adj.stunnedTicks} ticks!`
+        );
+        checkMonsterDeath(state, adj);
+      } else if (hero.classId === "rogue") {
+        hero.invisibleTicks = 35 + hero.abilityUpgrades * 10;
+        for (const mon of floor.monsters) {
+          if (mon.hp > 0 && Math.max(Math.abs(mon.x - hero.x), Math.abs(mon.y - hero.y)) <= 1) {
+            mon.stunnedTicks = 15;
+            mon.telegraph = null;
+          }
+        }
+        hero.abilityCooldownTicks = Math.max(
+          40,
+          classDef.abilityCooldownTicks - hero.abilityUpgrades * 10
+        );
+        logEvent(
+          state,
+          `SMOKE BOMB! Vanished into Shadow Veil for ${hero.invisibleTicks} ticks (next hit deals 2.0x Ambush Crit)!`
+        );
+      } else {
+        const targets = floor.monsters.filter(
+          (m) => m.hp > 0 && Math.max(Math.abs(m.x - hero.x), Math.abs(m.y - hero.y)) <= 5 && (floor.visible[m.y]?.[m.x] || Math.abs(m.x - hero.x) + Math.abs(m.y - hero.y) <= 2)
+        ).sort(
+          (a, b) => Math.abs(a.x - hero.x) + Math.abs(a.y - hero.y) - (Math.abs(b.x - hero.x) + Math.abs(b.y - hero.y))
+        );
+        if (targets.length === 0) {
+          logEvent(state, `Arcane Catalyst Bolt requires a visible enemy within 5 tiles!`);
+          return state;
+        }
+        const target = targets[0];
+        const boltDmg = 12 + floor.floorNumber * 2 + hero.abilityUpgrades * 5;
+        target.hp = Math.max(0, target.hp - boltDmg);
+        target.sunderedDefense = Math.max(target.sunderedDefense, 2);
+        target.alerted = true;
+        hero.abilityCooldownTicks = Math.max(
+          35,
+          classDef.abilityCooldownTicks - hero.abilityUpgrades * 10
+        );
+        logEvent(
+          state,
+          `ARCANE CATALYST BOLT! Blasted ${target.name} for ${boltDmg} arcane dmg & sundered -2 DEF!`
+        );
+        checkMonsterDeath(state, target);
+      }
+      advanceTimelineAndResolveActors(state, classDef.abilityCostTicks);
+      return state;
+    }
+    case "USE_ALCHEMY_DESK": {
+      if (!floor.alchemyPos || floor.alchemyCharges <= 0) {
+        logEvent(state, `No active Alchemy Desk charges remaining on this floor.`);
+        return state;
+      }
+      const dist = Math.max(
+        Math.abs(hero.x - floor.alchemyPos.x),
+        Math.abs(hero.y - floor.alchemyPos.y)
+      );
+      if (dist > 1) {
+        logEvent(state, `Move onto or adjacent to the Alchemy Desk (\u2697) to analyze a potion!`);
+        return state;
+      }
+      let targetItem;
+      if (command.slotIndex !== void 0) {
+        const cand = hero.inventory[command.slotIndex];
+        if (cand && cand.kind === "potion" && !state.identifiedColors[cand.color]) {
+          targetItem = cand;
+        }
+      }
+      if (!targetItem) {
+        targetItem = hero.inventory.find(
+          (it) => it.kind === "potion" && !state.identifiedColors[it.color]
+        );
+      }
+      if (!targetItem) {
+        const unknownColor = POTION_COLORS.find((c) => !state.identifiedColors[c.id]);
+        if (!unknownColor) {
+          logEvent(state, `All 6 Potion Colors are already identified for this run!`);
+          return state;
+        }
+        state.identifiedColors[unknownColor.id] = true;
+        floor.alchemyCharges -= 1;
+        const eff2 = POTION_EFFECTS[state.colorToEffect[unknownColor.id]];
+        logEvent(
+          state,
+          `ALCHEMY DESK: Distilled residue reveals ${unknownColor.label.toUpperCase()} is ${eff2.name}!`
+        );
+        advanceTimelineAndResolveActors(state, GAME_CONFIG.ALCHEMY_USE_TICKS);
+        return state;
+      }
+      state.identifiedColors[targetItem.color] = true;
+      floor.alchemyCharges -= 1;
+      const eff = POTION_EFFECTS[state.colorToEffect[targetItem.color]];
+      logEvent(
+        state,
+        `ALCHEMY DESK: Safely tested ${targetItem.color.toUpperCase()} VIAL \u2014 it is ${eff.name}! (Vial preserved)`
+      );
+      advanceTimelineAndResolveActors(state, GAME_CONFIG.ALCHEMY_USE_TICKS);
+      return state;
+    }
+    case "DESCEND_STAIRS": {
+      if (hero.x !== floor.stairsDownPos.x || hero.y !== floor.stairsDownPos.y) {
+        logEvent(state, `Step onto the Stairs Down (>) tile to descend!`);
+        return state;
+      }
+      const livingBoss = floor.monsters.find((m) => m.hp > 0 && m.isBoss);
+      if (livingBoss) {
+        logEvent(
+          state,
+          `The stairs are sealed by ${livingBoss.name}! Defeat the floor boss first!`
+        );
+        return state;
+      }
+      if (floor.floorNumber >= GAME_CONFIG.MAX_FLOORS) {
+        finalizeVictory(state);
+        return state;
+      }
+      const nextFloorNum = floor.floorNumber + 1;
+      const nextFloor = generateFloor(
+        nextFloorNum,
+        state.seed,
+        state.effectToColor,
+        hero.classId
+      );
+      state.floor = nextFloor;
+      hero.x = nextFloor.entrancePos.x;
+      hero.y = nextFloor.entrancePos.y;
+      hero.hp = Math.min(hero.maxHp, hero.hp + 10);
+      for (const m of nextFloor.monsters) {
+        m.nextActTick = state.currentTick + m.moveTicks;
+      }
+      updateFieldOfView(nextFloor, hero.x, hero.y);
+      logEvent(
+        state,
+        `Descended to Floor ${nextFloorNum} (+10 HP breather recovery).${nextFloorNum === GAME_CONFIG.MINI_BOSS_FLOOR ? " BEWARE: The Iron Warden patrols the exit chamber!" : nextFloorNum === GAME_CONFIG.FINAL_BOSS_FLOOR ? " FINAL FLOOR: The Abyssal Core awaits!" : ""}`
+      );
+      return state;
+    }
+  }
+}
+
+// games/10-ten-floors-down/src/audio.ts
+var DungeonAudio = class {
+  ctx = null;
+  muted = false;
+  ensureCtx() {
+    if (this.muted) return null;
+    if (this.ctx) {
+      if (this.ctx.state === "suspended") {
+        void this.ctx.resume().catch(() => {
+        });
+      }
+      return this.ctx;
+    }
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+      }
+    } catch {
+      this.ctx = null;
+    }
+    return this.ctx;
+  }
+  setMuted(mute) {
+    this.muted = mute;
+  }
+  isMuted() {
+    return this.muted;
+  }
+  playStep() {
+    const ctx = this.ensureCtx();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(110, now);
+      osc.frequency.exponentialRampToValueAtTime(52, now + 0.055);
+      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.06);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.065);
+    } catch {
+    }
+  }
+  playStrike() {
+    const ctx = this.ensureCtx();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(340, now);
+      osc.frequency.exponentialRampToValueAtTime(95, now + 0.12);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.13);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.14);
+    } catch {
+    }
+  }
+  playPotionShatter() {
+    const ctx = this.ensureCtx();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const freqs = [980, 1320, 1640];
+      freqs.forEach((f, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(f, now + idx * 0.02);
+        osc.frequency.exponentialRampToValueAtTime(f * 0.55, now + 0.16 + idx * 0.02);
+        gain.gain.setValueAtTime(0.08, now + idx * 0.02);
+        gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.18 + idx * 0.02);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.02);
+        osc.stop(now + 0.2 + idx * 0.02);
+      });
+    } catch {
+    }
+  }
+  playIdentifyOrUpgrade() {
+    const ctx = this.ensureCtx();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const notes = [440, 554.37, 659.25, 880];
+      notes.forEach((n, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(n, now + idx * 0.055);
+        gain.gain.setValueAtTime(0.09, now + idx * 0.055);
+        gain.gain.exponentialRampToValueAtTime(1e-3, now + idx * 0.055 + 0.18);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.055);
+        osc.stop(now + idx * 0.055 + 0.19);
+      });
+    } catch {
+    }
+  }
+  playBossTelegraph() {
+    const ctx = this.ensureCtx();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(75, now);
+      osc.frequency.linearRampToValueAtTime(52, now + 0.35);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.36);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.38);
+    } catch {
+    }
+  }
+  destroy() {
+    if (this.ctx) {
+      void this.ctx.close().catch(() => {
+      });
+      this.ctx = null;
+    }
+  }
+};
+
+// games/10-ten-floors-down/src/ui.ts
+var TILE_PX = 30;
+var TenFloorsDownUI = class {
+  container;
+  state;
+  audio;
+  selectedClass = "vanguard";
+  pendingThrowSlot = null;
+  hoverTile = null;
+  showImportExport = false;
+  canvas;
+  ctx = null;
+  keydownHandler;
+  constructor(container, initialState) {
+    this.container = container;
+    this.state = initialState;
+    this.selectedClass = initialState.hero.classId;
+    this.audio = new DungeonAudio();
+    this.keydownHandler = (e) => this.handleKeyDown(e);
+    window.addEventListener("keydown", this.keydownHandler);
+    this.renderShell();
+    this.syncUI();
+  }
+  getState() {
+    return this.state;
+  }
+  restartWithSeed(seed, seedLabel, heroClass) {
+    const cls = heroClass ?? this.selectedClass;
+    this.selectedClass = cls;
+    this.pendingThrowSlot = null;
+    this.state = createInitialGameState({
+      seed,
+      seedLabel: seedLabel ?? String(seed),
+      heroClass: cls,
+      debug: this.state.debugRevealAll
+    });
+    saveActiveRun(this.state);
+    this.syncUI();
+  }
+  toggleDebug(force) {
+    this.state.debugRevealAll = force !== void 0 ? force : !this.state.debugRevealAll;
+    this.syncUI();
+  }
+  destroy() {
+    window.removeEventListener("keydown", this.keydownHandler);
+    this.audio.destroy();
+    this.container.innerHTML = "";
+  }
+  dispatchCommand(cmd) {
+    if (this.state.status !== "playing") return;
+    const prevFloor = this.state.floor.floorNumber;
+    const prevIdentified = Object.values(this.state.identifiedColors).filter(Boolean).length;
+    const prevUpgrades = this.state.upgradesApplied;
+    applyCommand(this.state, cmd);
+    saveActiveRun(this.state);
+    const newIdentified = Object.values(this.state.identifiedColors).filter(Boolean).length;
+    if (cmd.type === "THROW_POTION" || cmd.type === "DRINK_POTION") {
+      this.audio.playPotionShatter();
+    } else if (newIdentified > prevIdentified || this.state.upgradesApplied > prevUpgrades || this.state.floor.floorNumber > prevFloor) {
+      this.audio.playIdentifyOrUpgrade();
+    } else if (cmd.type === "MOVE") {
+      this.audio.playStep();
+    } else if (cmd.type === "USE_CLASS_ABILITY") {
+      this.audio.playStrike();
+    }
+    if (this.state.floor.monsters.some((m) => m.telegraph !== null)) {
+      this.audio.playBossTelegraph();
+    }
+    this.pendingThrowSlot = null;
+    this.syncUI();
+  }
+  handleKeyDown(e) {
+    const tag = e.target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.key === "d" || e.key === "D") {
+      if (e.shiftKey) {
+        e.preventDefault();
+        this.toggleDebug();
+        return;
+      }
+    }
+    if (e.key === "Escape" && this.pendingThrowSlot !== null) {
+      e.preventDefault();
+      this.pendingThrowSlot = null;
+      this.syncUI();
+      return;
+    }
+    if (this.state.status !== "playing") return;
+    const moveMap = {
+      ArrowUp: { dx: 0, dy: -1 },
+      w: { dx: 0, dy: -1 },
+      W: { dx: 0, dy: -1 },
+      ArrowDown: { dx: 0, dy: 1 },
+      s: { dx: 0, dy: 1 },
+      S: { dx: 0, dy: 1 },
+      ArrowLeft: { dx: -1, dy: 0 },
+      a: { dx: -1, dy: 0 },
+      A: { dx: -1, dy: 0 },
+      ArrowRight: { dx: 1, dy: 0 },
+      d: { dx: 1, dy: 0 },
+      D: { dx: 1, dy: 0 }
+    };
+    if (moveMap[e.key]) {
+      e.preventDefault();
+      const { dx, dy } = moveMap[e.key];
+      this.dispatchCommand({ type: "MOVE", dx, dy });
+      return;
+    }
+    if (e.key === " " || e.key === ".") {
+      e.preventDefault();
+      this.dispatchCommand({ type: "WAIT" });
+      return;
+    }
+    if (e.key === "q" || e.key === "Q") {
+      e.preventDefault();
+      this.dispatchCommand({ type: "USE_CLASS_ABILITY" });
+      return;
+    }
+    if (e.key === "e" || e.key === "E") {
+      e.preventDefault();
+      this.dispatchCommand({ type: "USE_ALCHEMY_DESK" });
+      return;
+    }
+    if (e.key === ">" || e.key === "Enter") {
+      e.preventDefault();
+      this.dispatchCommand({ type: "DESCEND_STAIRS" });
+      return;
+    }
+    if (["1", "2", "3", "4", "5", "6"].includes(e.key)) {
+      e.preventDefault();
+      const slotIdx = Number(e.key) - 1;
+      const item = this.state.hero.inventory[slotIdx];
+      if (!item) return;
+      if (item.kind === "potion") {
+        const eff = this.state.colorToEffect[item.color];
+        const isKnownHarmful = this.state.identifiedColors[item.color] && POTION_EFFECTS[eff].preferThrow;
+        if (isKnownHarmful) {
+          this.activateThrowMode(slotIdx);
+        } else {
+          this.dispatchCommand({ type: "DRINK_POTION", slotIndex: slotIdx });
+        }
+      } else {
+        this.dispatchCommand({
+          type: "USE_SCROLL_UPGRADE",
+          slotIndex: slotIdx,
+          choice: "weapon"
+        });
+      }
+    }
+  }
+  activateThrowMode(slotIdx) {
+    if (this.pendingThrowSlot === slotIdx) {
+      const nearest = this.findNearestVisibleMonster();
+      if (nearest) {
+        this.dispatchCommand({
+          type: "THROW_POTION",
+          slotIndex: slotIdx,
+          targetX: nearest.x,
+          targetY: nearest.y
+        });
+        return;
+      }
+      this.pendingThrowSlot = null;
+      this.syncUI();
+      return;
+    }
+    this.pendingThrowSlot = slotIdx;
+    this.syncUI();
+  }
+  findNearestVisibleMonster() {
+    const { hero, floor } = this.state;
+    const candidates = floor.monsters.filter(
+      (m) => m.hp > 0 && (floor.visible[m.y]?.[m.x] || this.state.debugRevealAll) && Math.max(Math.abs(m.x - hero.x), Math.abs(m.y - hero.y)) <= GAME_CONFIG.THROW_RANGE
+    ).sort(
+      (a, b) => Math.abs(a.x - hero.x) + Math.abs(a.y - hero.y) - (Math.abs(b.x - hero.x) + Math.abs(b.y - hero.y))
+    );
+    return candidates[0] ? { x: candidates[0].x, y: candidates[0].y } : null;
+  }
+  handleCanvasClick(clientX, clientY) {
+    if (this.state.status !== "playing") return;
+    const rect = this.canvas.getBoundingClientRect();
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    const tx = Math.floor((clientX - rect.left) * scaleX / TILE_PX);
+    const ty = Math.floor((clientY - rect.top) * scaleY / TILE_PX);
+    if (tx < 0 || tx >= this.state.floor.width || ty < 0 || ty >= this.state.floor.height) {
+      return;
+    }
+    if (this.pendingThrowSlot !== null) {
+      const cheb = Math.max(
+        Math.abs(tx - this.state.hero.x),
+        Math.abs(ty - this.state.hero.y)
+      );
+      if (cheb <= GAME_CONFIG.THROW_RANGE) {
+        this.dispatchCommand({
+          type: "THROW_POTION",
+          slotIndex: this.pendingThrowSlot,
+          targetX: tx,
+          targetY: ty
+        });
+      }
+      return;
+    }
+    const { hero, floor } = this.state;
+    if (tx === hero.x && ty === hero.y) {
+      if (tx === floor.stairsDownPos.x && ty === floor.stairsDownPos.y) {
+        this.dispatchCommand({ type: "DESCEND_STAIRS" });
+      } else if (floor.alchemyPos && tx === floor.alchemyPos.x && ty === floor.alchemyPos.y && floor.alchemyCharges > 0) {
+        this.dispatchCommand({ type: "USE_ALCHEMY_DESK" });
+      } else {
+        this.dispatchCommand({ type: "WAIT" });
+      }
+      return;
+    }
+    const dx = tx - hero.x;
+    const dy = ty - hero.y;
+    if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx === 0 || dy === 0)) {
+      this.dispatchCommand({ type: "MOVE", dx, dy });
+      return;
+    }
+    const path = findShortestPath(
+      floor.tiles,
+      { x: hero.x, y: hero.y },
+      { x: tx, y: ty }
+    );
+    if (path && path.length >= 2) {
+      const nextStep = path[1];
+      this.dispatchCommand({
+        type: "MOVE",
+        dx: nextStep.x - hero.x,
+        dy: nextStep.y - hero.y
+      });
+    } else {
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        this.dispatchCommand({ type: "MOVE", dx: Math.sign(dx), dy: 0 });
+      } else {
+        this.dispatchCommand({ type: "MOVE", dx: 0, dy: Math.sign(dy) });
+      }
+    }
+  }
+  renderShell() {
+    const dailyStr = getDailySeedString();
+    this.container.innerHTML = `
+      <style>
+        .tfd-root {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: #090d16;
+          color: #e2e8f0;
+          min-height: 100%;
+          padding: 12px;
+          box-sizing: border-box;
+          user-select: none;
+        }
+        .tfd-header {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          background: #111827;
+          border: 1px solid #1e293b;
+          border-radius: 10px;
+          padding: 10px 14px;
+          margin-bottom: 10px;
+        }
+        .tfd-title-block h1 {
+          margin: 0;
+          font-size: 1.25rem;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          color: #10b981;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .tfd-title-block p {
+          margin: 2px 0 0;
+          font-size: 0.78rem;
+          color: #94a3b8;
+        }
+        .tfd-seed-controls {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+        }
+        .tfd-btn {
+          background: #1e293b;
+          color: #f8fafc;
+          border: 1px solid #334155;
+          border-radius: 6px;
+          padding: 6px 10px;
+          font-size: 0.78rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.14s ease;
+        }
+        .tfd-btn:hover:not(:disabled) {
+          background: #334155;
+          border-color: #10b981;
+        }
+        .tfd-btn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+        }
+        .tfd-btn-primary {
+          background: #059669;
+          border-color: #10b981;
+          color: #ffffff;
+        }
+        .tfd-btn-primary:hover:not(:disabled) {
+          background: #10b981;
+        }
+        .tfd-btn-amber {
+          background: #b45309;
+          border-color: #f59e0b;
+          color: #ffffff;
+        }
+        .tfd-btn-danger {
+          background: #991b1b;
+          border-color: #ef4444;
+          color: #ffffff;
+        }
+        .tfd-input {
+          background: #0f172a;
+          color: #e2e8f0;
+          border: 1px solid #334155;
+          border-radius: 6px;
+          padding: 5px 8px;
+          font-size: 0.78rem;
+          width: 115px;
+        }
+        .tfd-class-bar {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 10px;
+        }
+        .tfd-class-card {
+          flex: 1 1 220px;
+          background: #111827;
+          border: 1px solid #1e293b;
+          border-radius: 8px;
+          padding: 8px 11px;
+          cursor: pointer;
+          transition: border-color 0.15s, background 0.15s;
+        }
+        .tfd-class-card.active {
+          border-color: #10b981;
+          background: #0f2922;
+        }
+        .tfd-class-card h3 {
+          margin: 0 0 3px;
+          font-size: 0.86rem;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .tfd-class-card p {
+          margin: 0;
+          font-size: 0.73rem;
+          color: #94a3b8;
+          line-height: 1.3;
+        }
+        .tfd-hud-strip {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          background: #0f172a;
+          border: 1px solid #1e293b;
+          border-radius: 8px;
+          padding: 8px 12px;
+          margin-bottom: 10px;
+          font-size: 0.82rem;
+        }
+        .tfd-stat-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          background: #1e293b;
+          padding: 4px 9px;
+          border-radius: 6px;
+          font-weight: 600;
+        }
+        .tfd-tick-banner {
+          background: #172033;
+          border-left: 4px solid #38bdf8;
+          border-radius: 6px;
+          padding: 7px 12px;
+          margin-bottom: 10px;
+          font-size: 0.8rem;
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+        }
+        .tfd-tick-banner.warning {
+          background: #2c1618;
+          border-left-color: #ef4444;
+          color: #fecaca;
+        }
+        .tfd-main-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr);
+          gap: 12px;
+          align-items: start;
+        }
+        @media (max-width: 960px) {
+          .tfd-main-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        .tfd-canvas-wrap {
+          background: #05080f;
+          border: 1px solid #1e293b;
+          border-radius: 10px;
+          padding: 8px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          position: relative;
+        }
+        .tfd-canvas {
+          width: 100%;
+          max-width: 780px;
+          height: auto;
+          aspect-ratio: 26 / 18;
+          border-radius: 6px;
+          cursor: pointer;
+          image-rendering: crisp-edges;
+          background: #070a12;
+        }
+        .tfd-canvas-legend {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 8px;
+          font-size: 0.74rem;
+          color: #94a3b8;
+          justify-content: center;
+        }
+        .tfd-side-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .tfd-card {
+          background: #111827;
+          border: 1px solid #1e293b;
+          border-radius: 9px;
+          padding: 10px 12px;
+        }
+        .tfd-card h2 {
+          margin: 0 0 8px;
+          font-size: 0.88rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: #38bdf8;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .tfd-controls-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 5px;
+          max-width: 210px;
+        }
+        .tfd-action-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          align-items: center;
+        }
+        .tfd-inv-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .tfd-inv-slot {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+          background: #0f172a;
+          border: 1px solid #1e293b;
+          border-radius: 7px;
+          padding: 6px 8px;
+          font-size: 0.78rem;
+        }
+        .tfd-journal-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 6px;
+        }
+        .tfd-journal-cell {
+          background: #0f172a;
+          border: 1px solid #1e293b;
+          border-radius: 6px;
+          padding: 6px 8px;
+          font-size: 0.74rem;
+          display: flex;
+          align-items: center;
+          gap: 7px;
+        }
+        .tfd-vial-dot {
+          width: 12px;
+          height: 16px;
+          border-radius: 3px 3px 6px 6px;
+          flex-shrink: 0;
+          border: 1px solid rgba(255,255,255,0.45);
+        }
+        .tfd-log-box {
+          background: #090d16;
+          border: 1px solid #1e293b;
+          border-radius: 6px;
+          padding: 8px;
+          height: 135px;
+          overflow-y: auto;
+          font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 0.74rem;
+          line-height: 1.45;
+          color: #cbd5e1;
+        }
+        .tfd-modal-overlay {
+          margin-top: 10px;
+          background: #141c2f;
+          border: 2px solid #ef4444;
+          border-radius: 10px;
+          padding: 14px;
+        }
+        .tfd-modal-overlay.victory {
+          border-color: #10b981;
+          background: #0d2621;
+        }
+      </style>
+
+      <div class="tfd-root">
+        <header class="tfd-header">
+          <div class="tfd-title-block">
+            <h1>\u2697 TEN FLOORS DOWN <span style="font-size:0.75rem;color:#94a3b8;font-weight:500;">Shattered Alchemy Roguelike</span></h1>
+            <p>10 Procedural Floors \u2022 6 Shuffled Potion Colors \u2022 Action-Cost Tick Clock \u2022 Permadeath Post-Mortem</p>
+          </div>
+          <div class="tfd-seed-controls">
+            <button class="tfd-btn tfd-btn-primary" id="tfd-daily-btn" title="Launch Today's Daily Seed Run">
+              \u{1F4C5} Daily Seed (${dailyStr})
+            </button>
+            <input type="text" class="tfd-input" id="tfd-seed-input" placeholder="Seed / Word" value="${this.state.seedLabel}" />
+            <button class="tfd-btn" id="tfd-new-seed-btn">\u{1F3B2} Launch Seed</button>
+            <button class="tfd-btn" id="tfd-debug-btn">\u{1F441} Debug [Shift+D]</button>
+            <button class="tfd-btn" id="tfd-mute-btn">\u{1F50A} Audio</button>
+            <button class="tfd-btn" id="tfd-io-btn">\u{1F4BE} Save/JSON</button>
+          </div>
+        </header>
+
+        <section class="tfd-class-bar" id="tfd-class-bar"></section>
+
+        <section class="tfd-hud-strip" id="tfd-hud-strip"></section>
+
+        <section class="tfd-tick-banner" id="tfd-tick-banner"></section>
+
+        <div id="tfd-io-drawer" style="display:none;margin-bottom:10px;" class="tfd-card">
+          <h2>Save Snapshot Export / Import</h2>
+          <textarea id="tfd-io-textarea" style="width:100%;height:70px;background:#090d16;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:0.74rem;padding:6px;"></textarea>
+          <div style="display:flex;gap:8px;margin-top:6px;">
+            <button class="tfd-btn tfd-btn-primary" id="tfd-export-btn">Copy Current Snapshot</button>
+            <button class="tfd-btn tfd-btn-amber" id="tfd-import-btn">Load Snapshot JSON</button>
+          </div>
+        </div>
+
+        <div class="tfd-main-grid">
+          <div class="tfd-canvas-wrap">
+            <canvas
+              id="tfd-canvas"
+              class="tfd-canvas"
+              width="${GAME_CONFIG.GRID_WIDTH * TILE_PX}"
+              height="${GAME_CONFIG.GRID_HEIGHT * TILE_PX}"
+            ></canvas>
+            <div class="tfd-canvas-legend">
+              <span><strong>WASD / Arrows / Tap</strong>: Move or Melee Attack</span>
+              <span><strong>Space</strong>: Wait (10t)</span>
+              <span><strong>Q</strong>: Class Ability</span>
+              <span><strong>E</strong>: Alchemy Desk (\u2697)</span>
+              <span><strong>&gt; / Enter</strong>: Descend Stairs</span>
+            </div>
+            <div id="tfd-epitaph-container" style="width:100%;"></div>
+          </div>
+
+          <div class="tfd-side-panel">
+            <div class="tfd-card">
+              <h2>
+                <span>Tactical Actions & Movement</span>
+                <span id="tfd-throw-status-badge" style="font-size:0.74rem;color:#f59e0b;"></span>
+              </h2>
+              <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
+                <div class="tfd-controls-grid">
+                  <div></div>
+                  <button class="tfd-btn" id="tfd-move-n">\u25B2 N</button>
+                  <div></div>
+                  <button class="tfd-btn" id="tfd-move-w">\u25C0 W</button>
+                  <button class="tfd-btn" id="tfd-move-wait" title="Wait 10 Ticks">\u23F3</button>
+                  <button class="tfd-btn" id="tfd-move-e">E \u25B6</button>
+                  <div></div>
+                  <button class="tfd-btn" id="tfd-move-s">\u25BC S</button>
+                  <div></div>
+                </div>
+                <div class="tfd-action-row" style="flex:1;flex-direction:column;align-items:stretch;">
+                  <button class="tfd-btn tfd-btn-amber" id="tfd-ability-btn"></button>
+                  <button class="tfd-btn" id="tfd-alchemy-btn"></button>
+                  <button class="tfd-btn tfd-btn-primary" id="tfd-descend-btn"></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tfd-card">
+              <h2>
+                <span>Alchemical Pack & Scrolls (<span id="tfd-inv-count">0</span>/6)</span>
+                <span style="font-size:0.7rem;color:#94a3b8;">Keys [1-6]</span>
+              </h2>
+              <div class="tfd-inv-list" id="tfd-inv-list"></div>
+            </div>
+
+            <div class="tfd-card">
+              <h2>
+                <span>Seed Potion Color Journal</span>
+                <span id="tfd-journal-progress" style="font-size:0.74rem;color:#10b981;"></span>
+              </h2>
+              <div class="tfd-journal-grid" id="tfd-journal-grid"></div>
+            </div>
+
+            <div class="tfd-card">
+              <h2>Combat & Alchemy Chronicle</h2>
+              <div class="tfd-log-box" id="tfd-log-box"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    this.canvas = this.container.querySelector("#tfd-canvas");
+    const isJsdom = typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent);
+    if (!isJsdom && this.canvas && typeof this.canvas.getContext === "function") {
+      try {
+        this.ctx = this.canvas.getContext("2d");
+      } catch {
+        this.ctx = null;
+      }
+    }
+    this.canvas.addEventListener("click", (e) => {
+      this.handleCanvasClick(e.clientX, e.clientY);
+    });
+    this.canvas.addEventListener("mousemove", (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
+      const tx = Math.floor((e.clientX - rect.left) * scaleX / TILE_PX);
+      const ty = Math.floor((e.clientY - rect.top) * scaleY / TILE_PX);
+      if (!this.hoverTile || this.hoverTile.x !== tx || this.hoverTile.y !== ty) {
+        this.hoverTile = { x: tx, y: ty };
+        this.drawDungeonCanvas();
+      }
+    });
+    this.canvas.addEventListener("mouseleave", () => {
+      this.hoverTile = null;
+      this.drawDungeonCanvas();
+    });
+    this.container.querySelector("#tfd-daily-btn")?.addEventListener("click", () => {
+      const ds = getDailySeedString();
+      const seedNum = getDailySeedNumber(ds);
+      const seedInput = this.container.querySelector("#tfd-seed-input");
+      if (seedInput) seedInput.value = `DAILY-${ds}`;
+      this.restartWithSeed(seedNum, `DAILY-${ds}`, this.selectedClass);
+    });
+    this.container.querySelector("#tfd-new-seed-btn")?.addEventListener("click", () => {
+      const seedInput = this.container.querySelector("#tfd-seed-input");
+      const raw = seedInput?.value.trim() || String(Math.floor(Math.random() * 9e5 + 1e5));
+      const numeric = /^\d+$/.test(raw) ? Number(raw) : hashSeedString(raw);
+      this.restartWithSeed(numeric, raw, this.selectedClass);
+    });
+    this.container.querySelector("#tfd-debug-btn")?.addEventListener("click", () => {
+      this.toggleDebug();
+    });
+    this.container.querySelector("#tfd-mute-btn")?.addEventListener("click", () => {
+      const nextMute = !this.audio.isMuted();
+      this.audio.setMuted(nextMute);
+      const btn = this.container.querySelector("#tfd-mute-btn");
+      if (btn) btn.textContent = nextMute ? "\u{1F507} Muted" : "\u{1F50A} Audio";
+    });
+    this.container.querySelector("#tfd-io-btn")?.addEventListener("click", () => {
+      this.showImportExport = !this.showImportExport;
+      const drawer = this.container.querySelector("#tfd-io-drawer");
+      const area = this.container.querySelector("#tfd-io-textarea");
+      if (drawer) {
+        drawer.style.display = this.showImportExport ? "block" : "none";
+      }
+      if (this.showImportExport && area) {
+        area.value = exportRunSnapshot(this.state);
+      }
+    });
+    this.container.querySelector("#tfd-export-btn")?.addEventListener("click", () => {
+      const area = this.container.querySelector("#tfd-io-textarea");
+      if (area) {
+        area.value = exportRunSnapshot(this.state);
+        area.select();
+      }
+    });
+    this.container.querySelector("#tfd-import-btn")?.addEventListener("click", () => {
+      const area = this.container.querySelector("#tfd-io-textarea");
+      if (!area) return;
+      const imported = importRunSnapshot(area.value);
+      if (imported) {
+        this.state = imported;
+        this.selectedClass = imported.hero.classId;
+        saveActiveRun(this.state);
+        this.syncUI();
+      }
+    });
+    this.container.querySelector("#tfd-move-n")?.addEventListener("click", () => {
+      this.dispatchCommand({ type: "MOVE", dx: 0, dy: -1 });
+    });
+    this.container.querySelector("#tfd-move-s")?.addEventListener("click", () => {
+      this.dispatchCommand({ type: "MOVE", dx: 0, dy: 1 });
+    });
+    this.container.querySelector("#tfd-move-w")?.addEventListener("click", () => {
+      this.dispatchCommand({ type: "MOVE", dx: -1, dy: 0 });
+    });
+    this.container.querySelector("#tfd-move-e")?.addEventListener("click", () => {
+      this.dispatchCommand({ type: "MOVE", dx: 1, dy: 0 });
+    });
+    this.container.querySelector("#tfd-move-wait")?.addEventListener("click", () => {
+      this.dispatchCommand({ type: "WAIT" });
+    });
+    this.container.querySelector("#tfd-ability-btn")?.addEventListener("click", () => {
+      this.dispatchCommand({ type: "USE_CLASS_ABILITY" });
+    });
+    this.container.querySelector("#tfd-alchemy-btn")?.addEventListener("click", () => {
+      this.dispatchCommand({ type: "USE_ALCHEMY_DESK" });
+    });
+    this.container.querySelector("#tfd-descend-btn")?.addEventListener("click", () => {
+      this.dispatchCommand({ type: "DESCEND_STAIRS" });
+    });
+  }
+  syncUI() {
+    this.renderClassSelector();
+    this.renderHudStrip();
+    this.renderTickPreviewBanner();
+    this.renderActionButtons();
+    this.renderInventoryList();
+    this.renderPotionJournal();
+    this.renderCombatLog();
+    this.renderEpitaphModal();
+    this.drawDungeonCanvas();
+  }
+  renderClassSelector() {
+    const bar = this.container.querySelector("#tfd-class-bar");
+    if (!bar) return;
+    const classes = ["vanguard", "rogue", "alchemist"];
+    bar.innerHTML = classes.map((cid) => {
+      const def = HERO_CLASSES[cid];
+      const isActive = this.state.hero.classId === cid;
+      return `
+          <div class="tfd-class-card ${isActive ? "active" : ""}" data-class-id="${cid}">
+            <h3 style="color:${def.accentColor}">
+              <span>[${def.glyph}] ${def.name}</span>
+              <span style="font-size:0.72rem;color:#cbd5e1;">${isActive ? "\u25CF ACTIVE RUN" : "Switch & Restart"}</span>
+            </h3>
+            <p>${def.passiveDescription}</p>
+          </div>
+        `;
+    }).join("");
+    bar.querySelectorAll(".tfd-class-card").forEach((el) => {
+      el.addEventListener("click", () => {
+        const cid = el.getAttribute("data-class-id");
+        if (cid && cid !== this.state.hero.classId) {
+          this.restartWithSeed(this.state.seed, this.state.seedLabel, cid);
+        }
+      });
+    });
+  }
+  renderHudStrip() {
+    const strip = this.container.querySelector("#tfd-hud-strip");
+    if (!strip) return;
+    const { hero, floor } = this.state;
+    const hpPct = Math.max(0, Math.min(100, Math.round(hero.hp / hero.maxHp * 100)));
+    const hpColor = hpPct > 50 ? "#10b981" : hpPct > 25 ? "#f59e0b" : "#ef4444";
+    const statusTags = [];
+    if (hero.invisibleTicks > 0) {
+      statusTags.push(
+        `<span class="tfd-stat-pill" style="background:#312e81;color:#c7d2fe;">\u{1F47B} Shadow Veil (${hero.invisibleTicks}t \u2014 2x Crit!)</span>`
+      );
+    }
+    if (hero.burningTicks > 0) {
+      statusTags.push(
+        `<span class="tfd-stat-pill" style="background:#7f1d1d;color:#fecaca;">\u{1F525} Burning (${hero.burningTicks}t)</span>`
+      );
+    }
+    if (hero.poisonedTicks > 0) {
+      statusTags.push(
+        `<span class="tfd-stat-pill" style="background:#365314;color:#d9f99d;">\u2620 Poisoned (${hero.poisonedTicks}t)</span>`
+      );
+    }
+    if (hero.chilledTicks > 0) {
+      statusTags.push(
+        `<span class="tfd-stat-pill" style="background:#0c4a6e;color:#bae6fd;">\u2744 Chilled (${hero.chilledTicks}t)</span>`
+      );
+    }
+    if (hero.iceArmorHp > 0) {
+      statusTags.push(
+        `<span class="tfd-stat-pill" style="background:#0e7490;color:#cffafe;">\u{1F6E1} Ice Shield +${hero.iceArmorHp}</span>`
+      );
+    }
+    strip.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+        <span class="tfd-stat-pill" style="background:#064e3b;color:#6ee7b7;">
+          \u{1FA9C} Floor ${floor.floorNumber} / ${GAME_CONFIG.MAX_FLOORS}
+        </span>
+        <span class="tfd-stat-pill">
+          \u23F1 Tick ${this.state.currentTick} (Turn ${this.state.turnsTaken})
+        </span>
+        <span class="tfd-stat-pill" style="border:1px solid ${hpColor};">
+          \u2764\uFE0F HP: <strong style="color:${hpColor}">${hero.hp} / ${hero.maxHp}</strong>
+        </span>
+        <span class="tfd-stat-pill">
+          \u2694\uFE0F ATK: <strong>${getHeroAttackPower(hero)}</strong> (${hero.weapon.name}${hero.weaponUpgrades > 0 ? ` +${hero.weaponUpgrades}` : ""})
+        </span>
+        <span class="tfd-stat-pill">
+          \u{1F6E1} DEF: <strong>${getHeroDefense(hero)}</strong> (${hero.armor.name}${hero.armorUpgrades > 0 ? ` +${hero.armorUpgrades}` : ""})
+        </span>
+        <span class="tfd-stat-pill">
+          \u{1F480} Slain: ${this.state.monstersSlain}
+        </span>
+        ${statusTags.join("")}
+      </div>
+      <div style="font-size:0.75rem;color:#94a3b8;">
+        Seed: <strong>${this.state.seedLabel}</strong> ${this.state.debugRevealAll ? '<span style="color:#f59e0b;">[DEBUG ON]</span>' : ""}
+      </div>
+    `;
+  }
+  renderTickPreviewBanner() {
+    const banner = this.container.querySelector("#tfd-tick-banner");
+    if (!banner) return;
+    const preview = getActionTickPreview(this.state);
+    const hasDoubleAttack = preview.doubleTurnMonstersOnAttack.length > 0;
+    const bossTelegraphing = this.state.floor.monsters.find((m) => m.hp > 0 && m.telegraph);
+    if (bossTelegraphing && bossTelegraphing.telegraph) {
+      banner.className = "tfd-tick-banner warning";
+      banner.innerHTML = `
+        <div>
+          <strong>\u{1F6A8} BOSS TELEGRAPH ACTIVE:</strong> ${bossTelegraphing.name} is charging
+          <u>${bossTelegraphing.telegraph.name}</u> (${bossTelegraphing.telegraph.damage} dmg)!
+          Step out of the pulsing red tiles or Stun/Freeze the boss immediately!
+        </div>
+        <div style="font-weight:700;">Move: +${preview.moveTicks}t | Strike: +${preview.attackTicks}t</div>
+      `;
+      return;
+    }
+    if (hasDoubleAttack) {
+      banner.className = "tfd-tick-banner warning";
+      banner.innerHTML = `
+        <div>
+          <strong>\u26A0 ACTION-COST DOUBLE-TURN WARNING:</strong> Swinging your weapon (+${preview.attackTicks} ticks)
+          allows <u>${preview.doubleTurnMonstersOnAttack.join(", ")}</u> to act TWICE before your next turn!
+        </div>
+        <div>Move: <strong>+${preview.moveTicks}t</strong> | Strike: <strong>+${preview.attackTicks}t</strong> | Ability: <strong>+${preview.abilityTicks}t</strong></div>
+      `;
+    } else {
+      banner.className = "tfd-tick-banner";
+      banner.innerHTML = `
+        <div>
+          <strong>\u23F1 Action-Cost Scheduler:</strong>
+          Move = <strong>+${preview.moveTicks} ticks</strong> \u2022
+          Weapon Strike = <strong>+${preview.attackTicks} ticks</strong> \u2022
+          Class Ability = <strong>+${preview.abilityTicks} ticks</strong>
+        </div>
+        <div style="color:#94a3b8;">No enemy double-turn on next strike</div>
+      `;
+    }
+  }
+  renderActionButtons() {
+    const { hero, floor } = this.state;
+    const classDef = HERO_CLASSES[hero.classId];
+    const abilityBtn = this.container.querySelector("#tfd-ability-btn");
+    if (abilityBtn) {
+      if (hero.abilityCooldownTicks > 0) {
+        abilityBtn.textContent = `\u26A1 ${classDef.abilityName} (CD: ${hero.abilityCooldownTicks}t)`;
+        abilityBtn.disabled = true;
+      } else {
+        abilityBtn.textContent = `\u26A1 [Q] ${classDef.abilityName}${hero.abilityUpgrades > 0 ? ` +${hero.abilityUpgrades}` : ""} (${classDef.abilityCostTicks}t)`;
+        abilityBtn.disabled = this.state.status !== "playing";
+      }
+    }
+    const alchemyBtn = this.container.querySelector("#tfd-alchemy-btn");
+    if (alchemyBtn) {
+      const nearAlchemy = floor.alchemyPos !== null && Math.max(
+        Math.abs(hero.x - floor.alchemyPos.x),
+        Math.abs(hero.y - floor.alchemyPos.y)
+      ) <= 1;
+      alchemyBtn.textContent = `\u2697 [E] Test Vial at Alchemy Desk (${floor.alchemyCharges} left)`;
+      alchemyBtn.disabled = this.state.status !== "playing" || !nearAlchemy || floor.alchemyCharges <= 0;
+    }
+    const descendBtn = this.container.querySelector("#tfd-descend-btn");
+    if (descendBtn) {
+      const onStairs = hero.x === floor.stairsDownPos.x && hero.y === floor.stairsDownPos.y;
+      const bossAlive = floor.monsters.some((m) => m.hp > 0 && m.isBoss);
+      if (floor.floorNumber === GAME_CONFIG.MAX_FLOORS) {
+        descendBtn.textContent = bossAlive ? `\u{1F512} Defeat The Abyssal Core to Unlock Exit` : `\u{1F3C6} [>] Ascend Sanctuary Stairs (CLAIM VICTORY!)`;
+      } else {
+        descendBtn.textContent = `\u{1FA9C} [>] Descend to Floor ${floor.floorNumber + 1}`;
+      }
+      descendBtn.disabled = this.state.status !== "playing" || !onStairs || bossAlive;
+    }
+    const throwBadge = this.container.querySelector("#tfd-throw-status-badge");
+    if (throwBadge) {
+      if (this.pendingThrowSlot !== null) {
+        throwBadge.textContent = `\u{1F3AF} Click any dungeon tile (Range ${GAME_CONFIG.THROW_RANGE}) to THROW vial! [Esc to cancel]`;
+      } else {
+        throwBadge.textContent = "";
+      }
+    }
+  }
+  renderInventoryList() {
+    const list = this.container.querySelector("#tfd-inv-list");
+    const countEl = this.container.querySelector("#tfd-inv-count");
+    if (!list) return;
+    const { inventory } = this.state.hero;
+    if (countEl) countEl.textContent = String(inventory.length);
+    if (inventory.length === 0) {
+      list.innerHTML = `<div style="color:#64748b;font-size:0.76rem;padding:6px;">Pack is empty. Step onto dungeon vials or scrolls to pick them up.</div>`;
+      return;
+    }
+    list.innerHTML = inventory.map((item, idx) => {
+      if (item.kind === "potion") {
+        const colorDef = POTION_COLORS.find((c) => c.id === item.color);
+        const disp = getPotionDisplayName(this.state, item.color);
+        const effDef = POTION_EFFECTS[disp.effect];
+        const isThrowingThis = this.pendingThrowSlot === idx;
+        const subText = disp.identified ? effDef.preferThrow ? `Throw (3x3): ${effDef.throwSummary}` : `Drink: ${effDef.drinkSummary}` : `${colorDef.liquidDesc} \u2014 Drink, Throw, or test at Alchemy Desk (\u2697)`;
+        return `
+            <div class="tfd-inv-slot">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+                <span class="tfd-vial-dot" style="background:${colorDef.hex};"></span>
+                <div style="min-width:0;">
+                  <div style="font-weight:700;color:${disp.identified ? "#f8fafc" : "#fde68a"};">
+                    [${idx + 1}] ${disp.title}
+                  </div>
+                  <div style="font-size:0.7rem;color:#94a3b8;">${subText}</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:5px;">
+                <button class="tfd-btn" data-drink-slot="${idx}" title="Drink Vial (10 ticks)">
+                  \u{1F9EA} Drink
+                </button>
+                <button class="tfd-btn ${isThrowingThis ? "tfd-btn-amber" : ""}" data-throw-slot="${idx}" title="Select tile (or click twice to throw at nearest foe)">
+                  \u{1F3AF} ${isThrowingThis ? "Throw Now" : "Throw"}
+                </button>
+              </div>
+            </div>
+          `;
+      }
+      return `
+          <div class="tfd-inv-slot" style="border-color:#f59e0b;">
+            <div>
+              <div style="font-weight:700;color:#fcd34d;">[${idx + 1}] \u{1F4DC} Scroll of Upgrade</div>
+              <div style="font-size:0.7rem;color:#94a3b8;">Permanently empower Weapon, Armor, or Class Ability:</div>
+            </div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+              <button class="tfd-btn tfd-btn-amber" data-upg-slot="${idx}" data-upg-choice="weapon">+Weapon</button>
+              <button class="tfd-btn tfd-btn-primary" data-upg-slot="${idx}" data-upg-choice="armor">+Armor</button>
+              <button class="tfd-btn" data-upg-slot="${idx}" data-upg-choice="ability">+Ability</button>
+            </div>
+          </div>
+        `;
+    }).join("");
+    list.querySelectorAll("[data-drink-slot]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const slotIndex = Number(btn.getAttribute("data-drink-slot"));
+        this.dispatchCommand({ type: "DRINK_POTION", slotIndex });
+      });
+    });
+    list.querySelectorAll("[data-throw-slot]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const slotIndex = Number(btn.getAttribute("data-throw-slot"));
+        this.activateThrowMode(slotIndex);
+      });
+    });
+    list.querySelectorAll("[data-upg-slot]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const slotIndex = Number(btn.getAttribute("data-upg-slot"));
+        const choice = btn.getAttribute("data-upg-choice");
+        this.dispatchCommand({
+          type: "USE_SCROLL_UPGRADE",
+          slotIndex,
+          choice
+        });
+      });
+    });
+  }
+  renderPotionJournal() {
+    const grid = this.container.querySelector("#tfd-journal-grid");
+    const prog = this.container.querySelector("#tfd-journal-progress");
+    if (!grid) return;
+    const identifiedCount = Object.values(this.state.identifiedColors).filter(Boolean).length;
+    if (prog) {
+      prog.textContent = `${identifiedCount} / 6 Identified`;
+    }
+    grid.innerHTML = POTION_COLORS.map((c) => {
+      const disp = getPotionDisplayName(this.state, c.id);
+      const effDef = POTION_EFFECTS[disp.effect];
+      return `
+        <div class="tfd-journal-cell">
+          <span class="tfd-vial-dot" style="background:${c.hex};"></span>
+          <div style="min-width:0;">
+            <div style="font-weight:700;color:${disp.identified ? "#f8fafc" : "#94a3b8"};">
+              ${c.label}: ${disp.identified ? `<span style="color:${effDef.preferThrow ? "#fca5a5" : "#6ee7b7"}">${effDef.shortName}</span>` : "??? Unknown"}
+            </div>
+            <div style="font-size:0.68rem;color:#64748b;">
+              ${disp.identified ? effDef.preferThrow ? "\u2694 Throw (3x3 AoE)" : "\u2728 Drink (Self Buff)" : "Unidentified"}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+  renderCombatLog() {
+    const box = this.container.querySelector("#tfd-log-box");
+    if (!box) return;
+    const recent = this.state.combatLog.slice(-18);
+    box.innerHTML = recent.map((line) => {
+      let color = "#cbd5e1";
+      if (line.includes("IDENTIFIED") || line.includes("Scroll of Upgrade")) {
+        color = "#6ee7b7";
+      } else if (line.includes("HAZARD") || line.includes("WARNING") || line.includes("BOSS SLAM") || line.includes("PERMADEATH")) {
+        color = "#fca5a5";
+      } else if (line.includes("AMBUSH CRIT") || line.includes("VICTORY")) {
+        color = "#fde047";
+      }
+      return `<div style="color:${color};margin-bottom:2px;">${line}</div>`;
+    }).join("");
+    box.scrollTop = box.scrollHeight;
+  }
+  renderEpitaphModal() {
+    const host = this.container.querySelector("#tfd-epitaph-container");
+    if (!host) return;
+    if (this.state.status === "playing" || !this.state.epitaph) {
+      host.innerHTML = "";
+      return;
+    }
+    const ep = this.state.epitaph;
+    const isVictory = ep.outcome === "victory";
+    const chronicles = loadChronicles().slice(0, 5);
+    const fullPotionTableHtml = POTION_COLORS.map((c) => {
+      const eff = POTION_EFFECTS[this.state.colorToEffect[c.id]];
+      return `<span style="display:inline-flex;align-items:center;gap:4px;background:#0f172a;padding:3px 7px;border-radius:5px;font-size:0.73rem;">
+        <span style="width:9px;height:9px;border-radius:50%;background:${c.hex};display:inline-block;"></span>
+        <strong>${c.label}:</strong> ${eff.name}
+      </span>`;
+    }).join(" ");
+    host.innerHTML = `
+      <div class="tfd-modal-overlay ${isVictory ? "victory" : ""}">
+        <h2 style="margin:0 0 6px;font-size:1.1rem;color:${isVictory ? "#34d399" : "#f87171"};">
+          ${isVictory ? "\u{1F3C6} VICTORY \u2014 THE ABYSSAL CORE CONQUERED!" : "\u{1F480} PERMADEATH EPITAPH \u2014 CAUSE OF DEATH RECAP"}
+        </h2>
+        <p style="margin:0 0 8px;font-size:0.84rem;color:#e2e8f0;">
+          <strong>${ep.heroClassName}</strong> on <strong>Floor ${ep.floorReached}</strong> (Seed: <code>${ep.seedLabel}</code>) \u2022
+          Outcome: <strong>${ep.killedBy}</strong> \u2022
+          Total Time: <strong>${ep.totalTicks} ticks</strong> (${ep.turnsTaken} turns) \u2022
+          Monsters Slain: <strong>${ep.monstersSlain}</strong> \u2022
+          Potions Identified: <strong>${ep.potionsIdentified}/6</strong>
+        </p>
+
+        <div style="background:#090d16;border:1px solid #334155;border-radius:7px;padding:8px 10px;margin-bottom:8px;">
+          <div style="font-size:0.75rem;font-weight:700;color:#38bdf8;margin-bottom:4px;">
+            LAST 5 TURNS COMBAT LOG REPLAY:
+          </div>
+          ${ep.lastFiveTurns.map((t) => `<div style="font-size:0.74rem;font-family:monospace;color:#cbd5e1;">\u2022 ${t}</div>`).join("")}
+        </div>
+
+        <div style="background:#1e293b;border-left:4px solid #f59e0b;padding:7px 10px;border-radius:5px;font-size:0.78rem;margin-bottom:8px;">
+          <strong>\u{1F4A1} Tactical Post-Mortem Lesson:</strong> ${ep.tacticalLesson}
+        </div>
+
+        <div style="margin-bottom:10px;">
+          <div style="font-size:0.74rem;color:#94a3b8;margin-bottom:4px;">Seed <code>${ep.seedLabel}</code> True Potion Table:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;">${fullPotionTableHtml}</div>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <button class="tfd-btn tfd-btn-primary" id="tfd-retry-same-seed">\u{1F504} Retry Same Seed (${ep.seedLabel})</button>
+          <button class="tfd-btn tfd-btn-amber" id="tfd-play-new-random">\u{1F3B2} New Random Seed</button>
+        </div>
+
+        ${chronicles.length > 0 ? `<div style="font-size:0.72rem;color:#94a3b8;border-top:1px solid #334155;padding-top:6px;">
+                <strong>Hall of Chronicles (Recent Runs):</strong>
+                ${chronicles.map(
+      (c) => `<div>\u2022 [${c.outcome.toUpperCase()}] ${c.heroClassName} \u2014 Floor ${c.floorReached} (${c.killedBy}) [Seed: ${c.seedLabel}]</div>`
+    ).join("")}
+              </div>` : ""}
+      </div>
+    `;
+    host.querySelector("#tfd-retry-same-seed")?.addEventListener("click", () => {
+      this.restartWithSeed(this.state.seed, this.state.seedLabel, this.selectedClass);
+    });
+    host.querySelector("#tfd-play-new-random")?.addEventListener("click", () => {
+      const nextSeed = Math.floor(Math.random() * 9e5 + 1e5);
+      this.restartWithSeed(nextSeed, String(nextSeed), this.selectedClass);
+    });
+  }
+  drawDungeonCanvas() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const { floor, hero, debugRevealAll } = this.state;
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    const telegraphSet = /* @__PURE__ */ new Set();
+    for (const mon of floor.monsters) {
+      if (mon.hp > 0 && mon.telegraph) {
+        for (const t of mon.telegraph.tiles) {
+          telegraphSet.add(`${t.x},${t.y}`);
+        }
+      }
+    }
+    for (let y = 0; y < floor.height; y++) {
+      for (let x = 0; x < floor.width; x++) {
+        const px = x * TILE_PX;
+        const py = y * TILE_PX;
+        const vis = floor.visible[y][x] || debugRevealAll;
+        const exp = floor.explored[y][x] || debugRevealAll;
+        const tile = floor.tiles[y][x];
+        if (!exp) {
+          ctx.fillStyle = "#05070e";
+          ctx.fillRect(px, py, TILE_PX, TILE_PX);
+          continue;
+        }
+        if (tile === "wall") {
+          ctx.fillStyle = vis ? "#1e293b" : "#0f172a";
+          ctx.fillRect(px, py, TILE_PX, TILE_PX);
+          ctx.strokeStyle = vis ? "#334155" : "#1e293b";
+          ctx.strokeRect(px + 0.5, py + 0.5, TILE_PX - 1, TILE_PX - 1);
+        } else {
+          ctx.fillStyle = vis ? "#0f172a" : "#090d16";
+          ctx.fillRect(px, py, TILE_PX, TILE_PX);
+          ctx.strokeStyle = vis ? "#1e293b" : "#111827";
+          ctx.strokeRect(px + 0.5, py + 0.5, TILE_PX - 1, TILE_PX - 1);
+          if (tile === "door") {
+            ctx.fillStyle = vis ? "#92400e" : "#451a03";
+            ctx.fillRect(px + 4, py + 4, TILE_PX - 8, TILE_PX - 8);
+          } else if (tile === "stairs_up") {
+            ctx.fillStyle = "#64748b";
+            ctx.font = "bold 16px monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("<", px + TILE_PX / 2, py + TILE_PX / 2);
+          } else if (tile === "stairs_down") {
+            ctx.fillStyle = "#10b981";
+            ctx.fillRect(px + 3, py + 3, TILE_PX - 6, TILE_PX - 6);
+            ctx.fillStyle = "#052e16";
+            ctx.font = "bold 18px monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(">", px + TILE_PX / 2, py + TILE_PX / 2);
+          } else if (tile === "alchemy_desk") {
+            ctx.fillStyle = floor.alchemyCharges > 0 ? "#7e22ce" : "#334155";
+            ctx.fillRect(px + 3, py + 3, TILE_PX - 6, TILE_PX - 6);
+            ctx.fillStyle = "#f3e8ff";
+            ctx.font = "bold 16px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("\u2697", px + TILE_PX / 2, py + TILE_PX / 2);
+          }
+        }
+        const hazard = floor.hazards[y][x];
+        if (hazard && vis) {
+          if (hazard.type === "fire") {
+            ctx.fillStyle = "rgba(239, 68, 68, 0.38)";
+          } else if (hazard.type === "frost") {
+            ctx.fillStyle = "rgba(56, 189, 248, 0.35)";
+          } else {
+            ctx.fillStyle = "rgba(132, 204, 22, 0.36)";
+          }
+          ctx.fillRect(px + 2, py + 2, TILE_PX - 4, TILE_PX - 4);
+        }
+        if (telegraphSet.has(`${x},${y}`)) {
+          ctx.fillStyle = "rgba(244, 63, 94, 0.42)";
+          ctx.fillRect(px + 1, py + 1, TILE_PX - 2, TILE_PX - 2);
+          ctx.strokeStyle = "#f43f5e";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(px + 2, py + 2, TILE_PX - 4, TILE_PX - 4);
+          ctx.lineWidth = 1;
+        }
+      }
+    }
+    for (const item of floor.groundItems) {
+      const vis = floor.visible[item.y]?.[item.x] || debugRevealAll;
+      const exp = floor.explored[item.y]?.[item.x] || debugRevealAll;
+      if (!vis && !exp) continue;
+      const cx = item.x * TILE_PX + TILE_PX / 2;
+      const cy = item.y * TILE_PX + TILE_PX / 2;
+      if (item.kind === "potion") {
+        const cDef = POTION_COLORS.find((c) => c.id === item.color);
+        ctx.fillStyle = cDef.hex;
+        ctx.beginPath();
+        ctx.arc(cx, cy + 2, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+        ctx.fillStyle = "#e2e8f0";
+        ctx.fillRect(cx - 2, cy - 8, 4, 4);
+      } else if (item.kind === "scroll_upgrade") {
+        ctx.fillStyle = "#fde047";
+        ctx.fillRect(cx - 7, cy - 6, 14, 12);
+        ctx.fillStyle = "#713f12";
+        ctx.font = "bold 11px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("UP", cx, cy);
+      } else if (item.kind === "weapon") {
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "bold 15px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("\u2694", cx, cy);
+      } else if (item.kind === "armor") {
+        ctx.fillStyle = "#c084fc";
+        ctx.font = "bold 15px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("\u{1F6E1}", cx, cy);
+      }
+    }
+    for (const mon of floor.monsters) {
+      if (mon.hp <= 0) continue;
+      const vis = floor.visible[mon.y]?.[mon.x] || debugRevealAll;
+      if (!vis) continue;
+      const px = mon.x * TILE_PX;
+      const py = mon.y * TILE_PX;
+      const cx = px + TILE_PX / 2;
+      const cy = py + TILE_PX / 2;
+      ctx.fillStyle = mon.isBoss ? "#450a0a" : "#1e1b4b";
+      ctx.beginPath();
+      ctx.arc(cx, cy, mon.isBoss ? 12 : 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = mon.color;
+      ctx.lineWidth = mon.isBoss ? 2.5 : 1.5;
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      ctx.fillStyle = mon.color;
+      ctx.font = `bold ${mon.isBoss ? 15 : 13}px monospace`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(mon.glyph, cx, cy);
+      const hpRatio = Math.max(0, mon.hp / mon.maxHp);
+      ctx.fillStyle = "#090d16";
+      ctx.fillRect(px + 3, py + 2, TILE_PX - 6, 4);
+      ctx.fillStyle = mon.isBoss ? "#f43f5e" : "#ef4444";
+      ctx.fillRect(px + 3, py + 2, Math.round((TILE_PX - 6) * hpRatio), 4);
+      if (mon.stunnedTicks > 0) {
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "bold 9px sans-serif";
+        ctx.fillText("STUN", cx, py + TILE_PX - 3);
+      }
+    }
+    const hpx = hero.x * TILE_PX;
+    const hpy = hero.y * TILE_PX;
+    const hcx = hpx + TILE_PX / 2;
+    const hcy = hpy + TILE_PX / 2;
+    const classDef = HERO_CLASSES[hero.classId];
+    ctx.save();
+    if (hero.invisibleTicks > 0) {
+      ctx.globalAlpha = 0.6;
+    }
+    ctx.fillStyle = classDef.accentColor;
+    ctx.beginPath();
+    ctx.arc(hcx, hcy, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "#090d16";
+    ctx.font = "bold 14px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("@", hcx, hcy);
+    ctx.restore();
+    if (this.pendingThrowSlot !== null && this.hoverTile) {
+      const { x: hx, y: hy } = this.hoverTile;
+      const inRange = Math.max(Math.abs(hx - hero.x), Math.abs(hy - hero.y)) <= GAME_CONFIG.THROW_RANGE;
+      ctx.strokeStyle = inRange ? "#f59e0b" : "#ef4444";
+      ctx.lineWidth = 2;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const rx = hx + dx;
+          const ry = hy + dy;
+          if (rx >= 0 && rx < floor.width && ry >= 0 && ry < floor.height) {
+            ctx.strokeRect(
+              rx * TILE_PX + 2,
+              ry * TILE_PX + 2,
+              TILE_PX - 4,
+              TILE_PX - 4
+            );
+          }
+        }
+      }
+      ctx.lineWidth = 1;
+    }
+  }
+};
+
+// games/10-ten-floors-down/src/index.ts
+var metadata = {
+  id: GAME_CONFIG.ID,
+  number: 10,
+  title: GAME_CONFIG.TITLE,
+  subtitle: GAME_CONFIG.SUBTITLE,
+  genre: "Turn-Based Tactical Roguelike / Alchemy Dungeon Crawler",
+  primaryReference: "",
+  supportingReference: "",
+  oneSentenceLoop: "Descend 10 procedural dungeon floors where every step, strike, and item costs Action Ticks, 6 Potion Colors are shuffled per seed until identified by drinking, throwing, or Alchemy Desks, and permadeath ends with a cause-of-death combat recap.",
+  shortGoal: "Identify unknown potion colors, upgrade your gear, and defeat The Iron Warden on Floor 5.",
+  longGoal: "Survive all 10 floors, destroy The Abyssal Core final boss on Floor 10, and conquer the Daily Seed!",
+  controlsSummary: "WASD/Arrows or Tap tile to Move/Attack \u2022 Space: Wait \u2022 1-6: Drink/Throw Potions & Upgrade Scrolls \u2022 Q: Class Ability \u2022 E: Alchemy Desk \u2022 >: Descend Stairs",
+  accentColor: GAME_CONFIG.ACCENT_COLOR
+};
+function mountGame(container, options) {
+  let initialState = options?.initialSeed !== void 0 ? null : loadActiveRun();
+  if (!initialState) {
+    const dailyStr = getDailySeedString();
+    const seed = options?.initialSeed !== void 0 ? options.initialSeed : getDailySeedNumber(dailyStr);
+    const seedLabel = options?.initialSeed !== void 0 ? String(options.initialSeed) : `DAILY-${dailyStr}`;
+    initialState = createInitialGameState({
+      seed,
+      seedLabel,
+      heroClass: "vanguard",
+      debug: options?.debug
+    });
+    saveActiveRun(initialState);
+  } else if (options?.debug !== void 0) {
+    initialState.debugRevealAll = options.debug;
+  }
+  const ui = new TenFloorsDownUI(container, initialState);
+  return {
+    destroy() {
+      ui.destroy();
+    },
+    getStateSnapshot() {
+      return JSON.parse(JSON.stringify(ui.getState()));
+    },
+    restartWithSeed(seed) {
+      ui.restartWithSeed(seed, String(seed));
+    },
+    toggleDebug(force) {
+      ui.toggleDebug(force);
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_10-ten-floors-down.ts
+var root = document.getElementById("game-root");
+if (root) {
+  mountGame(root);
+}
+
+</script>
+  </body>
+</html>

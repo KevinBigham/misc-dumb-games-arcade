@@ -1,0 +1,2978 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game 01: One More Season — Ironvale Rovers FC</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #070c0a;
+        color: #f1f5f9;
+        min-height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+// games/01-one-more-season/src/config.ts
+var RULES_VERSION = "1.0.0";
+var SAVE_SCHEMA_VERSION = 1;
+var STORAGE_KEY = "argon_game01_one_more_season_save_v1";
+var ATTRIBUTE_KEYS = [
+  "attack",
+  "defense",
+  "control",
+  "stamina"
+];
+var ATTRIBUTE_LABELS = {
+  attack: "Attack",
+  defense: "Defense",
+  control: "Control",
+  stamina: "Stamina"
+};
+var TACTICAL_PLAN_IDS = [
+  "Patient",
+  "Balanced",
+  "Aggressive"
+];
+var CONFIG = {
+  rulesVersion: RULES_VERSION,
+  saveSchemaVersion: SAVE_SCHEMA_VERSION,
+  defaultSeed: 202601,
+  clubName: "Ironvale Rovers FC",
+  clubNickname: "The Ironworks Five",
+  seasonFixtures: 6,
+  seasonWinTarget: 4,
+  rosterSize: 8,
+  startersCount: 5,
+  reservesCount: 3,
+  prepPointsPerFixture: 2,
+  restFatigueDelta: -24,
+  trainFatigueDelta: 8,
+  trainAttributeDelta: 1,
+  postMatchDevAttributeDelta: 1,
+  minAttribute: 1,
+  maxAttribute: 10,
+  minFatigue: 0,
+  maxFatigue: 100,
+  effectiveFatigueDivisor: 200,
+  postMatchStarterFatigueBase: 24,
+  postMatchReserveFatigueDelta: -18,
+  possessionsPerTeam: 8,
+  totalPossessions: 16,
+  maxProbabilityShift: 0.15,
+  attributeDeltaShiftScale: 8e-3,
+  basePlanDistributions: {
+    Patient: { p0: 0.25, p3: 0.55, p7: 0.2 },
+    Balanced: { p0: 0.35, p3: 0.35, p7: 0.3 },
+    Aggressive: { p0: 0.5, p3: 0.1, p7: 0.4 }
+  },
+  documentedStrategySeeds: [202601, 202602, 202605, 202609]
+};
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+function clampFatigue(fatigue) {
+  return clamp(Math.round(fatigue), CONFIG.minFatigue, CONFIG.maxFatigue);
+}
+function clampAttribute(value) {
+  return clamp(Math.round(value), CONFIG.minAttribute, CONFIG.maxAttribute);
+}
+function computeEffectiveMultiplier(fatigue) {
+  const clamped = clampFatigue(fatigue);
+  return 1 - clamped / CONFIG.effectiveFatigueDivisor;
+}
+function computeEffectiveStat(rawStat, fatigue) {
+  return Number((rawStat * computeEffectiveMultiplier(fatigue)).toFixed(4));
+}
+function computeStarterPostMatchFatigueDelta(stamina) {
+  return Math.max(0, CONFIG.postMatchStarterFatigueBase - stamina);
+}
+
+// games/01-one-more-season/src/content.ts
+var INITIAL_ROSTER = [
+  {
+    id: "p1",
+    name: "Kaelen Vance",
+    number: 9,
+    role: "FWD",
+    roleTitle: "Star Finisher",
+    bio: "Deadly top-corner striker who carried Ironvale last month\u2014enters Fixture 1 carrying heavy leg fatigue (56).",
+    attack: 9,
+    defense: 4,
+    control: 7,
+    stamina: 5,
+    initialFatigue: 56,
+    defaultStarter: true
+  },
+  {
+    id: "p2",
+    name: "Mira Solis",
+    number: 8,
+    role: "MID",
+    roleTitle: "Deep Playmaker",
+    bio: "Threads laser passes through congested five-a-side lanes; dictates Ironvale\u2019s tempo and Control rating.",
+    attack: 7,
+    defense: 5,
+    control: 9,
+    stamina: 6,
+    initialFatigue: 10,
+    defaultStarter: true
+  },
+  {
+    id: "p3",
+    name: "Bram Thorne",
+    number: 4,
+    role: "DEF",
+    roleTitle: "Iron Sweeper",
+    bio: "Uncompromising last-ditch tackler who anchors the defensive arc and shuts down 7-point breakaways.",
+    attack: 4,
+    defense: 9,
+    control: 6,
+    stamina: 7,
+    initialFatigue: 8,
+    defaultStarter: true
+  },
+  {
+    id: "p4",
+    name: "Tariq Osei",
+    number: 6,
+    role: "MID",
+    roleTitle: "Box-to-Box Engine",
+    bio: "Relentless two-way runner with high Stamina (8) who absorbs heavy fixture congestion without wilting.",
+    attack: 7,
+    defense: 7,
+    control: 7,
+    stamina: 8,
+    initialFatigue: 6,
+    defaultStarter: true
+  },
+  {
+    id: "p5",
+    name: "Soren Lindqvist",
+    number: 11,
+    role: "MID",
+    roleTitle: "Wing Metronome",
+    bio: "Composed wide distributor who recycles possession and links defense to attack under heavy pressure.",
+    attack: 6,
+    defense: 6,
+    control: 8,
+    stamina: 6,
+    initialFatigue: 14,
+    defaultStarter: true
+  },
+  {
+    id: "p6",
+    name: "Juno Reyes",
+    number: 10,
+    role: "FWD",
+    roleTitle: "Fresh Poacher",
+    bio: "Explosive second striker waiting on the bench at 0 Fatigue\u2014ready to deputize whenever Vance needs rest.",
+    attack: 8,
+    defense: 4,
+    control: 7,
+    stamina: 7,
+    initialFatigue: 0,
+    defaultStarter: false
+  },
+  {
+    id: "p7",
+    name: "Callum Ward",
+    number: 5,
+    role: "DEF",
+    roleTitle: "Half-Back Shield",
+    bio: "Disciplined defensive stopper with iron lungs (Stamina 8) who locks down counter-attacking opponents.",
+    attack: 4,
+    defense: 8,
+    control: 6,
+    stamina: 8,
+    initialFatigue: 0,
+    defaultStarter: false
+  },
+  {
+    id: "p8",
+    name: "Dara Novak",
+    number: 14,
+    role: "UTL",
+    roleTitle: "Utility Catalyst",
+    bio: "Versatile all-rounder who slots seamlessly into midfield or defense when rotation is required.",
+    attack: 6,
+    defense: 6,
+    control: 7,
+    stamina: 7,
+    initialFatigue: 0,
+    defaultStarter: false
+  }
+];
+var TACTICAL_PLANS = [
+  {
+    id: "Patient",
+    name: "Patient Build-Up",
+    tagline: "High-floor possession triangles (55% base 3-pt rate)",
+    description: "Works the ball methodically until a high-percentage 3-point angle opens, minimizing 0-point turnovers (25% base) while waiting for clean 7-point cutbacks (20% base).",
+    baseDistribution: CONFIG.basePlanDistributions.Patient,
+    bestWhen: "Facing overeager high presses or wild transition teams that lose shape when starved of the ball."
+  },
+  {
+    id: "Balanced",
+    name: "Balanced Tempo",
+    tagline: "Measured two-way rhythm (35% 0-pt / 35% 3-pt / 30% 7-pt)",
+    description: "Mixes controlled circulation with timely vertical switches, offering steady 3-point pressure and reliable 7-point threat without overcommitting numbers.",
+    baseDistribution: CONFIG.basePlanDistributions.Balanced,
+    bestWhen: "Facing asymmetric mid-blocks or disciplined man-marking sides where adaptability punishes over-rotation."
+  },
+  {
+    id: "Aggressive",
+    name: "Aggressive Direct",
+    tagline: "High-ceiling blitz (40% base 7-pt rate, 50% base 0-pt risk)",
+    description: "Launches immediate vertical balls and central overloads chasing 7-point breakthroughs, accepting frequent 0-point turnovers and bypassing 3-point safety (10% base).",
+    baseDistribution: CONFIG.basePlanDistributions.Aggressive,
+    bestWhen: "Cracking passive low blocks, exploiting fragile high defensive lines, or riding a rested high-Attack lineup."
+  }
+];
+var OPPONENTS = [
+  {
+    id: "opp-1",
+    fixtureNumber: 1,
+    name: "Cinderwick Athletic",
+    shortName: "CIN",
+    nickname: "The Ash-Hounds",
+    primaryColor: "#d97706",
+    secondaryColor: "#fef3c7",
+    attack: 27,
+    defense: 26,
+    control: 29,
+    defaultPlan: "Patient",
+    scoutingReport: "Cinderwick sprint out in an Overeager High Press on every whistle. They leave wide-open passing triangles behind their front line\u2014vulnerable to Patient build-up, while reckless Aggressive passes feed their traps.",
+    tacticalHint: "Recommended: Choose Patient (+9% shift to 7-pt breakthroughs) and either Rest tired star Kaelen Vance (Fatigue 56 -> 32) or swap in fresh striker Juno Reyes.",
+    tendency: {
+      id: "tend-1",
+      name: "Overeager High Press",
+      vulnerableTo: "Patient",
+      summary: "Leaves central pockets open vs Patient (+9% 7-pt shift); traps Aggressive (-4% shift).",
+      clubPlanModifier: {
+        Patient: 0.09,
+        Balanced: 0.03,
+        Aggressive: -0.04
+      },
+      opponentPossessionModifier: {
+        Patient: -0.05,
+        Balanced: -0.02,
+        Aggressive: 0.03
+      }
+    }
+  },
+  {
+    id: "opp-2",
+    fixtureNumber: 2,
+    name: "Docklands United",
+    shortName: "DOC",
+    nickname: "The Harbor Wall",
+    primaryColor: "#0284c7",
+    secondaryColor: "#e0f2fe",
+    attack: 26,
+    defense: 30,
+    control: 29,
+    defaultPlan: "Patient",
+    scoutingReport: "Docklands park four defenders on the edge of their D-arc in a Low-Block Harbor Wall. Slow perimeter passing gets absorbed, whereas direct Aggressive strikes or crisp Balanced switches fracture their low block.",
+    tacticalHint: "Recommended: Aggressive (+9% 7-pt shift) or Balanced (+4% shift) with high Attack starters.",
+    tendency: {
+      id: "tend-2",
+      name: "Low-Block Harbor Wall",
+      vulnerableTo: "Aggressive",
+      summary: "Vulnerable to Aggressive vertical strikes (+9% 7-pt shift); absorbs Patient play (-2%).",
+      clubPlanModifier: {
+        Patient: -0.02,
+        Balanced: 0.04,
+        Aggressive: 0.09
+      },
+      opponentPossessionModifier: {
+        Patient: -0.03,
+        Balanced: -0.03,
+        Aggressive: -0.04
+      }
+    }
+  },
+  {
+    id: "opp-3",
+    fixtureNumber: 3,
+    name: "Millgate Foundry FC",
+    shortName: "MIL",
+    nickname: "The Smelters",
+    primaryColor: "#dc2626",
+    secondaryColor: "#fee2e2",
+    attack: 29,
+    defense: 28,
+    control: 30,
+    defaultPlan: "Balanced",
+    scoutingReport: "Millgate overload the strong-side touchline in a Split-Midfield Gamble. A Balanced tempo switches play into the weak-side channel before their pivot can slide across.",
+    tacticalHint: "Recommended: Balanced (+9% 7-pt shift, -5% opponent shift) while watching mid-season starter fatigue.",
+    tendency: {
+      id: "tend-3",
+      name: "Split-Midfield Gamble",
+      vulnerableTo: "Balanced",
+      summary: "Punished by Balanced weak-side switches (+9% 7-pt shift); solid vs Aggressive (+4%).",
+      clubPlanModifier: {
+        Patient: 0.03,
+        Balanced: 0.09,
+        Aggressive: 0.04
+      },
+      opponentPossessionModifier: {
+        Patient: -0.03,
+        Balanced: -0.05,
+        Aggressive: 0.01
+      }
+    }
+  },
+  {
+    id: "opp-4",
+    fixtureNumber: 4,
+    name: "Redmoor Rangers",
+    shortName: "RED",
+    nickname: "The Moorland Raiders",
+    primaryColor: "#9333ea",
+    secondaryColor: "#f3e8ff",
+    attack: 31,
+    defense: 27,
+    control: 29,
+    defaultPlan: "Aggressive",
+    scoutingReport: "Redmoor thrive on chaotic end-to-end transitions with a Wild Counter-Blitz. Starving them with Patient control denies their runners oxygen and exposes their undisciplined back line.",
+    tacticalHint: "Recommended: Patient (+10% 7-pt shift and -6% to Redmoor\u2019s breakaways) with high-Control midfielders.",
+    tendency: {
+      id: "tend-4",
+      name: "Wild Counter-Blitz",
+      vulnerableTo: "Patient",
+      summary: "Starved by Patient control (+10% 7-pt shift, -6% opp shift); dangerous in open firefights.",
+      clubPlanModifier: {
+        Patient: 0.1,
+        Balanced: 0.04,
+        Aggressive: 0.03
+      },
+      opponentPossessionModifier: {
+        Patient: -0.06,
+        Balanced: -0.03,
+        Aggressive: 0.03
+      }
+    }
+  },
+  {
+    id: "opp-5",
+    fixtureNumber: 5,
+    name: "Glassworks Dynamo",
+    shortName: "GLA",
+    nickname: "The Prisms",
+    primaryColor: "#0d9488",
+    secondaryColor: "#ccfbf1",
+    attack: 30,
+    defense: 28,
+    control: 31,
+    defaultPlan: "Balanced",
+    scoutingReport: "Dynamo push their sweepers up to the halfway line in a Fragile High Line. Early Aggressive balls in behind or sharp Balanced through-balls create clean 1-on-1 breakaways.",
+    tacticalHint: "Recommended: Aggressive (+10% 7-pt shift) or Balanced (+6% shift) with rested forwards.",
+    tendency: {
+      id: "tend-5",
+      name: "Fragile High Line",
+      vulnerableTo: "Aggressive",
+      summary: "Exposed by Aggressive direct runs (+10% 7-pt shift) and Balanced switches (+6%).",
+      clubPlanModifier: {
+        Patient: 0.03,
+        Balanced: 0.06,
+        Aggressive: 0.1
+      },
+      opponentPossessionModifier: {
+        Patient: -0.03,
+        Balanced: -0.04,
+        Aggressive: -0.03
+      }
+    }
+  },
+  {
+    id: "opp-6",
+    fixtureNumber: 6,
+    name: "Sovereign City FC",
+    shortName: "SOV",
+    nickname: "The Royals",
+    primaryColor: "#eab308",
+    secondaryColor: "#fef9c3",
+    attack: 31,
+    defense: 30,
+    control: 31,
+    defaultPlan: "Balanced",
+    scoutingReport: "The division pacesetters lock man-to-man across the pitch in a Title-Chasing Man-Mark. A composed Balanced structure\u2014or an overpowering, well-trained attack\u2014drags their markers out of shape in the season finale.",
+    tacticalHint: "Finale: Empty the tank! Spend both Prep Points on your strongest five and exploit Balanced (+9% shift) or your highest-trained style.",
+    tendency: {
+      id: "tend-6",
+      name: "Title-Chasing Man-Mark",
+      vulnerableTo: "Balanced",
+      summary: "Outmaneuvered by Balanced tempo (+9% 7-pt shift) or high-stat Aggressive/Patient play (+6%).",
+      clubPlanModifier: {
+        Patient: 0.06,
+        Balanced: 0.09,
+        Aggressive: 0.06
+      },
+      opponentPossessionModifier: {
+        Patient: -0.04,
+        Balanced: -0.05,
+        Aggressive: -0.02
+      }
+    }
+  }
+];
+var RECAP_TEMPLATES = [
+  {
+    id: "tpl-01",
+    title: "Top-Corner Breakthrough (7 Pts)",
+    category: "club_breakthrough_7",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: ${c.keyPlayerName} rifles a 7-pt breakthrough (${c.clubScoreAfter}\u2013${c.opponentScoreAfter})`,
+    renderBody: (c) => `Executing Ironvale's ${c.tacticalPlan} plan against ${c.opponentName}'s ${c.tendencyName}, ${c.supportPlayerName} slipped ${c.keyPlayerName} (${c.keyPlayerFatigue}% fatigue) into the box. With a ${c.totalShiftPct} matchup shift (roll ${c.rollDisplay}), Ironvale converted a decisive 7-point strike.`
+  },
+  {
+    id: "tpl-02",
+    title: "Tactical Tendency Shredded (7 Pts)",
+    category: "tendency_exploit",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: ${c.tacticalPlan} shape Carves ${c.opponentName}'s ${c.tendencyName} for 7 pts`,
+    renderBody: (c) => `The scouting report paid off in Half ${c.half}. ${c.keyPlayerName} exploited ${c.opponentName}'s ${c.tendencyName} directly, turning a ${c.totalShiftPct} probability boost (roll ${c.rollDisplay}) into a clean 7-point finish with ${c.supportPlayerName} providing the screen.`
+  },
+  {
+    id: "tpl-03",
+    title: "Clinical Combination Play (3 Pts)",
+    category: "club_clinical_3",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: ${c.keyPlayerName} & ${c.supportPlayerName} work a 3-pt conversion (${c.clubScoreAfter}\u2013${c.opponentScoreAfter})`,
+    renderBody: (c) => `Under ${c.tacticalPlan} tempo in Half ${c.half}, ${c.keyPlayerName} (${c.keyPlayerRole}) linked up with ${c.supportPlayerName} at the edge of the arc to bank 3 points (roll ${c.rollDisplay}, matchup shift ${c.totalShiftPct}).`
+  },
+  {
+    id: "tpl-04",
+    title: "Metronome Pressure Pays Off (3 Pts)",
+    category: "club_clinical_3",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: Patient angles from ${c.keyPlayerName} secure 3 points`,
+    renderBody: (c) => `Refusing to force a low-percentage shot against ${c.opponentName}, ${c.keyPlayerName} (at ${c.keyPlayerFatigue}% fatigue) recycled the ball to ${c.supportPlayerName} for a textbook 3-point conversion (roll ${c.rollDisplay}).`
+  },
+  {
+    id: "tpl-05",
+    title: "Fatigue-Heavy Turnover (0 Pts)",
+    category: "fatigue_swing",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: Heavy legs on ${c.keyPlayerName} (${c.keyPlayerFatigue}% fatigue) stall the attack (0 pts)`,
+    renderBody: (c) => `Fatigue bit into Ironvale's effective ratings on Possession #${c.possessionIndex}. ${c.keyPlayerName} (${c.keyPlayerFatigue}% fatigue) couldn't separate from ${c.opponentName}'s marker under ${c.tacticalPlan} play, resulting in a 0-point turnover (roll ${c.rollDisplay}, shift ${c.totalShiftPct}).`
+  },
+  {
+    id: "tpl-06",
+    title: "Attack Repelled at the Arc (0 Pts)",
+    category: "club_stalled_0",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: ${c.opponentName} closes the lane on ${c.keyPlayerName} (0 pts)`,
+    renderBody: (c) => `Ironvale pushed forward in Half ${c.half} using ${c.tacticalPlan} tempo, but ${c.opponentName}'s ${c.tendencyName} cut off the passing angle to ${c.supportPlayerName} (roll ${c.rollDisplay}, shift ${c.totalShiftPct}), leaving the score at ${c.clubScoreAfter}\u2013${c.opponentScoreAfter}.`
+  },
+  {
+    id: "tpl-07",
+    title: "Ironvale Defensive Stand (0 Pts Allowed)",
+    category: "club_defensive_stand_0",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: ${c.keyPlayerName} slams the door on ${c.opponentName} (0 pts allowed)`,
+    renderBody: (c) => `With ${c.opponentName} pressing in Half ${c.half}, ${c.keyPlayerName} (${c.keyPlayerFatigue}% fatigue) and ${c.supportPlayerName} held a compact defensive line (shift ${c.totalShiftPct}, roll ${c.rollDisplay}) to force a 0-point empty possession.`
+  },
+  {
+    id: "tpl-08",
+    title: "Sweeper Interception in the Box (0 Pts Allowed)",
+    category: "club_defensive_stand_0",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: Clean tackle by ${c.keyPlayerName} preserves the ${c.clubScoreAfter}\u2013${c.opponentScoreAfter} line`,
+    renderBody: (c) => `${c.opponentName} probed for an opening, but Ironvale's effective Defense + Control rating (${c.totalShiftPct} modifier) allowed ${c.keyPlayerName} to dispossess their runner cleanly (roll ${c.rollDisplay}).`
+  },
+  {
+    id: "tpl-09",
+    title: "Opponent Counter-Punish (7 Pts Allowed)",
+    category: "opponent_punish_7",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: ${c.opponentName} breaks through for 7 pts (${c.clubScoreAfter}\u2013${c.opponentScoreAfter})`,
+    renderBody: (c) => `${c.opponentName} capitalized on an opening in Half ${c.half}, beating ${c.keyPlayerName} (${c.keyPlayerFatigue}% fatigue) on roll ${c.rollDisplay} (modifier ${c.totalShiftPct}) for a costly 7-point swing.`
+  },
+  {
+    id: "tpl-10",
+    title: "Defensive Gap Exploited (7 Pts Allowed)",
+    category: "opponent_punish_7",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: ${c.opponentName}'s ${c.tendencyName} carves out a 7-pt goal`,
+    renderBody: (c) => `Despite ${c.supportPlayerName}'s recovery run, ${c.opponentName} found space behind ${c.keyPlayerName} to convert a 7-point possession (roll ${c.rollDisplay}, shift ${c.totalShiftPct}), making it ${c.clubScoreAfter}\u2013${c.opponentScoreAfter}.`
+  },
+  {
+    id: "tpl-11",
+    title: "Opponent Perimeter Conversion (3 Pts Allowed)",
+    category: "opponent_chip_3",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: ${c.opponentName} chips in 3 pts past ${c.keyPlayerName}`,
+    renderBody: (c) => `Ironvale denied the 7-point lane through ${c.supportPlayerName}, but ${c.opponentName} settled for a 3-point perimeter conversion in Half ${c.half} (roll ${c.rollDisplay}, shift ${c.totalShiftPct}).`
+  },
+  {
+    id: "tpl-12",
+    title: "Late-Half Momentum Swing",
+    category: "tendency_exploit",
+    renderHeadline: (c) => `Possession #${c.possessionIndex}: ${c.team === "club" ? c.keyPlayerName : c.opponentName} swings Half ${c.half} (${c.points} pts, ${c.clubScoreAfter}\u2013${c.opponentScoreAfter})`,
+    renderBody: (c) => `A pivotal Half ${c.half} possession under Ironvale's ${c.tacticalPlan} setup vs ${c.opponentName}'s ${c.tendencyName}: ${c.keyPlayerName} (${c.keyPlayerFatigue}% fatigue) was at the center of the action as roll ${c.rollDisplay} (shift ${c.totalShiftPct}) produced ${c.points} points.`
+  }
+];
+function getOpponentForFixture(fixtureNumber) {
+  const found = OPPONENTS.find((o) => o.fixtureNumber === fixtureNumber);
+  if (!found) {
+    throw new Error(`No opponent configured for fixture ${fixtureNumber}`);
+  }
+  return found;
+}
+
+// games/01-one-more-season/src/audio.ts
+var SoundController = class {
+  ctx = null;
+  muted = false;
+  isMuted() {
+    return this.muted;
+  }
+  setMuted(muted) {
+    this.muted = muted;
+  }
+  toggleMute() {
+    this.muted = !this.muted;
+    return this.muted;
+  }
+  getContext() {
+    if (this.muted || typeof window === "undefined") return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!this.ctx) {
+      try {
+        this.ctx = new AudioCtx();
+      } catch {
+        return null;
+      }
+    }
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  playClick(pitchHz = 520) {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(pitchHz, now);
+      osc.frequency.exponentialRampToValueAtTime(pitchHz * 1.35, now + 0.045);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.055);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.06);
+    } catch {
+    }
+  }
+  playWhistle() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc1.type = "sine";
+      osc2.type = "triangle";
+      osc1.frequency.setValueAtTime(2680, now);
+      osc2.frequency.setValueAtTime(2745, now);
+      gain.gain.setValueAtTime(1e-3, now);
+      gain.gain.linearRampToValueAtTime(0.09, now + 0.02);
+      gain.gain.setValueAtTime(0.04, now + 0.08);
+      gain.gain.linearRampToValueAtTime(0.1, now + 0.14);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.34);
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.36);
+      osc2.stop(now + 0.36);
+    } catch {
+    }
+  }
+  playPossessionChime(team, points) {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      if (points === 0) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(team === "club" ? 240 : 320, now);
+        osc.frequency.exponentialRampToValueAtTime(180, now + 0.09);
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.1);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.11);
+        return;
+      }
+      const notes = team === "club" ? points === 7 ? [440, 554.37, 659.25, 880] : [392, 493.88, 587.33] : points === 7 ? [311.13, 277.18, 220] : [329.63, 293.66];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = team === "club" ? "triangle" : "sawtooth";
+        const start = now + idx * 0.055;
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.07, start);
+        gain.gain.exponentialRampToValueAtTime(1e-3, start + 0.18);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.19);
+      });
+    } catch {
+    }
+  }
+};
+
+// games/01-one-more-season/src/rng.ts
+function normalizeSeed(seed) {
+  const n = Number.isFinite(seed) ? Math.floor(seed) : 202601;
+  return n >>> 0 || 1;
+}
+function createRng(initialState) {
+  let state = normalizeSeed(initialState);
+  function nextFloat() {
+    state = state + 1831565813 >>> 0;
+    let t = Math.imul(state ^ state >>> 15, 1 | state);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+  function nextInt(min, max) {
+    const lo = Math.ceil(Math.min(min, max));
+    const hi = Math.floor(Math.max(min, max));
+    if (lo >= hi) return lo;
+    return lo + Math.floor(nextFloat() * (hi - lo + 1));
+  }
+  function getState() {
+    return state >>> 0;
+  }
+  function clone() {
+    return createRng(state);
+  }
+  return {
+    nextFloat,
+    nextInt,
+    getState,
+    clone
+  };
+}
+
+// games/01-one-more-season/src/simulation.ts
+function cloneState(state) {
+  return JSON.parse(JSON.stringify(state));
+}
+function createInitialState(seed = CONFIG.defaultSeed) {
+  const normalized = normalizeSeed(seed);
+  const roster = INITIAL_ROSTER.map((tpl) => ({
+    id: tpl.id,
+    name: tpl.name,
+    number: tpl.number,
+    role: tpl.role,
+    roleTitle: tpl.roleTitle,
+    bio: tpl.bio,
+    attack: tpl.attack,
+    defense: tpl.defense,
+    control: tpl.control,
+    stamina: tpl.stamina,
+    fatigue: tpl.initialFatigue,
+    matchesStarted: 0,
+    matchesBenched: 0
+  }));
+  const selectedStarterIds = INITIAL_ROSTER.filter((p) => p.defaultStarter).map(
+    (p) => p.id
+  );
+  return {
+    rulesVersion: RULES_VERSION,
+    seed: normalized,
+    rngState: normalized,
+    fixtureNumber: 1,
+    phase: "preparation",
+    roster,
+    selectedStarterIds,
+    selectedPlan: "Balanced",
+    prepPointsRemaining: CONFIG.prepPointsPerFixture,
+    prepActionsThisFixture: [],
+    currentMatch: null,
+    seasonHistory: [],
+    commandLog: []
+  };
+}
+function computeTeamEffectiveRatings(roster, starterIds) {
+  const starterSet = new Set(starterIds);
+  const starters = roster.filter((p) => starterSet.has(p.id)).map((p) => {
+    const effectiveMultiplier = computeEffectiveMultiplier(p.fatigue);
+    return {
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      fatigue: p.fatigue,
+      effectiveMultiplier,
+      rawAttack: p.attack,
+      rawDefense: p.defense,
+      rawControl: p.control,
+      stamina: p.stamina,
+      effectiveAttack: computeEffectiveStat(p.attack, p.fatigue),
+      effectiveDefense: computeEffectiveStat(p.defense, p.fatigue),
+      effectiveControl: computeEffectiveStat(p.control, p.fatigue)
+    };
+  });
+  const rawAttack = starters.reduce((sum, s) => sum + s.rawAttack, 0);
+  const rawDefense = starters.reduce((sum, s) => sum + s.rawDefense, 0);
+  const rawControl = starters.reduce((sum, s) => sum + s.rawControl, 0);
+  const effectiveAttack = Number(
+    starters.reduce((sum, s) => sum + s.effectiveAttack, 0).toFixed(4)
+  );
+  const effectiveDefense = Number(
+    starters.reduce((sum, s) => sum + s.effectiveDefense, 0).toFixed(4)
+  );
+  const effectiveControl = Number(
+    starters.reduce((sum, s) => sum + s.effectiveControl, 0).toFixed(4)
+  );
+  const averageFatigue = starters.length > 0 ? Number(
+    (starters.reduce((sum, s) => sum + s.fatigue, 0) / starters.length).toFixed(2)
+  ) : 0;
+  return {
+    starters,
+    rawAttack,
+    rawDefense,
+    rawControl,
+    effectiveAttack,
+    effectiveDefense,
+    effectiveControl,
+    averageFatigue
+  };
+}
+function computePossessionProbabilities(params) {
+  const { team, clubPlan, teamRatings, opponent } = params;
+  const tacticalPlanUsed = team === "club" ? clubPlan : opponent.defaultPlan;
+  const baseDistribution = CONFIG.basePlanDistributions[tacticalPlanUsed];
+  const offenseRating = team === "club" ? Number(
+    (teamRatings.effectiveAttack + teamRatings.effectiveControl).toFixed(4)
+  ) : Number((opponent.attack + opponent.control).toFixed(4));
+  const defenseRating = team === "club" ? Number((opponent.defense + opponent.control).toFixed(4)) : Number(
+    (teamRatings.effectiveDefense + teamRatings.effectiveControl).toFixed(4)
+  );
+  const attributeDelta = Number((offenseRating - defenseRating).toFixed(4));
+  const attributeShift = Number(
+    (attributeDelta * CONFIG.attributeDeltaShiftScale).toFixed(6)
+  );
+  const tendencyShift = team === "club" ? opponent.tendency.clubPlanModifier[clubPlan] : opponent.tendency.opponentPossessionModifier[clubPlan];
+  const rawShift = Number((attributeShift + tendencyShift).toFixed(6));
+  const maxPositive = Math.min(
+    CONFIG.maxProbabilityShift,
+    baseDistribution.p0,
+    1 - baseDistribution.p7
+  );
+  const maxNegative = -Math.min(
+    CONFIG.maxProbabilityShift,
+    baseDistribution.p7,
+    1 - baseDistribution.p0
+  );
+  const totalShift = Number(
+    clamp(rawShift, maxNegative, maxPositive).toFixed(6)
+  );
+  const p7 = Number((baseDistribution.p7 + totalShift).toFixed(6));
+  const p3 = Number(baseDistribution.p3.toFixed(6));
+  const p0 = Number((1 - p7 - p3).toFixed(6));
+  return {
+    team,
+    tacticalPlanUsed,
+    clubSelectedPlan: clubPlan,
+    baseDistribution: { ...baseDistribution },
+    offenseRating,
+    defenseRating,
+    attributeDelta,
+    attributeShift,
+    tendencyShift,
+    rawShift,
+    totalShift,
+    probabilities: { p0, p3, p7 }
+  };
+}
+function resolvePointsFromRoll(roll, probabilities) {
+  if (roll < probabilities.p0) {
+    return 0;
+  }
+  if (roll < probabilities.p0 + probabilities.p3) {
+    return 3;
+  }
+  return 7;
+}
+function pickPossessionActors(starters, team, possessionIndex) {
+  const ordered = [...starters].sort((a, b) => {
+    if (team === "club") {
+      const scoreA = a.effectiveAttack * 1.4 + a.effectiveControl;
+      const scoreB = b.effectiveAttack * 1.4 + b.effectiveControl;
+      return scoreB - scoreA;
+    } else {
+      const scoreA = a.effectiveDefense * 1.4 + a.effectiveControl;
+      const scoreB = b.effectiveDefense * 1.4 + b.effectiveControl;
+      return scoreB - scoreA;
+    }
+  });
+  const keyIdx = (possessionIndex - 1) % Math.min(3, ordered.length);
+  const supportIdx = (keyIdx + 1 + Math.floor((possessionIndex - 1) / 2)) % ordered.length;
+  const finalSupportIdx = supportIdx === keyIdx ? (keyIdx + 1) % ordered.length : supportIdx;
+  return {
+    keyPlayer: ordered[keyIdx],
+    supportPlayer: ordered[finalSupportIdx]
+  };
+}
+function formatSignedPct(shift) {
+  const pct = (shift * 100).toFixed(1);
+  return shift >= 0 ? `+${pct}%` : `${pct}%`;
+}
+function generateDecisiveEvents(possessions, opponent, clubPlan) {
+  const scored = possessions.map((pos) => {
+    let priority = 0;
+    const leadBefore = Math.sign(pos.clubScoreBefore - pos.opponentScoreBefore);
+    const leadAfter = Math.sign(pos.clubScoreAfter - pos.opponentScoreAfter);
+    if (leadBefore !== leadAfter) {
+      priority += 32;
+    }
+    if (pos.wasShiftedSwing) {
+      priority += 36;
+    }
+    if (pos.points === 7) {
+      priority += 26;
+    } else if (pos.points === 3) {
+      priority += 14;
+    } else if (pos.team === "opponent" && pos.points === 0) {
+      priority += 12;
+    } else if (pos.team === "club" && pos.points === 0 && pos.keyPlayerFatigue >= 35) {
+      priority += 18;
+    }
+    if (pos.half === 2) {
+      priority += 6;
+    }
+    return { pos, priority };
+  });
+  scored.sort((a, b) => {
+    if (b.priority !== a.priority) return b.priority - a.priority;
+    return b.pos.possessionIndex - a.pos.possessionIndex;
+  });
+  const chosenPossessions = scored.slice(0, 3).map((s) => s.pos).sort((a, b) => a.possessionIndex - b.possessionIndex);
+  const usedTemplateIds = /* @__PURE__ */ new Set();
+  return chosenPossessions.map((pos, idx) => {
+    const candidates = RECAP_TEMPLATES.filter((tpl) => {
+      if (usedTemplateIds.has(tpl.id)) return false;
+      if (pos.team === "club" && pos.points === 7) {
+        return tpl.category === "club_breakthrough_7" || tpl.category === "tendency_exploit";
+      }
+      if (pos.team === "club" && pos.points === 3) {
+        return tpl.category === "club_clinical_3";
+      }
+      if (pos.team === "club" && pos.points === 0) {
+        return pos.keyPlayerFatigue >= 30 ? tpl.category === "fatigue_swing" || tpl.category === "club_stalled_0" : tpl.category === "club_stalled_0" || tpl.category === "fatigue_swing";
+      }
+      if (pos.team === "opponent" && pos.points === 0) {
+        return tpl.category === "club_defensive_stand_0";
+      }
+      if (pos.team === "opponent" && pos.points === 7) {
+        return tpl.category === "opponent_punish_7";
+      }
+      if (pos.team === "opponent" && pos.points === 3) {
+        return tpl.category === "opponent_chip_3";
+      }
+      return true;
+    });
+    const fallbackPool = RECAP_TEMPLATES.filter(
+      (t) => !usedTemplateIds.has(t.id)
+    );
+    const chosenTemplate = candidates[0] ?? fallbackPool[0] ?? RECAP_TEMPLATES[0];
+    usedTemplateIds.add(chosenTemplate.id);
+    const ctx = {
+      possessionIndex: pos.possessionIndex,
+      half: pos.half,
+      team: pos.team,
+      points: pos.points,
+      tacticalPlan: clubPlan,
+      opponentName: opponent.name,
+      tendencyName: opponent.tendency.name,
+      keyPlayerName: pos.keyPlayerName,
+      keyPlayerRole: pos.keyPlayerRole,
+      keyPlayerFatigue: pos.keyPlayerFatigue,
+      supportPlayerName: pos.supportPlayerName,
+      clubScoreAfter: pos.clubScoreAfter,
+      opponentScoreAfter: pos.opponentScoreAfter,
+      totalShiftPct: formatSignedPct(pos.totalShift),
+      rollDisplay: pos.roll.toFixed(3)
+    };
+    return {
+      eventIndex: idx + 1,
+      possessionIndex: pos.possessionIndex,
+      templateId: chosenTemplate.id,
+      templateTitle: chosenTemplate.title,
+      category: chosenTemplate.category,
+      headline: chosenTemplate.renderHeadline(ctx),
+      body: chosenTemplate.renderBody(ctx),
+      team: pos.team,
+      points: pos.points,
+      roll: pos.roll,
+      totalShift: pos.totalShift,
+      probabilities: { ...pos.probabilities }
+    };
+  });
+}
+function simulateMatch(params) {
+  const {
+    fixtureNumber,
+    roster,
+    starterIds,
+    clubPlan,
+    prepActions,
+    rngState
+  } = params;
+  if (starterIds.length !== CONFIG.startersCount) {
+    throw new Error(
+      `Expected ${CONFIG.startersCount} starters, got ${starterIds.length}`
+    );
+  }
+  const opponent = getOpponentForFixture(fixtureNumber);
+  const teamRatings = computeTeamEffectiveRatings(roster, starterIds);
+  const rng = createRng(rngState);
+  const rngStateBeforeMatch = rng.getState();
+  const clubBreakdown = computePossessionProbabilities({
+    team: "club",
+    clubPlan,
+    teamRatings,
+    opponent
+  });
+  const opponentBreakdown = computePossessionProbabilities({
+    team: "opponent",
+    clubPlan,
+    teamRatings,
+    opponent
+  });
+  const possessions = [];
+  let clubScore = 0;
+  let opponentScore = 0;
+  for (let i = 1; i <= CONFIG.totalPossessions; i++) {
+    const team = i % 2 === 1 ? "club" : "opponent";
+    const half = i <= 8 ? 1 : 2;
+    const breakdown = team === "club" ? clubBreakdown : opponentBreakdown;
+    const roll = Number(rng.nextFloat().toFixed(6));
+    const points = resolvePointsFromRoll(roll, breakdown.probabilities);
+    const baseOutcomeWithoutShift = resolvePointsFromRoll(
+      roll,
+      breakdown.baseDistribution
+    );
+    const wasShiftedSwing = points !== baseOutcomeWithoutShift;
+    const clubScoreBefore = clubScore;
+    const opponentScoreBefore = opponentScore;
+    if (team === "club") {
+      clubScore += points;
+    } else {
+      opponentScore += points;
+    }
+    const actors = pickPossessionActors(teamRatings.starters, team, i);
+    possessions.push({
+      possessionIndex: i,
+      half,
+      team,
+      tacticalPlanUsed: breakdown.tacticalPlanUsed,
+      clubSelectedPlan: clubPlan,
+      offenseRating: breakdown.offenseRating,
+      defenseRating: breakdown.defenseRating,
+      attributeDelta: breakdown.attributeDelta,
+      attributeShift: breakdown.attributeShift,
+      tendencyShift: breakdown.tendencyShift,
+      totalShift: breakdown.totalShift,
+      baseProbabilities: { ...breakdown.baseDistribution },
+      probabilities: { ...breakdown.probabilities },
+      roll,
+      points,
+      baseOutcomeWithoutShift,
+      wasShiftedSwing,
+      clubScoreBefore,
+      opponentScoreBefore,
+      clubScoreAfter: clubScore,
+      opponentScoreAfter: opponentScore,
+      keyPlayerId: actors.keyPlayer.id,
+      keyPlayerName: actors.keyPlayer.name,
+      keyPlayerRole: actors.keyPlayer.role,
+      keyPlayerFatigue: actors.keyPlayer.fatigue,
+      supportPlayerId: actors.supportPlayer.id,
+      supportPlayerName: actors.supportPlayer.name
+    });
+  }
+  const rngStateAfterMatch = rng.getState();
+  const outcome = clubScore > opponentScore ? "W" : clubScore < opponentScore ? "L" : "D";
+  const starterSet = new Set(starterIds);
+  const reserveIds = roster.filter((p) => !starterSet.has(p.id)).map((p) => p.id);
+  const fatigueTransitions = roster.map((player) => {
+    const wasStarter = starterSet.has(player.id);
+    const rawDelta = wasStarter ? computeStarterPostMatchFatigueDelta(player.stamina) : CONFIG.postMatchReserveFatigueDelta;
+    const fatigueAfter = clampFatigue(player.fatigue + rawDelta);
+    return {
+      playerId: player.id,
+      playerName: player.name,
+      wasStarter,
+      stamina: player.stamina,
+      fatigueBefore: player.fatigue,
+      fatigueDelta: fatigueAfter - player.fatigue,
+      fatigueAfter
+    };
+  });
+  const decisiveEvents = generateDecisiveEvents(
+    possessions,
+    opponent,
+    clubPlan
+  );
+  const matchResult = {
+    fixtureNumber,
+    opponentId: opponent.id,
+    opponentName: opponent.name,
+    opponentShortName: opponent.shortName,
+    tendencyName: opponent.tendency.name,
+    clubPlan,
+    opponentPlan: opponent.defaultPlan,
+    starterIds: [...starterIds],
+    reserveIds,
+    prepActions: prepActions.map((a) => ({ ...a })),
+    teamRatingsAtKickoff: teamRatings,
+    opponentRatings: {
+      attack: opponent.attack,
+      defense: opponent.defense,
+      control: opponent.control
+    },
+    rngStateBeforeMatch,
+    rngStateAfterMatch,
+    possessions,
+    clubScore,
+    opponentScore,
+    outcome,
+    decisiveEvents,
+    fatigueTransitions,
+    fatigueApplied: false,
+    devChoiceApplied: false,
+    devChoice: null
+  };
+  return {
+    matchResult,
+    nextRngState: rngStateAfterMatch
+  };
+}
+function applyCommand(currentState, command) {
+  const state = cloneState(currentState);
+  switch (command.type) {
+    case "SET_STARTERS": {
+      if (state.phase !== "preparation") {
+        throw new Error("Can only change starters during preparation phase.");
+      }
+      const uniqueIds = Array.from(new Set(command.starterIds));
+      if (uniqueIds.length !== CONFIG.startersCount) {
+        throw new Error(
+          `Must select exactly ${CONFIG.startersCount} distinct starters.`
+        );
+      }
+      const rosterIds = new Set(state.roster.map((p) => p.id));
+      for (const id of uniqueIds) {
+        if (!rosterIds.has(id)) {
+          throw new Error(`Unknown player ID in starter list: ${id}`);
+        }
+      }
+      state.selectedStarterIds = uniqueIds;
+      state.commandLog.push(command);
+      return state;
+    }
+    case "SWAP_STARTER": {
+      if (state.phase !== "preparation") {
+        throw new Error("Can only swap starters during preparation phase.");
+      }
+      const starterIdx = state.selectedStarterIds.indexOf(command.starterId);
+      if (starterIdx === -1) {
+        throw new Error(`Player ${command.starterId} is not currently a starter.`);
+      }
+      if (state.selectedStarterIds.includes(command.reserveId)) {
+        throw new Error(`Player ${command.reserveId} is already a starter.`);
+      }
+      const existsInRoster = state.roster.some(
+        (p) => p.id === command.reserveId
+      );
+      if (!existsInRoster) {
+        throw new Error(`Unknown reserve player ID: ${command.reserveId}`);
+      }
+      state.selectedStarterIds[starterIdx] = command.reserveId;
+      state.commandLog.push(command);
+      return state;
+    }
+    case "SET_TACTICAL_PLAN": {
+      if (state.phase !== "preparation") {
+        throw new Error("Can only change tactical plan during preparation phase.");
+      }
+      if (!CONFIG.basePlanDistributions[command.plan]) {
+        throw new Error(`Invalid tactical plan: ${command.plan}`);
+      }
+      state.selectedPlan = command.plan;
+      state.commandLog.push(command);
+      return state;
+    }
+    case "SPEND_PREP_REST": {
+      if (state.phase !== "preparation") {
+        throw new Error("Can only spend preparation points during preparation phase.");
+      }
+      if (state.prepPointsRemaining <= 0) {
+        throw new Error("No preparation points remaining for this fixture.");
+      }
+      if (state.prepActionsThisFixture.some((a) => a.playerId === command.playerId)) {
+        throw new Error(
+          "Each player may receive at most one preparation action per fixture."
+        );
+      }
+      const player = state.roster.find((p) => p.id === command.playerId);
+      if (!player) {
+        throw new Error(`Unknown player ID: ${command.playerId}`);
+      }
+      const fatigueBefore = player.fatigue;
+      const fatigueAfter = clampFatigue(
+        player.fatigue + CONFIG.restFatigueDelta
+      );
+      player.fatigue = fatigueAfter;
+      state.prepPointsRemaining -= 1;
+      state.prepActionsThisFixture.push({
+        playerId: player.id,
+        playerName: player.name,
+        kind: "rest",
+        fatigueBefore,
+        fatigueAfter
+      });
+      state.commandLog.push(command);
+      return state;
+    }
+    case "SPEND_PREP_TRAIN": {
+      if (state.phase !== "preparation") {
+        throw new Error("Can only spend preparation points during preparation phase.");
+      }
+      if (state.prepPointsRemaining <= 0) {
+        throw new Error("No preparation points remaining for this fixture.");
+      }
+      if (state.prepActionsThisFixture.some((a) => a.playerId === command.playerId)) {
+        throw new Error(
+          "Each player may receive at most one preparation action per fixture."
+        );
+      }
+      if (!ATTRIBUTE_KEYS.includes(command.attribute)) {
+        throw new Error(`Invalid attribute: ${command.attribute}`);
+      }
+      const player = state.roster.find((p) => p.id === command.playerId);
+      if (!player) {
+        throw new Error(`Unknown player ID: ${command.playerId}`);
+      }
+      const attributeBefore = player[command.attribute];
+      if (attributeBefore >= CONFIG.maxAttribute) {
+        throw new Error(
+          `${player.name}'s ${command.attribute} is already at maximum (${CONFIG.maxAttribute}).`
+        );
+      }
+      const attributeAfter = clampAttribute(
+        attributeBefore + CONFIG.trainAttributeDelta
+      );
+      const fatigueBefore = player.fatigue;
+      const fatigueAfter = clampFatigue(
+        fatigueBefore + CONFIG.trainFatigueDelta
+      );
+      player[command.attribute] = attributeAfter;
+      player.fatigue = fatigueAfter;
+      state.prepPointsRemaining -= 1;
+      state.prepActionsThisFixture.push({
+        playerId: player.id,
+        playerName: player.name,
+        kind: "train",
+        attribute: command.attribute,
+        fatigueBefore,
+        fatigueAfter,
+        attributeBefore,
+        attributeAfter
+      });
+      state.commandLog.push(command);
+      return state;
+    }
+    case "RESET_PREP_ACTIONS": {
+      if (state.phase !== "preparation") {
+        throw new Error("Can only reset preparation actions during preparation phase.");
+      }
+      for (let i = state.prepActionsThisFixture.length - 1; i >= 0; i--) {
+        const action = state.prepActionsThisFixture[i];
+        const player = state.roster.find((p) => p.id === action.playerId);
+        if (player) {
+          player.fatigue = action.fatigueBefore;
+          if (action.kind === "train" && action.attribute && action.attributeBefore !== void 0) {
+            player[action.attribute] = action.attributeBefore;
+          }
+        }
+      }
+      state.prepActionsThisFixture = [];
+      state.prepPointsRemaining = CONFIG.prepPointsPerFixture;
+      state.commandLog.push(command);
+      return state;
+    }
+    case "COMMIT_MATCH": {
+      if (state.phase !== "preparation") {
+        throw new Error("Can only commit match from preparation phase.");
+      }
+      const { matchResult, nextRngState } = simulateMatch({
+        fixtureNumber: state.fixtureNumber,
+        roster: state.roster,
+        starterIds: state.selectedStarterIds,
+        clubPlan: state.selectedPlan,
+        prepActions: state.prepActionsThisFixture,
+        rngState: state.rngState
+      });
+      state.rngState = nextRngState;
+      if (!matchResult.fatigueApplied) {
+        const starterSet = new Set(state.selectedStarterIds);
+        for (const player of state.roster) {
+          const transition = matchResult.fatigueTransitions.find(
+            (t) => t.playerId === player.id
+          );
+          if (transition) {
+            player.fatigue = transition.fatigueAfter;
+          }
+          if (starterSet.has(player.id)) {
+            player.matchesStarted += 1;
+          } else {
+            player.matchesBenched += 1;
+          }
+        }
+        matchResult.fatigueApplied = true;
+      }
+      state.currentMatch = matchResult;
+      state.seasonHistory.push(matchResult);
+      state.phase = "match_review";
+      state.commandLog.push(command);
+      return state;
+    }
+    case "PROCEED_FROM_MATCH": {
+      if (state.phase !== "match_review") {
+        throw new Error("Can only proceed from match_review phase.");
+      }
+      if (state.fixtureNumber < CONFIG.seasonFixtures) {
+        state.phase = "development";
+      } else {
+        state.phase = "season_recap";
+      }
+      state.commandLog.push(command);
+      return state;
+    }
+    case "APPLY_DEVELOPMENT": {
+      if (state.phase !== "development") {
+        throw new Error("Can only apply post-match development during development phase.");
+      }
+      if (!state.currentMatch) {
+        throw new Error("No active match record for post-match development.");
+      }
+      if (state.currentMatch.devChoiceApplied) {
+        throw new Error("Post-match development has already been applied for this fixture.");
+      }
+      if (!ATTRIBUTE_KEYS.includes(command.attribute)) {
+        throw new Error(`Invalid attribute: ${command.attribute}`);
+      }
+      const player = state.roster.find((p) => p.id === command.playerId);
+      if (!player) {
+        throw new Error(`Unknown player ID: ${command.playerId}`);
+      }
+      const beforeValue = player[command.attribute];
+      if (beforeValue >= CONFIG.maxAttribute) {
+        throw new Error(
+          `${player.name}'s ${command.attribute} is already at maximum (${CONFIG.maxAttribute}).`
+        );
+      }
+      const afterValue = clampAttribute(
+        beforeValue + CONFIG.postMatchDevAttributeDelta
+      );
+      player[command.attribute] = afterValue;
+      const devRecord = {
+        playerId: player.id,
+        playerName: player.name,
+        attribute: command.attribute,
+        beforeValue,
+        afterValue
+      };
+      state.currentMatch.devChoiceApplied = true;
+      state.currentMatch.devChoice = devRecord;
+      const historyEntry = state.seasonHistory[state.seasonHistory.length - 1];
+      if (historyEntry && historyEntry.fixtureNumber === state.currentMatch.fixtureNumber) {
+        historyEntry.devChoiceApplied = true;
+        historyEntry.devChoice = devRecord;
+      }
+      state.fixtureNumber += 1;
+      state.prepPointsRemaining = CONFIG.prepPointsPerFixture;
+      state.prepActionsThisFixture = [];
+      state.phase = "preparation";
+      state.commandLog.push(command);
+      return state;
+    }
+    default: {
+      const exhaustiveCheck = command;
+      throw new Error(`Unhandled command: ${JSON.stringify(exhaustiveCheck)}`);
+    }
+  }
+}
+function getSeasonSummary(state) {
+  let wins = 0;
+  let draws = 0;
+  let losses = 0;
+  let pointsFor = 0;
+  let pointsAgainst = 0;
+  for (const m of state.seasonHistory) {
+    pointsFor += m.clubScore;
+    pointsAgainst += m.opponentScore;
+    if (m.outcome === "W") wins += 1;
+    else if (m.outcome === "D") draws += 1;
+    else losses += 1;
+  }
+  const isComplete = state.seasonHistory.length >= CONFIG.seasonFixtures;
+  const succeeded = wins >= CONFIG.seasonWinTarget;
+  return {
+    wins,
+    draws,
+    losses,
+    pointsFor,
+    pointsAgainst,
+    targetWins: CONFIG.seasonWinTarget,
+    isComplete,
+    succeeded
+  };
+}
+
+// games/01-one-more-season/src/persistence.ts
+function validateAndSanitizeState(candidate) {
+  if (!candidate || typeof candidate !== "object") {
+    throw new Error("Save data is not a valid object.");
+  }
+  const raw = candidate;
+  if (raw.rulesVersion !== RULES_VERSION) {
+    throw new Error(
+      `Incompatible rulesVersion: expected ${RULES_VERSION}, got ${String(raw.rulesVersion)}`
+    );
+  }
+  if (typeof raw.seed !== "number" || typeof raw.rngState !== "number" || typeof raw.fixtureNumber !== "number" || raw.fixtureNumber < 1 || raw.fixtureNumber > CONFIG.seasonFixtures) {
+    throw new Error("Invalid seed, rngState, or fixtureNumber in save state.");
+  }
+  const validPhases = [
+    "preparation",
+    "match_review",
+    "development",
+    "season_recap"
+  ];
+  if (!raw.phase || !validPhases.includes(raw.phase)) {
+    throw new Error(`Invalid game phase: ${String(raw.phase)}`);
+  }
+  if (!Array.isArray(raw.roster) || raw.roster.length !== CONFIG.rosterSize) {
+    throw new Error(`Roster must contain exactly ${CONFIG.rosterSize} players.`);
+  }
+  for (const player of raw.roster) {
+    if (!player || typeof player.id !== "string" || typeof player.name !== "string") {
+      throw new Error("Invalid player entry in roster.");
+    }
+    for (const key of ATTRIBUTE_KEYS) {
+      if (typeof player[key] !== "number") {
+        throw new Error(`Player ${player.id} missing numeric attribute ${key}.`);
+      }
+      player[key] = clampAttribute(player[key]);
+    }
+    if (typeof player.fatigue !== "number") {
+      throw new Error(`Player ${player.id} missing numeric fatigue.`);
+    }
+    player.fatigue = clampFatigue(player.fatigue);
+  }
+  if (!Array.isArray(raw.selectedStarterIds) || new Set(raw.selectedStarterIds).size !== CONFIG.startersCount) {
+    throw new Error(
+      `selectedStarterIds must contain ${CONFIG.startersCount} unique IDs.`
+    );
+  }
+  if (!raw.selectedPlan || !TACTICAL_PLAN_IDS.includes(raw.selectedPlan)) {
+    throw new Error(`Invalid selectedPlan: ${String(raw.selectedPlan)}`);
+  }
+  if (raw.currentMatch) {
+    raw.currentMatch.fatigueApplied = Boolean(raw.currentMatch.fatigueApplied);
+    raw.currentMatch.devChoiceApplied = Boolean(
+      raw.currentMatch.devChoiceApplied
+    );
+  }
+  if (Array.isArray(raw.seasonHistory)) {
+    for (const m of raw.seasonHistory) {
+      m.fatigueApplied = Boolean(m.fatigueApplied);
+      m.devChoiceApplied = Boolean(m.devChoiceApplied);
+    }
+  } else {
+    raw.seasonHistory = [];
+  }
+  return cloneState(raw);
+}
+function serializeSaveEnvelope(state) {
+  const validated = validateAndSanitizeState(state);
+  const envelope = {
+    schemaVersion: SAVE_SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    savedAtIso: (/* @__PURE__ */ new Date()).toISOString(),
+    state: validated
+  };
+  return JSON.stringify(envelope, null, 2);
+}
+function parseSaveEnvelope(rawJson) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    throw new Error("Corrupted save JSON: unable to parse.");
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Save payload must be a JSON object.");
+  }
+  const env = parsed;
+  if (env.schemaVersion !== SAVE_SCHEMA_VERSION) {
+    throw new Error(
+      `Unsupported save schemaVersion: expected ${SAVE_SCHEMA_VERSION}, got ${String(env.schemaVersion)}`
+    );
+  }
+  return validateAndSanitizeState(env.state);
+}
+function saveStateToStorage(state, storageKey = STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return false;
+    }
+    const payload = serializeSaveEnvelope(state);
+    window.localStorage.setItem(storageKey, payload);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function loadStateFromStorage(fallbackSeed = CONFIG.defaultSeed, storageKey = STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) {
+      return {
+        state: createInitialState(fallbackSeed),
+        loadedFromSave: false
+      };
+    }
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      return {
+        state: createInitialState(fallbackSeed),
+        loadedFromSave: false
+      };
+    }
+    const restored = parseSaveEnvelope(raw);
+    return {
+      state: restored,
+      loadedFromSave: true
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown save error";
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+    }
+    return {
+      state: createInitialState(fallbackSeed),
+      loadedFromSave: false,
+      recoveredFromError: message
+    };
+  }
+}
+function clearSavedState(storageKey = STORAGE_KEY) {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(storageKey);
+    }
+  } catch {
+  }
+}
+
+// games/01-one-more-season/src/ui.ts
+var OneMoreSeasonUI = class {
+  container;
+  state;
+  debugMode;
+  sound;
+  statusToast = null;
+  selectedPossessionIdx = 16;
+  // 1..16 revealed during playback
+  inspectedPossessionIdx = 1;
+  // 1..16 focused in detail view
+  playbackTimer = null;
+  isPlayingBack = false;
+  showSaveModal = false;
+  importBuffer = "";
+  keydownHandler;
+  constructor(container2, options) {
+    this.container = container2;
+    this.debugMode = Boolean(options?.debug);
+    this.sound = new SoundController();
+    if (options?.initialSeed !== void 0) {
+      this.state = createInitialState(options.initialSeed);
+      saveStateToStorage(this.state);
+    } else {
+      const loaded = loadStateFromStorage(CONFIG.defaultSeed);
+      this.state = loaded.state;
+      if (loaded.recoveredFromError) {
+        this.statusToast = {
+          text: `Recovered from invalid save data (${loaded.recoveredFromError}). Started fresh season.`,
+          kind: "warn"
+        };
+      }
+    }
+    if (this.state.currentMatch) {
+      this.selectedPossessionIdx = this.state.currentMatch.possessions.length;
+      const firstDecisive = this.state.currentMatch.decisiveEvents[0]?.possessionIndex ?? 1;
+      this.inspectedPossessionIdx = firstDecisive;
+    }
+    this.keydownHandler = (e) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+        return;
+      }
+      if (e.key === "d" || e.key === "D") {
+        e.preventDefault();
+        this.toggleDebug();
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("keydown", this.keydownHandler);
+    }
+    this.injectStyles();
+    this.render();
+  }
+  destroy() {
+    this.stopPlayback();
+    if (typeof window !== "undefined") {
+      window.removeEventListener("keydown", this.keydownHandler);
+    }
+    this.container.innerHTML = "";
+  }
+  getStateSnapshot() {
+    return JSON.parse(JSON.stringify(this.state));
+  }
+  restartWithSeed(seed) {
+    this.stopPlayback();
+    this.state = createInitialState(seed);
+    clearSavedState();
+    saveStateToStorage(this.state);
+    this.statusToast = {
+      text: `Started new 6-fixture season with Seed #${this.state.seed}.`,
+      kind: "good"
+    };
+    this.render();
+  }
+  toggleDebug(force) {
+    this.debugMode = force !== void 0 ? force : !this.debugMode;
+    this.sound.playClick(640);
+    this.render();
+  }
+  dispatch(command, toastText) {
+    try {
+      this.state = applyCommand(this.state, command);
+      saveStateToStorage(this.state);
+      if (toastText) {
+        this.statusToast = { text: toastText, kind: "good" };
+      } else {
+        this.statusToast = null;
+      }
+      if (command.type === "COMMIT_MATCH") {
+        this.sound.playWhistle();
+        this.startAnimatedPlayback();
+        return;
+      } else {
+        this.sound.playClick();
+      }
+      this.render();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.statusToast = { text: msg, kind: "warn" };
+      this.render();
+    }
+  }
+  startAnimatedPlayback() {
+    this.stopPlayback();
+    if (!this.state.currentMatch) {
+      this.render();
+      return;
+    }
+    this.isPlayingBack = true;
+    this.selectedPossessionIdx = 1;
+    this.inspectedPossessionIdx = 1;
+    this.render();
+    const firstPos = this.state.currentMatch.possessions[0];
+    if (firstPos) {
+      this.sound.playPossessionChime(firstPos.team, firstPos.points);
+    }
+    if (typeof window !== "undefined") {
+      this.playbackTimer = window.setInterval(() => {
+        if (!this.state.currentMatch) {
+          this.stopPlayback();
+          return;
+        }
+        if (this.selectedPossessionIdx < CONFIG.totalPossessions) {
+          this.selectedPossessionIdx += 1;
+          this.inspectedPossessionIdx = this.selectedPossessionIdx;
+          const pos = this.state.currentMatch.possessions[this.selectedPossessionIdx - 1];
+          if (pos) {
+            this.sound.playPossessionChime(pos.team, pos.points);
+          }
+          this.render();
+        } else {
+          this.stopPlayback();
+          const firstDecisive = this.state.currentMatch.decisiveEvents[0]?.possessionIndex ?? 16;
+          this.inspectedPossessionIdx = firstDecisive;
+          this.sound.playWhistle();
+          this.render();
+        }
+      }, 280);
+    }
+  }
+  stopPlayback() {
+    if (this.playbackTimer !== null && typeof window !== "undefined") {
+      window.clearInterval(this.playbackTimer);
+    }
+    this.playbackTimer = null;
+    this.isPlayingBack = false;
+  }
+  skipToFullTime() {
+    this.stopPlayback();
+    this.selectedPossessionIdx = CONFIG.totalPossessions;
+    if (this.state.currentMatch) {
+      this.inspectedPossessionIdx = this.state.currentMatch.decisiveEvents[0]?.possessionIndex ?? 16;
+    }
+    this.sound.playWhistle();
+    this.render();
+  }
+  injectStyles() {
+    if (typeof document === "undefined") return;
+    if (document.getElementById("oms-game01-styles")) return;
+    const style = document.createElement("style");
+    style.id = "oms-game01-styles";
+    style.textContent = `
+      .oms-root {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: radial-gradient(circle at top, #13221d 0%, #0b1411 55%, #070c0a 100%);
+        color: #f1f5f9;
+        min-height: 100%;
+        padding: 14px;
+        box-sizing: border-box;
+      }
+      .oms-shell {
+        max-width: 1240px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .oms-topbar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        background: rgba(15, 29, 24, 0.92);
+        border: 1px solid rgba(52, 211, 153, 0.28);
+        border-radius: 12px;
+        padding: 12px 16px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      }
+      .oms-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .oms-crest {
+        width: 44px;
+        height: 44px;
+        flex-shrink: 0;
+      }
+      .oms-title-group h1 {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        color: #ecfdf5;
+      }
+      .oms-title-group p {
+        margin: 2px 0 0;
+        font-size: 0.8rem;
+        color: #94a3b8;
+      }
+      .oms-record-pills {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+      .oms-pill {
+        background: rgba(30, 41, 59, 0.8);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 999px;
+        padding: 5px 11px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #e2e8f0;
+      }
+      .oms-pill.accent {
+        background: rgba(16, 185, 129, 0.16);
+        border-color: rgba(52, 211, 153, 0.45);
+        color: #6ee7b7;
+      }
+      .oms-pill.warn {
+        background: rgba(245, 158, 11, 0.16);
+        border-color: rgba(251, 191, 36, 0.45);
+        color: #fde68a;
+      }
+      .oms-btn {
+        cursor: pointer;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: #1e293b;
+        color: #f8fafc;
+        border-radius: 8px;
+        padding: 6px 11px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        transition: all 0.14s ease;
+      }
+      .oms-btn:hover:not(:disabled) {
+        background: #334155;
+        border-color: #94a3b8;
+      }
+      .oms-btn:disabled {
+        opacity: 0.42;
+        cursor: not-allowed;
+      }
+      .oms-btn.primary {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        border-color: #34d399;
+        color: #022c22;
+        font-weight: 800;
+      }
+      .oms-btn.primary:hover:not(:disabled) {
+        filter: brightness(1.08);
+      }
+      .oms-btn.amber {
+        background: rgba(245, 158, 11, 0.2);
+        border-color: rgba(251, 191, 36, 0.55);
+        color: #fde68a;
+      }
+      .oms-btn.sky {
+        background: rgba(14, 165, 233, 0.2);
+        border-color: rgba(56, 189, 248, 0.55);
+        color: #bae6fd;
+      }
+      .oms-toast {
+        padding: 9px 14px;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .oms-toast.good {
+        background: rgba(16, 185, 129, 0.18);
+        border: 1px solid rgba(52, 211, 153, 0.45);
+        color: #a7f3d0;
+      }
+      .oms-toast.warn {
+        background: rgba(245, 158, 11, 0.2);
+        border: 1px solid rgba(251, 191, 36, 0.5);
+        color: #fde68a;
+      }
+      .oms-toast.info {
+        background: rgba(59, 130, 246, 0.18);
+        border: 1px solid rgba(96, 165, 250, 0.45);
+        color: #bfdbfe;
+      }
+      .oms-fixture-track {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .oms-fixture-step {
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 8px;
+        padding: 7px 9px;
+        font-size: 0.74rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .oms-fixture-step.current {
+        border-color: #34d399;
+        background: rgba(16, 185, 129, 0.14);
+      }
+      .oms-badge-w { color: #34d399; font-weight: 800; }
+      .oms-badge-d { color: #fbbf24; font-weight: 800; }
+      .oms-badge-l { color: #f87171; font-weight: 800; }
+      .oms-main-grid {
+        display: grid;
+        grid-template-columns: 1.08fr 0.92fr;
+        gap: 14px;
+      }
+      @media (max-width: 960px) {
+        .oms-main-grid {
+          grid-template-columns: 1fr;
+        }
+        .oms-fixture-track {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+      .oms-panel {
+        background: rgba(15, 25, 22, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 12px;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .oms-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+        padding-bottom: 8px;
+      }
+      .oms-panel-header h2 {
+        margin: 0;
+        font-size: 0.98rem;
+        font-weight: 700;
+        color: #f8fafc;
+      }
+      .oms-scouting-box {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.95));
+        border-left: 4px solid #f59e0b;
+        border-radius: 8px;
+        padding: 11px 13px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .oms-roster-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .oms-player-card {
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 10px;
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .oms-player-card.starter {
+        border-color: rgba(52, 211, 153, 0.55);
+        background: rgba(6, 78, 59, 0.24);
+      }
+      .oms-player-card.tired-warn {
+        border-color: rgba(251, 191, 36, 0.65);
+      }
+      .oms-player-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .oms-role-tag {
+        font-size: 0.68rem;
+        font-weight: 800;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: #334155;
+        color: #e2e8f0;
+      }
+      .oms-role-tag.FWD { background: rgba(239, 68, 68, 0.25); color: #fca5a5; }
+      .oms-role-tag.MID { background: rgba(59, 130, 246, 0.25); color: #93c5fd; }
+      .oms-role-tag.DEF { background: rgba(16, 185, 129, 0.25); color: #6ee7b7; }
+      .oms-role-tag.UTL { background: rgba(168, 85, 247, 0.25); color: #d8b4fe; }
+      .oms-stats-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        font-size: 0.75rem;
+      }
+      .oms-stat-chip {
+        background: rgba(15, 23, 42, 0.75);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 6px;
+        padding: 4px 6px;
+        text-align: center;
+      }
+      .oms-stat-chip .eff {
+        color: #34d399;
+        font-weight: 700;
+      }
+      .oms-fatigue-bar-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.74rem;
+      }
+      .oms-fatigue-bar {
+        flex: 1;
+        height: 7px;
+        background: #1e293b;
+        border-radius: 999px;
+        overflow: hidden;
+      }
+      .oms-fatigue-fill {
+        height: 100%;
+        border-radius: 999px;
+      }
+      .oms-prep-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        align-items: center;
+      }
+      .oms-plan-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+      @media (max-width: 600px) {
+        .oms-plan-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .oms-plan-card {
+        cursor: pointer;
+        background: rgba(15, 23, 42, 0.78);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 9px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        transition: all 0.14s ease;
+      }
+      .oms-plan-card.selected {
+        border-color: #34d399;
+        background: rgba(16, 185, 129, 0.18);
+        box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.4);
+      }
+      .oms-pitch-canvas {
+        width: 100%;
+        height: 250px;
+        border-radius: 10px;
+        border: 1px solid rgba(52, 211, 153, 0.35);
+        background: #0d3b29;
+        display: block;
+      }
+      .oms-possession-strip {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .oms-pos-pill {
+        cursor: pointer;
+        border-radius: 7px;
+        padding: 6px 4px;
+        text-align: center;
+        font-size: 0.72rem;
+        font-weight: 700;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(15, 23, 42, 0.85);
+      }
+      .oms-pos-pill.active {
+        outline: 2px solid #f8fafc;
+      }
+      .oms-pos-pill.club-7 { background: rgba(16, 185, 129, 0.32); border-color: #34d399; color: #a7f3d0; }
+      .oms-pos-pill.club-3 { background: rgba(16, 185, 129, 0.16); border-color: rgba(52, 211, 153, 0.45); color: #6ee7b7; }
+      .oms-pos-pill.club-0 { background: rgba(30, 41, 59, 0.7); color: #94a3b8; }
+      .oms-pos-pill.opp-7 { background: rgba(239, 68, 68, 0.32); border-color: #f87171; color: #fecaca; }
+      .oms-pos-pill.opp-3 { background: rgba(245, 158, 11, 0.22); border-color: #fbbf24; color: #fde68a; }
+      .oms-pos-pill.opp-0 { background: rgba(16, 185, 129, 0.12); color: #cbd5e1; }
+      .oms-decisive-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .oms-decisive-card {
+        background: rgba(15, 23, 42, 0.85);
+        border-left: 4px solid #34d399;
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+      .oms-debug-panel {
+        background: rgba(9, 13, 22, 0.95);
+        border: 1px solid rgba(56, 189, 248, 0.45);
+        border-radius: 10px;
+        padding: 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.74rem;
+        overflow-x: auto;
+      }
+      .oms-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.74rem;
+      }
+      .oms-table th, .oms-table td {
+        padding: 5px 7px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+        text-align: left;
+      }
+      .oms-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.72);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 999;
+        padding: 16px;
+      }
+      .oms-modal {
+        background: #0f172a;
+        border: 1px solid rgba(52, 211, 153, 0.45);
+        border-radius: 12px;
+        max-width: 640px;
+        width: 100%;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .oms-textarea {
+        width: 100%;
+        min-height: 160px;
+        background: #020617;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 8px;
+        font-family: monospace;
+        font-size: 0.74rem;
+        box-sizing: border-box;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  render() {
+    const summary = getSeasonSummary(this.state);
+    const opponent = getOpponentForFixture(this.state.fixtureNumber);
+    this.container.innerHTML = `
+      <div class="oms-root" data-game-id="01-one-more-season" data-phase="${this.state.phase}">
+        <div class="oms-shell">
+          ${this.renderTopBar(summary)}
+          ${this.statusToast ? `<div class="oms-toast ${this.statusToast.kind}"><span>${this.escapeHtml(this.statusToast.text)}</span><button class="oms-btn" data-action="dismiss-toast">\u2715</button></div>` : ""}
+          ${this.renderFixtureTrack()}
+          ${this.state.phase === "preparation" ? this.renderPreparationView(opponent) : ""}
+          ${this.state.phase === "match_review" ? this.renderMatchReviewView(opponent) : ""}
+          ${this.state.phase === "development" ? this.renderDevelopmentView(opponent) : ""}
+          ${this.state.phase === "season_recap" ? this.renderSeasonRecapView(summary) : ""}
+          ${this.debugMode ? this.renderDebugInspector(opponent) : ""}
+          ${this.showSaveModal ? this.renderSaveModal() : ""}
+        </div>
+      </div>
+    `;
+    this.drawPitchCanvas(opponent);
+    this.bindEvents();
+  }
+  renderTopBar(summary) {
+    return `
+      <header class="oms-topbar">
+        <div class="oms-brand">
+          <svg class="oms-crest" viewBox="0 0 64 64" aria-hidden="true">
+            <path d="M8 10 L32 4 L56 10 L56 34 C56 48 32 58 32 60 C32 58 8 48 8 34 Z" fill="#065f46" stroke="#34d399" stroke-width="3"/>
+            <circle cx="32" cy="30" r="11" fill="#10b981" opacity="0.25"/>
+            <path d="M22 36 L32 18 L42 36 Z" fill="#fbbf24"/>
+          </svg>
+          <div class="oms-title-group">
+            <h1>${CONFIG.clubName} \u2014 One More Season</h1>
+            <p>Five-a-Side Club Management \u2022 Win \u2265 ${CONFIG.seasonWinTarget} of ${CONFIG.seasonFixtures} Fixtures (Draws = 0 Wins)</p>
+          </div>
+        </div>
+        <div class="oms-record-pills">
+          <span class="oms-pill accent" data-testid="season-record">Record: ${summary.wins}W - ${summary.draws}D - ${summary.losses}L</span>
+          <span class="oms-pill ${summary.wins >= CONFIG.seasonWinTarget ? "accent" : "warn"}">Target: ${summary.wins}/${CONFIG.seasonWinTarget} Wins</span>
+          <span class="oms-pill">Fixture ${this.state.fixtureNumber}/${CONFIG.seasonFixtures}</span>
+          <span class="oms-pill">Seed #${this.state.seed}</span>
+          <button class="oms-btn ${this.debugMode ? "sky" : ""}" data-action="toggle-debug" title="Keyboard shortcut: [D]">
+            ${this.debugMode ? "Hide [D] Math" : "[D] Math Inspector"}
+          </button>
+          <button class="oms-btn" data-action="toggle-mute">
+            ${this.sound.isMuted() ? "\u{1F507} Muted" : "\u{1F50A} Audio"}
+          </button>
+          <button class="oms-btn" data-action="open-save-modal">Save / Seed</button>
+        </div>
+      </header>
+    `;
+  }
+  renderFixtureTrack() {
+    const items = [];
+    for (let f = 1; f <= CONFIG.seasonFixtures; f++) {
+      const opp = getOpponentForFixture(f);
+      const historyMatch = this.state.seasonHistory.find(
+        (m) => m.fixtureNumber === f
+      );
+      const isCurrent = f === this.state.fixtureNumber && this.state.phase !== "season_recap";
+      let resultBadge = `<span style="color:#64748b">Upcoming</span>`;
+      if (historyMatch) {
+        const cls = historyMatch.outcome === "W" ? "oms-badge-w" : historyMatch.outcome === "D" ? "oms-badge-d" : "oms-badge-l";
+        resultBadge = `<span class="${cls}">${historyMatch.outcome} ${historyMatch.clubScore}\u2013${historyMatch.opponentScore}</span>`;
+      }
+      items.push(`
+        <div class="oms-fixture-step ${isCurrent ? "current" : ""}">
+          <div>
+            <strong>F${f}: ${opp.shortName}</strong>
+            <div style="font-size:0.68rem;color:#94a3b8">${opp.tendency.vulnerableTo} weak</div>
+          </div>
+          ${resultBadge}
+        </div>
+      `);
+    }
+    return `<section class="oms-fixture-track">${items.join("")}</section>`;
+  }
+  renderPreparationView(opponent) {
+    const teamRatings = computeTeamEffectiveRatings(
+      this.state.roster,
+      this.state.selectedStarterIds
+    );
+    const clubOdds = computePossessionProbabilities({
+      team: "club",
+      clubPlan: this.state.selectedPlan,
+      teamRatings,
+      opponent
+    });
+    const oppOdds = computePossessionProbabilities({
+      team: "opponent",
+      clubPlan: this.state.selectedPlan,
+      teamRatings,
+      opponent
+    });
+    const starters = this.state.roster.filter(
+      (p) => this.state.selectedStarterIds.includes(p.id)
+    );
+    const reserves = this.state.roster.filter(
+      (p) => !this.state.selectedStarterIds.includes(p.id)
+    );
+    const tiredStarters = starters.filter((p) => p.fatigue >= 40);
+    return `
+      <div class="oms-main-grid">
+        <div class="oms-panel">
+          <div class="oms-panel-header">
+            <h2>1. Squad Selection & Preparation (${this.state.prepPointsRemaining}/${CONFIG.prepPointsPerFixture} Prep Points Left)</h2>
+            <div style="display:flex;gap:6px;align-items:center">
+              ${this.state.prepActionsThisFixture.length > 0 ? `<button class="oms-btn" data-action="reset-prep">Undo Prep (${this.state.prepActionsThisFixture.length})</button>` : ""}
+            </div>
+          </div>
+
+          <div style="font-size:0.78rem;color:#cbd5e1;line-height:1.4">
+            Choose <strong>5 starters</strong> (gain <code>24 - Stamina</code> fatigue after match) and <strong>3 reserves</strong> (recover <code>-18</code> fatigue).
+            Spend up to <strong>2 Prep Points</strong> (max 1 per player): <strong>Rest (-24 Fatigue)</strong> or <strong>Train (+1 Stat, +8 Fatigue)</strong>.
+          </div>
+
+          ${tiredStarters.length > 0 ? `<div class="oms-toast warn" style="padding:7px 11px">
+                  <span>\u26A0\uFE0F Starter Fatigue Alert: ${tiredStarters.map((p) => `${p.name} (${p.fatigue}% fatigue \u2192 ${(computeEffectiveMultiplier(p.fatigue) * 100).toFixed(0)}% eff.)`).join(", ")}. Consider Resting (-24) or swapping in a fresh Reserve!</span>
+                </div>` : ""}
+
+          <div style="font-size:0.8rem;font-weight:700;color:#6ee7b7">Starting Lineup (5 of 8)</div>
+          <div class="oms-roster-list">
+            ${starters.map((p) => this.renderPlayerCard(p, true, reserves)).join("")}
+          </div>
+
+          <div style="font-size:0.8rem;font-weight:700;color:#94a3b8;margin-top:4px">Bench Reserves (3 of 8 \u2014 Auto-Rest -18 Fatigue After Match)</div>
+          <div class="oms-roster-list">
+            ${reserves.map((p) => this.renderPlayerCard(p, false, starters)).join("")}
+          </div>
+        </div>
+
+        <div class="oms-panel">
+          <div class="oms-panel-header">
+            <h2>2. Fixture ${this.state.fixtureNumber} Scouting & Tactical Plan</h2>
+            <span class="oms-pill warn">Tendency: ${opponent.tendency.name}</span>
+          </div>
+
+          <div class="oms-scouting-box">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+              <strong style="font-size:0.95rem;color:#fef3c7">vs ${opponent.name} (${opponent.nickname})</strong>
+              <span style="font-size:0.76rem;color:#fde68a">Vulnerable to: <strong>${opponent.tendency.vulnerableTo}</strong></span>
+            </div>
+            <div style="font-size:0.8rem;color:#e2e8f0;line-height:1.45">${opponent.scoutingReport}</div>
+            <div style="font-size:0.76rem;color:#6ee7b7;font-weight:600">${opponent.tacticalHint}</div>
+            <div style="display:flex;gap:12px;font-size:0.75rem;color:#94a3b8;margin-top:2px">
+              <span>Opp Attack: <strong>${opponent.attack}</strong></span>
+              <span>Opp Defense: <strong>${opponent.defense}</strong></span>
+              <span>Opp Control: <strong>${opponent.control}</strong></span>
+              <span>Opp Base Style: <strong>${opponent.defaultPlan}</strong></span>
+            </div>
+          </div>
+
+          <canvas id="oms-pitch-canvas" class="oms-pitch-canvas" width="600" height="260"></canvas>
+
+          <div style="font-size:0.82rem;font-weight:700;color:#f8fafc">Choose Tactical Plan (8 Possessions Each)</div>
+          <div class="oms-plan-grid">
+            ${TACTICAL_PLANS.map((plan) => {
+      const selected = this.state.selectedPlan === plan.id;
+      const mod = opponent.tendency.clubPlanModifier[plan.id];
+      const modStr = mod >= 0 ? `+${(mod * 100).toFixed(0)}%` : `${(mod * 100).toFixed(0)}%`;
+      return `
+                <div class="oms-plan-card ${selected ? "selected" : ""}" data-action="select-plan" data-plan="${plan.id}">
+                  <div style="display:flex;justify-content:space-between;align-items:center">
+                    <strong>${plan.id}</strong>
+                    <span class="oms-pill ${mod > 0.05 ? "accent" : mod < 0 ? "warn" : ""}" style="padding:2px 7px;font-size:0.7rem">
+                      Tendency ${modStr}
+                    </span>
+                  </div>
+                  <div style="font-size:0.72rem;color:#cbd5e1">${plan.description}</div>
+                  <div style="font-size:0.7rem;color:#94a3b8">
+                    Base: 0pt ${(plan.baseDistribution.p0 * 100).toFixed(0)}% \u2022 3pt ${(plan.baseDistribution.p3 * 100).toFixed(0)}% \u2022 7pt ${(plan.baseDistribution.p7 * 100).toFixed(0)}%
+                  </div>
+                </div>
+              `;
+    }).join("")}
+          </div>
+
+          <div style="background:rgba(15,23,42,0.85);border:1px solid rgba(52,211,153,0.3);border-radius:9px;padding:10px 12px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.78rem">
+              <span><strong>Live Possession Odds Preview</strong> (${this.state.selectedPlan})</span>
+              <span style="color:#6ee7b7">Shift: ${clubOdds.totalShift >= 0 ? "+" : ""}${(clubOdds.totalShift * 100).toFixed(1)}% (Cap \xB115%)</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:0.75rem">
+              <div>
+                <div style="color:#94a3b8;margin-bottom:2px">Ironvale Attack (${teamRatings.effectiveAttack.toFixed(1)} ATK + ${teamRatings.effectiveControl.toFixed(1)} CTL vs ${opponent.defense + opponent.control})</div>
+                <div>0 pts: <strong>${(clubOdds.probabilities.p0 * 100).toFixed(1)}%</strong> \u2022 3 pts: <strong>${(clubOdds.probabilities.p3 * 100).toFixed(1)}%</strong> \u2022 7 pts: <strong style="color:#34d399">${(clubOdds.probabilities.p7 * 100).toFixed(1)}%</strong></div>
+              </div>
+              <div>
+                <div style="color:#94a3b8;margin-bottom:2px">${opponent.shortName} Attack (${opponent.attack + opponent.control} vs Ironvale ${teamRatings.effectiveDefense.toFixed(1)} DEF + ${teamRatings.effectiveControl.toFixed(1)} CTL)</div>
+                <div>0 pts: <strong>${(oppOdds.probabilities.p0 * 100).toFixed(1)}%</strong> \u2022 3 pts: <strong>${(oppOdds.probabilities.p3 * 100).toFixed(1)}%</strong> \u2022 7 pts: <strong style="color:#f87171">${(oppOdds.probabilities.p7 * 100).toFixed(1)}%</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <button class="oms-btn primary" style="padding:12px;font-size:0.95rem" data-action="commit-match" data-testid="commit-match-btn">
+            \u26BD Commit Lineup & Kick Off Fixture ${this.state.fixtureNumber} (16 Possessions)
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  renderPlayerCard(p, isStarter, swapTargets) {
+    const mult = computeEffectiveMultiplier(p.fatigue);
+    const effAtk = computeEffectiveStat(p.attack, p.fatigue);
+    const effDef = computeEffectiveStat(p.defense, p.fatigue);
+    const effCtl = computeEffectiveStat(p.control, p.fatigue);
+    const alreadyPrepped = this.state.prepActionsThisFixture.find(
+      (a) => a.playerId === p.id
+    );
+    const canSpendPrep = this.state.prepPointsRemaining > 0 && !alreadyPrepped;
+    const fatigueColor = p.fatigue >= 45 ? "#f59e0b" : p.fatigue >= 25 ? "#38bdf8" : "#10b981";
+    return `
+      <div class="oms-player-card ${isStarter ? "starter" : ""} ${isStarter && p.fatigue >= 45 ? "tired-warn" : ""}" data-player-id="${p.id}">
+        <div class="oms-player-top">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span class="oms-role-tag ${p.role}">${p.role}</span>
+            <strong>#${p.number} ${p.name}</strong>
+            <span style="font-size:0.72rem;color:#94a3b8">(${p.roleTitle})</span>
+            ${alreadyPrepped ? `<span class="oms-pill accent" style="padding:1px 7px;font-size:0.68rem">Prepped: ${alreadyPrepped.kind === "rest" ? "Rested -24" : `Trained +1 ${alreadyPrepped.attribute}`}</span>` : ""}
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            ${isStarter ? `<select class="oms-btn" style="padding:3px 7px;font-size:0.72rem" data-action="swap-starter-select" data-starter-id="${p.id}" aria-label="Swap starter ${p.name}">
+                    <option value="">Swap with Reserve...</option>
+                    ${swapTargets.map((r) => `<option value="${r.id}">\u21C4 #${r.number} ${r.name} (${r.role}, Fat ${r.fatigue}%)</option>`).join("")}
+                  </select>` : `<button class="oms-btn" style="padding:3px 8px;font-size:0.72rem" data-action="quick-sub-in" data-reserve-id="${p.id}">
+                    Sub In for Most Tired Starter
+                  </button>`}
+          </div>
+        </div>
+
+        <div class="oms-stats-row">
+          <div class="oms-stat-chip" title="Effective Attack = Attack \xD7 (1 - Fatigue/200)">
+            ATK <strong>${p.attack}</strong> <span class="eff">(${effAtk.toFixed(1)})</span>
+          </div>
+          <div class="oms-stat-chip" title="Effective Defense = Defense \xD7 (1 - Fatigue/200)">
+            DEF <strong>${p.defense}</strong> <span class="eff">(${effDef.toFixed(1)})</span>
+          </div>
+          <div class="oms-stat-chip" title="Effective Control = Control \xD7 (1 - Fatigue/200)">
+            CTL <strong>${p.control}</strong> <span class="eff">(${effCtl.toFixed(1)})</span>
+          </div>
+          <div class="oms-stat-chip" title="Stamina reduces post-match starter fatigue gain (24 - Stamina)">
+            STA <strong>${p.stamina}</strong> <span style="color:#94a3b8">(+${computeStarterPostMatchFatigueDelta(p.stamina)}/gm)</span>
+          </div>
+        </div>
+
+        <div class="oms-fatigue-bar-wrap">
+          <span>Fatigue: <strong>${p.fatigue}%</strong> (${(mult * 100).toFixed(1)}% eff.)</span>
+          <div class="oms-fatigue-bar">
+            <div class="oms-fatigue-fill" style="width:${p.fatigue}%;background:${fatigueColor}"></div>
+          </div>
+        </div>
+
+        <div class="oms-prep-actions">
+          <button class="oms-btn amber" style="padding:3px 8px;font-size:0.71rem"
+            data-action="prep-rest" data-player-id="${p.id}"
+            ${!canSpendPrep || p.fatigue === 0 ? "disabled" : ""}>
+            Rest (-24 Fat)
+          </button>
+          ${ATTRIBUTE_KEYS.map(
+      (attr) => `
+            <button class="oms-btn sky" style="padding:3px 7px;font-size:0.71rem"
+              data-action="prep-train" data-player-id="${p.id}" data-attr="${attr}"
+              ${!canSpendPrep || p[attr] >= CONFIG.maxAttribute ? "disabled" : ""}>
+              +1 ${ATTRIBUTE_LABELS[attr].slice(0, 3).toUpperCase()} (+8 Fat)
+            </button>
+          `
+    ).join("")}
+        </div>
+      </div>
+    `;
+  }
+  renderMatchReviewView(opponent) {
+    const match = this.state.currentMatch;
+    if (!match) return "";
+    const visiblePossessions = match.possessions.slice(
+      0,
+      this.selectedPossessionIdx
+    );
+    const lastVisible = visiblePossessions[visiblePossessions.length - 1] ?? match.possessions[0];
+    const inspected = match.possessions[Math.min(this.inspectedPossessionIdx, this.selectedPossessionIdx) - 1] ?? lastVisible;
+    const outcomeLabel = match.outcome === "W" ? "VICTORY (+1 Win Toward Target)" : match.outcome === "D" ? "DRAW (0 Wins Toward Target)" : "DEFEAT (0 Wins Toward Target)";
+    return `
+      <div class="oms-main-grid">
+        <div class="oms-panel">
+          <div class="oms-panel-header">
+            <h2>Fixture ${match.fixtureNumber} Tactical Playback \u2014 ${CONFIG.clubName} vs ${match.opponentName}</h2>
+            <div style="display:flex;gap:6px">
+              ${this.selectedPossessionIdx < CONFIG.totalPossessions ? `<button class="oms-btn" data-action="step-possession">Step +1 (${this.selectedPossessionIdx}/16)</button>
+                     <button class="oms-btn primary" data-action="skip-playback">Full Time (All 16)</button>` : `<span class="oms-pill accent">Full Time (16/16 Possessions)</span>`}
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(15,23,42,0.9);padding:12px 16px;border-radius:10px;border:1px solid rgba(52,211,153,0.3)">
+            <div>
+              <div style="font-size:0.75rem;color:#94a3b8">${CONFIG.clubName} (${match.clubPlan})</div>
+              <div style="font-size:1.65rem;font-weight:900;color:#34d399" data-testid="match-club-score">${lastVisible.clubScoreAfter}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:0.75rem;color:#cbd5e1">Possession ${lastVisible.possessionIndex} of 16 (Half ${lastVisible.half})</div>
+              <div style="font-size:0.86rem;font-weight:800;color:#fbbf24">${this.selectedPossessionIdx === 16 ? outcomeLabel : "Match in Progress..."}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:0.75rem;color:#94a3b8">${match.opponentName} (${match.opponentPlan})</div>
+              <div style="font-size:1.65rem;font-weight:900;color:#f87171" data-testid="match-opp-score">${lastVisible.opponentScoreAfter}</div>
+            </div>
+          </div>
+
+          <canvas id="oms-pitch-canvas" class="oms-pitch-canvas" width="600" height="260"></canvas>
+
+          <div style="font-size:0.78rem;font-weight:700;color:#cbd5e1">16-Possession Timeline (Click any possession to inspect roll & math)</div>
+          <div class="oms-possession-strip">
+            ${match.possessions.map((pos) => {
+      const revealed = pos.possessionIndex <= this.selectedPossessionIdx;
+      if (!revealed) {
+        return `<div class="oms-pos-pill" style="opacity:0.3">#${pos.possessionIndex}<br/>\u2014</div>`;
+      }
+      const cls = `${pos.team === "club" ? "club" : "opp"}-${pos.points}`;
+      const active = pos.possessionIndex === inspected.possessionIndex;
+      return `
+                <button class="oms-pos-pill ${cls} ${active ? "active" : ""}"
+                  data-action="inspect-possession" data-pos-idx="${pos.possessionIndex}">
+                  #${pos.possessionIndex} ${pos.team === "club" ? "IRV" : match.opponentShortName}<br/>
+                  +${pos.points} pts
+                </button>
+              `;
+    }).join("")}
+          </div>
+
+          <div style="background:rgba(15,23,42,0.85);border:1px solid rgba(148,163,184,0.25);border-radius:8px;padding:10px 12px;font-size:0.78rem">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <strong>Possession #${inspected.possessionIndex} Breakdown (${inspected.team === "club" ? CONFIG.clubName : match.opponentName} \u2014 ${inspected.tacticalPlanUsed})</strong>
+              <span class="oms-pill">${inspected.points} Points Scored</span>
+            </div>
+            <div style="color:#cbd5e1">
+              Actors: <strong>${inspected.keyPlayerName}</strong> (${inspected.keyPlayerFatigue}% fatigue) & <strong>${inspected.supportPlayerName}</strong> \u2022
+              Offense <code>${inspected.offenseRating.toFixed(1)}</code> vs Defense <code>${inspected.defenseRating.toFixed(1)}</code> \u2022
+              Attr Shift <code>${(inspected.attributeShift * 100).toFixed(1)}%</code> + Tendency <code>${(inspected.tendencyShift * 100).toFixed(1)}%</code> =
+              Total Shift <strong>${inspected.totalShift >= 0 ? "+" : ""}${(inspected.totalShift * 100).toFixed(1)}%</strong>
+            </div>
+            <div style="color:#94a3b8;margin-top:3px">
+              Probabilities: 0pt <code>${(inspected.probabilities.p0 * 100).toFixed(1)}%</code> | 3pt <code>${(inspected.probabilities.p3 * 100).toFixed(1)}%</code> | 7pt <code>${(inspected.probabilities.p7 * 100).toFixed(1)}%</code> \u2022
+              RNG Roll: <code>${inspected.roll.toFixed(4)}</code>
+              ${inspected.wasShiftedSwing ? `<strong style="color:#fbbf24"> \u2605 Matchup/Fatigue Shift Changed Outcome (Base would be ${inspected.baseOutcomeWithoutShift} pts)!</strong>` : ""}
+            </div>
+          </div>
+        </div>
+
+        <div class="oms-panel">
+          <div class="oms-panel-header">
+            <h2>3 Decisive Match Events & Fatigue Update</h2>
+            <span class="oms-pill">12 Recap Templates</span>
+          </div>
+
+          <div class="oms-decisive-list">
+            ${match.decisiveEvents.map(
+      (ev) => `
+              <div class="oms-decisive-card" data-testid="decisive-event-card" data-template-id="${ev.templateId}">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.72rem;color:#6ee7b7;margin-bottom:3px">
+                  <span>Decisive Event #${ev.eventIndex} \u2022 ${ev.templateTitle} (${ev.templateId})</span>
+                  <span>Roll ${ev.roll.toFixed(3)} \u2022 Shift ${ev.totalShift >= 0 ? "+" : ""}${(ev.totalShift * 100).toFixed(1)}%</span>
+                </div>
+                <div style="font-weight:700;font-size:0.86rem;color:#f8fafc;margin-bottom:4px">${this.escapeHtml(ev.headline)}</div>
+                <div style="font-size:0.78rem;color:#cbd5e1;line-height:1.4">${this.escapeHtml(ev.body)}</div>
+              </div>
+            `
+    ).join("")}
+          </div>
+
+          <div style="font-size:0.8rem;font-weight:700;color:#cbd5e1;margin-top:4px">
+            Post-Match Fatigue Ledger (Starters: +[24 \u2212 Stamina] \u2022 Reserves: \u221218)
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;font-size:0.74rem">
+            ${match.fatigueTransitions.map(
+      (ft) => `
+              <div style="background:rgba(15,23,42,0.75);padding:6px 8px;border-radius:6px;display:flex;justify-content:space-between">
+                <span>${ft.playerName} (${ft.wasStarter ? `Starter, STA ${ft.stamina}` : "Reserve"})</span>
+                <strong style="color:${ft.fatigueDelta > 0 ? "#fbbf24" : "#34d399"}">
+                  ${ft.fatigueBefore}% \u2192 ${ft.fatigueAfter}% (${ft.fatigueDelta >= 0 ? `+${ft.fatigueDelta}` : ft.fatigueDelta})
+                </strong>
+              </div>
+            `
+    ).join("")}
+          </div>
+
+          <button class="oms-btn primary" style="padding:12px;font-size:0.95rem;margin-top:auto" data-action="proceed-from-match" data-testid="proceed-from-match-btn">
+            ${this.state.fixtureNumber < CONFIG.seasonFixtures ? `Continue to Post-Match Development (+1 Attribute, 0 Fatigue) \u2192` : `Finish Fixture 6 & View Season Recap \u2192`}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  renderDevelopmentView(opponent) {
+    return `
+      <div class="oms-panel">
+        <div class="oms-panel-header">
+          <h2>Fixture ${this.state.fixtureNumber} Post-Match Breakthrough (Zero Fatigue Cost)</h2>
+          <span class="oms-pill accent">1 Bounded Choice before Fixture ${this.state.fixtureNumber + 1}</span>
+        </div>
+        <div style="font-size:0.84rem;color:#cbd5e1">
+          Following the match against <strong>${opponent.name}</strong>, award <strong>+1 Attribute</strong> (up to 10) to one player on your squad at <strong>0 fatigue cost</strong>.
+        </div>
+        <div class="oms-roster-list">
+          ${this.state.roster.map(
+      (p) => `
+            <div class="oms-player-card" data-dev-player-id="${p.id}">
+              <div class="oms-player-top">
+                <div>
+                  <span class="oms-role-tag ${p.role}">${p.role}</span>
+                  <strong>#${p.number} ${p.name}</strong>
+                  <span style="font-size:0.74rem;color:#94a3b8"> \u2022 Fatigue: ${p.fatigue}%</span>
+                </div>
+                <div class="oms-prep-actions">
+                  ${ATTRIBUTE_KEYS.map(
+        (attr) => `
+                    <button class="oms-btn primary" style="padding:5px 10px;font-size:0.75rem"
+                      data-action="apply-dev" data-player-id="${p.id}" data-attr="${attr}"
+                      ${p[attr] >= CONFIG.maxAttribute ? "disabled" : ""}>
+                      +1 ${ATTRIBUTE_LABELS[attr]} (${p[attr]} \u2192 ${Math.min(10, p[attr] + 1)})
+                    </button>
+                  `
+      ).join("")}
+                </div>
+              </div>
+            </div>
+          `
+    ).join("")}
+        </div>
+      </div>
+    `;
+  }
+  renderSeasonRecapView(summary) {
+    return `
+      <div class="oms-panel" data-testid="season-recap-panel">
+        <div class="oms-panel-header">
+          <h2>Season Complete \u2014 ${CONFIG.clubName} Six-Fixture Verdict</h2>
+          <span class="oms-pill ${summary.succeeded ? "accent" : "warn"}">
+            ${summary.succeeded ? "\u{1F3C6} SEASON TARGET ACHIEVED (\u2265 4 WINS)" : "\u26A0\uFE0F SEASON TARGET MISSED (< 4 WINS)"}
+          </span>
+        </div>
+
+        <div style="background:rgba(15,23,42,0.88);border:1px solid ${summary.succeeded ? "#34d399" : "#f59e0b"};border-radius:10px;padding:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:1.3rem;font-weight:900;color:${summary.succeeded ? "#34d399" : "#fde68a"}">
+              Final Record: ${summary.wins} Wins \u2013 ${summary.draws} Draws \u2013 ${summary.losses} Losses
+            </div>
+            <div style="font-size:0.84rem;color:#cbd5e1;margin-top:4px">
+              ${summary.succeeded ? `The Supporters' Trust renews Ironvale Rovers FC! You secured ${summary.wins} wins across 6 fixtures (${summary.pointsFor} pts scored, ${summary.pointsAgainst} pts allowed).` : `Ironvale Rovers FC finished with ${summary.wins} wins (Draws count as 0 wins toward the 4-win target). Total score: ${summary.pointsFor}\u2013${summary.pointsAgainst}.`}
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="oms-btn primary" style="padding:10px 16px;font-size:0.9rem" data-action="new-season-next-seed" data-testid="play-again-btn">
+              \u{1F504} Play One More Season (Seed #${this.state.seed + 1})
+            </button>
+            <button class="oms-btn" style="padding:10px 14px" data-action="replay-same-seed">
+              Replay Seed #${this.state.seed}
+            </button>
+          </div>
+        </div>
+
+        <div style="font-size:0.86rem;font-weight:700;color:#f8fafc">Six-Fixture Campaign Ledger</div>
+        <table class="oms-table">
+          <thead>
+            <tr>
+              <th>Fixture</th>
+              <th>Opponent & Tendency</th>
+              <th>Club Plan</th>
+              <th>Score</th>
+              <th>Result</th>
+              <th>Post-Match Breakthrough</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${this.state.seasonHistory.map(
+      (m) => `
+              <tr>
+                <td>F${m.fixtureNumber}</td>
+                <td>${m.opponentName} <span style="color:#94a3b8">(${m.tendencyName})</span></td>
+                <td>${m.clubPlan}</td>
+                <td><strong>${m.clubScore} \u2013 ${m.opponentScore}</strong></td>
+                <td><span class="oms-badge-${m.outcome.toLowerCase()}">${m.outcome}</span></td>
+                <td>${m.devChoice ? `${m.devChoice.playerName} +1 ${ATTRIBUTE_LABELS[m.devChoice.attribute]} (${m.devChoice.beforeValue}\u2192${m.devChoice.afterValue})` : "Season Finale"}</td>
+              </tr>
+            `
+    ).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+  renderDebugInspector(opponent) {
+    const teamRatings = computeTeamEffectiveRatings(
+      this.state.roster,
+      this.state.selectedStarterIds
+    );
+    const clubOdds = computePossessionProbabilities({
+      team: "club",
+      clubPlan: this.state.selectedPlan,
+      teamRatings,
+      opponent
+    });
+    const oppOdds = computePossessionProbabilities({
+      team: "opponent",
+      clubPlan: this.state.selectedPlan,
+      teamRatings,
+      opponent
+    });
+    const match = this.state.currentMatch;
+    return `
+      <section class="oms-debug-panel" data-testid="debug-inspector">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong style="color:#38bdf8">\u{1F50D} MATH & COUNTERFACTUAL INSPECTOR (Rules v${CONFIG.rulesVersion})</strong>
+          <span>Seed: <code>${this.state.seed}</code> \u2022 RNG State: <code>${this.state.rngState}</code> \u2022 Commands Logged: <code>${this.state.commandLog.length}</code></span>
+        </div>
+        <div style="margin-bottom:8px;color:#cbd5e1">
+          Formula Contract: <code>effectiveStat = rawStat \xD7 (1 - fatigue / 200)</code> |
+          Post-Match Fatigue: <code>Starters +(24 - Stamina), Reserves -18</code> |
+          Shift: <code>clamp((Offense - Defense) \xD7 0.008 + tendencyModifier, -0.15, +0.15)</code>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div style="background:rgba(15,23,42,0.9);padding:8px;border-radius:6px">
+            <strong>Club Possession Math (${this.state.selectedPlan})</strong><br/>
+            Offense (ATK+CTL): ${clubOdds.offenseRating.toFixed(2)} vs Opp Def (DEF+CTL): ${clubOdds.defenseRating.toFixed(2)}<br/>
+            AttrShift: ${(clubOdds.attributeShift * 100).toFixed(2)}% | TendencyShift: ${(clubOdds.tendencyShift * 100).toFixed(2)}% | TotalShift: ${(clubOdds.totalShift * 100).toFixed(2)}%<br/>
+            P(0)=${(clubOdds.probabilities.p0 * 100).toFixed(2)}% | P(3)=${(clubOdds.probabilities.p3 * 100).toFixed(2)}% | P(7)=${(clubOdds.probabilities.p7 * 100).toFixed(2)}% (Sum=${((clubOdds.probabilities.p0 + clubOdds.probabilities.p3 + clubOdds.probabilities.p7) * 100).toFixed(1)}%)
+          </div>
+          <div style="background:rgba(15,23,42,0.9);padding:8px;border-radius:6px">
+            <strong>Opponent Possession Math (${opponent.defaultPlan})</strong><br/>
+            Opp Offense (ATK+CTL): ${oppOdds.offenseRating.toFixed(2)} vs Club Def (DEF+CTL): ${oppOdds.defenseRating.toFixed(2)}<br/>
+            AttrShift: ${(oppOdds.attributeShift * 100).toFixed(2)}% | TendencyShift: ${(oppOdds.tendencyShift * 100).toFixed(2)}% | TotalShift: ${(oppOdds.totalShift * 100).toFixed(2)}%<br/>
+            P(0)=${(oppOdds.probabilities.p0 * 100).toFixed(2)}% | P(3)=${(oppOdds.probabilities.p3 * 100).toFixed(2)}% | P(7)=${(oppOdds.probabilities.p7 * 100).toFixed(2)}% (Sum=${((oppOdds.probabilities.p0 + oppOdds.probabilities.p3 + oppOdds.probabilities.p7) * 100).toFixed(1)}%)
+          </div>
+        </div>
+        ${match ? `<table class="oms-table">
+                <thead>
+                  <tr>
+                    <th>#</th><th>Team</th><th>Plan</th><th>Off/Def</th><th>Shift</th><th>P(0)/P(3)/P(7)</th><th>Roll</th><th>Pts (Base)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${match.possessions.map(
+      (pos) => `
+                    <tr>
+                      <td>${pos.possessionIndex}</td>
+                      <td>${pos.team}</td>
+                      <td>${pos.tacticalPlanUsed}</td>
+                      <td>${pos.offenseRating.toFixed(1)}/${pos.defenseRating.toFixed(1)}</td>
+                      <td>${(pos.totalShift * 100).toFixed(1)}%</td>
+                      <td>${(pos.probabilities.p0 * 100).toFixed(0)}/${(pos.probabilities.p3 * 100).toFixed(0)}/${(pos.probabilities.p7 * 100).toFixed(0)}%</td>
+                      <td>${pos.roll.toFixed(4)}</td>
+                      <td><strong>${pos.points}</strong> (${pos.baseOutcomeWithoutShift})${pos.wasShiftedSwing ? " \u2605" : ""}</td>
+                    </tr>
+                  `
+    ).join("")}
+                </tbody>
+              </table>` : ""}
+      </section>
+    `;
+  }
+  renderSaveModal() {
+    const exported = serializeSaveEnvelope(this.state);
+    return `
+      <div class="oms-modal-backdrop">
+        <div class="oms-modal">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong>Save / Import / Seed Controls</strong>
+            <button class="oms-btn" data-action="close-save-modal">Close</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <label style="font-size:0.78rem">New Season Seed:</label>
+            <input id="oms-seed-input" type="number" value="${this.state.seed}" style="background:#020617;color:#f8fafc;border:1px solid #334155;border-radius:6px;padding:5px 8px;width:120px"/>
+            <button class="oms-btn primary" data-action="apply-custom-seed">Start Season with Seed</button>
+            ${CONFIG.documentedStrategySeeds.map(
+      (s) => `<button class="oms-btn" data-action="quick-seed" data-seed="${s}">Seed #${s}</button>`
+    ).join("")}
+          </div>
+          <div style="font-size:0.76rem;color:#94a3b8">Export / Import JSON Save State (Schema v${CONFIG.saveSchemaVersion}):</div>
+          <textarea id="oms-save-textarea" class="oms-textarea">${this.escapeHtml(this.importBuffer || exported)}</textarea>
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button class="oms-btn sky" data-action="import-save-json">Import JSON State</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  drawPitchCanvas(opponent) {
+    if (typeof document === "undefined") return;
+    if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent || "")) {
+      return;
+    }
+    const canvas = this.container.querySelector(
+      "#oms-pitch-canvas"
+    );
+    if (!canvas) return;
+    let ctx = null;
+    try {
+      ctx = canvas.getContext("2d");
+    } catch {
+      return;
+    }
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    for (let i = 0; i < 6; i++) {
+      ctx.fillStyle = i % 2 === 0 ? "#0d3b29" : "#0f4430";
+      ctx.fillRect(i * w / 6, 0, w / 6, h);
+    }
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(16, 14, w - 32, h - 28);
+    ctx.beginPath();
+    ctx.moveTo(w / 2, 14);
+    ctx.lineTo(w / 2, h - 14);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, 34, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(16, h / 2, 54, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(w - 16, h / 2, 54, Math.PI / 2, Math.PI * 3 / 2);
+    ctx.stroke();
+    const plan = this.state.phase === "match_review" && this.state.currentMatch ? this.state.currentMatch.clubPlan : this.state.selectedPlan;
+    const clubCoords = plan === "Patient" ? [
+      [78, h / 2],
+      [155, 62],
+      [155, h - 62],
+      [235, h / 2],
+      [310, h / 2 - 24]
+    ] : plan === "Aggressive" ? [
+      [82, h / 2],
+      [185, 68],
+      [185, h - 68],
+      [345, 76],
+      [385, h / 2]
+    ] : [
+      [80, h / 2],
+      [165, 66],
+      [165, h - 66],
+      [275, h / 2 - 42],
+      [335, h / 2 + 18]
+    ];
+    const oppCoords = [
+      [w - 75, h / 2],
+      [w - 165, 65],
+      [w - 165, h - 65],
+      [w - 255, h / 2 - 40],
+      [w - 295, h / 2 + 35]
+    ];
+    let activePos = null;
+    if (this.state.phase === "match_review" && this.state.currentMatch) {
+      const idx = Math.min(
+        this.inspectedPossessionIdx,
+        this.selectedPossessionIdx
+      );
+      activePos = this.state.currentMatch.possessions[idx - 1] ?? null;
+    }
+    if (activePos) {
+      ctx.save();
+      ctx.strokeStyle = activePos.team === "club" ? "#34d399" : opponent.primaryColor;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      if (activePos.team === "club") {
+        ctx.moveTo(clubCoords[3][0], clubCoords[3][1]);
+        ctx.lineTo(clubCoords[4][0], clubCoords[4][1]);
+        const endX = activePos.points === 7 ? w - 24 : activePos.points === 3 ? w - 82 : w - 165;
+        ctx.lineTo(endX, h / 2);
+      } else {
+        ctx.moveTo(oppCoords[3][0], oppCoords[3][1]);
+        ctx.lineTo(oppCoords[4][0], oppCoords[4][1]);
+        const endX = activePos.points === 7 ? 24 : activePos.points === 3 ? 82 : 165;
+        ctx.lineTo(endX, h / 2);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (let i = 0; i < oppCoords.length; i++) {
+      const [ox, oy] = oppCoords[i];
+      ctx.beginPath();
+      ctx.arc(ox, oy, 12, 0, Math.PI * 2);
+      ctx.fillStyle = opponent.primaryColor;
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(opponent.shortName[0] ?? "O", ox, oy);
+    }
+    const starters = this.state.roster.filter(
+      (p) => this.state.selectedStarterIds.includes(p.id)
+    );
+    starters.forEach((player, idx) => {
+      const [px, py] = clubCoords[idx % clubCoords.length];
+      ctx.beginPath();
+      ctx.arc(px, py, 16, 0, Math.PI * 2);
+      ctx.strokeStyle = player.fatigue >= 45 ? "#f59e0b" : player.fatigue >= 25 ? "#38bdf8" : "#34d399";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(px, py, 13, 0, Math.PI * 2);
+      ctx.fillStyle = "#065f46";
+      ctx.fill();
+      ctx.strokeStyle = "#ecfdf5";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = "#ecfdf5";
+      ctx.font = "bold 10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`#${player.number}`, px, py);
+      ctx.fillStyle = "#e2e8f0";
+      ctx.font = "600 10px sans-serif";
+      ctx.fillText(player.name.split(" ")[1] ?? player.name, px, py + 24);
+    });
+  }
+  bindEvents() {
+    this.container.querySelectorAll("[data-action]").forEach((el) => {
+      const action = el.dataset.action;
+      if (el.tagName === "SELECT") {
+        el.addEventListener("change", (e) => {
+          const target = e.currentTarget;
+          if (action === "swap-starter-select" && target.value) {
+            const starterId = target.dataset.starterId;
+            this.dispatch(
+              {
+                type: "SWAP_STARTER",
+                starterId,
+                reserveId: target.value
+              },
+              "Updated starting five."
+            );
+          }
+        });
+        return;
+      }
+      el.addEventListener("click", () => {
+        switch (action) {
+          case "dismiss-toast":
+            this.statusToast = null;
+            this.render();
+            break;
+          case "toggle-debug":
+            this.toggleDebug();
+            break;
+          case "toggle-mute":
+            this.sound.toggleMute();
+            this.render();
+            break;
+          case "open-save-modal":
+            this.showSaveModal = true;
+            this.importBuffer = "";
+            this.render();
+            break;
+          case "close-save-modal":
+            this.showSaveModal = false;
+            this.render();
+            break;
+          case "apply-custom-seed": {
+            const input = this.container.querySelector(
+              "#oms-seed-input"
+            );
+            const val = Number(input?.value ?? CONFIG.defaultSeed);
+            this.showSaveModal = false;
+            this.restartWithSeed(val);
+            break;
+          }
+          case "quick-seed": {
+            const seed = Number(el.dataset.seed ?? CONFIG.defaultSeed);
+            this.showSaveModal = false;
+            this.restartWithSeed(seed);
+            break;
+          }
+          case "import-save-json": {
+            const area = this.container.querySelector(
+              "#oms-save-textarea"
+            );
+            if (!area) break;
+            try {
+              const imported = parseSaveEnvelope(area.value);
+              this.state = imported;
+              saveStateToStorage(this.state);
+              this.showSaveModal = false;
+              this.statusToast = {
+                text: "Save state imported and verified.",
+                kind: "good"
+              };
+              this.render();
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              this.statusToast = { text: msg, kind: "warn" };
+              this.render();
+            }
+            break;
+          }
+          case "quick-sub-in": {
+            const reserveId = el.dataset.reserveId;
+            const starters = this.state.roster.filter((p) => this.state.selectedStarterIds.includes(p.id)).sort((a, b) => b.fatigue - a.fatigue);
+            const mostTired = starters[0];
+            if (mostTired) {
+              this.dispatch(
+                {
+                  type: "SWAP_STARTER",
+                  starterId: mostTired.id,
+                  reserveId
+                },
+                `Swapped in reserve for ${mostTired.name}.`
+              );
+            }
+            break;
+          }
+          case "prep-rest": {
+            const playerId = el.dataset.playerId;
+            this.dispatch(
+              { type: "SPEND_PREP_REST", playerId },
+              "Applied Rest (-24 Fatigue)."
+            );
+            break;
+          }
+          case "prep-train": {
+            const playerId = el.dataset.playerId;
+            const attribute = el.dataset.attr;
+            this.dispatch(
+              { type: "SPEND_PREP_TRAIN", playerId, attribute },
+              `Trained +1 ${ATTRIBUTE_LABELS[attribute]} (+8 Fatigue).`
+            );
+            break;
+          }
+          case "reset-prep": {
+            this.dispatch(
+              { type: "RESET_PREP_ACTIONS" },
+              "Reverted preparation actions for this fixture."
+            );
+            break;
+          }
+          case "select-plan": {
+            const plan = el.dataset.plan;
+            this.dispatch({ type: "SET_TACTICAL_PLAN", plan });
+            break;
+          }
+          case "commit-match": {
+            this.dispatch({ type: "COMMIT_MATCH" });
+            break;
+          }
+          case "step-possession": {
+            this.stopPlayback();
+            if (this.selectedPossessionIdx < CONFIG.totalPossessions) {
+              this.selectedPossessionIdx += 1;
+              this.inspectedPossessionIdx = this.selectedPossessionIdx;
+            }
+            this.render();
+            break;
+          }
+          case "skip-playback": {
+            this.skipToFullTime();
+            break;
+          }
+          case "inspect-possession": {
+            const idx = Number(el.dataset.posIdx ?? 1);
+            this.inspectedPossessionIdx = idx;
+            this.sound.playClick(460);
+            this.render();
+            break;
+          }
+          case "proceed-from-match": {
+            this.stopPlayback();
+            this.dispatch({ type: "PROCEED_FROM_MATCH" });
+            break;
+          }
+          case "apply-dev": {
+            const playerId = el.dataset.playerId;
+            const attribute = el.dataset.attr;
+            this.dispatch(
+              { type: "APPLY_DEVELOPMENT", playerId, attribute },
+              `Awarded post-match +1 ${ATTRIBUTE_LABELS[attribute]} breakthrough (0 fatigue)!`
+            );
+            break;
+          }
+          case "new-season-next-seed": {
+            this.restartWithSeed(this.state.seed + 1);
+            break;
+          }
+          case "replay-same-seed": {
+            this.restartWithSeed(this.state.seed);
+            break;
+          }
+        }
+      });
+    });
+  }
+  escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+};
+
+// games/01-one-more-season/src/index.ts
+function mountGame(container2, options) {
+  const ui = new OneMoreSeasonUI(container2, options);
+  return {
+    destroy: () => ui.destroy(),
+    getStateSnapshot: () => ui.getStateSnapshot(),
+    restartWithSeed: (seed) => ui.restartWithSeed(seed),
+    toggleDebug: (force) => ui.toggleDebug(force)
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_01-one-more-season.ts
+var container = document.getElementById("app");
+if (container) {
+  mountGame(container);
+}
+
+</script>
+  </body>
+</html>
