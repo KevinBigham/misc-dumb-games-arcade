@@ -1,1 +1,0 @@
-export { MfdRingProgress } from './MfdRingProgress';

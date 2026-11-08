@@ -1,1 +1,0 @@
-export { PixelModal } from './PixelModal';

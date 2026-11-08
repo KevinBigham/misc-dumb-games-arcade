@@ -1,1 +1,0 @@
-export { PixelTable } from './PixelTable';

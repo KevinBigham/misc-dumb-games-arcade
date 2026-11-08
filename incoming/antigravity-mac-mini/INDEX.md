@@ -37,3 +37,7 @@ Paths below are original locations or temporary build directories omitted from t
 | `/Users/tkevinbigham/Downloads/MFD-main 2/.git` | Git repository metadata (if present) |
 | `mr-football-dynasty/node_modules` & `mr-football-dynasty/*/node_modules` | dependency directories omitted after building `apps/web/dist/` in an isolated scratch copy |
 | `mr-football-dynasty/packages/engine/dist` | intermediate TypeScript compiler build cache |
+
+## Removed on 2026-11-08
+
+At Kevin's request, these folders were removed from this branch because Mr. Football Dynasty and Mr. Baseball Dynasty live in their own repos: mr-football-dynasty.
