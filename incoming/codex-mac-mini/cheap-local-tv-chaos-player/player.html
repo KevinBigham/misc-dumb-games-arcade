@@ -1,0 +1,1796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>CHEAP LOCAL TV CHAOS — Player</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700;900&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=Special+Elite&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/player.css">
+  <script src="/js/shared/profanity.js"></script>
+  <script>
+    window.__CLTC_TEST_FAST = /\btestfast=1\b/.test(location.search);
+    if (!window.__CLTC_TEST_FAST) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"><\\/script>');
+    }
+  </script>
+</head>
+<body class="player-screen">
+  <div class="connection-status" id="connection-status"></div>
+  <div class="phone-container">
+    <div class="phone-header">
+      <div class="station-name">WCLC Channel 8</div>
+      <div class="screen-title" id="screen-title">Join Broadcast</div>
+    </div>
+    <div class="phone-content" id="phone-content">
+
+      <!-- JOIN -->
+      <div id="screen-join" class="join-screen">
+        <div class="code-label">Enter Room Code</div>
+        <div class="join-guide">The Program Director will cue you here. Keep this phone open, write when prompted, vote fast, then watch the TV for the damage.</div>
+        <div class="room-code-input">
+          <input class="code-letter" id="code-0" type="text" maxlength="1" autocomplete="off" autocapitalize="characters" inputmode="text">
+          <input class="code-letter" id="code-1" type="text" maxlength="1" autocomplete="off" autocapitalize="characters" inputmode="text">
+          <input class="code-letter" id="code-2" type="text" maxlength="1" autocomplete="off" autocapitalize="characters" inputmode="text">
+          <input class="code-letter" id="code-3" type="text" maxlength="1" autocomplete="off" autocapitalize="characters" inputmode="text">
+        </div>
+        <div class="error-msg" id="join-error"></div>
+        <button class="join-btn" id="join-btn" disabled>Join</button>
+      </div>
+
+      <!-- NAME -->
+      <div id="screen-name" class="name-screen hidden">
+        <div class="code-label">What Should We Call You?</div>
+        <input class="name-input" id="name-input" type="text" maxlength="16" placeholder="Your name" autocomplete="off" autocapitalize="words">
+        <div class="char-count"><span id="name-count">0</span>/16</div>
+        <button class="join-btn" id="name-btn" disabled>Next</button>
+      </div>
+
+      <!-- AVATAR -->
+      <div id="screen-avatar" class="avatar-screen hidden">
+        <div class="instruction">Draw Your On-Air Headshot</div>
+        <div class="avatar-canvas-wrap">
+          <canvas id="avatar-canvas" width="200" height="200"></canvas>
+        </div>
+        <div class="avatar-tools">
+          <button class="color-btn active" data-color="#f0f0f0" style="background:#f0f0f0"></button>
+          <button class="color-btn" data-color="#cc2936" style="background:#cc2936"></button>
+          <button class="color-btn" data-color="#f5a623" style="background:#f5a623"></button>
+          <button class="color-btn" data-color="#3498db" style="background:#3498db"></button>
+          <button class="color-btn" data-color="#2ecc71" style="background:#2ecc71"></button>
+          <div style="width:8px"></div>
+          <button class="brush-btn active" data-size="4"><span class="dot" style="width:6px;height:6px"></span></button>
+          <button class="brush-btn" data-size="8"><span class="dot" style="width:10px;height:10px"></span></button>
+          <button class="brush-btn" data-size="14"><span class="dot" style="width:16px;height:16px"></span></button>
+          <div style="width:8px"></div>
+          <button class="clear-btn" id="clear-avatar">Clear</button>
+        </div>
+        <button class="done-btn" id="avatar-done-btn">I'm Ready</button>
+      </div>
+
+      <!-- WAITING -->
+      <div id="screen-waiting" class="waiting-screen hidden">
+        <div class="standby-label">Stand By For Broadcast</div>
+        <div class="avatar-preview" id="waiting-avatar"></div>
+        <div class="player-name-display" id="waiting-name"></div>
+        <div class="veteran-greeting hidden" id="veteran-greeting"></div>
+        <div class="persistent-title hidden" id="persistent-title"></div>
+        <div class="identity-stats hidden" id="identity-stats"></div>
+        <div class="standby-msg" id="waiting-msg">Keep this phone open. Watch Channel 8 until we put you on air.</div>
+        <div class="haptics-toggle-wrap" id="haptics-toggle-wrap">
+          <label class="haptics-label">
+            <input type="checkbox" id="haptics-toggle" checked>
+            <span class="haptics-text">Haptic feedback</span>
+          </label>
+        </div>
+        <div class="disclaimer" id="waiting-disclaimer">The views expressed during this broadcast do not reflect those of this station, the county, or anyone currently employed.</div>
+      </div>
+
+      <!-- SPONSOR -->
+      <div id="screen-sponsor" class="waiting-screen hidden">
+        <div class="standby-label">A WORD FROM OUR SPONSORS</div>
+        <div class="player-name-display" id="sponsor-display"></div>
+        <div class="standby-msg" id="sponsor-tagline-display" style="font-size:14px;animation:none;opacity:0.5;"></div>
+      </div>
+
+      <!-- SEGMENT INTRO -->
+      <div id="screen-segment-intro" class="waiting-screen hidden">
+        <div class="standby-label">COMING UP NEXT</div>
+        <div class="player-name-display" id="segment-intro-title"></div>
+        <div class="standby-msg">Get ready</div>
+      </div>
+
+      <!-- TEXT ENTRY (CQ writing, Fib lie writing, Final headlines) -->
+      <div id="screen-text-entry" class="text-entry-screen hidden">
+        <div class="te-round-label" id="te-round-label"></div>
+        <div class="te-guide" id="te-guide"></div>
+        <div class="te-prompt" id="te-prompt"></div>
+        <textarea class="te-input" id="te-input" maxlength="120" placeholder="Type your answer..." rows="3"></textarea>
+        <div class="te-char-count"><span id="te-char-count">0</span>/120</div>
+        <button class="done-btn te-submit" id="te-submit">Submit</button>
+        <div class="te-status" id="te-status"></div>
+      </div>
+
+      <!-- VOTE (CQ A/B voting) -->
+      <div id="screen-vote" class="vote-screen hidden">
+        <div class="vote-label">VOTE FOR THE BEST</div>
+        <div class="vote-prompt" id="vote-prompt"></div>
+        <button class="vote-option vote-option-a" id="vote-a">
+          <span class="vote-letter">A</span><span class="vote-text" id="vote-a-text"></span>
+        </button>
+        <button class="vote-option vote-option-b" id="vote-b">
+          <span class="vote-letter">B</span><span class="vote-text" id="vote-b-text"></span>
+        </button>
+        <div class="vote-status" id="vote-status"></div>
+      </div>
+
+      <!-- FIB PICK (truth selection) -->
+      <div id="screen-fib-pick" class="vote-screen hidden">
+        <div class="vote-label">WHICH ONE IS THE TRUTH?</div>
+        <div class="fib-pick-options" id="fib-pick-options"></div>
+        <div class="vote-status" id="fib-pick-status"></div>
+      </div>
+
+      <!-- TRIVIA -->
+      <div id="screen-trivia" class="trivia-phone-screen hidden">
+        <div class="trivia-phone-label" id="trivia-phone-label"></div>
+        <div class="trivia-phone-question" id="trivia-phone-question"></div>
+        <div class="trivia-phone-options" id="trivia-phone-options"></div>
+        <div class="vote-status" id="trivia-phone-status"></div>
+      </div>
+
+      <!-- FINAL HEADLINES WRITE + PREDICT -->
+      <div id="screen-final-write" class="text-entry-screen hidden">
+        <div class="te-round-label">FINAL HEADLINES</div>
+        <div class="te-guide">Write the official headline people will quote after the broadcast.</div>
+        <div class="final-step-label">Step 1 of 2 — Headline</div>
+        <div class="te-prompt" id="final-write-prompt"></div>
+        <textarea class="te-input" id="final-input" maxlength="120" placeholder="Write your headline..." rows="3"></textarea>
+        <div class="te-char-count"><span id="final-char-count">0</span>/120</div>
+        <!-- Prediction -->
+        <div class="prediction-section" id="prediction-section">
+          <div class="final-step-label">Step 2 of 2 — Prediction</div>
+          <div class="te-round-label">SECRET PREDICTION</div>
+          <div class="te-prompt" style="font-size:14px">Who will win? Pick a player and your confidence.</div>
+          <div class="prediction-players" id="prediction-players"></div>
+          <div class="prediction-chips">
+            <button class="pred-chip active" data-mult="1">1x SAFE</button>
+            <button class="pred-chip" data-mult="2">2x BOLD</button>
+            <button class="pred-chip" data-mult="3">3x ALL IN</button>
+          </div>
+        </div>
+        <button class="done-btn te-submit" id="final-submit-btn" disabled>Submit Headline + Prediction</button>
+        <div class="te-status" id="final-write-status"></div>
+      </div>
+
+      <!-- FINAL VOTE (pick best headline) -->
+      <div id="screen-final-vote" class="vote-screen hidden">
+        <div class="vote-label">VOTE FOR THE BEST HEADLINE</div>
+        <div class="final-vote-options" id="final-vote-options"></div>
+        <div class="vote-status" id="final-vote-status"></div>
+      </div>
+
+      <!-- REPLAY LAB DRAWING -->
+      <div id="screen-replay-draw" class="avatar-screen hidden">
+        <div class="te-round-label" id="replay-round-label"></div>
+        <div class="instruction" id="replay-draw-prompt" style="font-size:15px;margin-bottom:12px;min-height:40px;"></div>
+        <div class="avatar-canvas-wrap">
+          <canvas id="replay-canvas" width="300" height="300"></canvas>
+        </div>
+        <div class="avatar-tools">
+          <button class="color-btn active" data-color="#f0f0f0" data-target="replay" style="background:#f0f0f0"></button>
+          <button class="color-btn" data-color="#cc2936" data-target="replay" style="background:#cc2936"></button>
+          <button class="color-btn" data-color="#f5a623" data-target="replay" style="background:#f5a623"></button>
+          <button class="color-btn" data-color="#3498db" data-target="replay" style="background:#3498db"></button>
+          <button class="color-btn" data-color="#2ecc71" data-target="replay" style="background:#2ecc71"></button>
+          <button class="color-btn" data-color="#9b59b6" data-target="replay" style="background:#9b59b6"></button>
+          <button class="color-btn" data-color="#000000" data-target="replay" style="background:#000000;border:1px solid #444"></button>
+          <div style="width:6px"></div>
+          <button class="brush-btn active" data-size="3" data-target="replay"><span class="dot" style="width:5px;height:5px"></span></button>
+          <button class="brush-btn" data-size="8" data-target="replay"><span class="dot" style="width:10px;height:10px"></span></button>
+          <button class="brush-btn" data-size="16" data-target="replay"><span class="dot" style="width:18px;height:18px"></span></button>
+          <div style="width:6px"></div>
+          <button class="clear-btn" id="clear-replay">Clear</button>
+        </div>
+        <button class="done-btn" id="replay-submit-btn">Submit Drawing</button>
+      </div>
+
+      <!-- REPLAY LAB VOTE -->
+      <div id="screen-replay-vote" class="vote-screen hidden">
+        <div class="vote-label">VOTE FOR THE BEST</div>
+        <div class="replay-vote-gallery" id="replay-vote-gallery"></div>
+        <div class="vote-status" id="replay-vote-status"></div>
+      </div>
+
+      <!-- TICKER DESK -->
+      <div id="screen-ticker-desk" class="ticker-desk-screen hidden">
+        <div class="td-label">THE TICKER DESK</div>
+        <div class="td-context" id="td-context"></div>
+        <!-- Headline task -->
+        <div id="td-headline" class="td-task hidden">
+          <input class="td-headline-input" id="td-headline-input" type="text" maxlength="30" placeholder="Write a headline..." autocomplete="off">
+          <div class="td-char-count"><span id="td-char-count">0</span>/30</div>
+          <button class="td-submit-btn" id="td-headline-submit">Send to Ticker</button>
+        </div>
+        <!-- Reaction task -->
+        <div id="td-reaction" class="td-task hidden">
+          <div class="td-reaction-grid" id="td-reaction-grid"></div>
+        </div>
+        <!-- Sponsor pick task -->
+        <div id="td-sponsor" class="td-task hidden">
+          <button class="td-sponsor-btn" id="td-sponsor-a"></button>
+          <div class="td-or">or</div>
+          <button class="td-sponsor-btn" id="td-sponsor-b"></button>
+        </div>
+        <div class="td-status" id="td-status"></div>
+      </div>
+
+      <!-- PREDICTION TAP -->
+      <div id="screen-prediction-tap" class="prediction-tap-screen hidden">
+        <div class="pt-label">QUICK PREDICTION</div>
+        <div class="pt-question" id="pt-question"></div>
+        <div class="pt-options" id="pt-options"></div>
+        <div class="pt-status" id="pt-status"></div>
+      </div>
+
+      <!-- PRESS CONFERENCE (Round 6) -->
+      <div id="screen-press-conf" class="text-entry-screen hidden">
+        <div class="te-round-label">POST-GAME PRESS CONFERENCE</div>
+        <div class="te-prompt" id="press-conf-prompt"></div>
+        <textarea class="te-input" id="press-conf-input" maxlength="80" placeholder="Your statement..." rows="2"></textarea>
+        <div class="te-char-count"><span id="press-conf-char-count">0</span>/80</div>
+        <button class="done-btn te-submit" id="press-conf-submit">Issue Statement</button>
+        <div class="te-status" id="press-conf-status"></div>
+      </div>
+
+      <!-- FEUD CARD (Round 6) -->
+      <div id="screen-feud" class="waiting-screen hidden">
+        <div class="standby-label">ON-AIR FEUD ASSIGNED</div>
+        <div class="player-name-display" id="feud-rival-name"></div>
+        <div class="standby-msg" id="feud-label"></div>
+        <div class="disclaimer">Beat your rival in any round to claim bonus points.</div>
+      </div>
+
+      <!-- CLIP OF THE NIGHT VOTE (Round 7) -->
+      <div id="screen-clip-vote" class="clip-vote-phone-screen hidden">
+        <div class="standby-label">CLIP OF THE NIGHT</div>
+        <div class="clip-vote-instruction">Vote for the best moment</div>
+        <div class="clip-vote-options" id="clip-vote-options"></div>
+        <div class="clip-vote-phone-status" id="clip-vote-status"></div>
+      </div>
+
+      <!-- SEGMENT CARD TOAST (Round 7) -->
+      <div id="segment-card-toast" class="segment-toast hidden">
+        <div class="toast-label" id="toast-segment-name"></div>
+        <div class="toast-winner" id="toast-winner-name"></div>
+        <div class="toast-actions">
+          <button class="toast-save-btn" id="toast-save-btn">Save</button>
+          <button class="toast-share-btn" id="toast-share-btn">Share</button>
+        </div>
+      </div>
+
+      <!-- WATCH -->
+      <div id="screen-watch" class="waiting-screen hidden">
+        <div class="eyes-on-tv-icon" id="watch-tv-icon"></div>
+        <div class="standby-label" id="watch-label">WATCH THE SCREEN</div>
+        <div class="standby-msg" id="watch-msg">Look up at the TV</div>
+        <!-- Round 9: Hidden doodle pad — no explanation, players discover it -->
+        <div class="doodle-pad-wrap" id="doodle-pad-wrap">
+          <canvas id="doodle-canvas" width="120" height="60"></canvas>
+        </div>
+      </div>
+
+      <!-- SCOREBOARD -->
+      <div id="screen-scoreboard" class="scoreboard-phone-screen hidden">
+        <div class="standby-label">SCORES</div>
+        <div class="phone-scores" id="phone-scores"></div>
+      </div>
+
+      <!-- POSTGAME -->
+      <div id="screen-postgame" class="waiting-screen hidden">
+        <div class="standby-label" id="postgame-result-label"></div>
+        <div class="player-name-display" id="postgame-player-rank"></div>
+        <div class="standby-msg" id="postgame-score-display"></div>
+        <div class="phone-scores" id="postgame-phone-scores" style="margin-top:16px"></div>
+        <div class="disclaimer" id="postgame-awards-display" style="font-style:normal;color:var(--gold);font-size:13px;max-width:320px;"></div>
+        <!-- Round 8: Title unlock notification -->
+        <div class="title-unlock-notify hidden" id="title-unlock-notify">
+          <div class="title-unlock-label">PERMANENT TITLE UNLOCKED</div>
+          <div class="title-unlock-name"></div>
+        </div>
+        <!-- Round 7: Expanded share options -->
+        <div class="postgame-share-area" id="postgame-share-area">
+          <div class="share-section-label">SAVE YOUR BROADCAST</div>
+          <div class="share-buttons">
+            <button class="share-btn share-btn-primary" id="save-newspaper-btn">Save Front Page</button>
+            <button class="share-btn share-btn-secondary" id="save-breaking-btn">Save Breaking News</button>
+            <button class="share-btn share-btn-tertiary" id="save-card-btn">Save Game Card</button>
+          </div>
+          <button class="share-btn share-btn-native hidden" id="share-native-btn">Share</button>
+          <button class="apology-btn hidden" id="apology-btn">ISSUE PUBLIC APOLOGY</button>
+        </div>
+        <div class="card-preview" id="card-preview" style="margin-top:12px;"></div>
+        <div class="postgame-privacy">
+          <button class="postgame-privacy-link" id="clear-session-data-link" type="button">Clear my session data</button>
+          <div class="privacy-confirm hidden" id="clear-session-data-confirm" role="dialog" aria-modal="true" aria-labelledby="clear-session-data-title">
+            <div class="privacy-confirm-title" id="clear-session-data-title">Really clear your saved identity? This can't be undone.</div>
+            <div class="privacy-confirm-copy">Clears your saved name, reconnect token, and station identity from this device.</div>
+            <div class="privacy-confirm-actions">
+              <button class="privacy-confirm-danger" id="confirm-clear-session-data" type="button">Clear data</button>
+              <button class="privacy-confirm-cancel" id="cancel-clear-session-data" type="button">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/js/shared/config.js"></script>
+  <script src="/js/shared/audio.js"></script>
+  <script src="/js/shared/icons.js"></script>
+  <script src="/js/shared/card-export.js"></script>
+  <script src="/js/shared/newspaper-export.js"></script>
+  <script>
+    // =======================================================================
+    // CHEAP LOCAL TV CHAOS — FULL PLAYER APP
+    // =======================================================================
+    const TRIVIA_TIME_MAX_MS = 30000;
+
+    const P = {
+      ws: null, uid: null, token: null, roomCode: null, name: null, avatar: null,
+      phase: 'join', reconnecting: false,
+      submitted: false, voted: false,
+      triviaStartTime: 0, triviaServerSentAt: 0, predTarget: null, predMult: 1,
+      hapticsEnabled: true, // Round 5: opt-in haptics toggle
+      // Round 7: Shareability
+      segmentCards: [],
+      newspaperData: null,
+      apologyData: null,
+      lastSegmentCard: null,
+      // Round 10: Internet Play
+      isCaller: false,       // true if joined as audience/spectator (player 9+)
+      wakeLock: null          // Wake Lock API sentinel
+    };
+
+    // Round 10: Wake Lock API — prevent phone screen from dimming
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          P.wakeLock = await navigator.wakeLock.request('screen');
+          P.wakeLock.addEventListener('release', () => { P.wakeLock = null; });
+        }
+      } catch (e) { /* Wake Lock not supported or denied — OK */ }
+    }
+    // Re-request on visibility change (iOS releases on tab switch)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        if (!P.wakeLock) requestWakeLock();
+        // Reconnect WebSocket if it died while phone was asleep
+        if (!P.ws || P.ws.readyState > 1) connectPlayer();
+      }
+    });
+
+    // Round 5: Haptics vocabulary
+    // Single buzz = on air, double = vote now, long = truth revealed
+    function haptic(style) {
+      if (window.__CLTC_TEST_FAST) return;
+      if (!navigator.vibrate || !P.hapticsEnabled) return;
+      switch (style) {
+        case 'tap': navigator.vibrate(10); break;
+        case 'submit': navigator.vibrate([15, 50, 15]); break;
+        case 'vote': navigator.vibrate(20); break;
+        case 'error': navigator.vibrate([50, 30, 50]); break;
+        case 'success': navigator.vibrate([10, 30, 10, 30, 10]); break;
+        // Round 5: Broadcast haptics vocabulary
+        case 'on-air': navigator.vibrate(50); break;           // single buzz — you're on air
+        case 'vote-now': navigator.vibrate([30, 40, 30]); break; // double buzz — vote now
+        case 'truth-revealed': navigator.vibrate(200); break;    // long buzz — truth revealed
+        case 'winner': navigator.vibrate([20, 30, 20, 30, 20, 30, 60]); break; // celebration pattern
+        case 'breaking': navigator.vibrate([80, 50, 80]); break; // breaking news alert
+      }
+    }
+
+    function boundTriviaTimeMs(time) {
+      const value = Number(time);
+      if (!Number.isFinite(value)) return TRIVIA_TIME_MAX_MS;
+      return Math.max(0, Math.min(TRIVIA_TIME_MAX_MS, value));
+    }
+
+    // ====== SPRINT 1: SCORE TOAST ======
+    function showScoreToast(delta) {
+      let toast = document.getElementById('score-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'score-toast';
+        toast.className = 'score-toast';
+        document.querySelector('.phone-container')?.appendChild(toast);
+      }
+      toast.textContent = `+${delta.toLocaleString()}`;
+      toast.classList.remove('score-toast-show');
+      // Force reflow to restart animation
+      void toast.offsetWidth;
+      toast.classList.add('score-toast-show');
+      setTimeout(() => toast.classList.remove('score-toast-show'), 2000);
+    }
+
+    // ====== SCREENS ======
+    function showScreen(id, title) {
+      document.querySelectorAll('.phone-content > div').forEach(el => el.classList.add('hidden'));
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('hidden');
+      if (title) document.getElementById('screen-title').textContent = title;
+    }
+
+    // ====== CONNECTION (Round 10: Exponential backoff + jitter) ======
+    let reconnectAttempts = 0;
+    let heartbeatInterval = null;
+    let _reconnectTimeout = null;
+    function showStatus(type, text) {
+      const el = document.getElementById('connection-status');
+      el.className = 'connection-status show ' + type; el.textContent = text;
+      if (type === 'connected') setTimeout(() => el.classList.remove('show'), 2000);
+    }
+    function getReconnectDelay() {
+      const base = CONFIG.RECONNECT_BASE_MS || 1000;
+      const max = CONFIG.RECONNECT_MAX_MS || 15000;
+      const jitter = CONFIG.RECONNECT_JITTER || 0.3;
+      const delay = Math.min(base * Math.pow(2, reconnectAttempts), max);
+      return delay * (1 + (Math.random() * 2 - 1) * jitter);
+    }
+    function reconnectLimitReached() {
+      if (reconnectAttempts < (CONFIG.RECONNECT_MAX_ATTEMPTS || 20)) return false;
+      if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+      if (_reconnectTimeout) { clearTimeout(_reconnectTimeout); _reconnectTimeout = null; }
+      P.reconnecting = false;
+      showStatus('error', 'Server unreachable — refresh.');
+      return true;
+    }
+    function connectPlayer() {
+      if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+      if (_reconnectTimeout) { clearTimeout(_reconnectTimeout); _reconnectTimeout = null; }
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      try { P.ws = new WebSocket(`${proto}//${location.host}`); } catch (e) {
+        reconnectAttempts++;
+        if (reconnectLimitReached()) return;
+        showStatus('error', 'Cannot connect');
+        _reconnectTimeout = setTimeout(connectPlayer, getReconnectDelay());
+        return;
+      }
+      P.ws.onopen = () => {
+        reconnectAttempts = 0; // Reset on successful connection
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        startHeartbeat();
+        // Round 10: Wake Lock API
+        requestWakeLock();
+        const saved = getSaved();
+        if (saved?.token && saved?.roomCode) {
+          P.reconnecting = true; showStatus('reconnecting', 'Reconnecting...');
+          P.ws.send(JSON.stringify({ type: 'player:join', code: saved.roomCode, token: saved.token }));
+        }
+      };
+      P.ws.onmessage = (e) => { try { handleMsg(JSON.parse(e.data)); } catch(err) { console.warn('Message parse error:', err); } };
+      P.ws.onclose = () => {
+        reconnectAttempts++;
+        if (reconnectLimitReached()) return;
+        const delay = getReconnectDelay();
+        showStatus('error', `Connection lost — retrying in ${Math.round(delay / 1000)}s`);
+        _reconnectTimeout = setTimeout(connectPlayer, delay);
+      };
+      P.ws.onerror = () => {}; // Suppress — onclose will handle reconnect
+    }
+    function send(msg) { if (P.ws?.readyState === 1) P.ws.send(JSON.stringify(msg)); }
+    function sendHost(payload) { send({ type: 'player:send', payload }); }
+    function startHeartbeat() { heartbeatInterval = setInterval(() => send({ type: 'ping' }), CONFIG.HEARTBEAT_INTERVAL); }
+
+    // ====== SESSION ======
+    function storageKey(key) {
+      if (!window.__CLTC_TEST_FAST) return key;
+      try {
+        const device = new URLSearchParams(location.search).get('device');
+        return device ? `${key}:${device}` : key;
+      } catch {
+        return key;
+      }
+    }
+    function saveSess() { localStorage.setItem(storageKey('cltc_session'), JSON.stringify({ uid: P.uid, token: P.token, roomCode: P.roomCode, name: P.name })); }
+    function getSaved() { try { return JSON.parse(localStorage.getItem(storageKey('cltc_session'))); } catch { return null; } }
+    function clearSess() { localStorage.removeItem(storageKey('cltc_session')); }
+
+    function isPostgameVisible() {
+      const screen = document.getElementById('screen-postgame');
+      return Boolean(screen && !screen.classList.contains('hidden'));
+    }
+
+    function hidePlayerPrivacyConfirm() {
+      document.getElementById('clear-session-data-confirm')?.classList.add('hidden');
+    }
+
+    function showPlayerPrivacyConfirm() {
+      if (!isPostgameVisible()) return;
+      document.getElementById('clear-session-data-confirm')?.classList.remove('hidden');
+    }
+
+    function clearPlayerSessionData() {
+      if (!isPostgameVisible()) return;
+      try {
+        localStorage.removeItem(storageKey('cltc_identity'));
+        localStorage.removeItem(storageKey('cltc_session'));
+      } catch {}
+      hidePlayerPrivacyConfirm();
+      document.getElementById('final-write-status').textContent = '';
+      showStatus('connected', 'Saved session data cleared on this device.');
+    }
+
+    // ====== ROUND 8: PERSISTENT IDENTITY ======
+    function loadIdentity() {
+      try { return JSON.parse(localStorage.getItem(storageKey('cltc_identity'))) || null; } catch { return null; }
+    }
+    function saveIdentity(id) {
+      try { localStorage.setItem(storageKey('cltc_identity'), JSON.stringify(id)); } catch {}
+    }
+    function getOrCreateIdentity(name) {
+      let id = loadIdentity();
+      if (!id) {
+        id = { name, gamesPlayed: 0, totalScore: 0, bestFinish: 99,
+               blameCamCount: 0, champWins: 0, awards: {},
+               unlockedTitles: [], selectedTitle: null, firstSeen: Date.now() };
+      }
+      id.name = name; // update to current name
+      return id;
+    }
+    function updateIdentityAfterGame(scores, awards, myRank) {
+      const id = getOrCreateIdentity(P.name);
+      const myScore = scores.find(s => s.name === P.name)?.score || 0;
+      id.gamesPlayed++;
+      id.totalScore += myScore;
+      if (myRank < id.bestFinish) id.bestFinish = myRank;
+      if (myRank === 1) id.champWins++;
+      // Track award counts for persistent title unlocks
+      (awards || []).forEach(a => {
+        if (a.recipient === P.name) {
+          id.awards[a.title] = (id.awards[a.title] || 0) + 1;
+          // Check for title unlock
+          const unlock = CONFIG.PERSISTENT_TITLES[a.title];
+          if (unlock && id.awards[a.title] >= unlock.count && !id.unlockedTitles.includes(unlock.title)) {
+            id.unlockedTitles.push(unlock.title);
+            P.newTitleUnlock = unlock.title;
+          }
+        }
+      });
+      // Track blame cam from awards
+      const blameCamAward = (awards || []).find(a => a.title === 'BLAME CAM MVP' && a.recipient === P.name);
+      if (blameCamAward) id.blameCamCount++;
+      id.lastPlayed = Date.now();
+      saveIdentity(id);
+      return id;
+    }
+    function getVeteranGreeting(id) {
+      if (!id || id.gamesPlayed === 0) return null;
+      if (id.gamesPlayed >= 10) return `Welcome back, veteran Elm County resident. ${id.gamesPlayed} broadcasts and counting.`;
+      if (id.gamesPlayed >= 5) return `The station recognizes a familiar face. ${id.gamesPlayed} broadcasts on record.`;
+      if (id.gamesPlayed >= 2) return `Welcome back. The county has you on file.`;
+      return null;
+    }
+
+    // ====== MESSAGE HANDLER ======
+    function handleMsg(msg) {
+      switch (msg.type) {
+        case 'player:joined':
+          P.uid = msg.uid; P.token = msg.token; P.reconnecting = false;
+          P.isCaller = !!msg.isCaller; // Round 10: Audience mode
+          if (P.isCaller) {
+            document.getElementById('screen-title').textContent = 'Join as Caller';
+          }
+          showScreen('screen-name', P.isCaller ? 'Caller Check-In' : 'Check In');
+          document.getElementById('name-input').focus(); break;
+        case 'player:reconnected':
+          P.uid = msg.uid; P.token = msg.token; P.name = msg.name; P.avatar = msg.avatar;
+          P.isCaller = !!msg.isCaller;
+          P.roomCode = msg.roomCode || getSaved()?.roomCode;
+          P.reconnecting = false; showStatus('connected', 'Reconnected!');
+          showWaiting('Reconnected — stand by'); break;
+        case 'player:ready': showWaiting(); break;
+        case 'game:started': showWaiting('The show is starting...'); break;
+        case 'game:restarted':
+          P.roomCode = msg.code; P.submitted = false; P.voted = false;
+          P.cardData = null; P.segmentCards = []; P.newspaperData = null;
+          P.apologyData = null; P.lastSegmentCard = null;
+          P.predTarget = null; P.predMult = 1; P.newTitleUnlock = null;
+          saveSess();
+          showWaiting('New broadcast starting...');
+          break;
+        case 'name:adjusted':
+          P.name = msg.name; saveSess(); break;
+        case 'host:disconnected': showStatus('error', 'Host disconnected — stand by'); break;
+        case 'error': {
+          P.reconnecting = false;
+          const severity = msg.severity || 'fatal';
+          const message = msg.message || 'Connection issue';
+          if (severity === 'recoverable') {
+            showStatus('error', message);
+          } else if (severity === 'info') {
+            showStatus('connected', message);
+          } else {
+            document.getElementById('join-error').textContent = message;
+            showScreen('screen-join', 'Join Broadcast');
+            clearSess();
+          }
+          break;
+        }
+        case 'phase': handlePhase(msg); break;
+      }
+    }
+
+    // ====== PHASE HANDLER ======
+    const CALLER_ACTION_PHASES = new Set([
+      'cq-write', 'cq-vote', 'ticker-desk', 'prediction-tap',
+      'fib-write', 'fib-pick', 'trivia-question',
+      'replay-draw', 'replay-vote',
+      'final-write', 'final-vote',
+      'clip-vote', 'press-conf-write'
+    ]);
+
+    function handlePhase(msg) {
+      if (P.isCaller && CALLER_ACTION_PHASES.has(msg.phase)) {
+        showWatch('AUDIENCE LINE', 'You are watching tonight\'s broadcast. Player phones will handle the messy part.');
+        return;
+      }
+      switch (msg.phase) {
+        case 'sponsor':
+          document.getElementById('sponsor-display').textContent = msg.sponsor || '';
+          document.getElementById('sponsor-tagline-display').textContent = msg.tagline || 'We\'ll be right back.';
+          showScreen('screen-sponsor', 'Sponsors'); break;
+
+        case 'how-to-play':
+          showWatch('THE PROGRAM DIRECTOR', 'Join with phones, write when prompted, vote or react fast, then watch the TV reveal. Scores matter. Laughs matter more.');
+          break;
+
+        // Round 5: Technical difficulties
+        case 'tech-diff':
+          showWatch('TECHNICAL DIFFICULTIES', 'Please stand by — WCLC Channel 8'); break;
+
+        // Round 5: Local commercial
+        case 'commercial':
+          document.getElementById('sponsor-display').textContent = msg.name || '';
+          document.getElementById('sponsor-tagline-display').textContent = msg.tagline || '';
+          showScreen('screen-sponsor', 'Commercial'); break;
+
+        // Round 5: Victory fanfare
+        case 'fanfare': {
+          const isMe = msg.player === P.name;
+          if (isMe) haptic('winner');
+          if (msg.fanfare === 'trumpet' && isMe) SFX.victoryTrumpet?.();
+          else if (msg.fanfare === 'kazoo' && isMe) SFX.underdogKazoo?.();
+          else if (msg.fanfare === 'trombone' && isMe) SFX.sadTrombone?.();
+          break;
+        }
+
+        // ---- ROUND 6: SOCIAL SYSTEMS ----
+        case 'feud-assign': {
+          // Find my feud
+          const myFeud = (msg.feuds || []).find(f => f.aUid === P.uid || f.bUid === P.uid);
+          if (myFeud) {
+            const rivalName = myFeud.aUid === P.uid ? myFeud.b : myFeud.a;
+            document.getElementById('feud-rival-name').textContent = `VS ${rivalName}`;
+            document.getElementById('feud-label').textContent = myFeud.label;
+            haptic('breaking');
+            showScreen('screen-feud', 'Feud Assigned');
+          } else {
+            showWatch('FEUDS ASSIGNED', 'Watch the TV — you escaped this time');
+          }
+          break;
+        }
+
+        case 'rivalry-alert':
+          haptic('breaking');
+          showWatch('RIVALRY ALERT',
+            `${msg.playerA} vs ${msg.playerB} — ${Math.abs(msg.scoreA - msg.scoreB)} pts apart`);
+          break;
+
+        case 'blame-cam':
+          if (msg.player === P.name) {
+            haptic('truth-revealed');
+            showWatch('BLAME CAM', 'You received zero votes. The station has been notified.');
+          } else {
+            showWatch('BLAME CAM', `${msg.player}: "${(msg.answer || '').substring(0, 50)}"`);
+          }
+          break;
+
+        case 'press-conf-write': {
+          const mySlot = (msg.players || []).find(p => p.uid === P.uid);
+          if (mySlot) {
+            P.submitted = false;
+            document.getElementById('press-conf-prompt').textContent = mySlot.prompt;
+            document.getElementById('press-conf-input').value = '';
+            document.getElementById('press-conf-char-count').textContent = '0';
+            document.getElementById('press-conf-status').textContent = '';
+            document.getElementById('press-conf-submit').disabled = false;
+            document.getElementById('press-conf-submit').textContent = 'Issue Statement';
+            haptic('on-air');
+            setPhoneState('action');
+            showScreen('screen-press-conf', 'Press Conference');
+          } else {
+            showWatch('PRESS CONFERENCE', 'Watch the TV — the top players are speaking');
+          }
+          break;
+        }
+
+        case 'press-conf-reveal':
+          showWatch('PRESS CONFERENCE', 'Statements are being read'); break;
+
+        case 'segment-intro':
+          document.getElementById('segment-intro-title').textContent = msg.title || '';
+          showScreen('screen-segment-intro', msg.title || 'Next Segment'); break;
+
+        // ---- COMMUNITY QUOTES ----
+        case 'cq-write':
+          // ALL players write simultaneously
+          P.submitted = false;
+          haptic('on-air'); // Round 5: single buzz — you're on air
+          setupTextEntry(`ROUND ${msg.roundNum} OF ${msg.totalRounds}`, msg.prompt,
+            'Type your answer...', 120, 'Write the funniest thing the station can read on air.',
+            (text) => sendHost({ type: 'player:answer', text }));
+          setPhoneState('action');
+          showScreen('screen-text-entry', 'Community Quotes');
+          break;
+
+        case 'cq-reveal-watch':
+          showWatch('ANSWERS REVEALED', 'Watch the TV'); break;
+
+        case 'cq-vote':
+          P.voted = false;
+          haptic('vote-now'); // Round 5: double buzz — vote now
+          if (msg.voters.includes(P.uid) && msg.matchup.a !== P.uid && msg.matchup.b !== P.uid) {
+            document.getElementById('vote-a-text').textContent = msg.optionA;
+            document.getElementById('vote-b-text').textContent = msg.optionB;
+            document.getElementById('vote-status').textContent = '';
+            document.getElementById('vote-a').disabled = false;
+            document.getElementById('vote-b').disabled = false;
+            document.getElementById('vote-a').classList.remove('selected');
+            document.getElementById('vote-b').classList.remove('selected');
+            setPhoneState('action');
+            showScreen('screen-vote', 'Vote Now');
+          } else {
+            showWatch('VOTING IN PROGRESS', 'The room is deciding your fate');
+          }
+          break;
+
+        case 'cq-vote-closed':
+          showWatch('VOTES ARE IN', 'Watch the TV for results'); break;
+
+        case 'cq-results':
+          showWatch(msg.winner ? `${msg.winner} WINS!` : 'SPLIT DECISION',
+            `${msg.nameA}: ${msg.pctA}%  vs  ${msg.nameB}: ${msg.pctB}%`); break;
+
+        case 'cq-also-submitted':
+          showWatch('ALSO SUBMITTED',
+            `${msg.playerName}: "${(msg.text || '').substring(0, 50)}"`); break;
+
+        // ---- TICKER DESK ----
+        case 'ticker-desk':
+          showTickerDesk(msg); break;
+
+        // ---- PREDICTION TAP ----
+        case 'prediction-tap':
+          showPredictionTap(msg); break;
+
+        case 'prediction-result': {
+          const names = (msg.correct || []);
+          const myHit = names.includes(P.name);
+          showWatch(myHit ? 'YOU CALLED IT!' : 'PREDICTIONS IN',
+            names.length > 0 ? `${names.join(', ')} predicted correctly` : 'Nobody saw that coming');
+          break;
+        }
+
+        // ---- FIB REPORT ----
+        case 'fib-write':
+          P.submitted = false;
+          setupTextEntry(`BULLETIN ${msg.factNum} OF ${msg.totalFacts}`,
+            `Write a convincing lie about: ${msg.hint}`,
+            'Write a believable alternative...', 120,
+            'Make a lie boring enough to sound official.',
+            (text) => sendHost({ type: 'player:lie', text }));
+          setPhoneState('action');
+          showScreen('screen-text-entry', 'The Fib Report');
+          break;
+
+        case 'fib-pick': {
+          P.voted = false;
+          const optEl = document.getElementById('fib-pick-options');
+          optEl.innerHTML = msg.options.map(o => `
+            <button class="vote-option fib-pick-btn" data-idx="${o.idx}">
+              <span class="vote-letter">${o.letter}</span>
+              <span class="vote-text">${esc(o.text)}</span>
+            </button>`).join('');
+          document.getElementById('fib-pick-status').textContent = '';
+          optEl.querySelectorAll('.fib-pick-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              if (P.voted) return;
+              P.voted = true;
+              optEl.querySelectorAll('.fib-pick-btn').forEach(b => { b.disabled = true; });
+              btn.classList.add('selected');
+              document.getElementById('fib-pick-status').textContent = 'Guess locked in!';
+              sendHost({ type: 'player:truthpick', pick: btn.dataset.idx });
+            });
+          });
+          setPhoneState('action');
+          showScreen('screen-fib-pick', 'Pick the Truth');
+          break;
+        }
+
+        case 'fib-results':
+          haptic('truth-revealed'); // Round 5: long buzz — truth revealed
+          showWatch('TRUTH REVEALED',
+            `The truth was: ${msg.truthText?.substring(0, 50)}...`); break;
+
+        // ---- TRIVIA ----
+        case 'trivia-question': {
+          P.voted = false;
+          P.triviaStartTime = Date.now();
+          P.triviaServerSentAt = Number.isFinite(Number(msg.serverSentAt)) ? Number(msg.serverSentAt) : P.triviaStartTime;
+          document.getElementById('trivia-phone-label').textContent = `QUESTION ${msg.questionNum} OF ${msg.totalQuestions}`;
+          document.getElementById('trivia-phone-question').textContent = msg.question;
+          const optEl = document.getElementById('trivia-phone-options');
+          optEl.innerHTML = msg.options.map((opt, i) => `
+            <button class="vote-option trivia-btn" data-idx="${i}">
+              <span class="vote-letter">${String.fromCharCode(65 + i)}</span>
+              <span class="vote-text">${esc(opt)}</span>
+            </button>`).join('');
+          document.getElementById('trivia-phone-status').textContent = '';
+          optEl.querySelectorAll('.trivia-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              if (P.voted) return;
+              P.voted = true;
+              const forcedElapsed = window.__CLTC_TEST_FAST ? Number(window.__CLTC_TRIVIA_TIME_MS) : NaN;
+              const elapsed = Number.isFinite(forcedElapsed)
+                ? boundTriviaTimeMs(forcedElapsed)
+                : boundTriviaTimeMs(Date.now() - P.triviaServerSentAt);
+              optEl.querySelectorAll('.trivia-btn').forEach(b => b.disabled = true);
+              btn.classList.add('selected'); haptic('tap');
+              document.getElementById('trivia-phone-status').textContent = 'Answer locked!';
+              sendHost({ type: 'player:trivia', answer: btn.dataset.idx, time: elapsed });
+            });
+          });
+          setPhoneState('action');
+          showScreen('screen-trivia', 'Trivia at 11');
+          break;
+        }
+
+        case 'trivia-reveal': {
+          const gotIt = msg.gotRight?.includes(P.name);
+          showWatch(gotIt ? 'CORRECT!' : 'WRONG',
+            `Answer: ${msg.correct}`);
+          break;
+        }
+
+        // ---- REPLAY LAB ----
+        case 'replay-draw': {
+          P.submitted = false;
+          document.getElementById('replay-round-label').textContent = `DRAWING ${msg.roundNum} OF ${msg.totalRounds}`;
+          document.getElementById('replay-draw-prompt').textContent = msg.prompt;
+          initReplayCanvas();
+          setPhoneState('action');
+          showScreen('screen-replay-draw', 'Replay Lab');
+          break;
+        }
+
+        case 'replay-vote': {
+          P.voted = false;
+          const gal = document.getElementById('replay-vote-gallery');
+          const entries = (msg.entries || []).filter(e => e.uid !== P.uid && e.art);
+          gal.innerHTML = '';
+          entries.forEach(e => {
+            const btn = document.createElement('button');
+            btn.className = 'replay-vote-card';
+            btn.dataset.uid = e.uid;
+            if (e.art && (e.art.startsWith('data:image/png') || e.art.startsWith('data:image/jpeg'))) {
+              const img = document.createElement('img');
+              img.className = 'replay-vote-img';
+              img.alt = 'Drawing';
+              img.src = e.art;
+              btn.appendChild(img);
+            }
+            gal.appendChild(btn);
+          });
+          document.getElementById('replay-vote-status').textContent = '';
+          gal.querySelectorAll('.replay-vote-card').forEach(btn => {
+            btn.addEventListener('click', () => {
+              if (P.voted) return;
+              P.voted = true;
+              gal.querySelectorAll('.replay-vote-card').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+              btn.style.opacity = '1';
+              btn.style.border = '3px solid var(--gold)';
+              document.getElementById('replay-vote-status').textContent = 'Vote locked in!';
+              sendHost({ type: 'player:replayvote', pick: btn.dataset.uid });
+            });
+          });
+          setPhoneState('action');
+          showScreen('screen-replay-vote', 'Vote — Best Drawing');
+          break;
+        }
+
+        case 'replay-vote-closed':
+          showWatch('VOTES ARE IN', 'Watch the TV for results'); break;
+
+        case 'replay-results':
+          showWatch(msg.winner ? `${msg.winner} WINS!` : 'RESULTS', msg.prompt || ''); break;
+
+        // ---- FINAL HEADLINES ----
+        case 'final-write': {
+          P.submitted = false;
+          document.getElementById('final-write-prompt').textContent = msg.prompt;
+          document.getElementById('final-input').value = '';
+          document.getElementById('final-input').disabled = false;
+          document.getElementById('final-char-count').textContent = '0';
+          document.getElementById('final-write-status').textContent = '';
+          document.getElementById('final-submit-btn').disabled = true;
+          document.getElementById('final-submit-btn').textContent = 'Submit Headline + Prediction';
+
+          // Prediction players
+          P.predTarget = null; P.predMult = 1;
+          const predPlayersEl = document.getElementById('prediction-players');
+          const otherPlayers = (msg.playerList || []).filter(p => p.uid !== P.uid);
+          predPlayersEl.innerHTML = otherPlayers.map(p =>
+            `<button class="pred-player-btn" data-uid="${p.uid}">${esc(p.name)}</button>`
+          ).join('');
+          predPlayersEl.querySelectorAll('.pred-player-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              predPlayersEl.querySelectorAll('.pred-player-btn').forEach(b => b.classList.remove('selected'));
+              btn.classList.add('selected');
+              P.predTarget = btn.dataset.uid;
+              updateFinalSubmitState();
+            });
+          });
+
+          // Multiplier chips
+          document.querySelectorAll('.pred-chip').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.mult === '1') btn.classList.add('active');
+            btn.onclick = () => {
+              document.querySelectorAll('.pred-chip').forEach(b => b.classList.remove('active'));
+              btn.classList.add('active');
+              P.predMult = parseInt(btn.dataset.mult);
+              updateFinalSubmitState();
+            };
+          });
+
+          setPhoneState('action');
+          showScreen('screen-final-write', 'Final Headlines');
+          updateFinalSubmitState();
+          setTimeout(() => document.getElementById('final-input').focus(), 300);
+          break;
+        }
+
+        case 'final-vote': {
+          P.voted = false;
+          const optEl = document.getElementById('final-vote-options');
+          const headlines = (msg.headlines || []).filter(h => h.uid !== P.uid);
+          optEl.innerHTML = headlines.map(h => `
+            <button class="vote-option final-vote-btn" data-uid="${h.uid}">
+              <span class="vote-text">${esc(h.text)}</span>
+            </button>`).join('');
+          document.getElementById('final-vote-status').textContent = '';
+          optEl.querySelectorAll('.final-vote-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              if (P.voted) return;
+              P.voted = true;
+              optEl.querySelectorAll('.final-vote-btn').forEach(b => b.disabled = true);
+              btn.classList.add('selected');
+              document.getElementById('final-vote-status').textContent = 'Vote locked in!';
+              sendHost({ type: 'player:finalvote', pick: btn.dataset.uid });
+            });
+          });
+          setPhoneState('action');
+          showScreen('screen-final-vote', 'Vote — Best Headline');
+          break;
+        }
+
+        case 'final-results': {
+          const ranked = msg.ranked || [];
+          const top = ranked[0];
+          showWatch(top ? `${top.name} WINS!` : 'RESULTS',
+            top ? `"${top.text?.substring(0, 60)}"` : '');
+          break;
+        }
+
+        // ---- ROUND 7: SHAREABILITY ----
+        case 'clip-vote': {
+          P.voted = false;
+          const optEl = document.getElementById('clip-vote-options');
+          optEl.innerHTML = (msg.nominees || []).map(n => `
+            <button class="clip-vote-btn" data-id="${n.id}">
+              <div class="clip-btn-label">${esc(n.label)}</div>
+              <div class="clip-btn-desc">${esc(n.description)}</div>
+            </button>`).join('');
+          document.getElementById('clip-vote-status').textContent = '';
+          optEl.querySelectorAll('.clip-vote-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+              if (P.voted) return;
+              P.voted = true;
+              optEl.querySelectorAll('.clip-vote-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.4'; });
+              btn.style.opacity = '1';
+              btn.classList.add('selected');
+              document.getElementById('clip-vote-status').textContent = 'Vote locked in!';
+              sendHost({ type: 'player:clipvote', pick: btn.dataset.id });
+            });
+          });
+          haptic('vote-now');
+          setPhoneState('action');
+          showScreen('screen-clip-vote', 'Clip of the Night');
+          break;
+        }
+
+        case 'clip-result':
+          showWatch('CLIP OF THE NIGHT',
+            msg.winner ? `${msg.winner.label}: ${msg.winner.description}` : 'No clip selected');
+          break;
+
+        case 'segment-card': {
+          // Non-intrusive toast — store card data for later save
+          const cardData = { segment: msg.segment, winner: msg.winner, content: msg.content, art: msg.art };
+          P.segmentCards.push(cardData);
+          P.lastSegmentCard = cardData;
+          // Show toast overlay
+          const toast = document.getElementById('segment-card-toast');
+          document.getElementById('toast-segment-name').textContent = msg.segment.toUpperCase();
+          document.getElementById('toast-winner-name').textContent = `${msg.winner} wins!`;
+          toast.classList.remove('hidden');
+          setTimeout(() => toast.classList.add('hidden'), CONFIG.REVEAL.SEGMENT_CARD_TOAST);
+          break;
+        }
+
+        // ---- SCOREBOARD ----
+        case 'scoreboard': {
+          const el = document.getElementById('phone-scores');
+          el.innerHTML = '';
+          (msg.scores || []).forEach((s, i) => {
+            const row = document.createElement('div');
+            row.className = 'phone-score-row' + (s.name === P.name ? ' is-me' : '');
+            row.innerHTML = `<span class="ps-rank">${i+1}.</span><span class="ps-name">${esc(s.name)}</span><span class="ps-score">${s.score.toLocaleString()}</span>`;
+            el.appendChild(row);
+          });
+          // Sprint 1: Score delta toast
+          const myDelta = msg.deltas?.[P.name];
+          if (myDelta && myDelta > 0) showScoreToast(myDelta);
+          showScreen('screen-scoreboard', 'Scores');
+          break;
+        }
+
+        // ---- POSTGAME ----
+        case 'postgame': {
+          const scores = msg.scores || [];
+          const myRank = scores.findIndex(s => s.name === P.name) + 1;
+          const myScore = scores.find(s => s.name === P.name)?.score || 0;
+          document.getElementById('postgame-result-label').textContent =
+            myRank === 1 ? 'YOU WON!' : 'BROADCAST COMPLETE';
+          // Sprint 4: Champion glow class for winner
+          document.getElementById('postgame-result-label').className =
+            myRank === 1 ? 'standby-label postgame-champion-toast' : 'standby-label';
+          document.getElementById('postgame-player-rank').textContent =
+            myRank === 1 ? 'CHAMPION' : `#${myRank} of ${scores.length}`;
+          document.getElementById('postgame-score-display').textContent =
+            `${myScore.toLocaleString()} points`;
+          const el = document.getElementById('postgame-phone-scores');
+          el.innerHTML = '';
+          scores.forEach((s, i) => {
+            const row = document.createElement('div');
+            row.className = 'phone-score-row' + (s.name === P.name ? ' is-me' : '');
+            const titleTag = s.title ? `<span class="ps-title">${esc(s.title)}</span>` : '';
+            row.innerHTML = `<span class="ps-rank">${i+1}.</span><span class="ps-name">${esc(s.name)}${titleTag}</span><span class="ps-score">${s.score.toLocaleString()}</span>`;
+            el.appendChild(row);
+          });
+          const awards = (msg.awards || []).filter(a => a.recipient === P.name);
+          document.getElementById('postgame-awards-display').textContent =
+            awards.length > 0 ? awards.map(a => a.title).join(' \u2022 ') : '';
+
+          // Generate card data for export
+          P.cardData = {
+            name: P.name, avatar: P.avatar, rank: myRank,
+            totalPlayers: scores.length, score: myScore,
+            awards: awards.map(a => a.title),
+            highlights: (msg.highlights || []).slice(0, 3),
+            winner: myRank === 1
+          };
+
+          // Round 7: Store newspaper + apology data
+          P.newspaperData = msg.newspaperData || null;
+          P.apologyData = msg.apologyData || null;
+
+          // Round 8: Save persistent identity after game
+          const updatedId = updateIdentityAfterGame(scores, msg.awards, myRank);
+
+          // Round 8: Show title unlock notification
+          if (P.newTitleUnlock) {
+            const unlockEl = document.getElementById('title-unlock-notify');
+            if (unlockEl) {
+              unlockEl.querySelector('.title-unlock-name').textContent = P.newTitleUnlock;
+              unlockEl.classList.remove('hidden');
+            }
+            P.newTitleUnlock = null;
+          }
+
+          // Round 8: Broadcast identity to host for returning player detection
+          sendHost({ type: 'player:identity', gamesPlayed: updatedId.gamesPlayed,
+            persistentTitle: updatedId.selectedTitle || (updatedId.unlockedTitles.length > 0 ? updatedId.unlockedTitles[updatedId.unlockedTitles.length - 1] : null) });
+
+          // Show native share button if supported
+          if (CardExport.canNativeShare()) {
+            document.getElementById('share-native-btn').classList.remove('hidden');
+          }
+
+          // Show apology button for last place
+          if (myRank === scores.length && scores.length > 2 && P.apologyData) {
+            document.getElementById('apology-btn').classList.remove('hidden');
+          }
+
+          showScreen('screen-postgame', myRank === 1 ? 'Champion!' : 'Game Over');
+          break;
+        }
+
+        // Round 8: Previously On recap
+        case 'previously-on':
+          showWatch('PREVIOUSLY ON WCLC', 'Revisiting last broadcast...');
+          break;
+
+        // Round 8: Hall of Records
+        case 'hall-of-records':
+          showWatch('STATION RECORD', msg.label || 'A new record has been set');
+          haptic('breaking');
+          break;
+
+        // Round 8: Employee of the Night
+        case 'employee-night':
+          if (msg.name === P.name) {
+            haptic('winner');
+            showWatch('EMPLOYEE OF THE NIGHT', 'That\'s you!');
+          } else {
+            showWatch('EMPLOYEE OF THE NIGHT', `${msg.name} — ${(msg.score || 0).toLocaleString()} pts`);
+          }
+          break;
+
+        // Round 8: Sweeps Week announcement
+        case 'sweeps':
+          showWatch('SWEEPS WEEK', 'All points doubled!');
+          haptic('breaking');
+          break;
+
+        // Round 9: Station Counsel Interrupt
+        case 'counsel':
+          showWatch('STATION COUNSEL', 'Legal review in progress...');
+          haptic('breaking');
+          break;
+
+        // Round 9: Boom Goes the Dynamite
+        case 'boom':
+          if (msg.name === P.name) {
+            haptic('winner');
+            showWatch('BOOM GOES THE DYNAMITE', 'That\'s you! ' + msg.streak + ' in a row!');
+          } else {
+            showWatch('BOOM GOES THE DYNAMITE', msg.name + ' — ' + msg.streak + ' in a row');
+          }
+          SFX.airhorn();
+          break;
+
+        // Round 9: Unpaid Intern
+        case 'intern':
+          if (msg.targetUid === P.uid) {
+            showWatch('THE INTERN', msg.intro + ' "' + msg.answer + '"');
+          } else {
+            showWatch('THE INTERN', msg.targetName + ' is receiving assistance...');
+          }
+          break;
+
+        // Round 9: FCC Compliance Mode
+        case 'fcc':
+          showWatch('FCC COMPLIANCE', msg.rule || 'New directive in effect');
+          haptic('breaking');
+          break;
+
+        case 'game-restart':
+          P.submitted = false; P.voted = false;
+          P.cardData = null; P.segmentCards = []; P.newspaperData = null;
+          P.apologyData = null; P.lastSegmentCard = null;
+          P.predTarget = null; P.predMult = 1; P.newTitleUnlock = null;
+          if (msg.code) { P.roomCode = msg.code; saveSess(); }
+          showWaiting('New broadcast starting — stand by...');
+          try { navigator.vibrate([50, 100, 50]); } catch(e) {}
+          break;
+
+        case 'waiting':
+          showWaiting(msg.message); break;
+      }
+    }
+
+    // ====== TICKER DESK ======
+    function showTickerDesk(msg) {
+      P.submitted = false;
+      document.getElementById('td-context').textContent = msg.context || '';
+      document.getElementById('td-status').textContent = '';
+      // Hide all task types
+      document.querySelectorAll('.td-task').forEach(el => el.classList.add('hidden'));
+
+      if (msg.taskType === 'headline') {
+        document.getElementById('td-headline').classList.remove('hidden');
+        const input = document.getElementById('td-headline-input');
+        input.value = '';
+        input.maxLength = msg.maxLen || 30;
+        document.getElementById('td-char-count').textContent = '0';
+        const btn = document.getElementById('td-headline-submit');
+        btn.disabled = false;
+        btn.textContent = 'Send to Ticker';
+        // Replace listener
+        const newBtn = btn.cloneNode(true);
+        btn.replaceWith(newBtn);
+        newBtn.id = 'td-headline-submit';
+        newBtn.addEventListener('click', () => {
+          const text = input.value.trim();
+          if (!text || P.submitted) return;
+          P.submitted = true;
+          newBtn.disabled = true;
+          newBtn.textContent = 'Sent!';
+          document.getElementById('td-status').textContent = 'Your headline is heading to the ticker';
+          haptic('submit');
+          sendHost({ type: 'player:ticker', text });
+        });
+        input.addEventListener('input', function() {
+          document.getElementById('td-char-count').textContent = this.value.length;
+        });
+      } else if (msg.taskType === 'reaction') {
+        document.getElementById('td-reaction').classList.remove('hidden');
+        const grid = document.getElementById('td-reaction-grid');
+        grid.innerHTML = (msg.options || []).map(opt =>
+          `<button class="td-reaction-btn" data-reaction="${opt}">${opt}</button>`
+        ).join('');
+        grid.querySelectorAll('.td-reaction-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (P.submitted) return;
+            P.submitted = true;
+            grid.querySelectorAll('.td-reaction-btn').forEach(b => b.disabled = true);
+            btn.classList.add('selected');
+            document.getElementById('td-status').textContent = 'Reaction sent!';
+            haptic('tap');
+            sendHost({ type: 'player:reaction', reaction: btn.dataset.reaction });
+          });
+        });
+      } else if (msg.taskType === 'sponsor-pick') {
+        document.getElementById('td-sponsor').classList.remove('hidden');
+        const btnA = document.getElementById('td-sponsor-a');
+        const btnB = document.getElementById('td-sponsor-b');
+        btnA.textContent = msg.optionA || 'Option A';
+        btnB.textContent = msg.optionB || 'Option B';
+        btnA.disabled = false; btnB.disabled = false;
+        btnA.classList.remove('selected'); btnB.classList.remove('selected');
+        const pickSponsor = (choice) => {
+          if (P.submitted) return;
+          P.submitted = true;
+          btnA.disabled = true; btnB.disabled = true;
+          (choice === 'a' ? btnA : btnB).classList.add('selected');
+          document.getElementById('td-status').textContent = 'Vote counted!';
+          haptic('tap');
+          sendHost({ type: 'player:reaction', reaction: `SPONSOR: ${choice === 'a' ? msg.optionA : msg.optionB}` });
+        };
+        btnA.onclick = () => pickSponsor('a');
+        btnB.onclick = () => pickSponsor('b');
+      }
+
+      setPhoneState('action');
+      showScreen('screen-ticker-desk', 'Ticker Desk');
+    }
+
+    // ====== PREDICTION TAP ======
+    function showPredictionTap(msg) {
+      P.voted = false;
+      document.getElementById('pt-question').textContent = msg.question || 'Make your prediction';
+      document.getElementById('pt-status').textContent = '';
+      const optEl = document.getElementById('pt-options');
+      optEl.innerHTML = (msg.options || []).map(opt =>
+        `<button class="pt-option-btn" data-id="${opt.id}">${esc(opt.label)}</button>`
+      ).join('');
+      optEl.querySelectorAll('.pt-option-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (P.voted) return;
+          P.voted = true;
+          optEl.querySelectorAll('.pt-option-btn').forEach(b => b.disabled = true);
+          btn.classList.add('selected');
+          document.getElementById('pt-status').textContent = 'Prediction locked!';
+          haptic('tap');
+          sendHost({ type: 'player:predict', pick: btn.dataset.id });
+        });
+      });
+      setPhoneState('action');
+      showScreen('screen-prediction-tap', 'Predict');
+    }
+
+    // ====== HELPERS ======
+    function showWaiting(message) {
+      showScreen('screen-waiting', 'Stand By');
+      document.getElementById('waiting-name').textContent = P.name || '';
+      if (P.avatar) document.getElementById('waiting-avatar').innerHTML = `<img src="${P.avatar}" alt="avatar">`;
+      document.getElementById('waiting-msg').textContent =
+        message || 'Keep this phone open. Watch Channel 8 until we put you on air.';
+      // Round 8: Show veteran greeting + identity stats
+      const id = loadIdentity();
+      const greetEl = document.getElementById('veteran-greeting');
+      const statsEl = document.getElementById('identity-stats');
+      const titleEl = document.getElementById('persistent-title');
+      if (id && id.gamesPlayed > 0) {
+        const greeting = getVeteranGreeting(id);
+        if (greeting) { greetEl.textContent = greeting; greetEl.classList.remove('hidden'); }
+        // Show persistent title if any
+        if (id.selectedTitle || id.unlockedTitles.length > 0) {
+          const title = id.selectedTitle || id.unlockedTitles[id.unlockedTitles.length - 1];
+          titleEl.textContent = title;
+          titleEl.classList.remove('hidden');
+        } else { titleEl.classList.add('hidden'); }
+        // Show mini stats
+        const statParts = [];
+        statParts.push(`${id.gamesPlayed} game${id.gamesPlayed !== 1 ? 's' : ''}`);
+        if (id.champWins > 0) statParts.push(`${id.champWins} win${id.champWins !== 1 ? 's' : ''}`);
+        statParts.push(`${id.totalScore.toLocaleString()} lifetime pts`);
+        statsEl.textContent = statParts.join(' \u2022 ');
+        statsEl.classList.remove('hidden');
+      } else {
+        greetEl.classList.add('hidden');
+        statsEl.classList.add('hidden');
+        titleEl.classList.add('hidden');
+      }
+    }
+
+    function showWatch(label, msg) {
+      document.getElementById('watch-label').textContent = label;
+      document.getElementById('watch-msg').textContent = msg;
+      setPhoneState('watch');
+      showScreen('screen-watch', label);
+    }
+
+    function setPhoneState(state) {
+      const container = document.querySelector('.phone-container');
+      container.classList.remove('state-watch', 'state-action');
+      if (state === 'watch') {
+        container.classList.add('state-watch');
+        document.body.classList.remove('timer-active');
+      } else if (state === 'action') {
+        container.classList.add('state-action');
+        try { navigator.vibrate(50); } catch(e) {}
+      }
+    }
+
+    function setupTextEntry(roundLabel, prompt, placeholder, maxLen, guide, onSubmit) {
+      document.getElementById('te-round-label').textContent = roundLabel;
+      document.getElementById('te-guide').textContent = guide || '';
+      document.getElementById('te-prompt').textContent = prompt;
+      const input = document.getElementById('te-input');
+      input.value = ''; input.maxLength = maxLen; input.placeholder = placeholder;
+      document.getElementById('te-char-count').textContent = '0';
+      document.getElementById('te-status').textContent = '';
+      document.getElementById('te-submit').disabled = false;
+      document.getElementById('te-submit').textContent = 'Submit';
+      // Remove old listeners by replacing element
+      const newSubmit = document.getElementById('te-submit').cloneNode(true);
+      document.getElementById('te-submit').replaceWith(newSubmit);
+      newSubmit.id = 'te-submit';
+      newSubmit.addEventListener('click', () => {
+        const text = input.value.trim();
+        if (!text || P.submitted) return;
+        if (typeof ProfanityFilter !== 'undefined' && ProfanityFilter.isBlocked(text)) {
+          haptic('error');
+          // Sprint 4: Error shake on profanity block
+          newSubmit.classList.add('btn-error-shake');
+          setTimeout(() => newSubmit.classList.remove('btn-error-shake'), 400);
+          document.getElementById('te-status').textContent = 'Station counsel has flagged this response. Try again.';
+          return;
+        }
+        P.submitted = true; haptic('submit');
+        input.blur(); // Dismiss virtual keyboard
+        newSubmit.disabled = true;
+        newSubmit.textContent = 'Submitted!';
+        // Sprint 4: Success flash on submit
+        newSubmit.classList.add('btn-success-flash');
+        setTimeout(() => newSubmit.classList.remove('btn-success-flash'), 800);
+        document.getElementById('te-status').textContent = 'Answer locked in. Watch the TV.';
+        onSubmit(text);
+      });
+      setTimeout(() => input.focus(), 300);
+    }
+
+    // ====== TEXT ENTRY EVENTS ======
+    document.getElementById('te-input').addEventListener('input', function() {
+      document.getElementById('te-char-count').textContent = this.value.length;
+    });
+
+    // ====== FINAL WRITE EVENTS ======
+    document.getElementById('final-input').addEventListener('input', function() {
+      document.getElementById('final-char-count').textContent = this.value.length;
+      updateFinalSubmitState();
+    });
+
+    function updateFinalSubmitState() {
+      const text = document.getElementById('final-input')?.value.trim();
+      const canSubmit = Boolean(text && P.predTarget && !P.submitted);
+      document.getElementById('final-submit-btn').disabled = !canSubmit;
+      if (P.submitted) return;
+      const status = document.getElementById('final-write-status');
+      if (!text) status.textContent = 'Step 1: write your headline.';
+      else if (!P.predTarget) status.textContent = 'Step 2: pick who will win.';
+      else status.textContent = 'Both steps ready. Submit when the headline looks right.';
+    }
+
+    document.getElementById('final-submit-btn').addEventListener('click', () => {
+      const text = document.getElementById('final-input').value.trim();
+      if (!text || !P.predTarget || P.submitted) { updateFinalSubmitState(); return; }
+      if (typeof ProfanityFilter !== 'undefined' && ProfanityFilter.isBlocked(text)) {
+        haptic('error');
+        document.getElementById('final-write-status').textContent = 'Station counsel has flagged this response. Try again.';
+        return;
+      }
+      P.submitted = true; haptic('submit');
+      document.getElementById('final-input').blur(); // Dismiss virtual keyboard
+      document.getElementById('final-input').disabled = true;
+      document.querySelectorAll('.pred-player-btn, .pred-chip').forEach(btn => { btn.disabled = true; });
+      document.getElementById('final-submit-btn').disabled = true;
+      document.getElementById('final-submit-btn').textContent = 'Submitted!';
+      document.getElementById('final-write-status').textContent = 'Headline and prediction locked.';
+      sendHost({ type: 'player:headline', text });
+      sendHost({ type: 'player:prediction', target: P.predTarget, multiplier: P.predMult });
+      showWatch('HEADLINE LOCKED', 'Your prediction is locked too. Watch the TV for the final vote');
+    });
+
+    // ====== CQ VOTE ======
+    document.getElementById('vote-a').addEventListener('click', () => submitVote('a'));
+    document.getElementById('vote-b').addEventListener('click', () => submitVote('b'));
+    function submitVote(choice) {
+      if (P.voted) return; P.voted = true; haptic('vote'); SFX.voteLocked();
+      const btnA = document.getElementById('vote-a');
+      const btnB = document.getElementById('vote-b');
+      btnA.disabled = true; btnB.disabled = true;
+      const chosen = document.getElementById(`vote-${choice}`);
+      const other = choice === 'a' ? btnB : btnA;
+      // Sprint 4: Vote card selection animation
+      chosen.classList.add('selected');
+      other.classList.add('not-selected');
+      // Brief gold flash on chosen
+      chosen.classList.add('btn-success-flash');
+      setTimeout(() => chosen.classList.remove('btn-success-flash'), 600);
+      document.getElementById('vote-status').textContent = 'Vote locked in!';
+      sendHost({ type: 'player:vote', choice });
+    }
+
+    // ====== JOIN FLOW ======
+    const codeInputs = [0,1,2,3].map(i => document.getElementById(`code-${i}`));
+    const joinBtn = document.getElementById('join-btn');
+    codeInputs.forEach((input, i) => {
+      input.addEventListener('input', (e) => {
+        e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+        if (e.target.value && i < 3) codeInputs[i+1].focus();
+        joinBtn.disabled = codeInputs.map(x => x.value).join('').length < 4;
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !e.target.value && i > 0) codeInputs[i-1].focus();
+        if (e.key === 'Enter') joinBtn.click();
+      });
+      input.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const t = (e.clipboardData.getData('text')||'').toUpperCase().replace(/[^A-Z]/g,'');
+        for (let j = 0; j < 4 && j < t.length; j++) codeInputs[j].value = t[j];
+        if (t.length >= 4) codeInputs[3].focus();
+        joinBtn.disabled = codeInputs.map(x => x.value).join('').length < 4;
+      });
+    });
+    function roomCodeFromUrl() {
+      try {
+        const code = new URLSearchParams(location.search).get('code');
+        return code ? code.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) : '';
+      } catch {
+        return '';
+      }
+    }
+    function fillRoomCode(code) {
+      if (code.length !== 4) return;
+      codeInputs.forEach((input, i) => { input.value = code[i] || ''; });
+      joinBtn.disabled = false;
+    }
+    fillRoomCode(roomCodeFromUrl());
+    joinBtn.addEventListener('click', () => {
+      const code = codeInputs.map(x => x.value).join('').toUpperCase();
+      if (code.length < 4) return;
+      haptic('tap');
+      document.getElementById('join-error').textContent = '';
+      P.roomCode = code;
+      SFX.init(); SFX.resume(); // Unlock audio on first user gesture
+      if (P.ws?.readyState === 1) send({ type: 'player:join', code });
+      else { haptic('error'); document.getElementById('join-error').textContent = 'Not connected'; }
+    });
+
+    // ====== NAME + AVATAR ======
+    const nameInput = document.getElementById('name-input');
+    const nameBtn = document.getElementById('name-btn');
+    nameInput.addEventListener('input', () => {
+      document.getElementById('name-count').textContent = nameInput.value.trim().length;
+      nameBtn.disabled = nameInput.value.trim().length < 1;
+    });
+    nameInput.addEventListener('keydown', (e) => { if (e.key==='Enter') nameBtn.click(); });
+    nameBtn.addEventListener('click', () => {
+      const name = nameInput.value.trim().slice(0,16); if (!name) return;
+      P.name = name; send({ type: 'player:name', name }); saveSess();
+      // Round 8: Send identity info to host
+      const id = getOrCreateIdentity(name);
+      sendHost({ type: 'player:identity', gamesPlayed: id.gamesPlayed,
+        persistentTitle: id.selectedTitle || (id.unlockedTitles.length > 0 ? id.unlockedTitles[id.unlockedTitles.length - 1] : null) });
+      showScreen('screen-avatar', 'Your Headshot'); initCanvas(); startAvatarCountdown();
+    });
+
+    let drawing=false, curColor='#f0f0f0', curSize=4, lx=0, ly=0, canvasInit=false;
+    let avatarTimerId = null, avatarSubmitted = false;
+    function getAvatarTime() {
+      const base = CONFIG.AVATAR_TIME || 30000;
+      if (CONFIG.PILOT_MODE.enabled && CONFIG.PILOT_MODE.avatarTime) {
+        return Math.min(base, CONFIG.PILOT_MODE.avatarTime);
+      }
+      return base;
+    }
+    function stopAvatarCountdown() {
+      if (avatarTimerId) { clearInterval(avatarTimerId); avatarTimerId = null; }
+    }
+    function submitAvatar() {
+      if (avatarSubmitted) return;
+      avatarSubmitted = true;
+      stopAvatarCountdown();
+      const c = document.getElementById('avatar-canvas');
+      const btn = document.getElementById('avatar-done-btn');
+      const d = c.toDataURL('image/png'); P.avatar=d;
+      btn.disabled = true;
+      btn.textContent = 'Ready';
+      send({ type: 'player:avatar', avatar: d }); saveSess();
+    }
+    function startAvatarCountdown() {
+      avatarSubmitted = false;
+      stopAvatarCountdown();
+      const btn = document.getElementById('avatar-done-btn');
+      const deadline = Date.now() + getAvatarTime();
+      const tick = () => {
+        const seconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+        btn.textContent = `I'm Ready (${seconds})`;
+        if (seconds <= 0) submitAvatar();
+      };
+      btn.disabled = false;
+      tick();
+      avatarTimerId = setInterval(tick, 250);
+    }
+    function initCanvas() {
+      if (canvasInit) return; canvasInit = true;
+      const c = document.getElementById('avatar-canvas'), ctx = c.getContext('2d');
+      ctx.fillStyle = '#1a1a3e'; ctx.fillRect(0,0,200,200);
+      const pos = e => { const r=c.getBoundingClientRect(), t=e.touches?e.touches[0]:e;
+        return { x:(t.clientX-r.left)*(200/r.width), y:(t.clientY-r.top)*(200/r.height) }; };
+      const start = e => { e.preventDefault(); drawing=true; const p=pos(e); lx=p.x; ly=p.y;
+        ctx.beginPath(); ctx.arc(p.x,p.y,curSize/2,0,Math.PI*2); ctx.fillStyle=curColor; ctx.fill(); };
+      const draw = e => { e.preventDefault(); if(!drawing) return; const p=pos(e);
+        ctx.beginPath(); ctx.moveTo(lx,ly); ctx.lineTo(p.x,p.y);
+        ctx.strokeStyle=curColor; ctx.lineWidth=curSize; ctx.lineCap='round'; ctx.stroke(); lx=p.x; ly=p.y; };
+      const stop = () => drawing=false;
+      c.addEventListener('mousedown',start); c.addEventListener('mousemove',draw);
+      c.addEventListener('mouseup',stop); c.addEventListener('mouseleave',stop);
+      c.addEventListener('touchstart',start,{passive:false}); c.addEventListener('touchmove',draw,{passive:false});
+      c.addEventListener('touchend',stop);
+      document.querySelectorAll('.color-btn').forEach(b => b.addEventListener('click', () => {
+        document.querySelectorAll('.color-btn').forEach(x=>x.classList.remove('active'));
+        b.classList.add('active'); curColor=b.dataset.color; }));
+      document.querySelectorAll('.brush-btn').forEach(b => b.addEventListener('click', () => {
+        document.querySelectorAll('.brush-btn').forEach(x=>x.classList.remove('active'));
+        b.classList.add('active'); curSize=parseInt(b.dataset.size); }));
+      document.getElementById('clear-avatar').addEventListener('click', () => {
+        ctx.fillStyle='#1a1a3e'; ctx.fillRect(0,0,200,200); });
+      document.getElementById('avatar-done-btn').addEventListener('click', () => {
+        submitAvatar(); });
+    }
+
+    // ====== REPLAY LAB CANVAS ======
+    let replayCanvasInit = false;
+    let replayCtx = null;
+    let replayColor = '#f0f0f0', replaySize = 3;
+    let rDrawing = false, rlx = 0, rly = 0;
+
+    function initReplayCanvas() {
+      const c = document.getElementById('replay-canvas');
+      replayCtx = c.getContext('2d');
+      replayCtx.fillStyle = '#1a1a3e';
+      replayCtx.fillRect(0, 0, 300, 300);
+      replayColor = '#f0f0f0'; replaySize = 3;
+
+      if (!replayCanvasInit) {
+        replayCanvasInit = true;
+        const pos = e => { const r=c.getBoundingClientRect(), t=e.touches?e.touches[0]:e;
+          return { x:(t.clientX-r.left)*(300/r.width), y:(t.clientY-r.top)*(300/r.height) }; };
+        const start = e => { e.preventDefault(); rDrawing=true; const p=pos(e); rlx=p.x; rly=p.y;
+          replayCtx.beginPath(); replayCtx.arc(p.x,p.y,replaySize/2,0,Math.PI*2);
+          replayCtx.fillStyle=replayColor; replayCtx.fill(); };
+        const draw = e => { e.preventDefault(); if(!rDrawing) return; const p=pos(e);
+          replayCtx.beginPath(); replayCtx.moveTo(rlx,rly); replayCtx.lineTo(p.x,p.y);
+          replayCtx.strokeStyle=replayColor; replayCtx.lineWidth=replaySize;
+          replayCtx.lineCap='round'; replayCtx.stroke(); rlx=p.x; rly=p.y; };
+        const stop = () => rDrawing=false;
+        c.addEventListener('mousedown',start); c.addEventListener('mousemove',draw);
+        c.addEventListener('mouseup',stop); c.addEventListener('mouseleave',stop);
+        c.addEventListener('touchstart',start,{passive:false}); c.addEventListener('touchmove',draw,{passive:false});
+        c.addEventListener('touchend',stop);
+
+        document.querySelectorAll('.color-btn[data-target="replay"]').forEach(b => b.addEventListener('click', () => {
+          document.querySelectorAll('.color-btn[data-target="replay"]').forEach(x=>x.classList.remove('active'));
+          b.classList.add('active'); replayColor=b.dataset.color; }));
+        document.querySelectorAll('.brush-btn[data-target="replay"]').forEach(b => b.addEventListener('click', () => {
+          document.querySelectorAll('.brush-btn[data-target="replay"]').forEach(x=>x.classList.remove('active'));
+          b.classList.add('active'); replaySize=parseInt(b.dataset.size); }));
+        document.getElementById('clear-replay').addEventListener('click', () => {
+          replayCtx.fillStyle='#1a1a3e'; replayCtx.fillRect(0,0,300,300); });
+        document.getElementById('replay-submit-btn').addEventListener('click', () => {
+          if (P.submitted) return;
+          P.submitted = true;
+          const art = document.getElementById('replay-canvas').toDataURL('image/jpeg', 0.7);
+          document.getElementById('replay-submit-btn').disabled = true;
+          document.getElementById('replay-submit-btn').textContent = 'Submitted!';
+          sendHost({ type: 'player:drawing', art });
+        });
+      }
+    }
+
+    function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+    // ====== INIT ======
+    // ====== POSTGAME CARD EXPORT ======
+    // Save Game Card (personal)
+    document.getElementById('save-card-btn').addEventListener('click', async () => {
+      if (!P.cardData) return;
+      const canvas = await CardExport.generate(P.cardData);
+      CardExport.download(canvas, P.name || 'player');
+    });
+
+    // Round 7: Save Newspaper Front Page
+    document.getElementById('save-newspaper-btn').addEventListener('click', async () => {
+      if (!P.newspaperData) return;
+      const canvas = await NewspaperExport.generate(P.newspaperData);
+      NewspaperExport.download(canvas, 'elm-county-gazette.png');
+    });
+
+    // Round 7: Save Breaking News Card
+    document.getElementById('save-breaking-btn').addEventListener('click', async () => {
+      if (!P.newspaperData) return;
+      // Build breaking card data from newspaper data
+      const bd = P.newspaperData;
+      const canvas = await NewspaperExport.generateBreakingCard({
+        quote: bd.bestQuote ? bd.bestQuote.text : 'No comment.',
+        quoteAuthor: bd.bestQuote ? bd.bestQuote.author : null,
+        art: bd.photo ? bd.photo.art : null,
+        artPrompt: bd.photo ? bd.photo.prompt : null
+      });
+      NewspaperExport.download(canvas, 'breaking-news.png');
+    });
+
+    // Round 7: Native share button
+    document.getElementById('share-native-btn').addEventListener('click', async () => {
+      if (!P.newspaperData) return;
+      const canvas = await NewspaperExport.generate(P.newspaperData);
+      const shared = await NewspaperExport.share(canvas,
+        'elm-county-gazette.png',
+        'The Greater Elm County Gazette',
+        'Tonight\'s broadcast report from WCLC Channel 8');
+      if (!shared) {
+        NewspaperExport.download(canvas, 'elm-county-gazette.png');
+      }
+    });
+
+    // Round 7: Apology button (last place only)
+    document.getElementById('apology-btn').addEventListener('click', async () => {
+      if (!P.apologyData) return;
+      const canvas = await CardExport.generateApology(P.apologyData);
+      const shared = CardExport.canNativeShare();
+      if (shared) {
+        CardExport.shareCanvas(canvas, `${P.name}-apology.png`,
+          'Official Station Statement', `${P.name} issues a public apology`)
+          .then(ok => { if (!ok) CardExport.download(canvas, `${P.name}-apology`); });
+      } else {
+        CardExport.download(canvas, `${P.name}-apology`);
+      }
+      document.getElementById('apology-btn').textContent = 'APOLOGY ISSUED';
+      document.getElementById('apology-btn').disabled = true;
+    });
+
+    // Round 7: Segment card toast save/share
+    document.getElementById('toast-save-btn').addEventListener('click', async () => {
+      if (!P.lastSegmentCard) return;
+      const canvas = await CardExport.generateSegmentCard(P.lastSegmentCard);
+      CardExport.download(canvas, `${P.lastSegmentCard.segment}-winner`);
+      document.getElementById('segment-card-toast').classList.add('hidden');
+    });
+    document.getElementById('toast-share-btn').addEventListener('click', async () => {
+      if (!P.lastSegmentCard) return;
+      const canvas = await CardExport.generateSegmentCard(P.lastSegmentCard);
+      const shared = await CardExport.shareCanvas(canvas,
+        `${P.lastSegmentCard.segment}-winner.png`,
+        `${P.lastSegmentCard.segment} Winner`,
+        `${P.lastSegmentCard.winner} wins ${P.lastSegmentCard.segment} on WCLC Channel 8!`);
+      if (!shared) CardExport.download(canvas, `${P.lastSegmentCard.segment}-winner`);
+      document.getElementById('segment-card-toast').classList.add('hidden');
+    });
+
+    document.getElementById('clear-session-data-link').addEventListener('click', showPlayerPrivacyConfirm);
+    document.getElementById('cancel-clear-session-data').addEventListener('click', hidePlayerPrivacyConfirm);
+    document.getElementById('confirm-clear-session-data').addEventListener('click', clearPlayerSessionData);
+
+    // ====== PRESS CONFERENCE (Round 6) ======
+    document.getElementById('press-conf-input').addEventListener('input', function() {
+      document.getElementById('press-conf-char-count').textContent = this.value.length;
+    });
+    document.getElementById('press-conf-submit').addEventListener('click', () => {
+      const text = document.getElementById('press-conf-input').value.trim();
+      if (!text || P.submitted) return;
+      if (typeof ProfanityFilter !== 'undefined' && ProfanityFilter.isBlocked(text)) {
+        haptic('error');
+        document.getElementById('press-conf-status').textContent = 'Station counsel has flagged this response. Try again.';
+        return;
+      }
+      P.submitted = true;
+      haptic('submit');
+      document.getElementById('press-conf-input').blur(); // Dismiss virtual keyboard
+      document.getElementById('press-conf-submit').disabled = true;
+      document.getElementById('press-conf-submit').textContent = 'Statement Issued';
+      document.getElementById('press-conf-status').textContent = 'Your statement is on record.';
+      sendHost({ type: 'player:pressconf', text });
+    });
+
+    // ====== HAPTICS TOGGLE (Round 5) ======
+    document.getElementById('haptics-toggle').addEventListener('change', (e) => {
+      P.hapticsEnabled = e.target.checked;
+      if (P.hapticsEnabled) haptic('tap'); // confirm with a tap
+    });
+
+    // ====== ROUND 9: DOODLE PAD ======
+    let doodleInit = false, doodleDrawing = false, doodleCtx = null, dlx = 0, dly = 0, _doodleDebounce = null;
+    function initDoodlePad() {
+      if (doodleInit) return; doodleInit = true;
+      const c = document.getElementById('doodle-canvas');
+      doodleCtx = c.getContext('2d');
+      doodleCtx.fillStyle = 'rgba(26,26,46,0.3)'; doodleCtx.fillRect(0, 0, 120, 60);
+      const pos = e => { const r = c.getBoundingClientRect(), t = e.touches ? e.touches[0] : e;
+        return { x: (t.clientX - r.left) * (120 / r.width), y: (t.clientY - r.top) * (60 / r.height) }; };
+      const start = e => { e.preventDefault(); e.stopPropagation(); doodleDrawing = true;
+        const p = pos(e); dlx = p.x; dly = p.y; };
+      const draw = e => { e.preventDefault(); e.stopPropagation(); if (!doodleDrawing) return;
+        const p = pos(e); doodleCtx.beginPath(); doodleCtx.moveTo(dlx, dly); doodleCtx.lineTo(p.x, p.y);
+        doodleCtx.strokeStyle = '#f5a623'; doodleCtx.lineWidth = 2; doodleCtx.lineCap = 'round';
+        doodleCtx.stroke(); dlx = p.x; dly = p.y; };
+      const stop = () => {
+        if (doodleDrawing) {
+          doodleDrawing = false;
+          // Debounce doodle send to avoid flooding WebSocket
+          if (_doodleDebounce) clearTimeout(_doodleDebounce);
+          _doodleDebounce = setTimeout(() => {
+            try {
+              const art = c.toDataURL('image/jpeg', 0.5);
+              sendHost({ type: 'player:doodle', art });
+            } catch (e) {}
+          }, 800);
+        }
+      };
+      c.addEventListener('mousedown', start); c.addEventListener('mousemove', draw);
+      c.addEventListener('mouseup', stop); c.addEventListener('mouseleave', stop);
+      c.addEventListener('touchstart', start, { passive: false });
+      c.addEventListener('touchmove', draw, { passive: false });
+      c.addEventListener('touchend', stop);
+    }
+    // Initialize doodle pad on first watch screen
+    const origShowWatch = showWatch;
+    showWatch = function(label, msg) {
+      origShowWatch(label, msg);
+      initDoodlePad();
+    };
+
+    // ====== INIT ======
+    Icons.inject('watch-tv-icon', 'tv', 48);
+    connectPlayer(); setTimeout(() => codeInputs[0].focus(), 300);
+  </script>
+</body>
+</html>

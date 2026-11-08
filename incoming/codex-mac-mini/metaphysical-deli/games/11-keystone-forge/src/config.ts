@@ -1,0 +1,34 @@
+export type GameMode = 'endless' | 'sprint' | 'puzzle';
+
+export const CONFIG = {
+  BOARD_COLS: 6,
+  BOARD_ROWS: 10,
+  PREVIEW_COUNT: 3,
+  SPAWN_COL: 1,
+  SPAWN_ROW: 0,
+
+  // Timing & gravity
+  BASE_GRAVITY_MS: 5500,
+  MIN_GRAVITY_MS: 1400,
+  GRAVITY_DECAY_PER_LEVEL_MS: 320,
+
+  // Progression
+  LINES_PER_LEVEL: 6,
+  SPRINT_TARGET_LINES: 20,
+  SLAG_RISE_INTERVAL_STAMPS: 6,
+  SLAG_MAX_STACK_HEIGHT: 6,
+
+  // Chisel & Finesse
+  INITIAL_CHISEL_CHARGES: 1,
+  MAX_CHISEL_CHARGES: 3,
+  FINESSE_STREAK_FOR_CHISEL: 3,
+
+  // Scoring
+  SCORE_FLUSH_BASE: 30,
+  SCORE_FLAT_SKYLINE: 400,
+  SCORE_ALL_CLEAR: 1000,
+  SCORE_PUZZLE_CLEAR: 500,
+  FINESSE_BONUS_MULTIPLIER: 1.25,
+  LINE_CLEAR_SCORES: [0, 120, 320, 650, 1200] as readonly number[],
+  COMBO_BONUS_BASE: 60,
+} as const;

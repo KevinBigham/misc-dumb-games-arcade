@@ -1,0 +1,36 @@
+import"./modulepreload-polyfill-B5Qt9EMX.js";import{_ as F}from"./preload-helper-Ct5FWWRu.js";import{g as N}from"./index-B4zfiJpA.js";import{g as I}from"./index-mIHD0eeu.js";import{g as K}from"./index-BkMTpS-M.js";import{g as W}from"./index-D5-5EPLk.js";import{g as C}from"./index-nh6rX1MG.js";import{g as X}from"./index-CjYcQqIi.js";import{g as Y}from"./index-_uBxhWZo.js";import{g as V}from"./index-dSGJbeSu.js";import{g as z}from"./index-DBFrlM7o.js";import{g as j}from"./index-Bo8eE_eL.js";import{a as w,g as P}from"./index-D_Isg5EP.js";import{a as R,g as H,m as J}from"./index-C135dpYp.js";import{a as k,g as Q}from"./index-DIBadgWl.js";const U=P;typeof HTMLButtonElement<"u"&&!("commandForElement"in HTMLButtonElement.prototype)&&F(()=>import("./index-BWFjuSge.js"),[],import.meta.url);typeof HTMLElement<"u"&&!("popover"in HTMLElement.prototype)&&F(()=>import("./popover-DtqSrbDJ.js"),[],import.meta.url);const y=[N,I,K,W,C,X,Y,V,z,j];function Z(t=document){if(!(typeof HTMLDialogElement>"u"||"closedBy"in HTMLDialogElement.prototype))for(const i of t.querySelectorAll('dialog[closedby="any"]'))i.addEventListener("click",o=>{if(o.target!==i)return;const r=i.getBoundingClientRect();r.top<=o.clientY&&o.clientY<=r.top+r.height&&r.left<=o.clientX&&o.clientX<=r.left+r.width||i.close()})}function ee(t=document.body){let i=null,o=null,r=null,d=!1;const c=t.querySelector("#hub-nav-list"),m=t.querySelector("#featured-keystone-section"),g=t.querySelector("#featured-keystone-mount"),p=t.querySelector("#hub-catalog-section"),S=t.querySelector("#hub-catalog-grid"),f=t.querySelector("#hub-stage-wrapper"),h=t.querySelector("#hub-stage-mount"),v=t.querySelector("#btn-show-catalog"),$=t.querySelector("#btn-toggle-debug"),x=t.querySelector("#btn-apply-seed"),G=t.querySelector("#hub-seed-input"),u=t.querySelector("#btn-open-standalone"),D=t.querySelector("#contract-dialog-body"),q=t.querySelector("#dialog-contract-title"),M=t.querySelector("#hub-live-announcer");Z(t);function b(e){M&&(M.textContent=e)}function T(e){q&&(q.textContent=`#${String(e.metadata.number).padStart(2,"0")} ${e.metadata.title} — Design Contract`),D&&(D.innerHTML=`
+        <p><strong>Subtitle:</strong> ${e.metadata.subtitle}</p>
+        <p><strong>Genre:</strong> ${e.metadata.genre}</p>
+        <p><strong>Primary Reference:</strong> ${e.metadata.primaryReference} · <strong>Supporting:</strong> ${e.metadata.supportingReference}</p>
+        <p><strong>One-Sentence Core Loop:</strong> ${e.metadata.oneSentenceLoop}</p>
+        <p><strong>Short Goal:</strong> ${e.metadata.shortGoal}</p>
+        <p><strong>Long Goal:</strong> ${e.metadata.longGoal}</p>
+        <p><strong>Controls:</strong> <code>${e.metadata.controlsSummary}</code></p>
+        <p><strong>Standalone Entry:</strong> <a href="./games/${e.metadata.id}/index.html" target="_blank" rel="noopener">Open ./games/${e.metadata.id}/index.html in new tab</a></p>
+      `)}function _(){if(c){for(const e of c.querySelectorAll("button[data-game-id]"))e.getAttribute("data-game-id")===i?e.setAttribute("aria-current","page"):e.removeAttribute("aria-current");v&&v.setAttribute("aria-pressed",String(i===null))}}function L(){if(o){try{o.destroy()}catch(e){console.error("Error destroying game instance:",e)}o=null}h&&(h.innerHTML="")}function E(){if(r){try{r.destroy()}catch(e){console.error("Error destroying featured Keystone Forge instance:",e)}r=null}g&&(g.innerHTML="")}function s(e,a){const n=y.find(B=>B.metadata.id===e)??(e===w.id?P:void 0)??(e===R.id?H:void 0)??(e===k.id?Q:void 0);if(!n||!h||!f||!p)return;L(),E(),m&&(m.hidden=!0),i=n.metadata.id,p.hidden=!0,f.hidden=!1;const O=a?.debug??d;o=n.mountGame(h,{initialSeed:a?.seed,debug:O}),u&&(u.href=`./games/${n.metadata.id}/index.html`,u.hidden=!1),document.title=`${n.metadata.title} | Argon 10-Game Studio`,T(n),_(),b(`Launched Game ${n.metadata.number}: ${n.metadata.title}`);try{window.history.replaceState(null,"",`#game=${n.metadata.id}`)}catch{}}function A(){L(),i=null,m&&g&&(m.hidden=!1,E(),r=J(g,{initialSeed:Number(G?.value??"20261107")||20261107,debug:d})),p&&(p.hidden=!1),f&&(f.hidden=!0),u&&(u.hidden=!0),document.title="Keystone Forge & Argon 10-Game Studio",T(H),_(),b("Showing Keystone Forge and Argon 10-Game Studio Catalog");try{window.history.replaceState(null,"","#catalog")}catch{}}if(c){c.innerHTML="";for(const e of y){const a=document.createElement("li"),n=document.createElement("button");n.type="button",n.className="hub-game-pill",n.setAttribute("data-game-id",e.metadata.id),n.style.setProperty("--pill-accent",e.metadata.accentColor),n.innerHTML=`
+        <span class="hub-pill-num">${String(e.metadata.number).padStart(2,"0")}</span>
+        <span>${e.metadata.title}</span>
+      `,n.addEventListener("click",()=>s(e.metadata.id)),a.appendChild(n),c.appendChild(a)}}if(S){S.innerHTML="";for(const e of y){const a=document.createElement("li");a.className="hub-card",a.style.setProperty("--card-accent",e.metadata.accentColor),a.innerHTML=`
+        <div>
+          <div class="hub-card-header">
+            <span class="hub-card-num">ARGON #${String(e.metadata.number).padStart(2,"0")}</span>
+            <span class="hub-card-genre">${e.metadata.genre}</span>
+          </div>
+          <h3 class="hub-card-title">${e.metadata.title}</h3>
+          <p class="hub-card-subtitle">${e.metadata.subtitle}</p>
+        </div>
+        <p class="hub-card-loop">${e.metadata.oneSentenceLoop}</p>
+        <div class="hub-card-meta">
+          <div><strong>References:</strong> ${e.metadata.primaryReference} · ${e.metadata.supportingReference}</div>
+          <div><strong>Short Goal:</strong> ${e.metadata.shortGoal}</div>
+          <div><strong>Controls:</strong> ${e.metadata.controlsSummary}</div>
+        </div>
+        <div class="hub-card-actions">
+          <button type="button" class="hub-btn hub-btn-primary" data-launch-card="${e.metadata.id}">
+            ▶ Play ${e.metadata.title}
+          </button>
+          <a class="hub-btn hub-link-btn" href="./games/${e.metadata.id}/index.html" target="_blank" rel="noopener">
+            ↗ Standalone Tab
+          </a>
+        </div>
+      `,a.querySelector(`button[data-launch-card="${e.metadata.id}"]`)?.addEventListener("click",()=>s(e.metadata.id)),S.appendChild(a)}}v?.addEventListener("click",()=>A()),t.querySelector("#btn-launch-paradox")?.addEventListener("click",()=>s(U.metadata.id)),t.querySelector("#btn-launch-flagship-deli")?.addEventListener("click",()=>s("11-metaphysical-deli")),$?.addEventListener("click",()=>{d=!d,$.setAttribute("aria-pressed",String(d)),$.textContent=d?"Debug: ON [D]":"Debug: OFF [D]",o?.toggleDebug?.(d),r?.toggleDebug?.(d)}),x?.addEventListener("click",()=>{const e=Number(G?.value??"20261105"),a=Number.isFinite(e)&&e>0?Math.floor(e):20261105;o?.restartWithSeed?(o.restartWithSeed(a),b(`Restarted active game with seed ${a}`)):i?s(i,{seed:a,debug:d}):r?.restartWithSeed&&(r.restartWithSeed(a),b(`Restarted Keystone Forge with seed ${a}`))});const l=(typeof window<"u"?window.location.hash:"").match(/^#game=([a-z0-9-]+)$/i);return l&&(y.some(e=>e.metadata.id===l[1])||l[1]===w.id||l[1]===R.id||l[1]===k.id)?s(l[1]):A(),{launchGame:s,showCatalog:A,getActiveGameId:()=>i,destroy:()=>{L(),E()}}}typeof document<"u"&&document.getElementById("hub-catalog-grid")&&ee(document.body);
