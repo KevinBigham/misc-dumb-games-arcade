@@ -2,7 +2,7 @@
 
 Collected on 2026-11-08 for `KevinBigham/misc-dumb-games-arcade`.
 
-17 folders cover every playable HTML/JS/TS game, standalone prototype, and arcade hub built by Antigravity on this Mac mini (`CURSOR-STUDIO`). Original folders and files in `/Users/tkevinbigham/Downloads/Game1` were read and copied without moving, renaming, deleting, or editing any originals. Each copied game folder includes both a self-contained browser-playable `index.html` and the full TypeScript source (`src/`, `tests/`, `index.src.html`, and design contracts).
+18 folders cover every playable HTML/JS/TS game, standalone prototype, arcade hub, and franchise simulation built or worked on by Antigravity on this Mac mini (`CURSOR-STUDIO`). Original folders and files in `/Users/tkevinbigham/Downloads/Game1` and `/Users/tkevinbigham/Downloads/MFD-main 2` (originally `/Users/tkevinbigham/Downloads/MFD-main`) were read and copied without moving, renaming, deleting, or editing any originals. Each copied game folder includes both a browser-playable build (`index.html` or `apps/web/dist/index.html`) and the full TypeScript source (`src/`, `tests/`, and design contracts).
 
 | Game / copied folder | Original path | Last modified | Opened in a browser | Entry and result |
 | --- | --- | --- | --- | --- |
@@ -23,13 +23,17 @@ Collected on 2026-11-08 for `KevinBigham/misc-dumb-games-arcade`.
 | [VOIDBREAKER: OVERDRIVE](voidbreaker-overdrive/) | `/Users/tkevinbigham/Downloads/Game1` (commit `f5abd87`) | 2026-11-03T22:31:14-06:00 | yes | [`index.html`](voidbreaker-overdrive/index.html) — Original 3-mech twin-stick cyber-roguelite & boss-rush version preserved from initial commit `f5abd87`; opened in Google Chrome and verified canvas & HUD. |
 | [MADDEN FRANCHISE '05: DYNASTY EDITION](madden-franchise-2005-dynasty/) | `/Users/tkevinbigham/Downloads/Game1/src/engine` (conversation `7ada4399`) | 2026-11-04T22:24:21-06:00 | yes | [`index.html`](madden-franchise-2005-dynasty/index.html) — Standalone Madden 2005 NFL Franchise & Owner Mode game (Storyline Central, Tony Bruno Radio, 2D Hit-Stick tactical field, 32-team cap & draft); opened in Google Chrome and verified dashboard & field UI. |
 | [Argon 10-Game Studio Hub](argon-10-game-studio/) | `/Users/tkevinbigham/Downloads/Game1` | 2026-11-07T21:27:43-06:00 | yes | [`index.html`](argon-10-game-studio/index.html) — Unified Argon Studio multi-game launcher, seed/debug controller, and Vite multi-page workspace (`dist/index.html`); opened in Google Chrome and verified hub catalog & embedded game mount. |
+| [Mr. Football Dynasty (MFD)](mr-football-dynasty/) | `/Users/tkevinbigham/Downloads/MFD-main 2` (originally `/Users/tkevinbigham/Downloads/MFD-main`, conversation `d2b2fceb`) | 2026-08-08T13:47:39-05:00 | yes | [`apps/web/dist/index.html`](mr-football-dynasty/apps/web/dist/index.html) — Deterministic NFL franchise simulation with Antigravity trade-economy hardening (`trade-value.ts`, `trade-economy-stress.ts`, `trade-economy-validation.ts`); includes ready-to-play production web bundle (`apps/web/dist/`) verified in headless Google Chrome plus full monorepo source. |
 
 ## Skipped paths
 
-Paths below are original locations in `/Users/tkevinbigham/Downloads/Game1`. No single file in the workspace exceeded 50 MB.
+Paths below are original locations or temporary build directories omitted from the copied folders. No single file in the workspace or copied folders exceeded 50 MB.
 
 | Original path | Reason |
 | --- | --- |
 | `/Users/tkevinbigham/Downloads/Game1/node_modules` | dependency directory (`node_modules`) |
 | `/Users/tkevinbigham/Downloads/Game1/node_modules/.vite` | Vite dependency pre-bundling build cache |
 | `/Users/tkevinbigham/Downloads/Game1/.git` | Git repository metadata |
+| `/Users/tkevinbigham/Downloads/MFD-main 2/.git` | Git repository metadata (if present) |
+| `mr-football-dynasty/node_modules` & `mr-football-dynasty/*/node_modules` | dependency directories omitted after building `apps/web/dist/` in an isolated scratch copy |
+| `mr-football-dynasty/packages/engine/dist` | intermediate TypeScript compiler build cache |
