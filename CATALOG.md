@@ -2,15 +2,16 @@
 
 Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the MacBook, and Antigravity on the Mac mini. Games marked "In the arcade" are in `games/<slug>/` and linked from the arcade page; everything else stays in its incoming PR so nothing is lost.
 
-- In the arcade: 67
-- Held: 0
-- Source only or own repo: 2
-- Archived older versions and extras: 4
+- In the arcade: 75
+- Held: 2
+- Source only or own repo: 4
+- Archived older versions and extras: 6
 
 ## In the arcade
 
 | Game | Genre | Built by | Source | Play | Notes |
 |---|---|---|---|---|---|
+| 26: Doing My Best | life sim | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/twenty-six/) |  |
 | Argon Studio Collection | game launcher | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/argon-studio/) | Launcher for the 13 Argon games; borrowed game names and inspiration credits removed. Same games are also listed one by one |
 | Baseline Empire '05 | basketball franchise sim | unknown (Nov 5) | cloud PR #2 | [play](games/baseline-empire/) | Formerly Hardwood Franchise; league, teams, colleges, papers and name pools are now fictional |
 | Beatline Salvage | rhythm | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/beatline-salvage/) |  |
@@ -22,7 +23,9 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Clause & Effect | code puzzle | overnight research batch | cloud PR #2 | [play](games/clause-and-effect/) |  |
 | Clockbreak | brick breaker | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/clockbreak/) |  |
 | Comet Orchard | idle | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/comet-orchard/) |  |
+| CROSSBLOCK | block puzzle | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/crossblock/) |  |
 | Dual Meet | swim meet | Nov 6 new builds | cloud PR #2 | [play](games/dual-meet/) |  |
+| ECHO REQUIEM | temporal arena shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/echo-requiem/) |  |
 | Fathomsong | rhythm | overnight research batch | cloud PR #2 | [play](games/fathomsong/) |  |
 | Fourth & Forever '05 | football franchise sim | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/fourth-and-forever/) | Formerly a football franchise sim built on real league names; league, teams, players, coaches, host and brands are now fictional |
 | Franchise Dynasty | football GM sim | Games project | cloud PR #2 | [play](games/franchise-dynasty/) |  |
@@ -32,6 +35,8 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Gravity Moth | gravity-flip runner | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/gravity-moth/) |  |
 | GRIDIRON OVERDRIVE | 3D football arcade | Claude app (MacBook) | MacBook PR #3 | [play](games/gridiron-overdrive/) | Four older versions kept in the MacBook PR |
 | HARDCOURT | basketball franchise sim | Codex (MacBook) | MacBook PR #3 | [play](games/hardcourt/) | Also has a native Mac app and ZIPs in the MacBook PR |
+| HONK IF YOU'RE EMPLOYED | workplace arcade | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/honk-if-youre-employed/) |  |
+| HUSH//PULSE | rhythm stealth action | Kimi (MacBook) | Kimi Work PR #7 | [play](games/hush-pulse/) | Built copy from the Kimi Work collection; the MacBook copy was source only |
 | Junkyard Courier | cargo packing and routing | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/junkyard-courier/) |  |
 | Kettle Crawl | deckbuilder | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/kettle-crawl/) |  |
 | Keystone Forge | polyomino puzzle | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/keystone-forge/) | Subtitle and guide text no longer name Tetris |
@@ -54,15 +59,17 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | One More Season: Ironvale Rovers FC | 5-a-side football season sim | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/one-more-season-ironvale/) | Different game from the cloud One More Season, despite the shared name |
 | Orbit Stack | orbital match stacker | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/orbit-stack/) |  |
 | Paradox Protocol: The Mirror Engine | thought-experiment arena | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/paradox-protocol/) |  |
-| PRISM PRESS | reactor-grid puzzle | Kimi (MacBook) | MacBook PR #3 | [play](games/prism-press/) |  |
+| Please Feed the Moon | arcade shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/please-feed-the-moon/) |  |
+| PRISM PRESS | reactor-grid puzzle | Kimi (MacBook) | Kimi Work PR #7 | [play](games/prism-press/) | Newest build from the Kimi Work collection (Nov 8) |
 | Prismwheel | ring arcade | overnight research batch | cloud PR #2 | [play](games/prismwheel/) |  |
 | Roommate Republic | game-theory sim | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/roommate-republic/) |  |
 | Shardstorm Depths | match-3 RPG | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/shardstorm-depths/) |  |
+| SIDELINE — Franchise Football | football franchise sim | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/sideline/) | Seven team nicknames that matched real teams in other leagues were renamed |
 | Skybloom | merge | overnight research batch | cloud PR #2 | [play](games/skybloom/) |  |
 | Slipstreak | drift racer | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/slipstreak/) |  |
 | Snapthread | deckbuilder | batch 2 | cloud PR #2 | [play](games/snapthread/) |  |
 | Songmill | quota factory | overnight research batch | cloud PR #2 | [play](games/songmill/) |  |
-| SOUPERMARKET SWEEP: Aisles of the Damned | supermarket action | Kimi (MacBook) | MacBook PR #3 | [play](games/soupermarket-sweep/) |  |
+| SOUPERMARKET SWEEP: Aisles of the Damned | supermarket action | Kimi (MacBook) | Kimi Work PR #7 | [play](games/soupermarket-sweep/) | Newest build from the Kimi Work collection (Nov 8) |
 | Spireshade | board duel | batch 2 | cloud PR #2 | [play](games/spireshade/) |  |
 | Spore Siege | tower defense | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/spore-siege/) |  |
 | Spore Storm | survival | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/spore-storm/) |  |
@@ -70,6 +77,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Stormglass | merge | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/stormglass/) |  |
 | Sunwire | transport | batch 2 | cloud PR #2 | [play](games/sunwire/) |  |
 | Ten Floors Down | tactical roguelike | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/ten-floors-down/) |  |
+| THE LAST LIGHT | night survival | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/the-last-light/) |  |
 | The Last Signal: Ember Relay | lighthouse incremental strategy | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/the-last-signal/) |  |
 | The Metaphysical Deli at the End of Your Forehead | surreal arena | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/metaphysical-deli/) |  |
 | Thistlemarch | tactics | batch 2 | cloud PR #2 | [play](games/thistlemarch/) |  |
@@ -79,18 +87,29 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | VOIDBREAKER: OVERDRIVE | twin-stick roguelite | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/voidbreaker-overdrive/) | Older version of Voidbreaker Omega |
 | Wobble Bakery | physics stacker | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/wobble-bakery/) |  |
 
+## Held (left out of the arcade page)
+
+| Game | Genre | Built by | Source | Why |
+|---|---|---|---|---|
+| Gridiron Blitz '00 | arcade football | Mac mini (Codex collection) | Mac mini Codex PR #6 | Built as a take on one specific existing game, which its title and on-screen credits name; not published |
+| Last Bell — The School Store Challenge | classroom economics game | Mac mini (Codex collection) | Mac mini Codex PR #6 | Classroom product with teacher and student PDFs; held until Kevin decides it belongs here |
+
 ## Source only
 
 | Game | Genre | Built by | Source | Why |
 |---|---|---|---|---|
-| HUSH//PULSE | React/Vite game | Kimi (MacBook) | MacBook PR #3 | Source only; needs a build before it can be played |
 | HUSH//PULSE + PRISM PRESS prototype | mixed prototype | Kimi (MacBook) | MacBook PR #3 | Source only; mixed prototype |
+| Cheap Local TV Chaos (player client) | party game fragment | Mac mini (Codex collection) | Mac mini Codex PR #6 | Incomplete: needs files from its host project |
+| Football franchise prototype (early Fourth & Forever) | football franchise sim | Mac mini (Codex collection) | Mac mini Codex PR #6 | Earlier source of Fourth & Forever; uses real names and has no page; not published |
+| Kimi app prototype | prototype | Kimi (MacBook Air) | Kimi Work PR #7 | Did not start in a browser; source only |
 
 ## Older versions
 
 | Game | Genre | Built by | Source | Why |
 |---|---|---|---|---|
 | Stormglass (older version) | merge | Fable (Nov 5) | cloud PR #2 | Older version of Stormglass, kept in the cloud PR |
+| SIDELINE v0.1 | football franchise sim | Mac mini (Codex collection) | Mac mini Codex PR #6 | Older release, kept in PR #6 |
+| ECHO REQUIEM (Windows snapshot) | temporal arena shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | Older delivery, kept in PR #6 |
 
 ## Extras
 
@@ -106,10 +125,12 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 - Baseline Empire '05 and Fourth & Forever '05 are reworked versions of two franchise sims that used real league, team and player names; every real name was replaced with a made-up one.
 - The Argon Studio Collection launcher bundles 13 Argon games that are also listed one by one.
 - Voidbreaker: Overdrive is the older version of Omega.
+- Mac mini Codex PR #6 also carried copies of the Argon games, Voidbreaker Omega and Gridiron Overdrive; they come from the same Mac mini folders as the copies already in the arcade (only the build format differs), so they were not added twice.
+- Kimi Work PR #7 carried newer builds of Prism Press and Soupermarket Sweep and the first playable build of HUSH//PULSE; those replace the MacBook copies.
 - Cloud copies newer than the arcade's first PR (#1): 20 of its 22 games are older; this PR uses the live versions.
 
 ## Checks
 
-- Every arcade game's files were checked for missing or absolute paths: none missing. Antigravity and most MacBook games were also opened in Chrome by the agent that collected them. Claude's cloud copies are the live pages as of Nov 8.
+- Every arcade game's files were checked for missing or absolute paths: none missing. Antigravity, most MacBook, Mac mini Codex and Kimi Work games were also opened in a browser by the agent that collected them. Claude's cloud copies are the live pages as of Nov 8.
 - Not tested: playing them from GitHub Pages, or on a phone.
 - Franchise Dynasty loads one library from cdnjs; several games load Google Fonts.

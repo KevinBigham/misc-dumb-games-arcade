@@ -71,7 +71,7 @@ function helpHTML() {
 function titleHTML(s) {
     return `<div class="title-screen"><div class="title-utility">${iconButton("help", "How to play", "help")}${muteButton()}</div>
     <main class="title-card"><div class="title-mark"><span></span><span></span><span></span></div><p class="eyebrow">A HIGH-PRESSURE SPATIAL PUZZLER</p>
-    <h1><span>PRISM</span><strong>PRESS</strong></h1><p class="title-tagline">Think in shapes.<br>Move with purpose.</p>
+    <h1><span>PRISM</span><strong>PRESS</strong></h1><p class="title-tagline">Think in shapes. <br>Move with purpose.</p>
     <button class="primary-button start-button" data-action="start" data-testid="start-game">${icon("play")} IGNITE THE CORE ${kbd("SPACE")}</button>
     <button class="text-button" data-action="help">HOW TO PLAY ${icon("arrow", 14)}</button>
     <div class="title-features"><span>ROTATE FREELY</span><i></i><span>CLEAR BOTH AXES</span><i></i><span>CHASE THE FLOW</span></div>
