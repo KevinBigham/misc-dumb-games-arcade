@@ -1,0 +1,1375 @@
+<title>Lowbell</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="A slow-reveal incremental. An iron bell at the bottom of a drowned world. Someone keeps knocking.">
+<style>
+/* Layout: one narrow column of story on a phone (log above, the bell's controls below); two columns on wide screens. A deliberately dark world that only turns to daylight at the ending. */
+:root{
+  --abyss:#04080a;        /* the water */
+  --ink:#cfdcd6;          /* text */
+  --dim:#7f948e;          /* secondary text */
+  --faint:#34464a;        /* hairlines */
+  --brass:#dcb56c;        /* lamp light, the one accent */
+  --rust:#cf7a5f;         /* danger */
+  --kelp:#8db898;         /* growth */
+  --panel:rgba(8,16,18,.62);
+  --sky:#eef4ec;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--abyss);color:var(--ink);font-family:var(--serif);font-size:calc(max(12px, 16px) * var(--gk-text-scale, 1));line-height:1.45;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+#bgc{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+#app{position:relative;z-index:1;max-width:940px;margin:0 auto;min-height:100%;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px 40px;display:flex;flex-direction:column;gap:12px}
+#app.shake{animation:shake .28s}
+@keyframes shake{20%{transform:translate(-4px,1px)}40%{transform:translate(3px,-2px)}60%{transform:translate(-2px,2px)}80%{transform:translate(2px,0)}}
+header{display:flex;align-items:center;gap:10px}
+.brand{font-size:clamp(17px,5.4vw,22px);letter-spacing:.28em;white-space:nowrap;overflow:hidden;text-transform:lowercase;color:var(--dim);flex:1;min-width:0;transition:color 2s}
+.brand.lit{color:var(--brass)}
+#day{font-family:var(--mono);font-size:calc(max(12px, 12px) * var(--gk-text-scale, 1));color:var(--dim);letter-spacing:.08em}
+.icon{background:none;border:1px solid var(--faint);color:var(--dim);font:inherit;font-size:calc(max(12px, 16px) * var(--gk-text-scale, 1));border-radius:2px;min-height:38px;min-width:42px;padding:0 8px;cursor:pointer;flex:none}
+.icon[aria-pressed="false"]{text-decoration:line-through;opacity:.6}
+.icon:focus-visible,.btn:focus-visible,.tab:focus-visible,.mini:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+nav#tabs{display:flex;gap:4px;flex-wrap:wrap}
+nav#tabs:empty{display:none}
+.tab{background:none;border:none;border-bottom:1px solid transparent;color:var(--dim);font:inherit;font-size:calc(max(12px, 15px) * var(--gk-text-scale, 1));letter-spacing:.14em;padding:6px 10px 5px;cursor:pointer;text-transform:lowercase}
+.tab.on{color:var(--ink);border-bottom-color:var(--brass)}
+.tab.new{color:var(--brass)}
+.tab:disabled{opacity:.35;cursor:default}
+#grid{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:760px){#grid{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)} #logWrap{order:0;max-height:none!important;height:calc(100vh - 140px);position:sticky;top:10px}}
+#logWrap{position:relative;max-height:34vh;min-height:96px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 55%,transparent);mask-image:linear-gradient(#000 55%,transparent)}
+#log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+#log li{font-size:calc(max(12px, 16px) * var(--gk-text-scale, 1));line-height:1.4;max-width:34em;animation:inlog .9s ease-out both}
+#log li.say{color:var(--brass);font-style:italic}
+#log li.warn{color:var(--rust)}
+#log li.lore{font-variant:small-caps;letter-spacing:.04em;color:#e3d9bf}
+@keyframes inlog{from{opacity:0;transform:translateY(-4px)}to{opacity:1}}
+#panel{display:flex;flex-direction:column;gap:16px;min-width:0}
+.sec{display:flex;flex-direction:column;gap:8px}
+.sec h3{margin:0;font-weight:normal;font-size:calc(max(12px, 12px) * var(--gk-text-scale, 1));letter-spacing:.24em;color:var(--dim);text-transform:lowercase;font-family:var(--serif)}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.btn{position:relative;overflow:hidden;background:var(--panel);border:1px solid var(--faint);color:var(--ink);font:inherit;font-size:calc(max(12px, 16px) * var(--gk-text-scale, 1));letter-spacing:.04em;min-height:46px;padding:8px 16px;border-radius:2px;cursor:pointer;text-align:left;touch-action:manipulation;transition:border-color .3s,opacity .3s;user-select:none;-webkit-user-select:none}
+.btn .cd{position:absolute;left:0;top:0;bottom:0;width:0;background:rgba(220,181,108,.13);pointer-events:none}
+.btn .lbl{position:relative}
+.btn .cost{position:relative;display:block;font-family:var(--mono);font-size:calc(max(12px, 11px) * var(--gk-text-scale, 1));color:var(--dim);letter-spacing:0;margin-top:2px}
+.btn.off{opacity:.42;cursor:default}
+.btn.big{min-width:130px}
+.btn.glow{border-color:var(--brass);box-shadow:0 0 18px rgba(220,181,108,.18)}
+.btn.done{opacity:.5;border-style:dashed;cursor:default}
+.btn:not(.off):not(.done):active{border-color:var(--brass)}
+.items{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px}
+.items .btn{width:100%}
+.meter{display:flex;flex-direction:column;gap:4px}
+.meter .top{display:flex;justify-content:space-between;font-size:calc(max(12px, 13px) * var(--gk-text-scale, 1));color:var(--dim);letter-spacing:.12em}
+.meter .top b{font-weight:normal;font-family:var(--mono);letter-spacing:0;color:var(--ink)}
+.meter .top b.falling{color:var(--rust)}
+#app.exp #logWrap{max-height:15vh;min-height:60px}
+.bar{height:6px;background:rgba(255,255,255,.05);border:1px solid var(--faint);position:relative;overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--kelp);transition:width .25s linear,background .6s}
+.bar.low i{background:var(--rust)}
+.stores{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:2px 14px;font-size:calc(max(12px, 14px) * var(--gk-text-scale, 1))}
+.stores div{display:flex;justify-content:space-between;gap:6px;border-bottom:1px solid rgba(52,70,74,.5);padding:3px 0}
+.stores span:last-child{font-family:var(--mono);font-size:calc(max(12px, 13px) * var(--gk-text-scale, 1));font-variant-numeric:tabular-nums}
+.stores em{font-style:normal;color:var(--dim);font-size:calc(max(12px, 11px) * var(--gk-text-scale, 1));margin-left:4px}
+.note{font-size:calc(max(12px, 14px) * var(--gk-text-scale, 1));color:var(--dim);font-style:italic;margin:0}
+.jobs{display:flex;flex-direction:column;gap:4px}
+.job{display:flex;align-items:center;gap:8px;font-size:calc(max(12px, 15px) * var(--gk-text-scale, 1));border-bottom:1px solid rgba(52,70,74,.5);padding:2px 0}
+.job .nm{flex:1;min-width:0}
+.job .nm small{display:block;color:var(--dim);font-family:var(--mono);font-size:calc(max(12px, 11px) * var(--gk-text-scale, 1))}
+.job .n{font-family:var(--mono);min-width:2ch;text-align:center}
+.mini{background:none;border:1px solid var(--faint);color:var(--ink);font:inherit;font-size:calc(max(12px, 18px) * var(--gk-text-scale, 1));width:42px;height:38px;border-radius:2px;cursor:pointer;touch-action:manipulation}
+.mini.off{opacity:.3;cursor:default}
+.mapbox{display:flex;flex-direction:column;align-items:center;gap:10px}
+#map{width:100%;max-width:440px;aspect-ratio:1;max-height:62vh;touch-action:none;border:1px solid var(--faint);background:#020405;display:block}
+.hud{display:flex;flex-wrap:wrap;gap:6px 16px;font-family:var(--mono);font-size:calc(max(12px, 13px) * var(--gk-text-scale, 1));color:var(--dim);width:100%;max-width:440px}
+.hud b{color:var(--ink);font-weight:normal}
+.dpad{display:grid;grid-template-columns:repeat(3,58px);grid-template-rows:repeat(2,50px);gap:6px}
+.dpad .btn{text-align:center;padding:0;font-size:calc(max(12px, 20px) * var(--gk-text-scale, 1));min-height:50px}
+.fight{border:1px solid var(--rust);padding:12px;display:flex;flex-direction:column;gap:8px;background:rgba(30,8,6,.5);width:100%;max-width:440px}
+.fight .who{font-style:italic}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:calc(max(12px, 13px) * var(--gk-text-scale, 1));color:var(--dim);max-width:440px}
+.legend span b{font-weight:normal;color:var(--brass);font-family:var(--mono);margin-right:4px}
+.prep{display:flex;align-items:center;gap:8px;font-size:calc(max(12px, 15px) * var(--gk-text-scale, 1))}
+.prep .nm{flex:1}
+.depth{font-size:56px;letter-spacing:.06em;font-variant-numeric:tabular-nums;line-height:1}
+.depth small{font-size:calc(max(12px, 14px) * var(--gk-text-scale, 1));letter-spacing:.3em;color:var(--dim);display:block;margin-top:4px}
+.pop{position:fixed;z-index:5;pointer-events:none;font-family:var(--mono);font-size:calc(max(12px, 13px) * var(--gk-text-scale, 1));color:var(--brass);animation:popup 1.2s ease-out forwards;white-space:nowrap}
+@keyframes popup{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,-34px)}}
+#menu{position:fixed;inset:0;z-index:20;background:rgba(2,4,5,.86);display:flex;align-items:center;justify-content:center;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#menu .box{max-width:360px;display:flex;flex-direction:column;gap:12px;border:1px solid var(--faint);padding:20px;background:var(--abyss)}
+#menu p{margin:0;color:var(--dim);font-size:calc(max(12px, 14px) * var(--gk-text-scale, 1))}
+#blk{position:fixed;inset:0;z-index:15;background:#000;opacity:0;pointer-events:none;transition:opacity 1.2s}
+#blk.on{opacity:1;transition:opacity .25s}
+#ending{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;justify-content:center;gap:16px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));padding-block:40px;color:#16241f;overflow:auto}
+#ending .lines{max-width:30em;margin:0 auto;display:flex;flex-direction:column;gap:12px;width:100%}
+#ending .lines p{margin:0;font-size:calc(max(12px, 19px) * var(--gk-text-scale, 1));line-height:1.5;opacity:0;transform:translateY(6px);transition:opacity 1.6s,transform 1.6s}
+#ending .lines p.in{opacity:1;transform:none}
+#ending .lines p.word{font-style:italic;font-size:24px}
+#ending .after{max-width:30em;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:12px;opacity:0;transition:opacity 2s}
+#ending .after.in{opacity:1}
+#ending .sky .top{color:#4b6157}
+#ending .sky .bar{border-color:#9fb8ab;background:rgba(255,255,255,.4)}
+#ending .sky .bar i{background:var(--kelp)}
+#ending .stats{font-family:var(--mono);font-size:calc(max(12px, 13px) * var(--gk-text-scale, 1));color:#3d5249;display:grid;grid-template-columns:1fr auto;gap:4px 16px}
+#ending .btn{background:rgba(255,255,255,.5);color:#16241f;border-color:#9fb8ab}
+#ending .tap{font-size:calc(max(12px, 12px) * var(--gk-text-scale, 1));letter-spacing:.2em;color:#5d7469;text-align:center}
+#dbg{position:fixed;right:max(8px,env(safe-area-inset-right,0px));bottom:max(8px,env(safe-area-inset-bottom,0px));z-index:40;background:#111;border:1px solid #444;padding:6px;display:flex;flex-wrap:wrap;gap:4px;max-width:300px;font-family:var(--mono);font-size:calc(max(12px, 11px) * var(--gk-text-scale, 1))}
+#dbg button{font:inherit;background:#222;color:#ddd;border:1px solid #555;padding:4px 6px;cursor:pointer}
+/* R3: beauty pass */
+#app{transition:opacity 2.4s}
+body.ended #app{opacity:0;pointer-events:none}
+#flash{position:fixed;inset:0;z-index:29;background:#fffdf3;opacity:0;pointer-events:none;transition:opacity 4s ease-out}
+#flash.on{opacity:var(--gk-fl,1);transition:opacity .6s ease-in}
+.sec h3{display:flex;align-items:center;gap:10px}
+.sec h3::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--faint),transparent)}
+#log li{text-wrap:pretty}
+#log li:first-child{color:#e6efe9}
+#log li.say:first-child{color:#ecc67c}
+#log li.lore{border-left:1px solid rgba(220,181,108,.45);padding-left:10px}
+#panel.first{min-height:38vh;justify-content:center;align-items:center}
+#panel.first .row{justify-content:center}
+#panel.first .btn.big{min-width:190px;min-height:62px;text-align:center;font-size:calc(max(12px, 18px) * var(--gk-text-scale, 1));letter-spacing:.32em;animation:breathe 5s ease-in-out infinite}
+@keyframes breathe{50%{border-color:rgba(220,181,108,.5);box-shadow:0 0 28px rgba(220,181,108,.13)}}
+.ascwrap{display:flex;gap:22px;align-items:stretch}
+.ascwrap .col{display:flex;flex-direction:column;gap:14px;flex:1;min-width:0;justify-content:flex-end}
+.shaft{width:16px;flex:none;position:relative;height:200px;border-left:1px solid var(--faint);border-right:1px solid var(--faint);background:linear-gradient(rgba(238,244,236,.22),transparent 45%)}
+.shaft i{position:absolute;left:-5px;right:-5px;height:18px;border:1px solid var(--brass);background:rgba(220,181,108,.2);box-shadow:0 0 12px rgba(220,181,108,.25);transition:bottom .3s linear}
+.shaft b{position:absolute;left:-4px;width:6px;height:1px;background:var(--faint)}
+#ending .lines p.word{color:#5e4415}
+#ending .lines p:last-child{font-style:italic}
+#ending .sky .top span{transition:opacity 1.2s}
+#ending .sky .bar i{transition:width 3.2s ease-in-out,background 3.2s}
+#ending .sky.morph .bar i{background:#6fa6c3}
+#ending .lines,#ending .after{transition:opacity 2s}
+#ending.stay .lines,#ending.stay .after{opacity:0!important;pointer-events:none}
+#ending .back{display:none;font-size:calc(max(12px, 12px) * var(--gk-text-scale, 1));letter-spacing:.2em;color:#5d7469;text-align:center;margin-top:auto}
+#ending.stay .back{display:block}
+html[data-gk-motion=calm] *,html[data-gk-motion=still] *{animation:none!important;transition:none!important}
+</style>
+
+<canvas id="bgc" aria-hidden="true"></canvas>
+<div id="app">
+  <header>
+    <div class="brand" id="brand">lowbell</div>
+    <div id="day" aria-live="off"></div>
+    <button class="icon" id="muteBtn" type="button" aria-label="Sound" aria-pressed="true">♪</button>
+    <button class="icon" id="menuBtn" type="button" aria-label="Menu">⋯</button>
+  </header>
+  <nav id="tabs" aria-label="Places"></nav>
+  <div id="grid">
+    <section id="logWrap" aria-live="polite"><ol id="log"></ol></section>
+    <section id="panel"></section>
+  </div>
+</div>
+<div id="blk"></div>
+<div id="flash"></div>
+<div id="menu" hidden>
+  <div class="box">
+    <p id="menuInfo">lowbell saves after everything you do.</p>
+    <div id="pywSlot"></div>
+    <button class="btn" id="mClose" type="button">back to the bell</button>
+    <button class="btn" id="mReset" type="button">start over</button>
+    <button class="btn" id="mReset2" type="button" hidden>yes, forget everything and start over</button>
+  </div>
+</div>
+<div id="ending" hidden></div>
+<div id="dbg" hidden></div>
+
+<script>
+'use strict';
+/* =========================================================
+   LOWBELL — an original slow-reveal incremental.
+   Architecture: CONFIG, DATA, State, Rules (pure), Renderer,
+   Input, Storage, AudioFX, App loop.
+   ========================================================= */
+
+/* ---------------- CONFIG: every tunable number ---------------- */
+const CONFIG = {
+  tick: 0.25,              // rules step in game seconds
+  dayLen: 90,              // seconds per "day below"
+  saveEvery: 5,
+  air: { start: 62, cap: 100, decay: 0.8, valveMul: 0.5, pump: 7, warnHi: 30, warnLo: 14,
+         blackoutAir: 35, diverBreath: 0.12, personBreath: 0.1, bedMake: 0.42, tenderMake: 0.5, tankCap: 60 },
+  cd: { knock: 1.2, pump: 0.45, gather: 5, strike: 0.75, eat: 1, flee: 1.4, build: 0.3 },
+  gatherAir: 5,
+  knock: { delay: [2.4, 3.8], toArrive: 4, arriveDelay: 3.5, drifterChance: 0.5, drifterDelay: [1.8, 3.4] },
+  diver: { warmNeed: 14, warmAir: 45, kelpEvery: 8, kelpAmt: 2, shiverEvery: 12 },
+  passive: { every: 45, chance: 0.55 },
+  exp: { canAir: 20, ratHp: 4, hpBase: 10, hpSuit: 15, eatEvery: 10, starveEvery: 4, encChance: 0.07,
+         safeRadius: 2, sight: 1.5, sightLamp: 2.5, fleeChance: 0.55, fleeAir: 3, maxCan: 4, maxRat: 8 },
+  map: { n: 19 },
+  asc: { depth: 300, rate: 4.6, airDrain: 2.3, stall: 3 },
+  dmg: { base: 1, harpoon: 2, glass: 1 },
+};
+const N = CONFIG.map.n, C = (N - 1) >> 1;
+
+/* ---------------- DATA: content lives here, not in code ---------------- */
+const RES = [
+  { id: 'kelp', name: 'kelp' }, { id: 'scrap', name: 'scrap' }, { id: 'fish', name: 'fish' },
+  { id: 'rope', name: 'rope' }, { id: 'rations', name: 'rations' }, { id: 'canister', name: 'canisters' },
+  { id: 'glass', name: 'glass' }, { id: 'bellmetal', name: 'bell metal' },
+];
+const RESNAME = Object.fromEntries(RES.map(r => [r.id, r.name]));
+
+// where: bell (the diver makes) | floor (raise) | forge (the forge makes) | lift (the last work)
+const ITEMS = [
+  { id: 'rope', where: 'bell', name: 'twist rope', cost: { kelp: 5 }, max: 999, req: s => s.flags.crafts,
+    msg: 'the diver twists kelp into rope with quick, scarred fingers.', again: null },
+  { id: 'hook', where: 'bell', name: 'bend a hook', cost: { rope: 2, kelp: 3 }, max: 1, req: s => s.flags.crafts,
+    msg: 'a hook bent from an old bolt. now the silt gives up metal.' },
+  { id: 'valve', where: 'bell', name: 'seal the valve', cost: { scrap: 5, rope: 1 }, max: 1, req: s => s.built.hook,
+    msg: 'the diver seals the cracked valve with tar and kelp. the air stays longer now.' },
+  { id: 'net', where: 'bell', name: 'knot a net', cost: { rope: 4 }, max: 1, req: s => s.built.hook,
+    msg: 'a net, knotted tight. things live out there. some of them can be eaten.' },
+  { id: 'lamp', where: 'bell', name: 'light the lamp', cost: { scrap: 6, fish: 4, rope: 1 }, max: 1, req: s => s.built.valve && s.built.net,
+    msg: 'fish oil, a twist of rope, a lens from a dead porthole. the lamp catches.' },
+
+  { id: 'shelter', where: 'floor', name: 'dig out a bell', cost: { scrap: 8, rope: 3 }, scale: 1.32, max: 12, req: s => s.flags.floor,
+    msg: 'you dig out a buried bell and seal it. room for two.', again: 'another bell, dug out and sealed.' },
+  { id: 'bed', where: 'floor', name: 'kelp bed', cost: { kelp: 12, rope: 1 }, scale: 1.28, max: 15, req: s => s.flags.floor,
+    msg: 'you tie kelp to an anchor chain. it sways. it breathes for you.', again: 'another kelp bed, swaying.' },
+  { id: 'tank', where: 'floor', name: 'air tank', cost: { scrap: 14, rope: 2 }, scale: 1.45, max: 6, req: s => s.built.shelter,
+    msg: 'an old boiler, scrubbed and sealed. it holds a breath for later.', again: 'another tank.' },
+  { id: 'rack', where: 'floor', name: 'smoking rack', cost: { kelp: 10, rope: 4 }, max: 1, req: s => s.flags.floor && s.built.net,
+    msg: 'a rack over a warm crack in the floor. smoked fish keeps.' },
+  { id: 'forge', where: 'floor', name: 'vent forge', cost: { scrap: 25, rope: 6, kelp: 10 }, max: 1, req: s => (s.built.shelter || 0) >= 2,
+    msg: 'out at the vent the water shimmers. the diver lashes an anvil to the rock.' },
+
+  { id: 'canister', where: 'forge', name: 'air canister', cost: { scrap: 5, rope: 1 }, max: 999, req: s => s.built.forge,
+    msg: 'a canister, tight as a fist. a breath you can carry.', again: null },
+  { id: 'deeplamp', where: 'forge', name: 'deep lamp', cost: { scrap: 12, fish: 8, rope: 2 }, max: 1, req: s => s.built.forge,
+    msg: 'a lamp with a long throw. the dark has edges now.' },
+  { id: 'harpoon', where: 'forge', name: 'harpoon', cost: { scrap: 8, rope: 2 }, max: 1, req: s => s.built.forge,
+    msg: 'a barbed harpoon. the diver tests the point on a thumb and nods.' },
+  { id: 'suit', where: 'forge', name: 'patch the suit', cost: { rope: 6, scrap: 10, fish: 4 }, max: 1, req: s => s.built.forge,
+    msg: 'the diver patches the old suit at every seam. it might hold.' },
+  { id: 'glassharpoon', where: 'forge', name: 'glass point', cost: { glass: 6, scrap: 6, rope: 2 }, max: 1, req: s => s.built.harpoon && s.seenRes.glass,
+    msg: 'green glass, ground to a point. it sings when it moves.' },
+
+  { id: 'cable', where: 'lift', name: 'braid the cable', cost: { rope: 40, scrap: 30 }, max: 1, req: s => s.flags.liftFound,
+    msg: 'the cable, braided thick as an arm. the crews drag it out toward the shaft.' },
+  { id: 'cage', where: 'lift', name: 'mend the cage', cost: { scrap: 40, glass: 12 }, max: 1, req: s => s.flags.liftFound,
+    msg: 'the cage, mended, with glass in every gap. you will be able to see out.' },
+  { id: 'weight', where: 'lift', name: 'counterweight', cost: { scrap: 60, kelp: 60 }, max: 1, req: s => s.flags.liftFound,
+    msg: 'a counterweight made of every bolt the floor could spare, and some it couldn\'t.' },
+  { id: 'greatbell', where: 'lift', name: 'cast a bell', cost: { bellmetal: 1, scrap: 15 }, max: 1, req: s => s.flags.liftFound,
+    msg: 'the chapel metal, melted at the vent. a small bell. very loud.' },
+  { id: 'airstore', where: 'lift', name: 'air for the climb', cost: { canister: 6 }, max: 1, req: s => s.flags.liftFound,
+    msg: 'six canisters lashed to the cage. enough, if everyone breathes slow.' },
+];
+const ITEM = Object.fromEntries(ITEMS.map(i => [i.id, i]));
+const LIFT_PARTS = ['cable', 'cage', 'weight', 'greatbell', 'airstore'];
+
+const JOBS = [
+  { id: 'cutter', name: 'kelp cutter', make: { kelp: 0.25 }, req: s => true },
+  { id: 'scav', name: 'scavenger', make: { scrap: 0.2 }, req: s => s.built.hook },
+  { id: 'fisher', name: 'net-caster', make: { fish: 0.22 }, req: s => s.built.net },
+  { id: 'tender', name: 'bellows tender', air: 0.5, req: s => true },
+  { id: 'roper', name: 'rope twister', use: { kelp: 0.5 }, make: { rope: 0.2 }, req: s => s.built.shelter },
+  { id: 'cook', name: 'smoker', use: { fish: 0.25, kelp: 0.1 }, make: { rations: 0.12 }, req: s => s.built.rack },
+];
+
+const TEXT = {
+  knock1: 'the knock goes out into the water. nothing comes back.',
+  knock2: 'nothing.',
+  knock3: 'the air tastes of pennies. it is getting thin.',
+  nothing: ['nothing.', 'only the water.', 'the iron hums, then stops.', 'you wait. nothing.'],
+  firstPump: 'the bellows wheeze. air comes in, cold and thin.',
+  wait: 'you wait.',
+  coming: 'the knocking has stopped. something is coming down.',
+  darkFood: 'the diver presses two strips of smoked fish into your hand.',
+  answers: ['something knocks back. far off. above you?', 'it answers again. closer.', 'closer. you can feel it in your teeth.', 'close enough to touch. it stops, as if listening.'],
+  arrive1: 'a light, swaying, coming down on a line from above.',
+  arrive2: 'a diver. it taps the glass three times. you open the hatch.',
+  arrive3: 'the diver is shaking. they need the air thick and warm.',
+  shiver: 'the diver is shivering.',
+  warm1: 'the diver stops shaking. they look around the bell like they\'re measuring it.',
+  warm2: 'the diver points at the hatch, at the dark outside, and then at you.',
+  diverKnock: ['the diver knocks back, from right beside you. it seems to amuse them.', 'the iron rings and fades.'],
+  gather1: 'outside, the cold is total. you grab what you can and haul yourself back in.',
+  diverOut: 'the diver goes out on their own now. they come back with kelp.',
+  floor1: 'for the first time, you can see the floor.',
+  floor2: 'other bells, half buried in silt. dozens of them. all quiet.',
+  floor3: 'maybe not all of them.',
+  drifterNo: ['silence from the buried bells.', 'nothing answers.', 'the knock rolls away across the silt.'],
+  drifterYes: 'a knock answers, from a bell half sunk in the silt.',
+  drifterFull: 'knocks answer from the buried bells. there is nowhere to put anyone.',
+  arrivals: ['someone crawls out of a buried bell, blinking at the lamp.', 'an old man with silt in his beard. he nods like he expected you.',
+    'a girl with a tin cup. she taps it on the hull, twice, and grins.', 'a drifter, thin as rope. they go straight to work.',
+    'a woman who won\'t say her name. she counts the bells instead.', 'someone in a coat three sizes too big. they hold out their hands to the lamp.'],
+  arrivalsTwo: 'two of them, holding hands. they don\'t let go for an hour.',
+  darkOpen1: 'the diver draws in the silt. the bells. the vent. and past them, a long line going nowhere.',
+  darkOpen2: 'they tap the end of the line. then they point up.',
+  darkOpen3: 'the diver hands you a canister.',
+  expGo1: 'the diver ties a line around your waist and taps your helmet twice. go.',
+  expGo: 'into the dark.',
+  home: ['home. the diver counts what you brought, twice.', 'home. the bells look small from out there.', 'home. someone has kept the lamp lit for you.', 'home. the diver unties the line and coils it, slowly.'],
+  rescue1: 'the line goes taut. the diver hauls you home through the dark, hand over hand.',
+  rescue2: 'whatever you were carrying, the dark kept.',
+  stillThere: 'what you could not carry is still out there. so is whatever guarded it.',
+  pull: 'you tug the line three times. the diver hauls you home. some of what you carried slips away.',
+  hungry: 'you eat a ration in the dark, quickly.',
+  starving: 'your stomach is a fist.',
+  dark: 'the dark comes in.',
+  wake: 'you wake on the floor of the bell, gasping. some of the stores are spoiled.',
+  wakeLoss: 'someone has gone back into their own bell, and won\'t come out.',
+  awayBlack: 'while you were out, the air ran out at home.',
+  warnHi: 'your breath comes short.',
+  warnLo: 'spots at the edges of everything.',
+  liftReady: 'the lift is ready. everyone is ready. no one is ready.',
+  asc1: 'everyone climbs into the cage. the diver checks every knot twice.',
+  asc2: 'the counterweight drops. the floor falls away beneath you.',
+  ascMarks: [[250, 'the cable groans. no one breathes.'], [190, 'the water is lighter here. green, not black.'],
+    [130, 'fish you\'ve never seen, silver, all turning at once.'], [70, 'light. real light, coming down in ropes.'],
+    [25, 'the diver is tapping the cage bars. one, two, three. waiting.']],
+  ascBlack: 'everyone in the cage goes dark at once. the cage hangs, swaying.',
+  lid1: 'the cage stops with a jolt. above you, a lid of iron. sealed.',
+  lid2: 'there is only one thing left to do.',
+  lidKnock: 'you knock on the lid.',
+  lidAnswer: 'something knocks back. right there. on the other side.',
+};
+
+// Landmarks of the dark. band = distance from home. guard fights before you can search.
+const LANDMARKS = [
+  { id: 'wreck1', glyph: '¤', name: 'a fishing boat', band: [3, 4], loot: { scrap: [16, 22], rope: [2, 4] },
+    text: 'a fishing boat on its side, nets still out. you take what the silt hasn\'t.' },
+  { id: 'camp1', glyph: '⌂', name: 'a camp', band: [3, 5], loot: { canister: [2, 2], rations: [2, 3] },
+    text: 'a ring of stones and empty canisters. someone camped here, then went on.' },
+  { id: 'school', glyph: '≡', name: 'a school', band: [4, 5], loot: { rope: [3, 5] }, lore: true,
+    text: 'a classroom, roof down. on the slate, in a child\'s careful hand: THE WATER CAME IN ONE SPRING. WE WENT INTO THE BELLS TO WAIT IT OUT.' },
+  { id: 'vent', glyph: '◎', name: 'the vents', band: [4, 6], refill: true, repeat: true,
+    text: 'a field of vents, warm and shimmering. you top up your canisters from the cracks.', again: 'the vents. you top up again.' },
+  { id: 'garden', glyph: '◊', name: 'the glass garden', band: [5, 6], guard: { name: 'a glass-eater', hp: 5, dmg: 1, speed: 1.9, intro: 'a glass-eater, grinding the garden in its jaws. it turns to grind you.' },
+    loot: { glass: [12, 12] }, repeat: true, againLoot: { glass: [5, 6] },
+    text: 'towers of green glass, grown where the hot water meets the cold. they ring when you touch them.', again: 'the glass has grown back a little.' },
+  { id: 'wreck2', glyph: '¤', name: 'a ferry', band: [5, 7], guard: { name: 'a needle crab', hp: 5, dmg: 1, speed: 1.7, intro: 'a needle crab has made the ferry its shell. it clicks at you.' }, loot: { scrap: [20, 28], rope: [3, 5] },
+    text: 'a ferry. rows of seats facing a window full of mud. you don\'t look at the seats for long.' },
+  { id: 'ribs', glyph: '∫', name: 'the ribs', band: [6, 7], guard: { name: 'the thing in the ribs', hp: 10, dmg: 2, speed: 1.8, intro: 'something in the ribs uncurls. it is mostly mouth.' }, loot: { fish: [10, 14], rations: [3, 3] }, lore: true,
+    text: 'a ribcage big enough to hold a bell. on the inside of one bone, a tally of days. it stops at four thousand and six.' },
+  { id: 'chapel', glyph: '†', name: 'the chapel', band: [6, 8], guard: { name: 'a pale eel', hp: 10, dmg: 2, speed: 1.6, intro: 'a pale eel lives in the bell tower. it does not want visitors.' }, loot: { bellmetal: [1, 1], scrap: [8, 12] }, lore: true,
+    text: 'a drowned chapel, its bell still in the tower, cracked through. scratched into the altar: WAIT FOR THE KNOCK FROM ABOVE.' },
+  { id: 'camp2', glyph: '⌂', name: 'a second camp', band: [6, 8], loot: { canister: [2, 3], rations: [3, 3] },
+    text: 'another camp. arrows scratched in the silt, all pointing the same way.' },
+  { id: 'wreck3', glyph: '¤', name: 'a big ship', band: [7, 8], guard: { name: 'a pale eel', hp: 8, dmg: 2, speed: 1.6, intro: 'something long and white slides out of the hull.' }, loot: { scrap: [26, 34], glass: [2, 4] },
+    text: 'a ship big enough to have had a name. the name is gone. the metal isn\'t.' },
+  { id: 'lift', glyph: '‖', name: 'the lift', band: [8, 9], guard: { name: 'the warden of the shaft', hp: 20, dmg: 4, speed: 1.7, intro: 'the warden of the shaft unfolds from the cage. it has been waiting a long time.' }, lore: true,
+    text: 'an iron cage at the foot of a shaft. a cable rising past the reach of the lamp, its end frayed, hanging a long way up. you put your hand on the shaft wall. far above, faint as a heartbeat, something knocks.' },
+];
+const LM = Object.fromEntries(LANDMARKS.map(l => [l.id, l]));
+
+const ENEMIES = [
+  { tier: 1, name: 'a gulper', hp: 3, dmg: 1, speed: 1.8, loot: { fish: [1, 3] }, intro: 'a gulper, all jaw, opens in front of you.' },
+  { tier: 1, name: 'a needle crab', hp: 4, dmg: 1, speed: 1.7, loot: { scrap: [1, 3] }, intro: 'the silt stands up. it is a needle crab.' },
+  { tier: 2, name: 'a pale eel', hp: 6, dmg: 2, speed: 1.6, loot: { fish: [2, 4] }, intro: 'a pale eel wraps once around the line, testing it.' },
+  { tier: 2, name: 'a drift of stinging lace', hp: 5, dmg: 2, speed: 1.5, loot: { rope: [1, 2] }, intro: 'the water fills with stinging lace, drifting closer.' },
+  { tier: 3, name: 'a thing with too many lamps', hp: 9, dmg: 3, speed: 2.0, loot: { fish: [3, 5], glass: [1, 2] }, intro: 'lights ahead. not yours. a thing with too many lamps.' },
+];
+
+const ENDING = [
+  'the lid swings open.',
+  'light. so much light it has a sound.',
+  'you climb out onto grass. there is no water. there hasn\'t been for a long time.',
+  'the diver pulls off the helmet. their face is wet, and they\'re laughing.',
+  { word: '"you heard us," they say.' },
+  'it\'s the first word anyone has said to you in years.',
+  'the ones who rode the lift up could never get back down. the cable snapped the first time they tried.',
+  'so every night, they knocked. down the shaft, into the dark, for anyone still listening.',
+  'last spring, they lowered one diver on the longest rope they had.',
+  '{souls}',
+  'you were listening.',
+];
+
+/* ---------------- seeded RNG (pure, state-held) ---------------- */
+function rnd(s) {
+  s.rng = (s.rng + 0x6D2B79F5) | 0; let t = s.rng;
+  t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function rint(s, a, b) { return a + Math.floor(rnd(s) * (b - a + 1)); }
+function rpick(s, arr) { return arr[Math.floor(rnd(s) * arr.length)]; }
+
+/* ---------------- MAP: generated from the seed, never saved ---------------- */
+const MapGen = (() => {
+  const cache = {};
+  function gen(seed) {
+    if (cache[seed]) return cache[seed];
+    const st = { rng: seed ^ 0x9e3779b9 };
+    let v = [], w = [];
+    for (let i = 0; i < N * N; i++) { v.push(rnd(st)); w.push(rnd(st)); }
+    const blur = a => a.map((_, i) => { const x = i % N, y = (i / N) | 0; let t = 0, c = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < N && Y < N) { t += a[Y * N + X]; c++; } } return t / c; });
+    v = blur(blur(v)); w = blur(w);
+    const t = []; // 0 silt, 1 rock, 2 trench, 3 kelp forest
+    for (let i = 0; i < N * N; i++) { t.push(v[i] > 0.6 ? 1 : w[i] > 0.66 ? 2 : v[i] < 0.38 ? 3 : 0); }
+    const dist = (x, y) => Math.hypot(x - C, y - C);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (dist(x, y) <= 1.6) t[y * N + x] = 0;
+    const lm = {}; const used = {};
+    for (const L of LANDMARKS) {
+      const cands = [];
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        const d = dist(x, y); if (d >= L.band[0] && d < L.band[1] + 1 && !used[y * N + x]) {
+          let ok = true; for (const k in used) { const kx = k % N, ky = (k / N) | 0; if (Math.abs(kx - x) + Math.abs(ky - y) < 3) { ok = false; break; } }
+          if (ok) cands.push(y * N + x);
+        }
+      }
+      const pick = cands.length ? cands[Math.floor(rnd(st) * cands.length)] : (C * N + C + L.band[0]);
+      used[pick] = 1; lm[pick] = L.id; t[pick] = 0;
+    }
+    // make sure every landmark is reachable: carve a path where needed
+    const reach = () => { const seen = new Uint8Array(N * N), q = [C * N + C]; seen[q[0]] = 1;
+      while (q.length) { const i = q.shift(), x = i % N, y = (i / N) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = x + dx, Y = y + dy; if (X < 0 || Y < 0 || X >= N || Y >= N) continue;
+          const j = Y * N + X; if (!seen[j] && (t[j] === 0 || t[j] === 3)) { seen[j] = 1; q.push(j); } } } return seen; };
+    for (const k in lm) { const seen = reach(); if (seen[k]) continue;
+      let x = C, y = C; const tx = k % N, ty = (k / N) | 0;
+      while (x !== tx || y !== ty) { if (x !== tx && (y === ty || rnd(st) < 0.5)) x += Math.sign(tx - x); else y += Math.sign(ty - y); const j = y * N + x; if (t[j] === 1 || t[j] === 2) t[j] = 0; } }
+    return (cache[seed] = { t, lm, pos: Object.fromEntries(Object.entries(lm).map(([k, id]) => [id, +k])) });
+  }
+  return { gen };
+})();
+
+/* ---------------- State ---------------- */
+function freshState(seed) {
+  seed = (seed >>> 0) || 1;
+  return {
+    v: 1, seed, rng: seed, t: 0, tab: 'bell', flags: {}, newTabs: {},
+    air: CONFIG.air.start, res: {}, seenRes: {}, built: {}, pop: 0, jobs: {}, cd: {},
+    knockN: 0, answers: 0, pending: false, lastNothing: -1,
+    diver: { state: 'none', warm: 0, nextKelp: 0, lastShiver: -99 },
+    q: [], log: [], logN: 0, fx: [],
+    prep: { can: 1, rat: 0 }, exp: null, seen: '', cleared: {},
+    asc: null, ended: false, endT: 0, souls: 0, nextPassive: CONFIG.passive.every,
+    warned: 0, stats: { knocks: 0, pumps: 0, blackouts: 0, trips: 0, steps: 0, lost: 0 },
+  };
+}
+
+/* ---------------- Rules: pure functions (state in -> new state out) ---------------- */
+const Rules = (() => {
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const say = (s, text, cls) => { s.logN++; s.log.unshift({ n: s.logN, text, cls: cls || '' }); if (s.log.length > 40) s.log.length = 40; };
+  const fx = (s, type, extra) => s.fx.push(Object.assign({ type }, extra || {}));
+  const gain = (s, id, a) => { s.res[id] = (s.res[id] || 0) + a; if (a > 0) s.seenRes[id] = 1; };
+  const have = (s, id) => s.res[id] || 0;
+  const costOf = (it, s) => { const n = s.built[it.id] || 0, k = Math.pow(it.scale || 1, n), c = {}; for (const r in it.cost) c[r] = Math.ceil(it.cost[r] * k); return c; };
+  const afford = (s, c) => Object.keys(c).every(r => have(s, r) >= c[r] - 1e-9);
+  const pay = (s, c) => { for (const r in c) s.res[r] = have(s, r) - c[r]; };
+  const cap = s => (s.built.shelter || 0) * 2;
+  const airCap = s => s.asc ? 100 : CONFIG.air.cap + (s.built.tank || 0) * CONFIG.air.tankCap;
+  const working = s => Object.values(s.jobs).reduce((a, b) => a + b, 0);
+  const idle = s => s.pop - working(s);
+  const cutters = s => Math.max(0, s.pop - Object.keys(s.jobs).filter(k => k !== 'cutter').reduce((a, k) => a + (s.jobs[k] || 0), 0));
+  const ready = (s, k) => !(s.cd[k] > s.t);
+  const setCd = (s, k) => { s.cd[k] = s.t + CONFIG.cd[k]; };
+  const at = (s, delay, ev, arg) => s.q.push({ at: s.t + delay, ev, arg });
+  const terrain = s => MapGen.gen(s.seed);
+  const seenArr = s => (s.seen && s.seen.length === N * N ? s.seen : '0'.repeat(N * N)).split('');
+  const hpMax = s => s.built.suit ? CONFIG.exp.hpSuit : CONFIG.exp.hpBase;
+  const dmg = s => CONFIG.dmg.base + (s.built.harpoon ? CONFIG.dmg.harpoon : 0) + (s.built.glassharpoon ? CONFIG.dmg.glass : 0);
+  const liftReady = s => LIFT_PARTS.every(p => s.built[p]);
+  function airRates(s) {
+    let use = CONFIG.air.decay * (s.built.valve ? CONFIG.air.valveMul : 1);
+    if (s.diver.state !== 'none') use += CONFIG.air.diverBreath;
+    use += s.pop * CONFIG.air.personBreath;
+    const make = (s.built.bed || 0) * CONFIG.air.bedMake + (s.jobs.tender || 0) * CONFIG.air.tenderMake;
+    return { use, make, net: make - use };
+  }
+  function itemVisible(s, it) { return !!it.req(s); }
+  function jobVisible(s, j) { return s.flags.floor && !!j.req(s); }
+  function unlockTab(s, id) { if (!s.flags['tab_' + id]) { s.flags['tab_' + id] = 1; s.newTabs[id] = 1; fx(s, 'reveal'); } }
+
+  function revealAround(s) {
+    const e = s.exp; const r = s.built.deeplamp ? CONFIG.exp.sightLamp : CONFIG.exp.sight; const a = seenArr(s);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (Math.hypot(x - e.x, y - e.y) <= r) a[y * N + x] = '1';
+    s.seen = a.join('');
+  }
+
+  function blackout(s) {
+    s.stats.blackouts++; fx(s, 'blackout');
+    if (s.asc) { say(s, TEXT.ascBlack, 'warn'); s.air = 40; s.asc.stall = CONFIG.asc.stall; return; }
+    if (s.exp) { s.awayBlack = (s.awayBlack || 0) + 1; s.air = CONFIG.air.blackoutAir; loseOne(s); return; }
+    say(s, TEXT.dark, 'warn'); say(s, TEXT.wake, 'warn');
+    s.air = CONFIG.air.blackoutAir;
+    for (const r of ['kelp', 'fish']) s.res[r] = Math.floor(have(s, r) * 0.7);
+    if (loseOne(s)) say(s, TEXT.wakeLoss, 'warn');
+  }
+  function loseOne(s) {
+    if (s.pop <= 0) return false; s.pop--;
+    if (cutters(s) <= 0) { const ids = Object.keys(s.jobs).filter(k => k !== 'cutter' && s.jobs[k] > 0); if (ids.length) s.jobs[ids[ids.length - 1]]--; }
+    s.jobs.cutter = cutters(s); return true;
+  }
+
+  function arrive(s, n) {
+    n = Math.min(n, cap(s) - s.pop);
+    if (n <= 0) { say(s, TEXT.drifterFull); return; }
+    s.pop += n; s.jobs.cutter = cutters(s);
+    say(s, n === 2 ? TEXT.arrivalsTwo : rpick(s, TEXT.arrivals)); fx(s, 'arrive');
+  }
+
+  function event(s, e) {
+    switch (e.ev) {
+      case 'answer': {
+        s.pending = false; s.answers++; fx(s, 'answer', { n: s.answers });
+        say(s, TEXT.answers[Math.min(s.answers, TEXT.answers.length) - 1]);
+        if (s.answers >= CONFIG.knock.toArrive) at(s, CONFIG.knock.arriveDelay, 'arrive1');
+        break;
+      }
+      case 'arrive1': say(s, TEXT.arrive1, 'say'); fx(s, 'descend'); at(s, 2.6, 'arrive2'); break;
+      case 'arrive2': say(s, TEXT.arrive2); s.diver.state = 'cold'; fx(s, 'arrive'); at(s, 1.8, 'arrive3'); break;
+      case 'arrive3': say(s, TEXT.arrive3, 'warn'); s.diver.lastShiver = s.t; break;
+      case 'drifterKnock': {
+        s.pending = false;
+        if (s.pop >= cap(s)) { say(s, TEXT.drifterFull); break; }
+        say(s, TEXT.drifterYes); fx(s, 'answer', { n: 1 });
+        at(s, rint(s, 15, 25) / 10, 'drifter', rnd(s) < 0.28 ? 2 : 1); break;
+      }
+      case 'drifter': arrive(s, e.arg || 1); break;
+      case 'lidAnswer': say(s, TEXT.lidAnswer, 'say'); fx(s, 'answer', { n: 3 }); at(s, 2.6, 'end'); break;
+      case 'end': {
+        s.ended = true; s.endT = s.t; s.souls = s.pop + 2; fx(s, 'end'); break;
+      }
+      case 'say': say(s, e.arg.text, e.arg.cls); if (e.arg.fx) fx(s, e.arg.fx); break;
+      case 'unlockWork': s.flags.gather = 1; s.flags.crafts = 1; fx(s, 'reveal'); break;
+    }
+  }
+
+  /* ---- can(): is an action legal right now? ---- */
+  function can(s, act, arg) {
+    if (s.ended) return false;
+    if (s.asc) {
+      if (act === 'pump') return ready(s, 'pump') && s.asc.phase === 'rise';
+      if (act === 'knock') return s.asc.phase === 'lid' && ready(s, 'knock');
+      return false;
+    }
+    if (s.exp) {
+      const e = s.exp, f = e.fight;
+      switch (act) {
+        case 'move': { if (f) return false; const d = DIRS[arg]; if (!d) return false; const x = e.x + d[0], y = e.y + d[1];
+          if (x < 0 || y < 0 || x >= N || y >= N) return false; const tt = terrain(s).t[y * N + x]; return tt === 0 || tt === 3; }
+        case 'strike': return !!f && ready(s, 'strike');
+        case 'eat': return e.rat > 0 && e.hp < e.hpMax && ready(s, 'eat');
+        case 'flee': return !!f && ready(s, 'flee');
+        case 'pull': return !f;
+        case 'tab': return arg === 'dark';
+        case 'mute': return true;
+        default: return false;
+      }
+    }
+    switch (act) {
+      case 'knock': return ready(s, 'knock');
+      case 'pump': return !!s.flags.air && ready(s, 'pump');
+      case 'gather': return !!s.flags.gather && ready(s, 'gather') && s.air > CONFIG.gatherAir;
+      case 'make': { const it = ITEM[arg]; if (!it || !itemVisible(s, it)) return false; if ((s.built[it.id] || 0) >= it.max) return false; return afford(s, costOf(it, s)) && ready(s, 'build'); }
+      case 'job+': { const j = JOBS.find(j => j.id === arg); return !!j && j.id !== 'cutter' && jobVisible(s, j) && cutters(s) > 0; }
+      case 'job-': return arg !== 'cutter' && (s.jobs[arg] || 0) > 0;
+      case 'tab': return arg === 'bell' || !!s.flags['tab_' + arg];
+      case 'can+': return !!s.flags.dark && s.prep.can < Math.min(CONFIG.exp.maxCan, have(s, 'canister'));
+      case 'can-': return s.prep.can > 1;
+      case 'rat+': return !!s.flags.dark && s.prep.rat < Math.min(CONFIG.exp.maxRat, Math.floor(have(s, 'rations')));
+      case 'rat-': return s.prep.rat > 0;
+      case 'go': return !!s.flags.dark && have(s, 'canister') >= 1;
+      case 'ascend': return liftReady(s);
+      default: return false;
+    }
+  }
+
+  /* ---- act(): apply a player action ---- */
+  function act(s0, act, arg) {
+    if (!can(s0, act, arg)) return s0;
+    const s = clone(s0); s.fx = [];
+    switch (act) {
+      case 'knock': doKnock(s); break;
+      case 'pump': {
+        setCd(s, 'pump'); s.stats.pumps++; s.air = Math.min(airCap(s), s.air + CONFIG.air.pump); fx(s, 'pump', { src: 'pump' });
+        if (s.stats.pumps === 1) say(s, TEXT.firstPump);
+        break;
+      }
+      case 'gather': {
+        setCd(s, 'gather'); s.air -= CONFIG.gatherAir; const got = {};
+        got.kelp = rint(s, 2, 4);
+        if (s.built.hook && rnd(s) < 0.8) got.scrap = rint(s, 1, 2);
+        if (s.built.net) got.fish = rint(s, 1, 2);
+        for (const r in got) gain(s, r, got[r]);
+        if (!s.flags.gathered) { s.flags.gathered = 1; say(s, TEXT.gather1); }
+        fx(s, 'gather', { src: 'gather', text: Object.entries(got).map(([r, n]) => '+' + n + ' ' + RESNAME[r]).join('  ') });
+        break;
+      }
+      case 'make': {
+        const it = ITEM[arg]; const c = costOf(it, s); pay(s, c); s.built[it.id] = (s.built[it.id] || 0) + 1; setCd(s, 'build');
+        const first = s.built[it.id] === 1;
+        if (first || it.again) say(s, first ? it.msg : it.again); else if (it.id === 'rope' || it.id === 'canister') { /* quiet repeat */ }
+        fx(s, 'build', { src: 'make:' + it.id, text: '+1 ' + it.name });
+        applyItem(s, it, first);
+        break;
+      }
+      case 'job+': s.jobs[arg] = (s.jobs[arg] || 0) + 1; s.jobs.cutter = cutters(s); fx(s, 'tick'); break;
+      case 'job-': s.jobs[arg]--; s.jobs.cutter = cutters(s); fx(s, 'tick'); break;
+      case 'tab': s.tab = arg; delete s.newTabs[arg]; break;
+      case 'can+': s.prep.can++; fx(s, 'tick'); break;
+      case 'can-': s.prep.can--; fx(s, 'tick'); break;
+      case 'rat+': s.prep.rat++; fx(s, 'tick'); break;
+      case 'rat-': s.prep.rat--; fx(s, 'tick'); break;
+      case 'go': startExp(s); break;
+      case 'move': move(s, arg); break;
+      case 'strike': strike(s); break;
+      case 'eat': { const e = s.exp; setCd(s, 'eat'); e.rat--; e.hp = Math.min(e.hpMax, e.hp + CONFIG.exp.ratHp); e.hunger = 0; fx(s, 'eat'); break; }
+      case 'flee': flee(s); break;
+      case 'pull': endExp(s, 'pull'); break;
+      case 'ascend': {
+        s.asc = { depth: CONFIG.asc.depth, phase: 'rise', stall: 0, marks: 0 }; s.air = 100; s.tab = 'lift';
+        say(s, TEXT.asc1); at(s, 2.2, 'say', { text: TEXT.asc2, fx: 'drop' }); fx(s, 'ascend'); break;
+      }
+    }
+    return s;
+  }
+
+  function doKnock(s) {
+    setCd(s, 'knock'); s.stats.knocks++; fx(s, 'knock', { src: 'knock' });
+    if (s.asc) { s.asc.phase = 'knocked'; say(s, TEXT.lidKnock); at(s, 2.2, 'lidAnswer'); return; }
+    if (!s.flags.air) {
+      s.knockN++;
+      if (s.knockN === 1) say(s, TEXT.knock1);
+      else if (s.knockN === 2) say(s, TEXT.knock2);
+      else { say(s, TEXT.knock3, 'warn'); s.flags.air = 1; fx(s, 'reveal'); }
+      return;
+    }
+    if (s.diver.state === 'none') {
+      if (s.pending) { say(s, TEXT.wait); return; }
+      if (s.answers >= CONFIG.knock.toArrive) { say(s, TEXT.coming); return; }
+      if (s.stats.pumps < 1) { s.lastNothing = (s.lastNothing + 1) % TEXT.nothing.length; say(s, TEXT.nothing[s.lastNothing]); return; }
+      s.pending = true; at(s, CONFIG.knock.delay[0] + rnd(s) * (CONFIG.knock.delay[1] - CONFIG.knock.delay[0]), 'answer');
+      return;
+    }
+    if (s.flags.floor) {
+      if (s.pending) { say(s, TEXT.wait); return; }
+      if (s.pop >= cap(s)) { say(s, cap(s) ? TEXT.drifterFull : TEXT.drifterNo[0]); return; }
+      if (rnd(s) < CONFIG.knock.drifterChance) { s.pending = true; at(s, CONFIG.knock.drifterDelay[0] + rnd(s) * (CONFIG.knock.drifterDelay[1] - CONFIG.knock.drifterDelay[0]), 'drifterKnock'); }
+      else say(s, rpick(s, TEXT.drifterNo));
+      return;
+    }
+    say(s, s.flags.diverKnocked ? TEXT.diverKnock[1] : TEXT.diverKnock[0]); s.flags.diverKnocked = 1;
+  }
+
+  function applyItem(s, it, first) {
+    switch (it.id) {
+      case 'rope': gain(s, 'rope', 1); break;
+      case 'canister': gain(s, 'canister', 1); break;
+      case 'valve': s.diver.nextKelp = s.t + CONFIG.diver.kelpEvery; at(s, 1.5, 'say', { text: TEXT.diverOut }); break;
+      case 'lamp': s.flags.floor = 1; unlockTab(s, 'floor'); at(s, 1.6, 'say', { text: TEXT.floor1, cls: 'say' }); at(s, 3.6, 'say', { text: TEXT.floor2 }); at(s, 6, 'say', { text: TEXT.floor3, cls: 'say' }); break;
+      case 'deeplamp': s.flags.dark = 1; unlockTab(s, 'dark'); gain(s, 'canister', 1); gain(s, 'rations', 2); at(s, 7.4, 'say', { text: TEXT.darkFood });
+        at(s, 1.5, 'say', { text: TEXT.darkOpen1 }); at(s, 3.8, 'say', { text: TEXT.darkOpen2, cls: 'say' }); at(s, 5.6, 'say', { text: TEXT.darkOpen3 }); break;
+    }
+    if (it.where === 'lift' && liftReady(s) && !s.flags.liftReadySaid) { s.flags.liftReadySaid = 1; say(s, TEXT.liftReady, 'say'); }
+  }
+
+  /* ---- the dark ---- */
+  const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  function startExp(s) {
+    const can = Math.min(s.prep.can, have(s, 'canister')), rat = Math.min(s.prep.rat, Math.floor(have(s, 'rations')));
+    s.res.canister -= can; s.res.rations = have(s, 'rations') - rat;
+    const hm = hpMax(s);
+    s.exp = { x: C, y: C, px: C, py: C, air: can * CONFIG.exp.canAir, airMax: can * CONFIG.exp.canAir, hp: hm, hpMax: hm, rat, hunger: 0, starve: 0, loot: {}, fight: null, visited: {}, steps: 0 };
+    s.stats.trips++; s.tab = 'dark'; s.awayBlack = 0;
+    say(s, s.stats.trips === 1 ? TEXT.expGo1 : TEXT.expGo); fx(s, 'go');
+    revealAround(s);
+  }
+  function lootRoll(s, table) { const out = {}; for (const r in table) { const [a, b] = table[r]; const n = rint(s, a, b); if (n > 0) out[r] = n; } return out; }
+  function addLoot(s, got) { for (const r in got) { s.exp.loot[r] = (s.exp.loot[r] || 0) + got[r]; } }
+  function lootText(got) { return Object.entries(got).map(([r, n]) => '+' + n + ' ' + RESNAME[r]).join('  '); }
+  function move(s, dir) {
+    const e = s.exp, d = DIRS[dir]; e.px = e.x; e.py = e.y; e.x += d[0]; e.y += d[1]; e.steps++; s.stats.steps++;
+    e.air -= 1; fx(s, 'step');
+    revealAround(s);
+    e.hunger++;
+    if (e.hunger >= CONFIG.exp.eatEvery) {
+      if (e.rat > 0) { e.rat--; e.hunger = 0; say(s, TEXT.hungry); }
+      else { e.starve++; if (e.starve % CONFIG.exp.starveEvery === 0) { e.hp -= 1; if (!e.saidStarve) { e.saidStarve = 1; say(s, TEXT.starving, 'warn'); } fx(s, 'hurt'); } }
+    }
+    if (e.hp <= 0) { endExp(s, 'rescue'); return; }
+    if (e.x === C && e.y === C) { endExp(s, 'home'); return; }
+    const map = terrain(s), idx = e.y * N + e.x, lmId = map.lm[idx];
+    if (lmId) { visitLandmark(s, LM[lmId]); }
+    else if (Math.hypot(e.x - C, e.y - C) > CONFIG.exp.safeRadius && rnd(s) < CONFIG.exp.encChance) {
+      const dd = Math.hypot(e.x - C, e.y - C), tier = dd >= 7 ? 3 : dd >= 5 ? 2 : 1;
+      const pool = ENEMIES.filter(en => en.tier === tier); const en = rpick(s, pool);
+      startFight(s, en, null);
+    }
+    if (s.exp && s.exp.air <= 0 && !s.exp.fight) endExp(s, 'rescue');
+  }
+  function startFight(s, en, lmId) {
+    s.exp.fight = { name: en.name, hp: en.hp, hpMax: en.hp, dmg: en.dmg, speed: en.speed || 1.8, next: s.t + (en.speed || 1.8), loot: en.loot || null, lm: lmId };
+    say(s, en.intro || (en.name + ' comes out of the dark at you.'), 'warn'); fx(s, 'enemy');
+  }
+  function visitLandmark(s, L, beaten) {
+    if (!s.cleared[L.id]) {
+      if (L.guard && !beaten) { startFight(s, L.guard, L.id); return; }
+      s.cleared[L.id] = 1; s.exp.visited[L.id] = 1; if (L.loot) (s.exp.fresh = s.exp.fresh || []).push(L.id);
+      say(s, L.text, L.lore ? 'lore' : '');
+      if (L.loot) { const got = lootRoll(s, L.loot); addLoot(s, got); if (Object.keys(got).length) fx(s, 'loot', { text: lootText(got) }); }
+      if (L.refill) s.exp.air = Math.min(s.exp.airMax, s.exp.air + Math.ceil(s.exp.airMax / 2));
+      if (L.id === 'lift') { s.flags.liftFound = 1; unlockTab(s, 'lift'); }
+      fx(s, 'landmark');
+    } else if (L.repeat && !s.exp.visited[L.id]) {
+      s.exp.visited[L.id] = 1; say(s, L.again || L.text);
+      if (L.againLoot) { const got = lootRoll(s, L.againLoot); addLoot(s, got); fx(s, 'loot', { text: lootText(got) }); }
+      if (L.refill) s.exp.air = Math.min(s.exp.airMax, s.exp.air + Math.ceil(s.exp.airMax / 2));
+      fx(s, 'landmark');
+    }
+  }
+  function strike(s) {
+    const e = s.exp, f = e.fight; setCd(s, 'strike'); f.hp -= dmg(s); fx(s, 'hit');
+    if (f.hp <= 0) {
+      say(s, f.name + rpick(s, [' goes still.', ' sinks away into the silt.', ' stops moving. the dark closes over it.'])); const lm = f.lm; const lt = f.loot; e.fight = null;
+      if (lt) { const got = lootRoll(s, lt); addLoot(s, got); if (Object.keys(got).length) fx(s, 'loot', { text: lootText(got) }); }
+      if (lm) visitLandmark(s, LM[lm], true);
+      if (s.exp && s.exp.air <= 0) endExp(s, 'rescue');
+    }
+  }
+  function flee(s) {
+    const e = s.exp; setCd(s, 'flee'); e.air -= CONFIG.exp.fleeAir;
+    if (rnd(s) < CONFIG.exp.fleeChance) { const lm = e.fight.lm; e.fight = null; if (!lm) { /* stay */ } else { e.x = e.px; e.y = e.py; } say(s, 'you back away into the dark.'); fx(s, 'flee'); }
+    else { say(s, 'it follows you.', 'warn'); }
+    if (e.air <= 0) endExp(s, 'rescue');
+  }
+  function endExp(s, how) {
+    const e = s.exp; let kept = {};
+    if (how === 'home') kept = e.loot;
+    else if (how === 'pull') { for (const r in e.loot) { const n = Math.floor(e.loot[r] / 2); if (n > 0) kept[r] = n; } }
+    for (const r in kept) gain(s, r, kept[r]);
+    if (how !== 'rescue') { const back = Math.floor(Math.max(0, e.air) / CONFIG.exp.canAir); if (back) gain(s, 'canister', back); if (e.rat) gain(s, 'rations', e.rat); }
+    if (how === 'home') say(s, rpick(s, TEXT.home)); else if (how === 'pull') say(s, TEXT.pull); else { say(s, TEXT.rescue1, 'warn'); say(s, TEXT.rescue2, 'warn'); s.stats.lost++; }
+    if (how !== 'home' && e.fresh && e.fresh.length) { e.fresh.forEach(id => { delete s.cleared[id]; }); say(s, TEXT.stillThere); }
+    if (s.awayBlack) say(s, TEXT.awayBlack + (s.awayBlack > 1 ? ' more than once.' : '') + ' someone didn\'t make it back to their bell.', 'warn');
+    s.exp = null; s.awayBlack = 0;
+    fx(s, how === 'rescue' ? 'rescue' : 'home', { text: Object.keys(kept).length ? lootText(kept) : '' });
+    s.prep.can = Math.max(1, Math.min(s.prep.can, have(s, 'canister') || 1));
+    s.prep.rat = Math.min(s.prep.rat, Math.floor(have(s, 'rations')));
+  }
+
+  /* ---- tick(): time passes ---- */
+  function tick(s0, dt) {
+    if (s0.ended) return s0;
+    const s = clone(s0); s.fx = []; s.t += dt;
+    // scheduled events
+    if (s.q.length) { const due = s.q.filter(e => e.at <= s.t); s.q = s.q.filter(e => e.at > s.t); due.sort((a, b) => a.at - b.at).forEach(e => event(s, e)); }
+    if (s.ended) return s;
+    // ascent
+    if (s.asc) {
+      const a = s.asc;
+      if (a.phase === 'rise') {
+        s.air -= CONFIG.asc.airDrain * dt;
+        if (a.stall > 0) a.stall -= dt; else a.depth = Math.max(0, a.depth - CONFIG.asc.rate * dt);
+        while (a.marks < TEXT.ascMarks.length && a.depth <= TEXT.ascMarks[a.marks][0]) { say(s, TEXT.ascMarks[a.marks][1], a.marks >= 3 ? 'say' : ''); a.marks++; }
+        if (a.depth <= 0) { a.phase = 'lid'; say(s, TEXT.lid1); say(s, TEXT.lid2, 'say'); fx(s, 'clunk'); }
+        if (s.air <= 0) blackout(s);
+      }
+      return s;
+    }
+    // air
+    if (s.flags.air) {
+      const r = airRates(s), before = s.air;
+      s.air = Math.max(0, Math.min(airCap(s), s.air + r.net * dt));
+      if (before > CONFIG.air.warnHi && s.air <= CONFIG.air.warnHi && !s.exp) { say(s, TEXT.warnHi, 'warn'); fx(s, 'warn'); }
+      if (before > CONFIG.air.warnLo && s.air <= CONFIG.air.warnLo && !s.exp) { say(s, TEXT.warnLo, 'warn'); fx(s, 'warn'); }
+      if (s.air <= 0) blackout(s);
+    }
+    // the diver
+    const d = s.diver;
+    if (d.state === 'cold') {
+      if (s.air >= CONFIG.diver.warmAir) d.warm += dt;
+      else if (s.t - d.lastShiver > CONFIG.diver.shiverEvery) { d.lastShiver = s.t; say(s, TEXT.shiver, 'warn'); }
+      if (d.warm >= CONFIG.diver.warmNeed) { d.state = 'working'; say(s, TEXT.warm1); at(s, 2.2, 'say', { text: TEXT.warm2, cls: 'say' }); at(s, 2.4, 'unlockWork'); }
+    }
+    if (d.state === 'working' && s.built.valve && s.t >= d.nextKelp) { d.nextKelp = s.t + CONFIG.diver.kelpEvery; gain(s, 'kelp', CONFIG.diver.kelpAmt); }
+    // jobs
+    if (s.flags.floor) {
+      for (const j of JOBS) {
+        const n = s.jobs[j.id] || 0; if (!n || j.air) continue;
+        let frac = 1; if (j.use) { for (const r in j.use) frac = Math.min(frac, have(s, r) / (j.use[r] * n * dt)); frac = Math.max(0, Math.min(1, frac)); s.short = s.short || {}; s.short[j.id] = frac < 0.999 ? 1 : 0; if (frac <= 0) continue; for (const r in j.use) s.res[r] = have(s, r) - j.use[r] * n * dt * frac; }
+        for (const r in j.make) gain(s, r, j.make[r] * n * dt * frac);
+      }
+      if (s.t >= s.nextPassive) {
+        s.nextPassive = s.t + CONFIG.passive.every;
+        if (s.pop < cap(s) && rnd(s) < CONFIG.passive.chance) { at(s, 0.1, 'drifter', 1); }
+      }
+    }
+    // fights
+    if (s.exp && s.exp.fight && s.t >= s.exp.fight.next) {
+      const f = s.exp.fight; f.next += f.speed; s.exp.hp -= f.dmg; s.exp.air -= 1; fx(s, 'hurt');
+      if (s.exp.hp <= 0 || s.exp.air <= 0) endExp(s, 'rescue');
+    }
+    return s;
+  }
+
+  return { tick, act, can, costOf, afford, cap, airCap, idle, cutters, working, airRates, itemVisible, jobVisible, hpMax, dmg, liftReady, terrain, DIRS, have };
+})();
+
+/* ---------------- Storage: localStorage in try/catch ---------------- */
+const Storage = {
+  key: 'lowbell.save.v1', bestKey: 'lowbell.best.v1',
+  load() { try { const raw = localStorage.getItem(this.key); if (!raw) return null; const s = JSON.parse(raw); return s && s.v === 1 ? s : null; } catch (e) { return null; } },
+  save(s) { try { localStorage.setItem(this.key, JSON.stringify(s)); } catch (e) { } },
+  clear() { try { localStorage.removeItem(this.key); } catch (e) { } },
+  best() { try { return JSON.parse(localStorage.getItem(this.bestKey) || 'null') || { runs: 0, fastest: 0, most: 0 }; } catch (e) { return { runs: 0, fastest: 0, most: 0 }; } },
+  setBest(b) { try { localStorage.setItem(this.bestKey, JSON.stringify(b)); } catch (e) { } },
+  pref(k, v) { try { if (v === undefined) return localStorage.getItem('lowbell.' + k); localStorage.setItem('lowbell.' + k, v); } catch (e) { return null; } },
+};
+
+/* ---------------- AudioFX: everything generated in code ---------------- */
+const AudioFX = (() => {
+  let ctx = null, master = null, verb = null, dry = null, muted = Storage.pref('muted') === '1', amb = null;
+  function init() {
+    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    try { ctx = new AC(); } catch (e) { return; }
+    master = ctx.createGain(); master.gain.value = muted ? 0 : 0.9; master.connect(ctx.destination);
+    dry = ctx.createGain(); dry.gain.value = 0.8; dry.connect(master);
+    verb = ctx.createConvolver(); verb.buffer = impulse(3.2, 2.4); const wet = ctx.createGain(); wet.gain.value = 0.55; verb.connect(wet); wet.connect(master);
+    ambience();
+  }
+  function impulse(sec, decay) {
+    const len = Math.floor(ctx.sampleRate * sec), b = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); let lp = 0; for (let i = 0; i < len; i++) { lp = lp * 0.82 + (Math.random() * 2 - 1) * 0.18; d[i] = lp * Math.pow(1 - i / len, decay) * 2.2; } }
+    return b;
+  }
+  function noiseBuf(sec) { const len = Math.floor(ctx.sampleRate * sec), b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; return b; }
+  function out(node, wetAmt) { const g = ctx.createGain(); g.gain.value = 1; node.connect(g); g.connect(dry); if (wetAmt) { const w = ctx.createGain(); w.gain.value = wetAmt; g.connect(w); w.connect(verb); } return g; }
+  function env(g, t, a, peak, dec) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + dec); }
+  function thud(freq, vol, wetAmt, lp, delay) {
+    if (!ctx) return; const t = ctx.currentTime + (delay || 0);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(freq * 1.6, t); o.frequency.exponentialRampToValueAtTime(freq, t + 0.08);
+    const g = ctx.createGain(); env(g, t, 0.004, vol, 0.42); o.connect(g);
+    const n = ctx.createBufferSource(); n.buffer = noiseBuf(0.08); const nf = ctx.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = lp || 900;
+    const ng = ctx.createGain(); env(ng, t, 0.002, vol * 0.7, 0.06); n.connect(nf); nf.connect(ng);
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp || 1400; g.connect(f); ng.connect(f); out(f, wetAmt);
+    o.start(t); o.stop(t + 0.6); n.start(t);
+  }
+  function bell(base, vol, delay, dur) {
+    if (!ctx) return; const t = ctx.currentTime + (delay || 0);
+    [[1, 1], [2.02, 0.5], [2.76, 0.42], [5.4, 0.18], [8.93, 0.08]].forEach(([m, a]) => {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = base * m; const g = ctx.createGain(); env(g, t, 0.006, vol * a, (dur || 2.2) / Math.sqrt(m)); o.connect(g); out(g, 0.7); o.start(t); o.stop(t + (dur || 2.2) + 0.2);
+    });
+  }
+  function whoosh(f1, f2, dur, vol) {
+    if (!ctx) return; const t = ctx.currentTime; const n = ctx.createBufferSource(); n.buffer = noiseBuf(dur + 0.1);
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.4; f.frequency.setValueAtTime(f1, t); f.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    n.connect(f); f.connect(g); out(g, 0.25); n.start(t);
+  }
+  function bubbles(n, vol) {
+    if (!ctx) return; for (let i = 0; i < n; i++) { const t = ctx.currentTime + i * 0.07 + Math.random() * 0.04; const o = ctx.createOscillator(); o.type = 'sine';
+      const f0 = 300 + Math.random() * 500; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 2.2, t + 0.07);
+      const g = ctx.createGain(); env(g, t, 0.005, vol, 0.07); o.connect(g); out(g, 0.3); o.start(t); o.stop(t + 0.12); }
+  }
+  function tone(f, dur, vol, type, delay, glideTo) {
+    if (!ctx) return; const t = ctx.currentTime + (delay || 0); const o = ctx.createOscillator(); o.type = type || 'sine'; o.frequency.setValueAtTime(f, t);
+    if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t + dur);
+    const g = ctx.createGain(); env(g, t, Math.min(0.4, dur * 0.3), vol, dur * 0.7); o.connect(g); out(g, 0.6); o.start(t); o.stop(t + dur + 0.1);
+  }
+  function ambience() {
+    const t = ctx.currentTime; amb = {};
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260; lp.Q.value = 0.7;
+    const g = ctx.createGain(); g.gain.value = 0.0001; g.gain.exponentialRampToValueAtTime(0.5, t + 6);
+    lp.connect(g); g.connect(master); amb.lp = lp; amb.g = g;
+    [[55, 'sine', 0.09], [82.4, 'triangle', 0.035], [55.4, 'sine', 0.06]].forEach(([f, ty, v]) => { const o = ctx.createOscillator(); o.type = ty; o.frequency.value = f; const og = ctx.createGain(); og.gain.value = v; o.connect(og); og.connect(lp); o.start(); });
+    const n = ctx.createBufferSource(); n.buffer = noiseBuf(4); n.loop = true; const nf = ctx.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 340;
+    const ng = ctx.createGain(); ng.gain.value = 0.11; n.connect(nf); nf.connect(ng); ng.connect(g); n.start(); amb.noise = ng; amb.nf = nf;
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07; const lg = ctx.createGain(); lg.gain.value = 90; lfo.connect(lg); lg.connect(lp.frequency); lfo.start();
+    const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.11; const lg2 = ctx.createGain(); lg2.gain.value = 0.05; lfo2.connect(lg2); lg2.connect(ng.gain); lfo2.start();
+    // stage layers, faded in as the world opens: 1 the floor (people, a low warm hum), 2 the dark (a sub that beats), 3 the lift (a far shimmer from above)
+    amb.layers = [null];
+    const layer = (parts, toVerb) => { const lg = ctx.createGain(); lg.gain.value = 0.0001; if (toVerb) { lg.connect(verb); } else lg.connect(g);
+      parts.forEach(([f, ty, v, lpf]) => { const o = ctx.createOscillator(); o.type = ty; o.frequency.value = f; const og = ctx.createGain(); og.gain.value = v; let n = o; if (lpf) { const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = lpf; o.connect(fl); n = fl; } n.connect(og); og.connect(lg); o.start(); });
+      amb.layers.push(lg); };
+    layer([[110, 'triangle', 0.05, 420], [164.8, 'triangle', 0.03, 420], [110.6, 'sine', 0.04]]);
+    layer([[41.2, 'sine', 0.12], [41.9, 'sine', 0.09]]);
+    layer([[659.3, 'sine', 0.012], [987.8, 'sine', 0.006], [1318.5, 'sine', 0.003]], true);
+    amb.stage = 0;
+  }
+  function setStage(k) {
+    if (!ctx || !amb || !amb.layers || amb.stage === k) return; amb.stage = k; const t = ctx.currentTime;
+    amb.layers.forEach((lg, i) => { if (lg) lg.gain.setTargetAtTime(i <= k && k < 9 ? 1 : 0.0001, t, 4); });
+  }
+  function setMood(m, thin) { // m: 0..1 brightness of the water (stage, ascent). thin: 0..1 how short of air you are; it muffles the world
+    if (!ctx || !amb) return; const t = ctx.currentTime, k = 1 - 0.6 * (thin || 0);
+    amb.lp.frequency.setTargetAtTime((220 + m * 900) * k, t, 1.5); amb.nf.frequency.setTargetAtTime((300 + m * 1400) * k, t, 1.5);
+  }
+  function surface() {
+    if (!ctx) return; const t = ctx.currentTime;
+    if (amb) amb.g.gain.setTargetAtTime(0.0001, t, 2.5);
+    // warm open chord, wind, birds
+    [220, 277.18, 329.63, 440, 554.37].forEach((f, i) => { const o = ctx.createOscillator(); o.type = i % 2 ? 'triangle' : 'sine'; o.frequency.value = f; const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.03, t + 5 + i); g.gain.setTargetAtTime(0.012, t + 14, 6); o.connect(g); out(g, 0.6); o.start(t); });
+    const n = ctx.createBufferSource(); n.buffer = noiseBuf(4); n.loop = true; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 0.5;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 6); n.connect(f); f.connect(g); g.connect(master); n.start(t);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.09; const lg = ctx.createGain(); lg.gain.value = 400; lfo.connect(lg); lg.connect(f.frequency); lfo.start();
+    let k = 0; const bird = () => { if (!ctx) return; const b = 2200 + Math.random() * 1600; for (let i = 0; i < 2 + Math.random() * 3; i++) tone(b * (1 + Math.random() * 0.2), 0.09, 0.03, 'sine', i * 0.12, b * 1.4); if (++k < 400) setTimeout(bird, 2500 + Math.random() * 6000); };
+    setTimeout(bird, 4000);
+  }
+  const play = {
+    knock: () => { thud(70, 0.9, 0.9, 700); },
+    answer: n => { const d = [0, 0.38]; d.forEach(x => thud(62 + n * 6, 0.18 + n * 0.12, 1, 380 + n * 120, x)); },
+    pump: () => whoosh(260, 900, 0.32, 0.09),
+    gather: () => bubbles(6, 0.05),
+    build: () => bell(196 + Math.random() * 30, 0.08),
+    reveal: () => { bell(130.8, 0.1, 0, 3.4); bell(196, 0.05, 0.25, 3); },
+    arrive: () => { bubbles(10, 0.04); tone(110, 1.2, 0.05, 'triangle'); },
+    descend: () => { tone(330, 2.4, 0.03, 'sine', 0, 220); },
+    warn: () => { tone(48, 0.8, 0.12, 'sine'); tone(48, 0.8, 0.1, 'sine', 0.9); },
+    blackout: () => { tone(90, 2.4, 0.12, 'sine', 0, 40); },
+    tick: () => tone(660, 0.05, 0.02, 'sine'),
+    step: () => { thud(110 + Math.random() * 30, 0.08, 0.2, 500); },
+    enemy: () => { tone(70, 0.9, 0.1, 'sawtooth', 0, 55); },
+    hit: () => { thud(160, 0.35, 0.3, 1800); },
+    hurt: () => { thud(55, 0.5, 0.4, 500); tone(180, 0.25, 0.04, 'square', 0, 90); },
+    eat: () => bubbles(3, 0.04),
+    flee: () => whoosh(600, 200, 0.4, 0.07),
+    loot: () => { bell(392, 0.05, 0, 1.2); },
+    landmark: () => { bell(261.6, 0.06, 0, 2.6); },
+    go: () => { whoosh(200, 500, 0.8, 0.06); },
+    home: () => { bell(261.6, 0.06, 0, 1.8); bell(329.6, 0.05, 0.18, 1.8); },
+    rescue: () => { tone(80, 1.8, 0.12, 'sine', 0, 50); },
+    ascend: () => { bell(130.8, 0.14, 0, 4); },
+    drop: () => { thud(40, 1, 1, 400); whoosh(80, 300, 2.5, 0.08); },
+    clunk: () => { thud(50, 1, 0.8, 600); },
+    heart: () => { thud(48, 0.32, 0.15, 220); thud(44, 0.22, 0.15, 200, 0.2); },
+    creak: () => { if (!ctx) return; const t = ctx.currentTime, o = ctx.createOscillator(); o.type = 'sawtooth'; const f0 = 60 + Math.random() * 30; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.82, t + 1.1);
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 380 + Math.random() * 200; f.Q.value = 7; const g = ctx.createGain(); env(g, t, 0.25, 0.05, 0.9); o.connect(f); f.connect(g); out(g, 0.5); o.start(t); o.stop(t + 1.4); },
+    end: () => { bell(261.6, 0.12, 0, 5); bell(329.6, 0.1, 0.5, 5); bell(392, 0.1, 1, 5); surface(); },
+  };
+  return {
+    init, setMood, setStage,
+    play(type, a) { if (!ctx || muted) return; try { play[type] && play[type](a); } catch (e) { } },
+    toggle() { muted = !muted; Storage.pref('muted', muted ? '1' : '0'); if (master) master.gain.setTargetAtTime(muted ? 0 : 0.9, ctx.currentTime, 0.05); return muted; },
+    get muted() { return muted; },
+    whale() { if (!ctx || muted) return; tone(140, 3.5, 0.025, 'sine', 0, 95); tone(210, 3, 0.012, 'sine', 0.4, 160); },
+  };
+})();
+
+/* ---------------- Renderer: reads state, draws; no rules here ---------------- */
+const Renderer = (() => {
+  const $ = id => document.getElementById(id);
+  const el = { app: $('app'), tabs: $('tabs'), log: $('log'), panel: $('panel'), day: $('day'), brand: $('brand'), blk: $('blk'), ending: $('ending') };
+  let lastSig = '', lastLogN = -1, lastTabsSig = '';
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmt = n => n >= 100 ? Math.floor(n) : n >= 10 ? Math.floor(n) : Math.floor(n * 10) / 10 === Math.floor(n) ? Math.floor(n) : Math.floor(n);
+  const costTxt = c => Object.entries(c).map(([r, n]) => RESNAME[r] + ' ' + n).join(' · ');
+  const btn = (act, arg, label, cls, cd, sub) => `<button type="button" class="btn ${cls || ''}" data-act="${act}" ${arg != null ? `data-arg="${arg}"` : ''}>${cd ? `<span class="cd" data-cd="${cd}"></span>` : ''}<span class="lbl">${esc(label)}</span>${sub != null ? `<span class="cost" data-b="${sub}"></span>` : ''}</button>`;
+
+  function sigOf(s) {
+    const vis = ITEMS.filter(i => Rules.itemVisible(s, i)).map(i => i.id + ((s.built[i.id] || 0) >= i.max ? 'x' : '')).join(',');
+    const jobs = JOBS.filter(j => Rules.jobVisible(s, j)).map(j => j.id).join(',');
+    return [s.tab, Object.keys(s.flags).sort().join(','), vis, jobs, s.diver.state, !!s.exp, s.exp && !!s.exp.fight, s.asc && s.asc.phase, Object.keys(s.seenRes).join(','), Rules.liftReady(s)].join('|');
+  }
+
+  function airMeter(s, id) {
+    return `<div class="meter"><div class="top"><span>air</span><b data-b="airTxt"></b></div><div class="bar" data-low="air"><i data-w="air"></i></div></div>`;
+  }
+  function storesHtml(s) {
+    const ids = RES.filter(r => s.seenRes[r.id]).map(r => r.id); if (!ids.length) return '';
+    return `<div class="sec"><h3>stores</h3><div class="stores">${ids.map(id => `<div><span>${RESNAME[id]}</span><span><span data-b="r_${id}"></span><em data-b="rr_${id}"></em></span></div>`).join('')}</div></div>`;
+  }
+  function itemList(s, where, title) {
+    const its = ITEMS.filter(i => i.where === where && Rules.itemVisible(s, i)); if (!its.length) return '';
+    return `<div class="sec"><h3>${title}</h3><div class="items">${its.map(i => {
+      const done = (s.built[i.id] || 0) >= i.max; return btn('make', i.id, i.name, done ? 'done' : '', null, done ? null : 'c_' + i.id);
+    }).join('')}</div></div>`;
+  }
+
+  function bellPanel(s) {
+    let h = '';
+    if (s.flags.air) h += airMeter(s);
+    h += `<div class="sec"><div class="row">${btn('knock', null, 'knock', 'big', 'knock')}${s.flags.air ? btn('pump', null, 'work the bellows', 'big', 'pump') : ''}${s.flags.gather ? btn('gather', null, 'go out the hatch', 'big', 'gather', 'gatherSub') : ''}</div></div>`;
+    if (s.diver.state !== 'none') h += `<p class="note" data-b="diverNote"></p>`;
+    h += itemList(s, 'bell', 'the diver can make');
+    h += storesHtml(s);
+    return h;
+  }
+  function floorPanel(s) {
+    let h = airMeter(s);
+    h += `<div class="sec"><div class="row">${btn('knock', null, 'knock on the bells', 'big', 'knock')}${btn('pump', null, 'work the bellows', 'big', 'pump')}${btn('gather', null, 'go out the hatch', 'big', 'gather', 'gatherSub')}</div></div>`;
+    h += `<div class="sec"><h3>people of the floor</h3><p class="note" data-b="popNote"></p><div class="jobs">${JOBS.filter(j => Rules.jobVisible(s, j)).map(j => j.id === 'cutter'
+      ? `<div class="job"><span class="nm">${j.name}s<small data-b="jd_${j.id}"></small></span><span class="n" data-b="j_${j.id}"></span><span style="width:92px;font-size:calc(12px * var(--gk-text-scale, 1));color:var(--dim)">everyone else</span></div>`
+      : `<div class="job"><span class="nm">${j.name}<small data-b="jd_${j.id}"></small></span><button type="button" class="mini" data-act="job-" data-arg="${j.id}" aria-label="fewer ${j.name}s">−</button><span class="n" data-b="j_${j.id}"></span><button type="button" class="mini" data-act="job+" data-arg="${j.id}" aria-label="more ${j.name}s">+</button></div>`).join('')}</div></div>`;
+    h += itemList(s, 'floor', 'raise');
+    h += itemList(s, 'forge', 'the forge makes');
+    h += storesHtml(s);
+    return h;
+  }
+  function darkPanel(s) {
+    const e = s.exp; let h = '<div class="mapbox">';
+    if (e) {
+      h += `<div class="hud"><span>air <b data-b="eAir"></b></span><span>body <b data-b="eHp"></b></span><span>rations <b data-b="eRat"></b></span><span>carrying <b data-b="eLoot"></b></span></div>`;
+      h += `<canvas id="map" width="440" height="440" aria-label="map of the dark"></canvas>`;
+      if (e.fight) h += `<div class="fight"><div class="who" data-b="fWho"></div><div class="bar"><i data-w="fHp" style="background:var(--rust)"></i></div><div class="row">${btn('strike', null, 'strike', 'big', 'strike')}${btn('eat', null, 'eat a ration', '', 'eat')}${btn('flee', null, 'back away', '', 'flee')}</div></div>`;
+      else h += `<div class="dpad"><span></span>${btn('move', 'up', '↑', '')}<span></span>${btn('move', 'left', '←', '')}${btn('move', 'down', '↓', '')}${btn('move', 'right', '→', '')}</div><div class="row">${btn('eat', null, 'eat a ration', '', 'eat')}${btn('pull', null, 'pull the line', '')}</div>`;
+    } else {
+      h += `<canvas id="map" width="440" height="440" aria-label="map of the dark"></canvas>`;
+      h += `<div class="sec" style="width:100%;max-width:440px"><h3>before you go</h3>
+        <div class="prep"><span class="nm">canisters <small class="note" data-b="pCanNote"></small></span><button type="button" class="mini" data-act="can-">−</button><span class="n" data-b="pCan"></span><button type="button" class="mini" data-act="can+">+</button></div>
+        <div class="prep"><span class="nm">rations</span><button type="button" class="mini" data-act="rat-">−</button><span class="n" data-b="pRat"></span><button type="button" class="mini" data-act="rat+">+</button></div>
+        <p class="note" data-b="prepNote"></p>
+        <div class="row">${btn('go', null, 'into the dark', 'big glow')}</div></div>`;
+    }
+    h += `<div class="legend" data-b="legend"></div></div>`;
+    if (!e) h += storesHtml(s);
+    return h;
+  }
+  function liftPanel(s) {
+    if (s.asc) {
+      const ticks = [0.2, 0.4, 0.6, 0.8].map(f => `<b style="bottom:${f * 100}%"></b>`).join('');
+      let h = `<div class="ascwrap"><div class="shaft" aria-hidden="true">${ticks}<i data-bot="cage"></i></div><div class="col"><div class="depth"><span data-b="depth"></span><small>fathoms to go</small></div>` + airMeter(s);
+      h += `<div class="sec"><div class="row">${s.asc.phase === 'rise' ? btn('pump', null, 'work the bellows', 'big glow', 'pump') : btn('knock', null, 'knock', 'big glow', 'knock')}</div></div></div></div>`;
+      return h;
+    }
+    let h = `<p class="note">the cable is cut. the cage is rust. everyone will have to go up together.</p>`;
+    h += itemList(s, 'lift', 'the last work');
+    if (Rules.liftReady(s)) h += `<div class="sec"><div class="row">${btn('ascend', null, 'everyone into the cage', 'big glow')}</div></div>`;
+    h += storesHtml(s);
+    return h;
+  }
+
+  function structure(s) {
+    const tabsSig = ['bell', 'floor', 'dark', 'lift'].map(t => (t === 'bell' || s.flags['tab_' + t]) ? t + (s.tab === t ? '*' : '') + (s.newTabs[t] ? '!' : '') : '').join(',') + (s.exp ? 'E' : '') + (s.asc ? 'A' : '');
+    if (tabsSig !== lastTabsSig) {
+      lastTabsSig = tabsSig;
+      const tabs = ['bell', 'floor', 'dark', 'lift'].filter(t => t === 'bell' || s.flags['tab_' + t]);
+      el.tabs.innerHTML = tabs.length > 1 && !s.asc ? tabs.map(t => `<button type="button" class="tab ${s.tab === t ? 'on' : ''} ${s.newTabs[t] ? 'new' : ''}" data-act="tab" data-arg="${t}" ${s.exp && t !== 'dark' ? 'disabled' : ''}>${t === 'bell' ? 'the bell' : t === 'floor' ? 'the floor' : t === 'dark' ? 'the dark' : 'the lift'}</button>`).join('') : '';
+    }
+    const sig = sigOf(s);
+    if (sig !== lastSig) {
+      lastSig = sig;
+      const tab = s.asc ? 'lift' : s.tab;
+      el.panel.innerHTML = tab === 'floor' ? floorPanel(s) : tab === 'dark' ? darkPanel(s) : tab === 'lift' ? liftPanel(s) : bellPanel(s);
+      MapView.attach(document.getElementById('map'));
+    }
+  }
+
+  function values(s) {
+    const v = {}, w = {};
+    const cap = Rules.airCap(s); v.airTxt = Math.floor(s.air) + ' / ' + cap; w.air = 100 * s.air / cap;
+    if (s.flags.floor && !s.asc) { const r = Rules.airRates(s); v.airTxt += '   ' + (r.net >= 0 ? '+' : '') + r.net.toFixed(1) + '/s'; }
+    for (const r of RES) { if (!s.seenRes[r.id]) continue; v['r_' + r.id] = Math.floor(Rules.have(s, r.id) + 1e-6); }
+    // production rates
+    const rate = {}; for (const j of JOBS) { const n = j.id === 'cutter' ? Rules.cutters(s) : (s.jobs[j.id] || 0); if (!n) continue; for (const r in (j.make || {})) rate[r] = (rate[r] || 0) + j.make[r] * n; for (const r in (j.use || {})) rate[r] = (rate[r] || 0) - j.use[r] * n; }
+    if (s.built.valve && s.diver.state === 'working') rate.kelp = (rate.kelp || 0) + CONFIG.diver.kelpAmt / CONFIG.diver.kelpEvery;
+    for (const r of RES) if (s.seenRes[r.id]) v['rr_' + r.id] = rate[r.id] ? (rate[r.id] > 0 ? '+' : '') + rate[r.id].toFixed(2) + '/s' : '';
+    for (const it of ITEMS) v['c_' + it.id] = costTxt(Rules.costOf(it, s)) + (it.max > 1 && it.max < 99 ? '  (' + (s.built[it.id] || 0) + '/' + it.max + ')' : '');
+    v.gatherSub = 'costs ' + CONFIG.gatherAir + ' air';
+    const d = s.diver;
+    v.diverNote = d.state === 'cold' ? (s.air >= CONFIG.diver.warmAir ? 'the diver is warming up, slowly.' : 'the diver is shivering. keep the air above ' + CONFIG.diver.warmAir + '.') : s.flags.floor ? 'the diver comes and goes.' : 'the diver works without a word.';
+    const cap2 = Rules.cap(s); v.popNote = cap2 ? `${s.pop} of ${cap2} places filled` + (s.pop < cap2 ? '. knock, and someone may wake.' : '. dig out more bells to make room.') : 'dig out a bell, then knock. someone might still be in there.';
+    for (const j of JOBS) { v['j_' + j.id] = j.id === 'cutter' ? Rules.cutters(s) : (s.jobs[j.id] || 0); v['jd_' + j.id] = jobDesc(j) + (s.short && s.short[j.id] && s.jobs[j.id] ? '  · short of ' + Object.keys(j.use).filter(r => Rules.have(s, r) < 1).map(r => RESNAME[r]).join(', ') : ''); }
+    if (s.exp) { const e = s.exp; v.eAir = Math.max(0, e.air) + '/' + e.airMax; v.eHp = e.hp + '/' + e.hpMax; v.eRat = e.rat; v.eLoot = Object.entries(e.loot).map(([r, n]) => n + ' ' + RESNAME[r]).join(', ') || 'nothing';
+      if (e.fight) { v.fWho = e.fight.name + ' · ' + Math.max(0, e.fight.hp) + '/' + e.fight.hpMax + '   ·   your strike: ' + Rules.dmg(s); w.fHp = 100 * Math.max(0, e.fight.hp) / e.fight.hpMax; } }
+    const cn = s.prep.can; v.pCan = cn; v.pRat = s.prep.rat; v.pCanNote = '(' + Math.floor(Rules.have(s, 'canister')) + ' at home)';
+    v.prepNote = `${cn * CONFIG.exp.canAir} air: each step costs 1. a ration every ${CONFIG.exp.eatEvery} steps. strike: ${Rules.dmg(s)}. body: ${Rules.hpMax(s)}.`;
+    v.legend = LANDMARKS.filter(l => s.cleared[l.id]).map(l => `<span><b>${l.glyph}</b>${l.name}</span>`).join('') || '<span>the dark is unmapped.</span>';
+    if (s.asc) v.depth = Math.ceil(s.asc.depth);
+    return { v, w };
+  }
+  function jobDesc(j) {
+    const parts = []; if (j.use) parts.push(Object.entries(j.use).map(([r, n]) => '−' + n + ' ' + RESNAME[r]).join(' ')); if (j.make) parts.push(Object.entries(j.make).map(([r, n]) => '+' + n + ' ' + RESNAME[r]).join(' ')); if (j.air) parts.push('+' + j.air + ' air');
+    return parts.join('  ') + ' /s';
+  }
+
+  function update(s) {
+    structure(s);
+    const { v, w } = values(s);
+    el.panel.querySelectorAll('[data-b]').forEach(n => { const k = n.dataset.b; if (k in v) { const t = v[k]; if (k === 'legend') { if (n.innerHTML !== t) n.innerHTML = t; } else if (n.textContent !== String(t)) n.textContent = t; } });
+    el.panel.querySelectorAll('[data-w]').forEach(n => { const k = n.dataset.w; if (k in w) n.style.width = Math.max(0, Math.min(100, w[k])).toFixed(1) + '%'; });
+    el.panel.querySelectorAll('[data-low]').forEach(n => n.classList.toggle('low', s.air < CONFIG.air.warnHi));
+    const falling = s.flags.floor && !s.asc && Rules.airRates(s).net < 0; el.panel.querySelectorAll('[data-b="airTxt"]').forEach(n => n.classList.toggle('falling', falling));
+    el.app.classList.toggle('exp', !!s.exp);
+    el.panel.classList.toggle('first', !s.flags.air && s.tab === 'bell');
+    if (s.asc) el.panel.querySelectorAll('[data-bot]').forEach(n => { n.style.bottom = 'calc(' + (100 * (1 - s.asc.depth / CONFIG.asc.depth)).toFixed(1) + '% - 18px * ' + (1 - s.asc.depth / CONFIG.asc.depth).toFixed(3) + ')'; });
+    el.app.querySelectorAll('[data-act]').forEach(b => {
+      const act = b.dataset.act, arg = b.dataset.arg; if (act === 'tab') return;
+      if (b.classList.contains('done')) return;
+      const ok = Rules.can(s, act, arg); b.classList.toggle('off', !ok); b.setAttribute('aria-disabled', ok ? 'false' : 'true');
+    });
+    el.panel.querySelectorAll('[data-cd]').forEach(n => { const k = n.dataset.cd, total = CONFIG.cd[k], left = Math.max(0, (s.cd[k] || 0) - s.t); n.style.width = (total ? 100 * left / total : 0).toFixed(1) + '%'; });
+    // log
+    if (s.logN !== lastLogN) {
+      lastLogN = s.logN;
+      const have = new Set([...el.log.children].map(li => +li.dataset.n));
+      const want = s.log.slice(0, 16);
+      [...el.log.children].forEach(li => { if (!want.some(m => m.n === +li.dataset.n)) li.remove(); });
+      for (let i = want.length - 1; i >= 0; i--) { const m = want[i]; if (have.has(m.n)) continue; const li = document.createElement('li'); li.dataset.n = m.n; li.className = m.cls; li.textContent = m.text; el.log.insertBefore(li, el.log.firstChild); }
+    }
+    [...el.log.children].forEach((li, i) => { li.style.opacity = Math.max(0.12, 1 - i * 0.09); });
+    // header
+    el.day.textContent = s.flags.air ? 'day ' + (1 + Math.floor(s.t / CONFIG.dayLen)) : '';
+    el.brand.classList.toggle('lit', !!s.built.lamp);
+    let title = 'lowbell'; if (s.flags.air && !s.ended) { if (s.air < CONFIG.air.warnLo) title += ' · gasping'; else if (s.air < CONFIG.air.warnHi) title += ' · thin air'; else if (s.exp) title += ' · in the dark'; else if (s.asc) title += ' · rising'; }
+    if (document.title !== title) document.title = title;
+    if (document.getElementById('map')) MapView.draw(s);
+  }
+  function popText(srcSel, text) {
+    const b = srcSel && el.app.querySelector(srcSel); if (!text) return;
+    const r = b ? b.getBoundingClientRect() : { left: innerWidth / 2, top: innerHeight / 2, width: 0 };
+    const p = document.createElement('div'); p.className = 'pop'; p.textContent = text; p.style.left = (r.left + r.width / 2) + 'px'; p.style.top = (r.top - 6) + 'px';
+    document.body.appendChild(p); setTimeout(() => p.remove(), 1300);
+  }
+  function shake() { el.app.classList.remove('shake'); void el.app.offsetWidth; el.app.classList.add('shake'); }
+  function blackout() { el.blk.classList.add('on'); setTimeout(() => el.blk.classList.remove('on'), 900); }
+  function reset() { lastSig = ''; lastLogN = -1; lastTabsSig = ''; el.log.innerHTML = ''; }
+  return { update, popText, shake, blackout, reset, esc };
+})();
+
+/* ---------------- MapView: canvas map of the dark ---------------- */
+const MapView = (() => {
+  let cv = null, g = null, phase = 0;
+  const GLYPH = { 1: '▴', 2: '≈', 3: '⌇' };
+  function attach(c) { cv = c; try { g = c ? c.getContext('2d') : null; } catch (e) { g = null; } }
+  function draw(s) {
+    if (!cv || !g) return; if (GK.prefs.motion() !== 'still') phase += 0.03;
+    const W = cv.width, cs = W / N, map = Rules.terrain(s), seen = s.seen && s.seen.length === N * N ? s.seen : '';
+    g.fillStyle = '#020405'; g.fillRect(0, 0, W, W);
+    const e = s.exp, px = e ? e.x : C, py = e ? e.y : C, r = s.built.deeplamp ? CONFIG.exp.sightLamp : CONFIG.exp.sight;
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = Math.floor(cs * 0.72) + 'px ui-monospace, Menlo, monospace';
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const i = y * N + x; const known = seen[i] === '1' || (x === C && y === C);
+      if (!known) continue;
+      const lit = e && Math.hypot(x - px, y - py) <= r + 0.01;
+      const a = lit ? 0.95 : 0.4; const cx = x * cs + cs / 2, cy = y * cs + cs / 2;
+      const tt = map.t[i], lm = map.lm[i];
+      if (lm) { g.fillStyle = s.cleared[lm] ? `rgba(220,181,108,${a})` : `rgba(207,122,95,${a})`; g.fillText(s.cleared[lm] ? LM[lm].glyph : '?', cx, cy); continue; }
+      if (tt === 0) { g.fillStyle = `rgba(130,150,145,${a * 0.5})`; g.fillRect(cx - 1, cy - 1, 2, 2); }
+      else { g.fillStyle = tt === 1 ? `rgba(90,105,104,${a})` : tt === 2 ? `rgba(70,110,140,${a})` : `rgba(110,160,120,${a})`; g.fillText(GLYPH[tt], cx, cy); }
+    }
+    // home
+    const hx = C * cs + cs / 2, hy = C * cs + cs / 2;
+    g.fillStyle = 'rgba(220,181,108,.9)'; g.beginPath(); g.arc(hx, hy, cs * 0.28, 0, 7); g.fill();
+    if (e) {
+      const cx = px * cs + cs / 2, cy = py * cs + cs / 2;
+      g.strokeStyle = 'rgba(220,181,108,.25)'; g.lineWidth = 1; g.beginPath(); g.moveTo(hx, hy); g.lineTo(cx, cy); g.stroke();
+      const rad = g.createRadialGradient(cx, cy, 0, cx, cy, cs * (r + 0.8)); rad.addColorStop(0, 'rgba(220,181,108,.22)'); rad.addColorStop(1, 'rgba(220,181,108,0)');
+      g.fillStyle = rad; g.fillRect(0, 0, W, W);
+      g.fillStyle = '#f1dfb4'; g.beginPath(); g.arc(cx, cy, cs * (0.24 + Math.sin(phase * 3) * 0.03), 0, 7); g.fill();
+    }
+  }
+  return { attach, draw };
+})();
+
+/* ---------------- Background: marine snow, light that follows the story ---------------- */
+const Backdrop = (() => {
+  const cv = document.getElementById('bgc'); let g = null; try { g = cv.getContext('2d'); } catch (e) { } let W = 0, H = 0, dots = [], light = 0, target = 0, sky = 0, ph = 0, rings = [], blades = [], birds = [];
+  function ripple(n) { if (GK.prefs.motion() === 'still') return; rings.push({ r: 0, a: 0.1 + 0.06 * Math.min(3, n || 1) }); }
+  function size() { const d = Math.min(2, devicePixelRatio || 1); W = cv.width = innerWidth * d; H = cv.height = innerHeight * d; dots = []; for (let i = 0; i < 70; i++) dots.push({ x: Math.random() * W, y: Math.random() * H, r: (Math.random() * 1.6 + 0.4) * d, v: (Math.random() * 0.25 + 0.05) * d, p: Math.random() * 6 });
+    blades = []; const nb = Math.min(260, Math.floor(W / (5 * d))); for (let i = 0; i < nb; i++) blades.push({ x: (i + Math.random()) * W / nb, h: (14 + Math.random() * 34) * d, p: Math.random() * 6, c: Math.random() });
+    birds = []; for (let i = 0; i < 5; i++) birds.push({ x: Math.random() * W, y: H * (0.12 + Math.random() * 0.25), v: (0.25 + Math.random() * 0.35) * d, s: (4 + Math.random() * 4) * d, p: Math.random() * 6 }); }
+  addEventListener('resize', size); size();
+  function draw(s) {
+    if (!g) return;
+    target = s.ended ? 1 : s.asc ? 0.25 + 0.75 * (1 - s.asc.depth / CONFIG.asc.depth) : s.built.lamp ? 0.22 : s.diver.state !== 'none' ? 0.12 : 0.04;
+    if (s.flags.air && !s.asc && s.air < CONFIG.air.warnHi) target *= 0.5;
+    const st = GK.prefs.motion() === 'still';
+    light += (target - light) * 0.02; sky += ((s.ended ? 1 : 0) - sky) * (s.ended ? 0.025 : 0.05); if (!st) ph += 0.016;
+    const top = mix([4, 8, 10], [26, 60, 66], light), bot = mix([2, 4, 5], [8, 22, 26], light);
+    const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, rgb(mix(top, [214, 234, 240], sky))); gr.addColorStop(1, rgb(mix(bot, [244, 240, 222], sky)));
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    const lx = W * 0.5, ly = H * 0.12, rad = g.createRadialGradient(lx, ly, 0, lx, ly, Math.max(W, H) * (0.3 + light * 0.6));
+    rad.addColorStop(0, `rgba(220,181,108,${0.05 + light * 0.1})`); rad.addColorStop(1, 'rgba(220,181,108,0)'); g.fillStyle = rad; g.fillRect(0, 0, W, H);
+    const rising = s.asc && s.asc.phase === 'rise';
+    // light from the shaft above: faint rays once you are rising
+    if (s.asc && sky < 0.99) { const prog = 1 - s.asc.depth / CONFIG.asc.depth; g.save(); g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 4; i++) { const x0 = W * (0.42 + i * 0.05) + Math.sin(ph * 0.4 + i) * W * 0.02, sp = W * (0.12 + i * 0.05); const rg = g.createLinearGradient(0, 0, 0, H);
+        rg.addColorStop(0, `rgba(230,240,225,${(0.03 + prog * 0.07) * (1 - sky)})`); rg.addColorStop(1, 'rgba(230,240,225,0)'); g.fillStyle = rg;
+        g.beginPath(); g.moveTo(x0, 0); g.lineTo(x0 + W * 0.03, 0); g.lineTo(x0 + sp, H); g.lineTo(x0 - sp * 0.6, H); g.closePath(); g.fill(); }
+      g.restore(); }
+    for (const d of dots) { if (!st) { d.p += 0.01; d.y += rising ? d.v * 6 : d.v; d.x += Math.sin(d.p) * 0.2; if (d.y > H) { d.y = -4; d.x = Math.random() * W; } }
+      g.fillStyle = `rgba(200,215,210,${(0.1 + light * 0.25) * (1 - sky)})`; g.beginPath(); g.arc(d.x, d.y, d.r, 0, 7); g.fill(); }
+    // knocks answered: a ring moving out through the water
+    for (let i = rings.length - 1; i >= 0; i--) { const rr = rings[i]; rr.r += Math.max(W, H) * 0.006; rr.a *= 0.985;
+      g.strokeStyle = `rgba(220,181,108,${rr.a * (1 - sky)})`; g.lineWidth = 1.5; g.beginPath(); g.arc(W * 0.5, H * 0.32, rr.r, 0, 7); g.stroke(); if (rr.a < 0.005 || rr.r > Math.max(W, H)) rings.splice(i, 1); }
+    // the edges of the lamp's reach
+    const vg = g.createRadialGradient(W / 2, H * 0.4, Math.min(W, H) * 0.35, W / 2, H * 0.4, Math.max(W, H) * 0.85);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${0.55 * (1 - sky)})`); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+    // gasping: the edges close in, in time with a heartbeat
+    if (s.flags.air && !s.asc && !s.ended && s.air < CONFIG.air.warnLo) { const pulse = 0.5 + 0.5 * Math.sin(ph * 6.6);
+      const rv = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.max(W, H) * 0.7); rv.addColorStop(0, 'rgba(90,14,8,0)'); rv.addColorStop(1, `rgba(90,14,8,${0.25 + pulse * 0.2})`); g.fillStyle = rv; g.fillRect(0, 0, W, H); }
+    if (sky > 0.02) daylight(s);
+  }
+  function daylight(s) {
+    const a = Math.min(1, sky * 1.2), d = Math.min(2, devicePixelRatio || 1);
+    // the sun, low and warm
+    const sx = W * 0.78, sy = H * 0.2, sun = g.createRadialGradient(sx, sy, 0, sx, sy, Math.max(W, H) * 0.5);
+    sun.addColorStop(0, `rgba(255,248,220,${0.9 * a})`); sun.addColorStop(0.08, `rgba(255,240,200,${0.45 * a})`); sun.addColorStop(1, 'rgba(255,240,200,0)'); g.fillStyle = sun; g.fillRect(0, 0, W, H);
+    // birds
+    g.strokeStyle = `rgba(40,58,52,${0.55 * a})`; g.lineWidth = 1.4 * d;
+    for (const b of birds) { if (GK.prefs.motion() !== 'still') { b.x += b.v; b.p += 0.12; } if (b.x > W + 20) { b.x = -20; b.y = H * (0.1 + Math.random() * 0.28); } const f = Math.sin(b.p) * b.s * 0.5;
+      g.beginPath(); g.moveTo(b.x - b.s, b.y - f); g.quadraticCurveTo(b.x - b.s * 0.4, b.y - b.s * 0.2, b.x, b.y); g.quadraticCurveTo(b.x + b.s * 0.4, b.y - b.s * 0.2, b.x + b.s, b.y - f); g.stroke(); }
+    // the ground the sea left behind
+    const gy = H * 0.9; const gr = g.createLinearGradient(0, gy - 30 * d, 0, H); gr.addColorStop(0, `rgba(122,150,96,${0.0})`); gr.addColorStop(0.3, `rgba(122,150,96,${0.55 * a})`); gr.addColorStop(1, `rgba(84,112,70,${0.85 * a})`);
+    g.fillStyle = gr; g.fillRect(0, gy - 30 * d, W, H - gy + 30 * d);
+    g.lineWidth = 1.2 * d;
+    for (const bl of blades) { const sway = Math.sin(ph * 1.3 + bl.p + bl.x * 0.004) * bl.h * 0.22; g.strokeStyle = `rgba(${70 + bl.c * 40},${100 + bl.c * 40},${60 + bl.c * 20},${0.8 * a})`;
+      g.beginPath(); g.moveTo(bl.x, H); g.quadraticCurveTo(bl.x, gy + 10 * d - bl.h * 0.5, bl.x + sway, gy + 10 * d - bl.h); g.stroke(); }
+  }
+  const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t), rgb = c => `rgb(${c.map(v => Math.round(v)).join(',')})`;
+  return { draw, ripple };
+})();
+
+/* ---------------- Ending ---------------- */
+const Ending = (() => {
+  const box = document.getElementById('ending'); let shown = 0, timer = null, lines = [];
+  function open(s, best, isNewBest) {
+    box.hidden = false; box.innerHTML = ''; shown = 0;
+    const wrap = document.createElement('div'); wrap.className = 'lines'; box.appendChild(wrap);
+    lines = ENDING.map(l => { const p = document.createElement('p'); if (typeof l === 'object') { p.className = 'word'; p.textContent = l.word; }
+      else p.textContent = l === '{souls}' ? `behind you, the people of the floor climb out one by one, into the light. ${s.souls} of you, counting the diver.` : l; wrap.appendChild(p); return p; });
+    const after = document.createElement('div'); after.className = 'after';
+    const mins = Math.floor(s.endT / 60), secs = Math.floor(s.endT % 60);
+    const airPct = Math.max(8, Math.min(100, 100 * s.air / Math.max(1, Rules.airCap(s))));
+    after.innerHTML = `<div class="meter sky" id="skyM"><div class="top"><span id="skyLbl">air</span><b id="skyVal">${Math.floor(s.air)}</b></div><div class="bar"><i id="skyBar" style="width:${airPct.toFixed(0)}%"></i></div></div>
+      <div class="stats"><span>days below</span><span>${1 + Math.floor(s.endT / CONFIG.dayLen)}</span><span>knocks</span><span>${s.stats.knocks}</span><span>trips into the dark</span><span>${s.stats.trips}</span><span>people brought up</span><span>${s.souls}</span><span>time</span><span>${mins}:${String(secs).padStart(2, '0')}</span><span>best time</span><span>${fmtT(best.fastest)}${isNewBest ? ' (new)' : ''}</span></div>
+      <div class="row"><button type="button" class="btn" id="eAgain">go down again</button><button type="button" class="btn" id="eStay">stay a while</button></div>`;
+    box.appendChild(after);
+    const tap = document.createElement('div'); tap.className = 'tap'; tap.textContent = 'tap to go on'; box.appendChild(tap);
+    const back = document.createElement('div'); back.className = 'back'; back.textContent = 'tap to come back'; box.appendChild(back);
+    box.classList.remove('stay');
+    const morph = () => { const m = document.getElementById('skyM'), l = document.getElementById('skyLbl'), v = document.getElementById('skyVal'), b = document.getElementById('skyBar'); if (!m) return;
+      b.style.width = '100%'; m.classList.add('morph'); l.style.opacity = 0; v.style.opacity = 0; v.style.transition = 'opacity 1.2s';
+      setTimeout(() => { l.textContent = 'sky'; v.textContent = '∞'; l.style.opacity = 1; v.style.opacity = 1; }, 1300); };
+    let afterShown = false;
+    const showAfter = () => { if (afterShown) return; afterShown = true; after.classList.add('in'); tap.remove(); setTimeout(morph, 1600); };
+    const next = () => { if (shown < lines.length) { lines[shown++].classList.add('in'); if (shown === lines.length) setTimeout(showAfter, 2200); } };
+    box.onclick = ev => { if (ev.target.closest('button')) return; if (box.classList.contains('stay')) { box.classList.remove('stay'); return; } clearTimeout(timer); if (shown >= lines.length) { showAfter(); return; } next(); auto(); };
+    const auto = () => { timer = setTimeout(() => { next(); if (shown < lines.length) auto(); }, 3400); };
+    next(); auto();
+    after.querySelector('#eAgain').onclick = () => App.newGame();
+    after.querySelector('#eStay').onclick = () => { box.classList.add('stay'); };
+  }
+  const fmtT = t => t ? Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0') : '—';
+  function close() { box.hidden = true; box.innerHTML = ''; box.classList.remove('stay'); clearTimeout(timer); document.body.classList.remove('ended'); }
+  function advanceAll() { lines.forEach(l => l.classList.add('in')); }
+  return { open, close, advanceAll };
+})();
+
+/* ---------------- App: state owner, loop, Input ---------------- */
+const App = (() => {
+  let S = null, acc = 0, last = 0, speed = 1, saveAcc = 0, endShown = false, whaleAt = 40, beatAcc = 0, creakAt = 0;
+  function boot(data) {
+    S = (data && data.state) || Storage.load() || freshState((Date.now() ^ (Math.random() * 1e9)) >>> 0);
+    if (!S.log.length) S.log.push({ n: 0, text: 'dark. cold. a bell of iron around you, and the weight of the water on top of it.', cls: '' });
+    S.fx = []; Renderer.reset();
+    document.getElementById('muteBtn').setAttribute('aria-pressed', AudioFX.muted ? 'false' : 'true');
+    if (S.ended) { endShown = true; document.body.classList.add('ended'); Ending.open(S, Storage.best(), false); }
+    last = performance.now(); requestAnimationFrame(loop);
+    GK.studio();
+    const pyw = document.getElementById('pywSlot'); if (pyw && !pyw.firstChild) pyw.appendChild(GK.ui.prefsButton({ className: 'btn', panel: { text: true, speed: false, tips: false } }));
+    GK.coach.create('lowbell-first', [{ target: () => document.querySelector('#panel.first [data-act="knock"]'), done: () => !!(S && S.stats.knocks > 0) }], { when: () => !!(S && !S.ended && document.querySelector('#panel.first [data-act="knock"]')) });
+    GK.wired('motion', 'shake, log and button animations and all transitions off under Calm and Still (the old reduced path); Still also stops the snow, rings, light rays, birds, grass and map pulse');
+    GK.wired('flash', 'ending whiteout (was 1.0, now capped at .7; none under Still)');
+    GK.wired('text', 'log, menus, buttons, stores and HUD (CSS)');
+  }
+  function apply(next) {
+    if (next === S) return false;
+    const fx = next.fx || []; next.fx = []; S = next;
+    for (const f of fx) {
+      AudioFX.play(f.type, f.n);
+      if (f.text) Renderer.popText(f.src ? `[data-act="${f.src.split(':')[0]}"]${f.src.includes(':') ? `[data-arg="${f.src.split(':')[1]}"]` : ''}` : '#map', f.text);
+      if (f.type === 'hurt') Renderer.shake();
+      if (f.type === 'blackout') Renderer.blackout();
+      if (f.type === 'answer') Backdrop.ripple(f.n);
+      if (f.type === 'end') onEnd();
+    }
+    return true;
+  }
+  function act(a, arg) { AudioFX.init(); if (apply(Rules.act(S, a, arg))) Storage.save(S); else if (a !== 'tab') AudioFX.play('tick'); }
+  function onEnd() {
+    const b = Storage.best(); const t = S.endT; let isNew = false;
+    b.runs = (b.runs || 0) + 1; if (!b.fastest || t < b.fastest) { b.fastest = t; isNew = true; } b.most = Math.max(b.most || 0, S.souls);
+    Storage.setBest(b); Storage.save(S);
+    const fl = document.getElementById('flash'), fa = GK.flash.allow(1); fl.style.setProperty('--gk-fl', String(fa)); if (fa > 0) fl.classList.add('on'); document.body.classList.add('ended');
+    setTimeout(() => fl.classList.remove('on'), 900);
+    setTimeout(() => { endShown = true; Ending.open(S, b, isNew); }, 2600);
+  }
+  function loop(now) {
+    const realDt = Math.min(1, (now - last) / 1000); last = now;
+    acc += realDt * speed; let n = 0;
+    while (acc >= CONFIG.tick && n < 400) { acc -= CONFIG.tick; apply(Rules.tick(S, CONFIG.tick)); n++; }
+    saveAcc += realDt; if (saveAcc > CONFIG.saveEvery) { saveAcc = 0; Storage.save(S); }
+    if (S.flags.dark && (S.tab === 'dark') && S.t > whaleAt) { whaleAt = S.t + 45 + Math.random() * 40; AudioFX.whale(); }
+    const thin = S.flags.air && !S.asc && !S.ended ? Math.max(0, Math.min(1, (CONFIG.air.warnHi - S.air) / CONFIG.air.warnHi)) : 0;
+    AudioFX.setMood(S.ended ? 1 : S.asc ? 0.3 + 0.6 * (1 - S.asc.depth / CONFIG.asc.depth) : S.built.lamp ? 0.18 : 0.05, thin);
+    AudioFX.setStage(S.ended ? 9 : S.flags.liftFound ? 3 : S.flags.dark ? 2 : S.flags.floor ? 1 : 0);
+    beatAcc += realDt; if (S.flags.air && !S.asc && !S.ended && S.air < CONFIG.air.warnLo && beatAcc > 0.95) { beatAcc = 0; AudioFX.play('heart'); }
+    if (S.asc && S.asc.phase === 'rise' && now > creakAt) { creakAt = now + 2500 + Math.random() * 3500; AudioFX.play('creak'); }
+    Renderer.update(S); Backdrop.draw(S);
+    requestAnimationFrame(loop);
+  }
+  function newGame() { const keepSeed = (Date.now() ^ (Math.random() * 1e9)) >>> 0; Ending.close(); endShown = false; S = freshState(keepSeed); S.log.push({ n: 0, text: 'dark again. cold again. a bell of iron around you.', cls: '' }); Renderer.reset(); Storage.save(S); }
+  function hardReset() { Storage.clear(); Ending.close(); endShown = false; S = freshState((Date.now() ^ (Math.random() * 1e9)) >>> 0); S.log.push({ n: 0, text: 'dark. cold. a bell of iron around you, and the weight of the water on top of it.', cls: '' }); Renderer.reset(); }
+
+  /* ---- Input: touch, mouse and keyboard map to the same actions ---- */
+  document.getElementById('app').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-act]'); if (!b || b.disabled) return; act(b.dataset.act, b.dataset.arg);
+  });
+  document.getElementById('muteBtn').onclick = () => { AudioFX.init(); const m = AudioFX.toggle(); document.getElementById('muteBtn').setAttribute('aria-pressed', m ? 'false' : 'true'); };
+  const menu = document.getElementById('menu');
+  document.getElementById('menuBtn').onclick = () => { menu.hidden = false; document.getElementById('mReset2').hidden = true; const b = Storage.best(); document.getElementById('menuInfo').textContent = 'lowbell saves after everything you do.' + (b.runs ? ` you have climbed out ${b.runs} time${b.runs > 1 ? 's' : ''}. best time ${Math.floor(b.fastest / 60)}:${String(Math.floor(b.fastest % 60)).padStart(2, '0')}.` : ''); };
+  document.getElementById('mClose').onclick = () => { menu.hidden = true; };
+  document.getElementById('mReset').onclick = () => { document.getElementById('mReset2').hidden = false; };
+  document.getElementById('mReset2').onclick = () => { hardReset(); menu.hidden = true; };
+  addEventListener('keydown', ev => {
+    if (document.querySelector('.gk-prefs')) return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (!menu.hidden) { if (ev.key === 'Escape') menu.hidden = true; return; }
+    if (endShown) { if (ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); document.getElementById('ending').click(); } return; }
+    const k = ev.key.toLowerCase(); const map = { arrowup: 'up', w: 'up', arrowdown: 'down', s: 'down', arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right' };
+    if (S.exp && map[k]) { ev.preventDefault(); act('move', map[k]); return; }
+    if (k === 'k') act('knock'); else if (k === ' ' || k === 'b') { ev.preventDefault(); act('pump'); }
+    else if (k === 'g') act('gather'); else if (k === 'f' || (k === 'enter' && S.exp && S.exp.fight)) act('strike');
+    else if (k === 'e') act('eat'); else if (k === 'x') act('flee');
+    else if ('1234'.includes(k) && k.length === 1) act('tab', ['bell', 'floor', 'dark', 'lift'][+k - 1]);
+  });
+  // swipe / tap on the map
+  let sw = null;
+  document.addEventListener('pointerdown', ev => { if (ev.target.id === 'map') sw = { x: ev.clientX, y: ev.clientY }; });
+  document.addEventListener('pointerup', ev => {
+    if (!sw || ev.target.id !== 'map') { sw = null; return; } const dx = ev.clientX - sw.x, dy = ev.clientY - sw.y; sw = null;
+    if (!S.exp) return; let dir;
+    if (Math.hypot(dx, dy) > 24) dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+    else { const r = ev.target.getBoundingClientRect(), cs = r.width / N, cx = (S.exp.x + 0.5) * cs + r.left, cy = (S.exp.y + 0.5) * cs + r.top, ex = ev.clientX - cx, ey = ev.clientY - cy;
+      if (Math.hypot(ex, ey) < cs * 0.4) return; dir = Math.abs(ex) > Math.abs(ey) ? (ex > 0 ? 'right' : 'left') : (ey > 0 ? 'down' : 'up'); }
+    act('move', dir);
+  });
+
+  /* ---- Debug: add #debug to the address to fast-forward ---- */
+  function debugPanel() {
+    const p = document.getElementById('dbg'); p.hidden = false;
+    const B = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; p.appendChild(b); };
+    B('x1', () => speed = 1); B('x10', () => speed = 10); B('x40', () => speed = 40);
+    B('+stuff', () => { const s = JSON.parse(JSON.stringify(S)); for (const r of RES) { s.res[r.id] = (s.res[r.id] || 0) + (r.id === 'bellmetal' ? 1 : 100); s.seenRes[r.id] = 1; } S = s; });
+    B('→floor', () => { S = Debug.jump('floor', S); }); B('→dark', () => { S = Debug.jump('dark', S); }); B('→lift', () => { S = Debug.jump('lift', S); });
+    B('→ascent', () => { S = Debug.jump('ascent', S); }); B('→end', () => { S = Debug.jump('end', S); apply(Rules.tick(S, 0.01)); });
+  }
+  if (/debug/.test(location.hash)) debugPanel();
+  return { boot, newGame, act, get state() { return S; }, set state(v) { S = v; }, setSpeed(v) { speed = v; }, debugPanel };
+})();
+
+/* ---------------- Debug jumps (for testing the ending fast) ---------------- */
+const Debug = {
+  jump(stage, s0) {
+    const s = JSON.parse(JSON.stringify(s0));
+    const give = (o) => { for (const r in o) { s.res[r] = (s.res[r] || 0) + o[r]; s.seenRes[r] = 1; } };
+    s.flags.air = 1; s.stats.pumps = Math.max(1, s.stats.pumps); s.diver.state = 'working'; s.flags.gather = 1; s.flags.crafts = 1;
+    ['rope', 'hook', 'valve', 'net', 'lamp'].forEach(i => s.built[i] = s.built[i] || 1); s.flags.floor = 1; s.flags.tab_floor = 1;
+    give({ kelp: 60, scrap: 60, fish: 20, rope: 20 });
+    if (stage === 'floor') { s.tab = 'floor'; return s; }
+    s.built.shelter = Math.max(4, s.built.shelter || 0); s.built.bed = Math.max(4, s.built.bed || 0); s.built.forge = 1; s.built.rack = 1; s.built.deeplamp = 1; s.built.harpoon = 1;
+    s.pop = 8; s.jobs = { cutter: 2, scav: 3, fisher: 1, tender: 1, cook: 1 }; s.flags.dark = 1; s.flags.tab_dark = 1; give({ canister: 4, rations: 6 });
+    if (stage === 'dark') { s.tab = 'dark'; return s; }
+    s.flags.liftFound = 1; s.flags.tab_lift = 1; give({ glass: 20, bellmetal: 1, scrap: 300, rope: 80, kelp: 80, canister: 8 });
+    if (stage === 'lift') { s.tab = 'lift'; return s; }
+    LIFT_PARTS.forEach(p => s.built[p] = 1);
+    if (stage === 'ascent') { s.tab = 'lift'; return s; }
+    s.asc = { depth: 0, phase: 'knocked', stall: 0, marks: 5 }; s.q.push({ at: s.t, ev: 'end' }); return s;
+  },
+};
+
+window.Lowbell = { App, Rules, CONFIG, DATA: { ITEMS, JOBS, LANDMARKS, ENEMIES, TEXT }, freshState, MapGen, Debug };
+try { window.claude?.hot?.snapshot?.(() => ({ state: App.state })); } catch (e) { }
+(window.claude?.hot?.ready ? window.claude.hot.ready(App.boot) : App.boot(window.claude?.hot?.data ?? {}));
+</script>

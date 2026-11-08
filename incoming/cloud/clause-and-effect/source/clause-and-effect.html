@@ -1,0 +1,2810 @@
+<title>Clause &amp; Effect</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="A puzzle game about rewriting the rules. Pip edits the Registry's ledger to escape, and the Auditor seals every loophole.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Courier+Prime:wght@400;700&family=Stardos+Stencil:wght@400;700&display=swap">
+<style>
+/* Layout: one column on phones (board, controls, ledger); board beside ledger from 860px. Carbon-copy registry forms. */
+:root {
+  --paper: #eef1e7;      /* ledger paper */
+  --card: #f8f9f3;       /* raised form */
+  --rule: #c3cdbd;       /* ruled lines */
+  --ink: #1d2838;        /* text ink */
+  --ink-soft: #55606d;   /* secondary text */
+  --slot: #0d7471;       /* editable slot */
+  --slot-bg: #dcefe9;
+  --stamp: #b3261e;      /* auditor red */
+  --brass: #a8761c;      /* hatch / key */
+  --spill: #2f3f8a;      /* ink spill */
+  --lamp: #d99413;       /* guard lamp */
+  --ok: #2c7a3f;
+  --cell-a: #e6eadf; --cell-b: #e1e6d9;
+  --wall: #3a4656; --wall-top: #4d5b6e; --guard: #8a3b2e;
+  --shadow: 0 1px 0 rgba(29,40,56,.08), 0 6px 18px rgba(29,40,56,.08);
+  --f-display: 'Stardos Stencil', 'Impact', 'Arial Narrow', sans-serif;
+  --f-body: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;
+  --f-code: 'Courier Prime', 'Courier New', ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #11161d; --card: #19202a; --rule: #2b3543; --ink: #e5e8de; --ink-soft: #9aa5b1;
+  --slot: #43c9c0; --slot-bg: #173634; --stamp: #ff5d50; --brass: #e0b04a; --spill: #6d82ff; --lamp: #ffb52e; --ok: #5fcf7a;
+  --cell-a: #1b222c; --cell-b: #181e27; --wall: #3c4a5d; --wall-top: #52637a; --guard: #c9634f;
+  --shadow: 0 1px 0 rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.35); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --paper: #11161d; --card: #19202a; --rule: #2b3543; --ink: #e5e8de; --ink-soft: #9aa5b1;
+  --slot: #43c9c0; --slot-bg: #173634; --stamp: #ff5d50; --brass: #e0b04a; --spill: #6d82ff; --lamp: #ffb52e; --ok: #5fcf7a;
+  --cell-a: #1b222c; --cell-b: #181e27; --wall: #3c4a5d; --wall-top: #52637a; --guard: #c9634f;
+  --shadow: 0 1px 0 rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.35); color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: var(--paper); color: var(--ink); font-family: var(--f-body); font-size:calc(max(12px,15px) * var(--gk-text-scale,1)); line-height: 1.45; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+button { font: inherit; color: inherit; }
+button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--slot); outline-offset: 2px; }
+.screen { min-height: 100%; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px 96px; max-width: 1180px; margin: 0 auto; }
+
+/* ---------- Title ---------- */
+.title-screen { display: flex; flex-direction: column; gap: 18px; padding-top: 28px; }
+.title-mark { font-family: var(--f-display); font-size: clamp(44px, 14vw, 84px); line-height: .9; letter-spacing: .01em; color: var(--ink); text-wrap: balance; margin: 0; }
+.title-mark span { color: var(--stamp); }
+.form-no { font-family: var(--f-code); font-size:calc(max(12px,12px) * var(--gk-text-scale,1)); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); }
+.lede { max-width: 34em; font-size:calc(max(12px,16px) * var(--gk-text-scale,1)); margin: 0; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn { min-height: 48px; padding: 0 20px; border-radius: 8px; border: 1.5px solid var(--ink); background: transparent; font-weight: 700; letter-spacing: .02em; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.btn.primary { background: var(--ink); color: var(--paper); }
+.btn.stamp { border-color: var(--stamp); color: var(--stamp); }
+.btn:active { transform: translateY(1px); }
+.btn[disabled] { opacity: .4; cursor: default; }
+.fineprint { font-size:calc(max(12px,12.5px) * var(--gk-text-scale,1)); color: var(--ink-soft); max-width: 36em; }
+
+/* ---------- Level select ---------- */
+.topbar { display: flex; align-items: center; gap: 10px; min-height: 48px; }
+.topbar h1, .topbar h2 { font-family: var(--f-display); font-weight: 400; font-size: 24px; margin: 0; flex: 1; min-width: 0; line-height: 1.05; text-wrap: balance; }
+.icon-btn { width: 44px; height: 44px; border-radius: 8px; border: 1.5px solid var(--rule); background: var(--card); display: grid; place-items: center; cursor: pointer; flex: none; font-size:18px; }
+.levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; margin-top: 14px; }
+.lvl { min-height: 96px; border-radius: 8px; border: 1.5px solid var(--rule); background: var(--card); padding: 10px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; position: relative; }
+.lvl .no { font-family: var(--f-code); font-size:calc(max(12px,12px) * var(--gk-text-scale,1)); color: var(--ink-soft); }
+.lvl .nm { font-weight: 700; font-size:calc(max(12px,14px) * var(--gk-text-scale,1)); line-height: 1.2; }
+.lvl .st { margin-top: auto; letter-spacing: 2px; color: var(--brass); font-size:calc(max(12px,15px) * min(var(--gk-text-scale,1),1.25)); }
+.lvl.locked { opacity: .45; cursor: default; }
+.lvl.cur { border-color: var(--slot); }
+.lvl .kind { position: absolute; top: 8px; right: 8px; font-family: var(--f-code); font-size:calc(max(12px,10px) * min(var(--gk-text-scale,1),1.25)); letter-spacing: .08em; text-transform: uppercase; color: var(--stamp); }
+.summary { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 16px; font-family: var(--f-code); font-size:calc(max(12px,13px) * var(--gk-text-scale,1)); color: var(--ink-soft); }
+.endings { margin-top: 18px; display: grid; gap: 6px; }
+.ending { font-size:calc(max(12px,13.5px) * var(--gk-text-scale,1)); padding: 8px 10px; border-left: 3px solid var(--rule); background: var(--card); }
+.ending.got { border-color: var(--stamp); }
+
+/* ---------- Play ---------- */
+.play { display: grid; gap: 12px; }
+@media (min-width: 860px) { .play { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: start; } .play .board-col { position: sticky; top: 12px; } }
+.board-col, .ledger-col { display: grid; gap: 10px; min-width: 0; }
+.memo { background: var(--card); border-radius: 6px; padding: 10px 12px; box-shadow: var(--shadow); font-size:calc(max(12px,14.5px) * var(--gk-text-scale,1)); border-top: 3px solid var(--slot); }
+.memo .from { font-family: var(--f-code); font-size:calc(max(12px,11px) * var(--gk-text-scale,1)); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); display: block; margin-bottom: 2px; }
+.board-wrap { position: relative; display: grid; place-items: center; background: var(--card); border-radius: 8px; box-shadow: var(--shadow); padding: 8px; overflow: hidden; }
+#board { display: block; touch-action: manipulation; }
+.hud { display: flex; gap: 8px 14px; flex-wrap: wrap; font-family: var(--f-code); font-size:calc(max(12px,13px) * var(--gk-text-scale,1)); color: var(--ink-soft); align-items: center; }
+.hud b { color: var(--ink); font-weight: 700; }
+.hud .msg { flex-basis: 100%; color: var(--ink); font-family: var(--f-body); font-size:calc(max(12px,14px) * var(--gk-text-scale,1)); min-height: 1.4em; }
+
+.ledger { background: var(--card); border-radius: 8px; box-shadow: var(--shadow); padding: 4px 0 8px; }
+.ledger .line, .ledger .seal-line { border-bottom: 1px solid color-mix(in srgb, var(--rule) 70%, transparent); }
+.sect { font-family: var(--f-code); font-size:calc(max(12px,11px) * var(--gk-text-scale,1)); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); padding: 12px 12px 4px; display: flex; justify-content: space-between; gap: 8px; }
+.sect em { font-style: normal; letter-spacing: .02em; text-transform: none; }
+.line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-height: 48px; padding: 6px 12px 6px 8px; font-family: var(--f-code); font-size:calc(max(12px,15px) * var(--gk-text-scale,1)); position: relative; }
+.line .ln { width: 22px; flex: none; text-align: right; color: var(--ink-soft); font-size:calc(max(12px,12px) * min(var(--gk-text-scale,1),1.25)); }
+.line.active { background: color-mix(in srgb, var(--slot) 14%, transparent); }
+.line.active .ln::before { content: '▶'; color: var(--slot); margin-right: 2px; }
+.slot { min-height: 38px; min-width: 44px; padding: 4px 10px; border-radius: 6px; border: 1.5px solid var(--slot); background: var(--slot-bg); color: var(--slot); font-family: var(--f-code); font-weight: 700; font-size:calc(max(12px,15px) * var(--gk-text-scale,1)); cursor: pointer; }
+.slot.empty { border-style: dashed; background: transparent; font-weight: 400; }
+.slot.locked { border-color: transparent; background: transparent; color: var(--ink); cursor: pointer; padding-inline: 2px; font-weight: 700; }
+.slot.sealed { border-color: transparent; background: transparent; color: var(--ink); padding-inline: 2px; }
+.slot.hot { animation: pulse 1.4s ease-in-out infinite; }
+.slot.took { box-shadow: 0 0 0 3px color-mix(in srgb, var(--slot) 45%, transparent); }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--slot) 30%, transparent); } }
+.word { color: var(--ink); }
+.lock-tag { font-size:calc(max(12px,11px) * var(--gk-text-scale,1)); color: var(--ink-soft); font-family: var(--f-body); }
+.seal-tag { font-family: var(--f-display); font-size:calc(max(12px,13px) * var(--gk-text-scale,1)); color: var(--stamp); border: 1.5px solid var(--stamp); padding: 0 5px; border-radius: 3px; transform: rotate(-4deg); display: inline-block; letter-spacing: .06em; }
+.seal-line { display: flex; gap: 10px; align-items: center; min-height: 48px; padding: 6px 12px; font-size:calc(max(12px,14px) * var(--gk-text-scale,1)); }
+.seal-line .dot { width: 22px; height: 22px; flex: none; border-radius: 50%; border: 2px solid var(--stamp); display: grid; place-items: center; color: var(--stamp); font-size:12px; font-family: var(--f-display); }
+.seal-line.broken { background: color-mix(in srgb, var(--stamp) 14%, transparent); }
+.seal-line.struck .txt { text-decoration: line-through; text-decoration-thickness: 2px; color: var(--ink-soft); }
+.seal-line .txt { flex: 1; min-width: 0; }
+.seal-line .when { font-family: var(--f-code); font-size:calc(max(12px,11px) * var(--gk-text-scale,1)); color: var(--ink-soft); }
+.pen-ink { font-family: var(--f-code); font-size:calc(max(12px,13px) * var(--gk-text-scale,1)); padding: 0 12px 4px; color: var(--stamp); }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.tools .btn { min-height: 44px; padding: 0 14px; font-size:calc(max(12px,14px) * var(--gk-text-scale,1)); }
+.inspector { font-family: var(--f-code); font-size:calc(max(12px,12.5px) * var(--gk-text-scale,1)); background: var(--card); border-radius: 8px; padding: 10px 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; box-shadow: var(--shadow); }
+.inspector .k { color: var(--ink-soft); }
+.hintbox { font-size:calc(max(12px,14px) * var(--gk-text-scale,1)); background: var(--card); border-left: 3px solid var(--brass); padding: 8px 12px; border-radius: 0 6px 6px 0; }
+
+/* Bottom control bar */
+.controls { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: color-mix(in srgb, var(--paper) 92%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-top: 1px solid var(--rule); padding: 8px max(16px, env(safe-area-inset-left, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); display: flex; gap: 8px; justify-content: center; }
+.controls .btn { flex: 1; max-width: 200px; justify-content: center; min-height: 52px; padding: 0 8px; font-size:calc(max(12px,15px) * min(var(--gk-text-scale,1),1.25)); }
+.controls .btn.small { flex: 0 0 64px; }
+
+/* Picker sheet */
+.sheet-bg { position: fixed; inset: 0; z-index: 40; background: rgba(10, 14, 20, .45); display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: 100%; max-width: 560px; max-height: 78vh; overflow: auto; background: var(--card); border-radius: 14px 14px 0 0; padding: 14px max(16px, env(safe-area-inset-left, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-right, 0px)); box-shadow: 0 -10px 30px rgba(0,0,0,.25); animation: rise .18s ease-out; }
+@keyframes rise { from { transform: translateY(30px); opacity: .4; } }
+.sheet h3 { margin: 0 0 4px; font-family: var(--f-code); font-size:calc(max(12px,12px) * var(--gk-text-scale,1)); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); }
+.sheet .ctx { font-family: var(--f-code); font-size:calc(max(12px,14px) * var(--gk-text-scale,1)); margin: 0 0 10px; }
+.opts { display: grid; gap: 8px; }
+.opt { min-height: 52px; text-align: left; padding: 8px 12px; border-radius: 8px; border: 1.5px solid var(--rule); background: var(--paper); cursor: pointer; display: grid; gap: 1px; }
+.opt b { font-family: var(--f-code); font-size:calc(max(12px,16px) * var(--gk-text-scale,1)); }
+.opt span { font-size:calc(max(12px,13px) * var(--gk-text-scale,1)); color: var(--ink-soft); }
+.opt.sel { border-color: var(--slot); background: var(--slot-bg); }
+.opt.clear b { color: var(--stamp); }
+.opt kbd { float: right; font-family: var(--f-code); font-size:calc(max(12px,11px) * var(--gk-text-scale,1)); color: var(--ink-soft); }
+
+/* Result card */
+.result { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 10px; background: color-mix(in srgb, var(--card) 70%, transparent); }
+.result .card { background: var(--card); border-radius: 10px; box-shadow: var(--shadow); padding: 16px; width: min(340px, 100%); display: grid; gap: 10px; text-align: center; border: 1.5px solid var(--rule); }
+.result .big { font-family: var(--f-display); font-size: 40px; line-height: 1; letter-spacing: .03em; }
+.result .big.win { color: var(--ok); }
+.result .big.bad { color: var(--stamp); }
+.result .stars { font-size: 26px; letter-spacing: 6px; color: var(--brass); }
+.result .remark { font-family: var(--f-code); font-size:calc(max(12px,14px) * var(--gk-text-scale,1)); text-align: left; border-left: 3px solid var(--stamp); padding-left: 10px; min-height: 2.6em; }
+.result .meta { font-family: var(--f-code); font-size:calc(max(12px,12.5px) * var(--gk-text-scale,1)); color: var(--ink-soft); }
+.result .btn-row { justify-content: center; }
+.stamp-void { font-family: var(--f-display); font-size: 64px; color: var(--stamp); border: 5px solid var(--stamp); padding: 0 14px; border-radius: 6px; transform: rotate(-9deg); display: inline-block; justify-self: center; animation: thunk .28s cubic-bezier(.2,1.6,.4,1); line-height: 1.05; }
+.stamp-void.ok { color: var(--ok); border-color: var(--ok); font-size: 46px; }
+@keyframes thunk { from { transform: rotate(-9deg) scale(2.4); opacity: 0; } }
+
+.toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 50; background: var(--ink); color: var(--paper); padding: 10px 14px; border-radius: 8px; font-size:calc(max(12px,14px) * var(--gk-text-scale,1)); max-width: min(92vw, 420px); box-shadow: var(--shadow); }
+.confirm { display: grid; gap: 8px; }
+.shake { animation: shake .35s; }
+@keyframes shake { 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+.finale-card { background: var(--card); border-radius: 10px; box-shadow: var(--shadow); padding: 18px; display: grid; gap: 12px; max-width: 560px; }
+.finale-card h2 { font-family: var(--f-display); font-weight: 400; font-size: 34px; margin: 0; line-height: 1; }
+html[data-gk-motion=calm] *:not(.gk-coach), html[data-gk-motion=calm] *::before, html[data-gk-motion=calm] *::after, html[data-gk-motion=still] *, html[data-gk-motion=still] *::before, html[data-gk-motion=still] *::after { animation: none !important; transition: none !important; }
+
+</style>
+<div id="app"></div>
+<script id="gamekit">/* GameKit 2.1 : shared starter kit for single-file phone games.
+   Paste inline in a script tag before the game's own script. No build step, no network.
+   Modules: GK.rng, GK.daily, GK.save, GK.audio, GK.input, GK.juice, GK.ease,
+            GK.badges, GK.share, GK.view, GK.ui, GK.loop, GK.prefs, GK.flash, GK.perf,
+            GK.theme, GK.popups, GK.roll, GK.coach, GK.hints, GK.studio, GK.wired, GK.retrofit.  README.md has the API.
+   All code here is the studio's own (no third-party code). */
+(function (root) {
+  'use strict';
+  var GK = { version: '2.1.0' };
+  var HAS_DOM = typeof window !== 'undefined' && typeof document !== 'undefined';
+  var W = HAS_DOM ? window : {};
+  function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function on(t, ev, fn, opt) { if (t && t.addEventListener) t.addEventListener(ev, fn, opt); }
+  function off(t, ev, fn, opt) { if (t && t.removeEventListener) t.removeEventListener(ev, fn, opt); }
+  GK.clamp = clamp;
+  GK.now = now;
+
+  /* ---------- environment ---------- */
+  var ENV = GK.env = (function () {
+    var ua = HAS_DOM && navigator.userAgent || '';
+    var touchMac = HAS_DOM && /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+    var ios = /iPhone|iPad|iPod/.test(ua) || !!touchMac;
+    var reduced = false;
+    try { reduced = HAS_DOM && W.matchMedia && W.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    return { ios: ios, android: /Android/.test(ua), touch: HAS_DOM && (('ontouchstart' in W) || navigator.maxTouchPoints > 0), reducedMotion: !!reduced };
+  })();
+  // follow the phone's reduce-motion setting live (2.0)
+  if (HAS_DOM && W.matchMedia) {
+    try {
+      var mqRM = W.matchMedia('(prefers-reduced-motion: reduce)');
+      var onRM = function () { ENV.reducedMotion = !!mqRM.matches; if (GK.prefs && GK.prefs._emit) GK.prefs._emit('motion'); };
+      if (mqRM && mqRM.addEventListener) mqRM.addEventListener('change', onRM); else if (mqRM && mqRM.addListener) mqRM.addListener(onRM);
+    } catch (e) {}
+  }
+
+  /* ---------- storage (never throws) ---------- */
+  var mem = {};
+  var LS = GK.ls = {
+    get: function (k) { try { var v = W.localStorage.getItem(k); return v == null ? (k in mem ? mem[k] : null) : v; } catch (e) { return k in mem ? mem[k] : null; } },
+    set: function (k, v) { mem[k] = v; try { W.localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+    del: function (k) { delete mem[k]; try { W.localStorage.removeItem(k); } catch (e) {} }
+  };
+
+  /* ================= RNG ================= */
+  // hash4: string -> four 32-bit words (multiply-xorshift mixing, one pass per lane)
+  var HMUL = [0x85ebca6b, 0xc2b2ae35, 0x27d4eb2f, 0x165667b1];
+  function hash4(str) {
+    str = String(str);
+    var h = [0x6a09e667 ^ str.length, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a], M = HMUL;
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      for (var j = 0; j < 4; j++) {
+        h[j] = Math.imul(h[j] ^ c, M[j]);
+        h[j] ^= h[j] >>> 15;
+        c = (c + h[j]) | 0;
+      }
+    }
+    for (var k = 0; k < 4; k++) {
+      var x = h[k] ^ h[(k + 1) & 3];
+      x = Math.imul(x ^ (x >>> 16), 0x7feb352d);
+      x = Math.imul(x ^ (x >>> 15), 0x846ca68b);
+      h[k] = (x ^ (x >>> 16)) >>> 0;
+    }
+    return h;
+  }
+  function hash32(str) { return hash4(str)[0]; }
+  // sfc32 generator (small fast counting, 128-bit state); state is kept so a run can resume.
+  function sfc(s) {
+    var a = s[0] | 0, b = s[1] | 0, c = s[2] | 0, d = s[3] | 0;
+    function next() {
+      var t = (((a + b) | 0) + d) | 0;
+      d = (d + 1) | 0;
+      a = b ^ (b >>> 9);
+      b = (c + (c << 3)) | 0;
+      c = (c << 21) | (c >>> 11);
+      c = (c + t) | 0;
+      return (t >>> 0) / 4294967296;
+    }
+    for (var i = 0; i < 12; i++) next();
+    next.state = function () { return [a >>> 0, b >>> 0, c >>> 0, d >>> 0]; };
+    next.load = function (st) { a = st[0] | 0; b = st[1] | 0; c = st[2] | 0; d = st[3] | 0; };
+    return next;
+  }
+  // mulberry32: kept so shipped games keep their exact dailies
+  function mulberry32(seed) {
+    var s = seed >>> 0;
+    return function () {
+      s = (s + 0x6d2b79f5) | 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function wrap(fn, seedStr) {
+    var R = {
+      seed: seedStr,
+      next: fn,
+      float: function (a, b) { if (b === undefined) { b = a === undefined ? 1 : a; a = 0; } return a + fn() * (b - a); },
+      int: function (lo, hi) { return lo + Math.floor(fn() * (hi - lo + 1)); }, // inclusive
+      chance: function (p) { return fn() < p; },
+      pick: function (arr) { return arr[Math.floor(fn() * arr.length)]; },
+      sign: function () { return fn() < 0.5 ? -1 : 1; },
+      shuffle: function (arr) { for (var i = arr.length - 1; i > 0; i--) { var j = Math.floor(fn() * (i + 1)); var t = arr[i]; arr[i] = arr[j]; arr[j] = t; } return arr; },
+      weighted: function (items, weights) {
+        var tot = 0, i; for (i = 0; i < weights.length; i++) tot += Math.max(0, weights[i]);
+        var r = fn() * tot; for (i = 0; i < items.length; i++) { r -= Math.max(0, weights[i]); if (r < 0) return items[i]; }
+        return items[items.length - 1];
+      },
+      sub: function (label, n) { return GK.rng.make(seedFor(seedStr, label, n)); },
+      state: function () { return fn.state ? fn.state() : null; },
+      load: function (st) { if (fn.load && st) fn.load(st); return R; }
+    };
+    return R;
+  }
+  function seedFor(base, label, n) { return String(base) + '/' + label + (n === undefined ? '' : '#' + n); }
+  var CONS = 'BCDFGHJKLMNPQRSTVWXZ';
+  GK.rng = {
+    hash32: hash32,
+    hash4: hash4,
+    mulberry32: mulberry32,
+    seedFor: seedFor,
+    make: function (seed) { var s = String(seed); return wrap(sfc(hash4(s)), s); },
+    legacy: function (seed32) { return wrap(mulberry32(seed32), String(seed32)); },
+    streams: function (seed) { return { game: GK.rng.make(seedFor(seed, 'game')), fx: GK.rng.make(seedFor(seed, 'fx')) }; },
+    code: function (src) { // 9-letter shareable code, no vowels: BCD-FGH-JKL
+      var r = src && src.next ? src : GK.rng.make(src === undefined ? Math.random() + ':' + Date.now() : src);
+      var out = ''; for (var i = 0; i < 9; i++) { if (i && i % 3 === 0) out += '-'; out += CONS[Math.floor(r.next() * CONS.length)]; }
+      return out;
+    },
+    normalize: function (text) { // any typed text becomes a seed; codes ignore case, spaces and dashes
+      var t = String(text || '').trim();
+      var c = t.toUpperCase().replace(/[\s\-_.]/g, '');
+      if (/^[BCDFGHJKLMNPQRSTVWXZ]{9}$/.test(c)) return c.slice(0, 3) + '-' + c.slice(3, 6) + '-' + c.slice(6);
+      return t;
+    },
+    // bounded retry for generators: never loops on the clock
+    tries: function (max, fn) { for (var i = 0; i < max; i++) { var v = fn(i); if (v !== undefined && v !== null && v !== false) return v; } return null; }
+  };
+
+  /* ================= DAILY ================= */
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function partsIn(date, tz) {
+    if (!tz) return { y: date.getFullYear(), m: date.getMonth() + 1, d: date.getDate(), H: date.getHours(), M: date.getMinutes(), S: date.getSeconds() };
+    try {
+      var f = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' });
+      var o = {}; f.formatToParts(date).forEach(function (p) { o[p.type] = p.value; });
+      return { y: +o.year, m: +o.month, d: +o.day, H: (+o.hour) % 24, M: +o.minute, S: +o.second };
+    } catch (e) { return partsIn(date, null); }
+  }
+  GK.daily = {
+    // YYYY-MM-DD on the player's own clock (or a fixed zone, e.g. {tz:'America/Chicago'})
+    key: function (opts, date) { var p = partsIn(date || new Date(), opts && opts.tz); return p.y + '-' + pad(p.m) + '-' + pad(p.d); },
+    seed: function (gameId, key) { return gameId + '|' + (key || GK.daily.key()); },
+    msToNext: function (opts, date) {
+      var p = partsIn(date || new Date(), opts && opts.tz);
+      return ((23 - p.H) * 3600 + (59 - p.M) * 60 + (60 - p.S)) * 1000;
+    },
+    countdown: function (ms) {
+      var s = Math.max(0, Math.ceil(ms / 1000)); var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+      return h > 0 ? h + 'h ' + pad(m) + 'm' : m + 'm ' + pad(s % 60) + 's';
+    },
+    // record a day played. st = {days:0,last:''}; returns true on a new day. Counts total days, never resets.
+    mark: function (st, key) { key = key || GK.daily.key(); if (st.last === key) return false; st.last = key; st.days = (st.days | 0) + 1; return true; },
+    label: function (key) { var p = key.split('-'); var mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][(+p[1]) - 1]; return mo + ' ' + (+p[2]); },
+    // "Lantern Drum Nov 6: 1234" + optional emoji row
+    shareLine: function (o) { return (o.game || 'Game') + ' ' + GK.daily.label(o.key || GK.daily.key()) + ': ' + o.score + (o.grid ? '\n' + o.grid : '') + (o.tail ? '\n' + o.tail : ''); }
+  };
+
+  /* ================= SAVE ================= */
+  function b64e(s) { if (typeof btoa !== 'undefined') return btoa(unescape(encodeURIComponent(s))); return Buffer.from(s, 'utf8').toString('base64'); }
+  function b64d(s) { if (typeof atob !== 'undefined') return decodeURIComponent(escape(atob(s))); return Buffer.from(s, 'base64').toString('utf8'); }
+  function sum(s) { return (hash32('gk-save|' + s) >>> 0).toString(36); }
+  function okJSON(raw) { if (raw == null || raw === '') return false; try { JSON.parse(raw); return true; } catch (e) { return false; } }
+  var hideFns = [];
+  var hideBound = false;
+  function bindHide() {
+    if (hideBound || !HAS_DOM) return; hideBound = true;
+    var fire = function () { for (var i = 0; i < hideFns.length; i++) { try { hideFns[i](); } catch (e) {} } };
+    on(W, 'pagehide', fire);
+    on(document, 'visibilitychange', function () { if (document.visibilityState === 'hidden') fire(); });
+  }
+  function rotate(key, raw, keep) {
+    keep = keep || 3;
+    if (!raw || LS.get(key + '.bak1') === raw) return false;
+    for (var i = keep; i > 1; i--) { var prev = LS.get(key + '.bak' + (i - 1)); if (prev != null) LS.set(key + '.bak' + i, prev); }
+    LS.set(key + '.bak1', raw); return true;
+  }
+  function backups(key, keep) { var out = []; for (var i = 1; i <= (keep || 3); i++) { var v = LS.get(key + '.bak' + i); if (v != null) out.push(v); } return out; }
+  function exportRaw(key, raw) { var body = b64e(JSON.stringify({ k: key, v: raw, t: Date.now() })); return 'GK1.' + body + '.' + sum(body); }
+  function importRaw(key, code) {
+    code = String(code || '').replace(/\s+/g, '');
+    var p = code.split('.'); if (p.length !== 3 || p[0] !== 'GK1' || sum(p[1]) !== p[2]) return null;
+    try { var o = JSON.parse(b64d(p[1])); if (o.k !== key || typeof o.v !== 'string') return null; return o.v; } catch (e) { return null; }
+  }
+  GK.save = {
+    onHide: function (fn) { hideFns.push(fn); bindHide(); },
+    persist: function () { try { if (navigator.storage && navigator.storage.persist) return navigator.storage.persist().catch(function () { return false; }); } catch (e) {} return Promise.resolve(false); },
+    // Retrofit an existing game: no format change. Keeps 3 rolling backups (one per session),
+    // restores the newest good backup when the key is missing or unreadable, and adds export/import.
+    protect: function (key, opts) {
+      opts = opts || {};
+      var valid = opts.validate || okJSON;
+      var keep = opts.keep || 3;
+      var raw = LS.get(key), restored = false;
+      if (!valid(raw)) {
+        var bs = backups(key, keep);
+        for (var i = 0; i < bs.length; i++) if (valid(bs[i])) { LS.set(key, bs[i]); raw = bs[i]; restored = true; break; }
+      }
+      if (valid(raw)) rotate(key, raw, keep);
+      GK.save.persist();
+      return {
+        key: key, restored: restored,
+        backups: function () { return backups(key, keep); },
+        exportCode: function () { return exportRaw(key, LS.get(key) || ''); },
+        importCode: function (code) { var v = importRaw(key, code); if (v == null || !valid(v)) return false; rotate(key, LS.get(key), keep); LS.set(key, v); return true; }
+      };
+    },
+    // New games: versioned store {v,t,d} with defaults, migrations, backups and save on hide.
+    store: function (key, opts) {
+      opts = opts || {};
+      var version = opts.version || 1, defaults = opts.defaults || {}, keep = opts.keep || 3;
+      function fresh() { return JSON.parse(JSON.stringify(defaults)); }
+      function parse(raw) { try { var o = JSON.parse(raw); return (o && typeof o === 'object' && typeof o.v === 'number' && o.d && typeof o.d === 'object') ? o : null; } catch (e) { return null; } }
+      function fill(d) { var f = fresh(); for (var k in f) if (!(k in d) || typeof d[k] !== typeof f[k]) d[k] = f[k]; return d; }
+      var S = { key: key, data: null, restored: false };
+      S.load = function () {
+        var raw = LS.get(key), o = parse(raw);
+        if (!o) { var bs = backups(key, keep); for (var i = 0; i < bs.length && !o; i++) { o = parse(bs[i]); if (o) S.restored = true; } }
+        var d = o ? o.d : fresh(), v = o ? o.v : version;
+        while (o && v < version && opts.migrate) { d = opts.migrate(d, v) || d; v++; }
+        S.data = fill(d);
+        if (o && raw && parse(raw)) rotate(key, raw, keep);
+        return S.data;
+      };
+      S.save = function () { if (!S.data) return false; return LS.set(key, JSON.stringify({ v: version, t: Date.now(), d: S.data })); };
+      S.reset = function () { rotate(key, LS.get(key), keep); S.data = fresh(); S.save(); return S.data; };
+      S.exportCode = function () { S.save(); return exportRaw(key, LS.get(key) || ''); };
+      S.importCode = function (code) { var v = importRaw(key, code); if (v == null || !parse(v)) return false; rotate(key, LS.get(key), keep); LS.set(key, v); S.load(); return true; };
+      S.backups = function () { return backups(key, keep); };
+      S.load();
+      GK.save.onHide(S.save);
+      GK.save.persist();
+      return S;
+    }
+  };
+
+  /* ================= AUDIO ================= */
+  var A = GK.audio = { ctx: null, master: null, bank: {}, volume: 1, muted: false, unlocked: false, _last: {}, _voices: {} };
+  var GESTURES = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'];
+  function silentWavURL() {
+    try {
+      var n = 800, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+      var w = function (o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+      w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true);
+      v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+      v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+      for (var i = 0; i < n; i++) v.setUint8(44 + i, 128);
+      return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    } catch (e) { return null; }
+  }
+  var silentEl = null, silentDone = false;
+  function playSilentEl() { // routes Web Audio to the media channel so the ringer switch does not mute it
+    if (silentDone || !HAS_DOM || !W.Audio) return;
+    try {
+      if (!silentEl) { var u = silentWavURL(); if (!u) { silentDone = true; return; } silentEl = new W.Audio(u); silentEl.setAttribute('playsinline', ''); silentEl.loop = false; silentEl.volume = 0.01; }
+      var p = silentEl.play(); silentDone = true;
+      if (p && p.catch) p.catch(function () { silentDone = false; });
+    } catch (e) {}
+  }
+  function poke() { // tiny silent buffer, needed by older iOS to open the output
+    var c = A.ctx; if (!c || !c.createBuffer) return;
+    try { var b = c.createBuffer(1, 1, c.sampleRate || 44100), s = c.createBufferSource(); s.buffer = b; s.connect(c.destination); s.start(0); } catch (e) {}
+  }
+  function gesture() {
+    if (!A.ctx) { if (A.autoCreate === false) return; A.ensure(); }
+    var c = A.ctx; if (!c) return;
+    playSilentEl();
+    if (c.state !== 'running' && !A.held) { try { var p = c.resume(); if (p && p.then) p.then(check, function () {}); } catch (e) {} poke(); }
+    check();
+  }
+  function check() {
+    var c = A.ctx;
+    if (c && c.state === 'running') {
+      if (!A.unlocked) { A.unlocked = true; ringerHint(); if (A._onUnlock) A._onUnlock(); }
+      if (silentDone) { // stay listening until both are done; re-arm happens on interruption
+        for (var i = 0; i < GESTURES.length; i++) off(W, GESTURES[i], gesture, true);
+        A._armed = false;
+      }
+    }
+  }
+  function arm() { if (A._armed || !HAS_DOM) return; A._armed = true; for (var i = 0; i < GESTURES.length; i++) on(W, GESTURES[i], gesture, true); }
+  function watch() {
+    var c = A.ctx; if (!c || c._gkWatched) return; c._gkWatched = true;
+    // the game's own suspend() (pause, mute, hidden tab) is a hold: taps and focus must not resume it; its own resume() lifts it
+    A.held = false;
+    if (typeof c.suspend === 'function' && typeof c.resume === 'function') {
+      var s0 = c.suspend, r0 = c.resume;
+      c._gkSuspend0 = s0; c._gkResume0 = r0;
+      try {
+        c.suspend = function () { if (A.ctx === c) A.held = true; return s0.apply(c, arguments); };
+        c.resume = function () { if (A.ctx === c) A.held = false; return r0.apply(c, arguments); };
+      } catch (e) {}
+    }
+    var prev = c.onstatechange;
+    var h = function (e) { if (A.ctx.state !== 'running') { A.unlocked = false; arm(); } else check(); if (A._onState) A._onState(A.ctx.state); };
+    if (c.addEventListener) c.addEventListener('statechange', h); else c.onstatechange = function (e) { if (prev) prev.call(c, e); h(e); };
+  }
+  if (HAS_DOM) {
+    var wake = function () { if (A.ctx && A.ctx.state !== 'running' && !A.held && document.visibilityState !== 'hidden') { try { A.ctx.resume().catch(function () {}); } catch (e) {} arm(); } };
+    on(document, 'visibilitychange', wake); on(W, 'focus', wake); on(W, 'pageshow', wake);
+    // 2.0: fade out and suspend sound while the page is hidden (no music behind a locked screen); a game's own hold still wins
+    on(document, 'visibilitychange', function () { if (document.visibilityState === 'hidden') hideAudio(); else showAudio(); });
+    on(W, 'pagehide', hideAudio); on(W, 'pageshow', showAudio);
+  }
+  function busGain() { var c = A.ctx; return c && c._gkBus && c._gkBus.in && c._gkBus.in.gain; }
+  A._fadeTo = function (v, tc) {
+    var g = busGain(), c = A.ctx; if (!g) return;
+    try { if (g.cancelScheduledValues) g.cancelScheduledValues(c.currentTime); if (g.setTargetAtTime) g.setTargetAtTime(v, c.currentTime, tc || 0.06); else g.value = v; } catch (e) { try { g.value = v; } catch (e2) {} }
+  };
+  A.level = function () { return GK.prefs ? GK.prefs.vol('master') : 1; };
+  A.hideMode = true; // false: leave sound running while the page is hidden
+  function hideAudio() {
+    var c = A.ctx; if (!c || A.hideMode === false || c.state !== 'running' || A._hid) return;
+    A._hid = true; A.hidSuspends = (A.hidSuspends | 0); A._fadeTo(0, 0.05);
+    var s0 = c._gkSuspend0 || c.suspend;
+    setTimeout(function () {
+      if (A._hid && A.ctx === c && c.state === 'running' && !A.held && (!HAS_DOM || document.visibilityState === 'hidden')) {
+        try { var p = s0.call(c); A.hidSuspends++; if (p && p.catch) p.catch(function () {}); } catch (e) {}
+      }
+    }, 220);
+  }
+  function showAudio() {
+    if (!A._hid) return; A._hid = false;
+    var c = A.ctx;
+    if (c && c.state !== 'running' && !A.held) { try { var p = (c._gkResume0 || c.resume).call(c); if (p && p.catch) p.catch(function () {}); } catch (e) {} arm(); }
+    A._fadeTo(A.level(), 0.08);
+  }
+  A._hideNow = hideAudio; A._showNow = showAudio;
+  A.init = function (opts) {
+    opts = opts || {};
+    A._onUnlock = opts.onUnlock; A._onState = opts.onState;
+    if (opts.create === false) A.autoCreate = false; // the game makes its own context later and hands it over with adopt()
+    if (opts.ctx) A.adopt(opts.ctx, opts.output);
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    arm();
+    return A;
+  };
+  A.ensure = function () {
+    if (A.ctx) return A.ctx;
+    var C = W.AudioContext || W.webkitAudioContext; if (!C) return null;
+    try { A.adopt(new C({ latencyHint: 'interactive' })); } catch (e) { try { A.adopt(new C()); } catch (e2) { return null; } }
+    return A.ctx;
+  };
+  // Adopt a game's own AudioContext; output = the node kit sounds should feed (default: a new master gain)
+  A.limiter = true; A.route = true;
+  A.adopt = function (ctx, output) {
+    A.ctx = ctx; A._external = !!output;
+    var bus = A.route !== false ? routeToBus(ctx) : null;
+    var out = bus ? bus.in : ctx.destination;
+    if (output && output !== ctx.destination) A.master = output;
+    else if (output) A.master = out;
+    else { A.master = ctx.createGain(); A.master._gkOwn = true; A.master.connect(out); }
+    // music and sound-effect channels for games that let the kit mix (Gloamrush-style buses)
+    try { A.music = ctx.createGain(); A.music._gkOwn = true; A.music.connect(A.master); A.sfx = ctx.createGain(); A.sfx._gkOwn = true; A.sfx.connect(A.master); } catch (e) { A.music = A.sfx = null; }
+    A._applyVol(); A._applyPrefs(); watch(); arm();
+    for (var k in A.bank) A.bank[k].buf = null; // re-render for this context
+    return ctx;
+  };
+  A._applyVol = function () { if (A.master && A.master.gain && !A._external) A.master.gain.value = A.muted ? 0 : A.volume; };
+  A.setVolume = function (v) { A.volume = clamp(v, 0, 1); A._applyVol(); };
+  A.setMuted = function (m) { A.muted = !!m; A._applyVol(); };
+  // call inside a tap handler right after adopt() so the very first tap also unlocks
+  A.unlockNow = function () { gesture(); };
+  A.running = function () { return !!(A.ctx && A.ctx.state === 'running'); };
+  // ---- 2.0 master bus: everything that would go to the speaker goes through one gain and a limiter ----
+  function setP(p, v) { if (p) { try { p.value = v; } catch (e) {} } }
+  function makeBus(c) {
+    if (c._gkBus) return c._gkBus;
+    var B = { in: null, lim: null };
+    try {
+      B.in = c.createGain(); B.in._gkOwn = true;
+      if (A.limiter !== false && c.createDynamicsCompressor) {
+        var L = c.createDynamicsCompressor(); L._gkOwn = true;
+        setP(L.threshold, -4); setP(L.knee, 4); setP(L.ratio, 12); setP(L.attack, 0.003); setP(L.release, 0.15);
+        B.in.connect(L); L.connect(c.destination); B.lim = L;
+      } else B.in.connect(c.destination);
+    } catch (e) { return null; }
+    setP(B.in.gain, A.level());
+    c._gkBus = B; return B;
+  }
+  function redirect(fn, isDis) {
+    var f = function (t) {
+      var c = A.ctx;
+      if (t && c && t === c.destination && c._gkBus && !this._gkOwn) {
+        var a = Array.prototype.slice.call(arguments); a[0] = c._gkBus.in;
+        var r = fn.apply(this, a); return isDis ? r : t;
+      }
+      return fn.apply(this, arguments);
+    };
+    f._gk = true; return f;
+  }
+  function wrapNode(n) {
+    if (!n || n._gkW || typeof n.connect !== 'function') return n;
+    try { n.connect = redirect(n.connect); if (typeof n.disconnect === 'function') n.disconnect = redirect(n.disconnect, true); n._gkW = true; } catch (e) {}
+    return n;
+  }
+  function routeToBus(c) {
+    var B = makeBus(c); if (!B) return null;
+    if (c._gkRouted) return B; c._gkRouted = true;
+    var AN = W.AudioNode;
+    if (AN && AN.prototype && typeof AN.prototype.connect === 'function') {
+      if (!AN.prototype.connect._gk) {
+        try { AN.prototype.connect = redirect(AN.prototype.connect); AN.prototype.disconnect = redirect(AN.prototype.disconnect, true); } catch (e) {}
+      }
+    } else {
+      // no AudioNode global (old engines, test stubs): wrap each node the context makes
+      var names = {}, pr = c;
+      while (pr && pr !== Object.prototype) { try { Object.getOwnPropertyNames(pr).forEach(function (n) { if (/^create/.test(n)) names[n] = 1; }); } catch (e) {} pr = Object.getPrototypeOf(pr); }
+      for (var k in names) {
+        if (typeof c[k] !== 'function') continue;
+        (function (name) { var f0 = c[name]; try { c[name] = function () { return wrapNode(f0.apply(c, arguments)); }; } catch (e) {} })(k);
+      }
+    }
+    return B;
+  }
+  A.bus = function () { return A.ctx && A.ctx._gkBus || null; };
+  A._applyPrefs = function () {
+    var c = A.ctx; if (!c || !GK.prefs) return;
+    if (!A._hid) { var g = busGain(); if (g) setP(g, A.level()); }
+    if (A.music && A.music.gain) setP(A.music.gain, GK.prefs.vol('music'));
+    if (A.sfx && A.sfx.gain) setP(A.sfx.gain, GK.prefs.vol('sfx'));
+  };
+  // duck the music channel under a big moment: to `to` (0.3) for `hold` seconds, then glide back
+  A.duck = function (to, hold) {
+    var c = A.ctx, g = A.music && A.music.gain; if (!c || !g) return false;
+    var lvl = GK.prefs ? GK.prefs.vol('music') : 1, t = c.currentTime;
+    try { if (g.cancelScheduledValues) g.cancelScheduledValues(t); g.setTargetAtTime(lvl * (to === undefined ? 0.3 : to), t, 0.03); g.setTargetAtTime(lvl, t + (hold === undefined ? 0.5 : hold), 0.15); } catch (e) { return false; }
+    return true;
+  };
+  // combos climb a pentatonic scale: rate for streak n (0-based). Melodic notes get no pitch jitter.
+  var PENTA = [0, 2, 4, 7, 9];
+  A.ladderCalls = 0;
+  A.ladder = function (n, base) { A.ladderCalls++; n = Math.max(0, n | 0); var semi = PENTA[n % 5] + 12 * Math.floor(n / 5); semi = Math.min(semi, 24); return Math.pow(2, ((base || 0) + semi) / 12); };
+  A.combo = function (n, o) { o = o || {}; return A.play(o.sound || 'combo', { rate: A.ladder(n, o.key), jitter: 0, vol: o.vol, gap: 0 }); };
+  A.comboBreak = function (o) { return A.play('comboBreak', o); };
+  // Synth spec: {wave:'sine'|'square'|'tri'|'saw'|'noise', f:Hz, f2:end Hz, dur:s, a:attack s, vol:0..1, at:start s} or an array of them
+  function osc(wave, ph) {
+    if (wave === 'square') return ph % 1 < 0.5 ? 1 : -1;
+    if (wave === 'saw') return 2 * (ph % 1) - 1;
+    if (wave === 'tri') { var x = ph % 1; return x < 0.5 ? 4 * x - 1 : 3 - 4 * x; }
+    return Math.sin(ph * 6.283185307);
+  }
+  A.render = function (spec, rate) {
+    rate = rate || 44100;
+    var layers = Array.isArray(spec) ? spec : [spec], end = 0, i;
+    for (i = 0; i < layers.length; i++) end = Math.max(end, (layers[i].at || 0) + (layers[i].dur || 0.1));
+    var n = Math.ceil(end * rate) + 1, out = new Float32Array(n), nz = mulberry32(7);
+    for (i = 0; i < layers.length; i++) {
+      var L = layers[i], dur = L.dur || 0.1, s0 = Math.floor((L.at || 0) * rate), len = Math.floor(dur * rate);
+      var a = Math.max(1, Math.floor((L.a === undefined ? 0.004 : L.a) * rate)), ph = 0, f = L.f || 440, f2 = L.f2 || f, vol = L.vol === undefined ? 0.5 : L.vol;
+      for (var j = 0; j < len && s0 + j < n; j++) {
+        var t = j / len, freq = f * Math.pow(f2 / f, t);
+        ph += freq / rate;
+        var env = (j < a ? j / a : 1) * Math.pow(1 - t, L.curve || 2);
+        out[s0 + j] += (L.wave === 'noise' ? nz() * 2 - 1 : osc(L.wave, ph)) * env * vol;
+      }
+    }
+    for (i = 0; i < n; i++) out[i] = clamp(out[i], -1, 1);
+    return out;
+  };
+  A.define = function (name, spec) { A.bank[name] = { spec: spec, buf: null }; return A; };
+  A.std = function () {
+    A.define('tap', { wave: 'tri', f: 660, f2: 520, dur: 0.06, vol: 0.35 });
+    A.define('success', [{ wave: 'tri', f: 523, dur: 0.09, vol: 0.35 }, { wave: 'tri', f: 784, dur: 0.14, vol: 0.35, at: 0.07 }]);
+    A.define('fail', [{ wave: 'square', f: 220, f2: 110, dur: 0.22, vol: 0.18 }, { wave: 'noise', dur: 0.08, vol: 0.12 }]);
+    A.define('combo', { wave: 'sine', f: 880, f2: 1320, dur: 0.1, vol: 0.3 });
+    A.define('win', [{ wave: 'tri', f: 523, dur: 0.12, vol: 0.3 }, { wave: 'tri', f: 659, dur: 0.12, vol: 0.3, at: 0.1 }, { wave: 'tri', f: 784, dur: 0.12, vol: 0.3, at: 0.2 }, { wave: 'sine', f: 1047, dur: 0.35, vol: 0.3, at: 0.3 }]);
+    // 2.0: a bright click and a layer an octave up so a hit is heard on a phone speaker, not just hiss
+    A.define('hit', [{ wave: 'noise', dur: 0.06, vol: 0.22 }, { wave: 'square', f: 1800, f2: 600, dur: 0.012, vol: 0.25 }, { wave: 'sine', f: 280, f2: 120, dur: 0.12, vol: 0.35 }, { wave: 'sine', f: 140, f2: 60, dur: 0.14, vol: 0.3 }]);
+    A.define('comboBreak', [{ wave: 'tri', f: 523, dur: 0.08, vol: 0.22 }, { wave: 'tri', f: 392, dur: 0.16, vol: 0.2, at: 0.07 }]);
+    return A;
+  };
+  // play(name,{vol,rate,jitter=0.05}): +/-5% pitch so repeats do not sound robotic; caps 4 voices and 25 ms repeats per sound
+  A.play = function (name, o) {
+    o = o || {};
+    var c = A.ctx, e = A.bank[name];
+    if (!c || !e || A.muted || c.state !== 'running') return false;
+    var t = now(); if (A._last[name] && t - A._last[name] < (o.gap === undefined ? 25 : o.gap)) return false;
+    if ((A._voices[name] | 0) >= (o.voices || 4)) return false;
+    try {
+      if (!e.buf) { var data = A.render(e.spec, c.sampleRate || 44100); e.buf = c.createBuffer(1, data.length, c.sampleRate || 44100); e.buf.getChannelData(0).set(data); }
+      var src = c.createBufferSource(), g = c.createGain();
+      src.buffer = e.buf;
+      var j = o.jitter === undefined ? 0.05 : o.jitter;
+      src.playbackRate.value = (o.rate || 1) * (1 + (Math.random() * 2 - 1) * j);
+      g.gain.value = o.vol === undefined ? 1 : o.vol;
+      src.connect(g); g.connect((o.bus === 'music' ? A.music : A.sfx) || A.master || c.destination);
+      A._voices[name] = (A._voices[name] | 0) + 1; A._last[name] = t;
+      src.onended = function () { A._voices[name] = Math.max(0, (A._voices[name] | 0) - 1); };
+      src.start(0);
+      ringerHint();
+      return true;
+    } catch (err) { return false; }
+  };
+  // one-time hint on iPhone, the first time sound unlocks
+  var hinted = false;
+  function ringerHint() {
+    if (hinted || !ENV.ios || A.noHint) return; hinted = true;
+    if (LS.get('gk.ringerHint')) return; LS.set('gk.ringerHint', '1');
+    if (GK.ui && HAS_DOM) setTimeout(function () { GK.ui.toast('No sound? Check the ringer switch', 3200); }, 400);
+  }
+
+  /* ================= INPUT ================= */
+  GK.input = {
+    // attach(el,{onDown,onMove,onUp,stick:{dead:.1,radius:56,follow:true}}) : one pointer layer for touch, pen and mouse
+    attach: function (el, o) {
+      o = o || {};
+      var H = { queue: [], down: {}, count: 0, stick: null, el: el };
+      if (el.style) { el.style.touchAction = 'none'; el.style.webkitUserSelect = 'none'; el.style.userSelect = 'none'; el.style.webkitTouchCallout = 'none'; el.style.webkitTapHighlightColor = 'transparent'; }
+      var st = o.stick ? (H.stick = { x: 0, y: 0, active: false, id: null, ox: 0, oy: 0, px: 0, py: 0, dead: o.stick.dead || 0.1, r: o.stick.radius || 56, follow: o.stick.follow !== false }) : null;
+      function pos(e) { var r = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 0, top: 0 }; return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+      function upd(p) {
+        var dx = p.x - st.ox, dy = p.y - st.oy, d = Math.sqrt(dx * dx + dy * dy);
+        if (st.follow && d > st.r) { st.ox = p.x - dx / d * st.r; st.oy = p.y - dy / d * st.r; dx = p.x - st.ox; dy = p.y - st.oy; d = st.r; }
+        var m = Math.min(1, d / st.r); if (m < st.dead) { st.x = st.y = 0; } else { var k = (m - st.dead) / (1 - st.dead) / (d || 1) * st.r; st.x = dx / st.r * k; st.y = dy / st.r * k; }
+        st.px = p.x; st.py = p.y;
+      }
+      H._down = function (e) {
+        if (e.cancelable) e.preventDefault();
+        try { el.setPointerCapture && el.setPointerCapture(e.pointerId); } catch (x) {}
+        var p = pos(e); H.down[e.pointerId] = p; H.count++;
+        var ev = { type: 'down', x: p.x, y: p.y, id: e.pointerId, t: now(), kind: e.pointerType };
+        H.queue.push(ev);
+        if (st && st.id === null) { st.id = e.pointerId; st.active = true; st.ox = p.x; st.oy = p.y; st.x = st.y = 0; st.px = p.x; st.py = p.y; }
+        if (o.onDown) o.onDown(ev, e);
+      };
+      H._move = function (e) {
+        if (!(e.pointerId in H.down)) return;
+        var p = pos(e); H.down[e.pointerId] = p;
+        if (st && st.id === e.pointerId) upd(p);
+        if (o.onMove) o.onMove({ type: 'move', x: p.x, y: p.y, id: e.pointerId, t: now() }, e);
+      };
+      H._up = function (e) {
+        if (!(e.pointerId in H.down)) return;
+        var p = pos(e); delete H.down[e.pointerId]; H.count = Math.max(0, H.count - 1);
+        var ev = { type: 'up', x: p.x, y: p.y, id: e.pointerId, t: now() };
+        H.queue.push(ev);
+        if (st && st.id === e.pointerId) { st.id = null; st.active = false; st.x = st.y = 0; }
+        if (o.onUp) o.onUp(ev, e);
+      };
+      var stop = function (e) { if (e.cancelable) e.preventDefault(); };
+      on(el, 'pointerdown', H._down, { passive: false });
+      on(el, 'pointermove', H._move, { passive: false });
+      on(el, 'pointerup', H._up); on(el, 'pointercancel', H._up); on(el, 'lostpointercapture', H._up);
+      on(el, 'contextmenu', stop); on(el, 'selectstart', stop); on(el, 'gesturestart', stop); on(el, 'dblclick', stop);
+      on(el, 'touchmove', stop, { passive: false });
+      H.drain = function () { var q = H.queue; H.queue = []; return q; };
+      H.held = function () { return H.count > 0; };
+      H.detach = function () {
+        off(el, 'pointerdown', H._down, { passive: false }); off(el, 'pointermove', H._move, { passive: false }); off(el, 'pointerup', H._up);
+        off(el, 'pointercancel', H._up); off(el, 'lostpointercapture', H._up); off(el, 'contextmenu', stop); off(el, 'selectstart', stop);
+        off(el, 'gesturestart', stop); off(el, 'dblclick', stop); off(el, 'touchmove', stop, { passive: false });
+      };
+      return H;
+    },
+    // buffer: a press counts if it happened within `win` seconds before the moment it can be used
+    buffer: function (win) {
+      win = win === undefined ? 0.1 : win; var t = -1e9;
+      return { press: function (at) { t = at; }, ready: function (at) { return at - t <= win; }, consume: function (at) { if (at - t <= win) { t = -1e9; return true; } return false; }, clear: function () { t = -1e9; } };
+    },
+    // coyote: grace after leaving a ledge
+    coyote: function (win) {
+      win = win === undefined ? 0.1 : win; var t = -1e9, used = false;
+      return { ground: function (at) { t = at; used = false; }, can: function (at) { return !used && at - t <= win; }, use: function () { used = true; } };
+    },
+    keys: function (target) {
+      var K = { held: {}, pressed: [] };
+      on(target || W, 'keydown', function (e) { if (!K.held[e.key]) K.pressed.push(e.key); K.held[e.key] = true; });
+      on(target || W, 'keyup', function (e) { K.held[e.key] = false; });
+      on(W, 'blur', function () { K.held = {}; });
+      K.drain = function () { var p = K.pressed; K.pressed = []; return p; };
+      return K;
+    }
+  };
+
+  /* ================= EASING ================= */
+  GK.ease = {
+    linear: function (t) { return t; },
+    quadOut: function (t) { return 1 - (1 - t) * (1 - t); },
+    cubicOut: function (t) { var u = 1 - t; return 1 - u * u * u; },
+    backOut: function (t, s) { s = s === undefined ? 1.70158 : s; var u = t - 1; return u * u * ((s + 1) * u + s) + 1; },
+    smooth: function (cur, target, k, dt) { return cur + (target - cur) * (1 - Math.exp(-k * dt)); }, // frame-rate independent
+    lerp: function (a, b, t) { return a + (b - a) * t; }
+  };
+
+  /* ================= JUICE ================= */
+  function ihash(i) { i = Math.imul((i ^ 61) ^ (i >>> 16), 9); i ^= i >>> 4; i = Math.imul(i, 0x27d4eb2d); i ^= i >>> 15; return (i >>> 0) / 4294967296 * 2 - 1; }
+  function noise1(x, lane) { var i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return ihash(i + lane * 7919) * (1 - u) + ihash(i + 1 + lane * 7919) * u; }
+  GK.noise1 = noise1;
+  var hapticLabel = null;
+  GK.juice = {
+    create: function (o) {
+      o = o || {};
+      var follow = o.reducedMotion === undefined && o.followPrefs !== false && !!GK.prefs;
+      var red = o.reducedMotion === undefined ? ENV.reducedMotion : o.reducedMotion;
+      if (follow) red = GK.prefs.motion() !== 'full';
+      var J = {
+        on: { shake: true, hitstop: true, squash: true, haptics: true, particles: true, flash: !red, numbers: true },
+        follow: follow,
+        shakeScale: follow ? 1 : red ? 0.35 : 1, maxShake: o.maxShake || 10, maxRot: o.maxRot || 0.03, decay: o.decay || 0.8, freq: o.freq || 15,
+        trauma: 0, kx: 0, ky: 0, t: 0, stopT: 0, recT: 0, recDur: 0.06, x: 0, y: 0, rot: 0, fps: 0, _fpsAcc: 0, _fpsN: 0
+      };
+      J.addTrauma = function (a) { J.trauma = clamp(J.trauma + a, 0, 1); };
+      // follow mode: motion scale comes live from GK.prefs (Full 1, Calm .35, Still 0); flash goes through GK.flash
+      J.mscale = function () { return follow ? GK.prefs.motionScale() : 1; };
+      J.kick = function (dx, dy) { if (!J.on.shake) return; var m = J.shakeScale * J.mscale(); J.kx += dx * m; J.ky += dy * m; };
+      J.flashOK = function (amount) { if (!J.on.flash) return 0; return follow ? GK.flash.allow(amount === undefined ? 1 : amount) : (amount === undefined ? 1 : amount); };
+      J.hitstop = function (sec) { if (!J.on.hitstop) return; J.stopT = Math.max(J.stopT, sec); J.recT = J.recDur; };
+      // call once per frame with real dt; returns {x,y,rot} camera offset; J.scale(dt) gives the game dt after hitstop
+      J.update = function (dt) {
+        J.t += dt;
+        J.trauma = Math.max(0, J.trauma - J.decay * dt);
+        var s = J.on.shake ? J.trauma * J.trauma * J.shakeScale * J.mscale() : 0;
+        J.x = J.maxShake * s * noise1(J.t * J.freq, 1) + J.kx;
+        J.y = J.maxShake * s * noise1(J.t * J.freq, 2) + J.ky;
+        J.rot = J.maxRot * s * noise1(J.t * J.freq, 3);
+        var k = Math.exp(-18 * dt); J.kx *= k; J.ky *= k;
+        if (Math.abs(J.kx) < 0.05) J.kx = 0; if (Math.abs(J.ky) < 0.05) J.ky = 0;
+        J._fpsAcc += dt; J._fpsN++; if (J._fpsAcc >= 0.5) { J.fps = Math.round(J._fpsN / J._fpsAcc); J._fpsAcc = 0; J._fpsN = 0; }
+        return J;
+      };
+      J.scale = function (dt) {
+        if (J.stopT > 0) { J.stopT -= dt; return 0; }
+        if (J.recT > 0) { J.recT = Math.max(0, J.recT - dt); return dt * (0.2 + 0.8 * GK.ease.quadOut(1 - J.recT / J.recDur)); }
+        return dt;
+      };
+      J.frozen = function () { return J.stopT > 0; };
+      // squash: s = J.squash() then J.squashTo(s,'jump'|'land'|'hit') and J.squashStep(s,dt); draw with scale(s.sx,s.sy)
+      J.squash = function () { return { sx: 1, sy: 1 }; };
+      J.squashTo = function (s, kind) {
+        if (!J.on.squash) return s;
+        var m = kind === 'jump' ? [0.6, 1.4] : kind === 'land' ? [1.4, 0.6] : kind === 'hit' ? [1.25, 0.8] : (kind || [1.2, 0.8]);
+        var f = follow ? (GK.prefs.motion() === 'still' ? 0 : GK.prefs.motion() === 'calm' ? 0.5 : 1) : red ? 0.5 : 1; s.sx = 1 + (m[0] - 1) * f; s.sy = 1 + (m[1] - 1) * f; return s;
+      };
+      J.squashStep = function (s, dt, rate) { var r = (rate || 1.75) * dt * 2; s.sx += clamp(1 - s.sx, -r, r); s.sy += clamp(1 - s.sy, -r, r); return s; };
+      J.haptic = function (kind) { if (J.on.haptics) GK.juice.haptic(kind); };
+      J.apply = function (ctx) { if (ctx && (J.x || J.y || J.rot)) { ctx.translate(J.x, J.y); if (J.rot) ctx.rotate(J.rot); } };
+      return J;
+    },
+    // Android: vibrate. iPhone (Safari 17.4+): a hidden switch toggle gives a light tick, only inside a real tap
+    // (call from click or pointerup on touch, not touch pointerdown). Elsewhere: nothing.
+    haptic: function (kind) {
+      if (!HAS_DOM) return false;
+      var pat = { tap: 8, light: 8, hit: 18, heavy: 30, success: [10, 40, 14], fail: [30, 50, 30] }[kind] || 10;
+      try { if (navigator.vibrate) return navigator.vibrate(pat); } catch (e) {}
+      if (!ENV.ios) return false;
+      try {
+        if (!hapticLabel) {
+          var lab = document.createElement('label'), inp = document.createElement('input');
+          inp.type = 'checkbox'; inp.setAttribute('switch', ''); inp.tabIndex = -1; lab.setAttribute('aria-hidden', 'true');
+          lab.appendChild(inp); lab.style.cssText = 'position:fixed;left:-100px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden';
+          document.body.appendChild(lab); hapticLabel = lab;
+        }
+        hapticLabel.click(); return true;
+      } catch (e) { return false; }
+    },
+    // Hidden tuning panel: opens with ?juice or #juice in the address, or 5 quick taps in the top-left corner.
+    // extra: [{label,get(),set(v)}] for game-specific toggles; po.keys limits which built-in toggles show.
+    panel: function (J, extra, po) {
+      if (!HAS_DOM) return null;
+      po = po || {};
+      var P = { el: null, open: false };
+      function build() {
+        GK.ui._css();
+        var el = document.createElement('div'); el.className = 'gk-panel'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Juice settings');
+        var html = '<div class="gk-ph"><b>Juice</b><span class="gk-fps">-- fps</span><button class="gk-x" aria-label="Close">x</button></div>';
+        var keys = po.keys || Object.keys(J.on);
+        keys.forEach(function (k) { html += '<label><input type="checkbox" data-k="' + k + '"' + (J.on[k] ? ' checked' : '') + '> ' + k + '</label>'; });
+        (extra || []).forEach(function (x, i) { html += '<label><input type="checkbox" data-x="' + i + '"' + (x.get() ? ' checked' : '') + '> ' + x.label + '</label>'; });
+        html += '<label>shake size <input type="range" min="0" max="2" step="0.1" value="' + J.shakeScale + '" data-r="1"></label>';
+        el.innerHTML = html;
+        el.addEventListener('change', function (e) {
+          var t = e.target;
+          if (t.dataset.k) J.on[t.dataset.k] = t.checked;
+          if (t.dataset.x !== undefined) extra[+t.dataset.x].set(t.checked);
+          if (t.dataset.r) J.shakeScale = +t.value;
+        });
+        el.querySelector('.gk-x').addEventListener('click', function () { P.hide(); });
+        ['pointerdown', 'touchstart', 'click'].forEach(function (ev) { el.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+        document.body.appendChild(el); P.el = el;
+        var fpsEl = el.querySelector('.gk-fps');
+        P._timer = setInterval(function () { if (P.open) fpsEl.textContent = J.fps + ' fps'; }, 500);
+      }
+      P.show = function () { if (!P.el) build(); P.el.style.display = 'block'; P.open = true; };
+      P.hide = function () { if (P.el) P.el.style.display = 'none'; P.open = false; };
+      P.toggle = function () { if (P.open) P.hide(); else P.show(); };
+      var loc = '';
+      try { loc = (W.location.search || '') + (W.location.hash || ''); } catch (e) {}
+      if (/[?#&]juice\b/.test(loc)) setTimeout(P.show, 0);
+      var taps = [];
+      on(W, 'pointerdown', function (e) {
+        if (e.clientX > 48 || e.clientY > 48 + ((GK.view.insets && GK.view.insets.t) || 0)) { taps.length = 0; return; }
+        var t = now(); taps.push(t); while (taps.length && t - taps[0] > 2000) taps.shift();
+        if (taps.length >= 5) { taps.length = 0; P.toggle(); }
+      }, true);
+      return P;
+    }
+  };
+
+  /* ================= BADGES ================= */
+  // defs: [{id,name,desc,test?(stats),hidden?,funny?}]; st: a plain object in the game's save (badges stored at st[id]=time)
+  GK.badges = {
+    create: function (defs, st, opts) {
+      opts = opts || {};
+      var B = { defs: defs, st: st, failed: {}, listeners: [] };
+      B.has = function (id) { return !!st[id]; };
+      B.earn = function (id) {
+        if (st[id]) return false; var d = B.get(id); if (!d) return false;
+        st[id] = Date.now(); delete B.failed[id];
+        for (var i = 0; i < B.listeners.length; i++) B.listeners[i](d);
+        if (opts.toast !== false && GK.ui && HAS_DOM) GK.ui.toast('Badge: ' + d.name, 2400);
+        return true;
+      };
+      B.fail = function (id) { if (!st[id]) B.failed[id] = true; };
+      B.startRun = function () { B.failed = {}; };
+      B.get = function (id) { for (var i = 0; i < defs.length; i++) if (defs[i].id === id) return defs[i]; return null; };
+      B.check = function (stats) { var got = []; defs.forEach(function (d) { if (d.test && !st[d.id] && d.test(stats)) { if (B.earn(d.id)) got.push(d); } }); return got; };
+      B.onEarn = function (fn) { B.listeners.push(fn); };
+      B.count = function () { var n = 0; defs.forEach(function (d) { if (st[d.id]) n++; }); return n; };
+      B.list = function () {
+        return defs.map(function (d) {
+          var s = st[d.id] ? 'earned' : B.failed[d.id] ? 'failed' : 'open';
+          return { id: d.id, name: (d.hidden && s !== 'earned') ? '???' : d.name, desc: (d.hidden && s !== 'earned') ? 'Hidden' : d.desc, state: s, funny: !!d.funny };
+        });
+      };
+      B.render = function (el) {
+        if (!HAS_DOM || !el) return; GK.ui._css();
+        var h = '<div class="gk-badges">'; B.list().forEach(function (b) {
+          h += '<div class="gk-b gk-' + b.state + '" title="' + esc(b.desc) + '"><div class="gk-bi">' + (b.state === 'earned' ? '★' : b.state === 'failed' ? '✕' : '·') + '</div><div class="gk-bn">' + esc(b.name) + '</div><div class="gk-bd">' + esc(b.desc) + '</div></div>';
+        });
+        el.innerHTML = h + '</div><div class="gk-bc">' + B.count() + ' of ' + defs.length + '</div>';
+      };
+      return B;
+    },
+    // two paths to each milestone: play it enough OR win enough. Both count, so less skilled players still progress.
+    milestones: function (playsAt, winsAt, nameFn) {
+      var out = [];
+      (playsAt || []).forEach(function (n) { out.push({ id: 'plays' + n, name: nameFn ? nameFn('plays', n) : n + (n === 1 ? ' run' : ' runs'), desc: 'Play ' + n + (n === 1 ? ' run' : ' runs'), test: function (s) { return (s.plays | 0) >= n; } }); });
+      (winsAt || []).forEach(function (n) { out.push({ id: 'wins' + n, name: nameFn ? nameFn('wins', n) : n + (n === 1 ? ' win' : ' wins'), desc: 'Win ' + n + (n === 1 ? ' time' : ' times'), test: function (s) { return (s.wins | 0) >= n; } }); });
+      return out;
+    }
+  };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  GK.esc = esc;
+
+  /* ================= SHARE ================= */
+  GK.share = {
+    // resolves 'shared' | 'copied' | 'sheet' | 'cancel'. Falls back share -> clipboard -> selectable text sheet.
+    text: function (text, o) {
+      o = o || {};
+      return new Promise(function (res) {
+        function copyLegacy() {
+          try {
+            var ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+            document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+            var ok = document.execCommand && document.execCommand('copy'); ta.remove(); return !!ok;
+          } catch (e) { return false; }
+        }
+        function sheet() { GK.ui.sheet(o.title || 'Copy your result', text); res('sheet'); }
+        function clip() {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).then(function () { if (GK.ui) GK.ui.toast('Copied', 1600); res('copied'); }, function () { if (copyLegacy()) { GK.ui.toast('Copied', 1600); res('copied'); } else sheet(); });
+              return;
+            }
+          } catch (e) {}
+          if (copyLegacy()) { GK.ui.toast('Copied', 1600); res('copied'); } else sheet();
+        }
+        var data = { text: text }; if (o.title) data.title = o.title;
+        try {
+          if (o.preferCopy !== true && navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+            navigator.share(data).then(function () { res('shared'); }, function (e) { if (e && e.name === 'AbortError') res('cancel'); else clip(); });
+            return;
+          }
+        } catch (e) {}
+        clip();
+      });
+    },
+    button: function (el, getText, o) { on(el, 'click', function (e) { e.stopPropagation(); GK.share.text(typeof getText === 'function' ? getText() : getText, o); }); return el; }
+  };
+
+  /* ================= VIEW ================= */
+  var V = GK.view = { insets: { t: 0, r: 0, b: 0, l: 0 }, w: 0, h: 0, dprCap: 2, _fns: [] };
+  V.init = function (o) {
+    o = o || {}; if (o.dprCap) V.dprCap = o.dprCap;
+    if (!HAS_DOM) return V;
+    var m = document.querySelector('meta[name=viewport]');
+    if (!m) { m = document.createElement('meta'); m.name = 'viewport'; document.head.appendChild(m); }
+    var c = m.getAttribute('content') || 'width=device-width,initial-scale=1';
+    if (!/viewport-fit/.test(c)) m.setAttribute('content', c + ',viewport-fit=cover');
+    if (!V._probe) {
+      var p = document.createElement('div'); p.setAttribute('aria-hidden', 'true');
+      p.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+      document.body.appendChild(p); V._probe = p;
+      var fire = function () { V.measure(); for (var i = 0; i < V._fns.length; i++) V._fns[i](V); };
+      on(W, 'resize', fire); on(W, 'orientationchange', function () { setTimeout(fire, 120); });
+      if (W.visualViewport) on(W.visualViewport, 'resize', fire);
+    }
+    V.measure();
+    return V;
+  };
+  V.measure = function () {
+    if (!HAS_DOM) return V;
+    if (V._probe && W.getComputedStyle) { var cs = W.getComputedStyle(V._probe); V.insets = { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 }; }
+    var vv = W.visualViewport; V.w = vv ? vv.width : W.innerWidth; V.h = vv ? vv.height : W.innerHeight;
+    return V;
+  };
+  V.onResize = function (fn) { V._fns.push(fn); };
+  V.dpr = function () { return Math.min(V.dprCap, (HAS_DOM && W.devicePixelRatio) || 1); };
+  // fit a design-size box (dw x dh) into aw x ah. mode 'fit' letterboxes, 'fill' crops, 'fitfill' fits then grows the short side.
+  V.fit = function (dw, dh, aw, ah, mode) {
+    var sFit = Math.min(aw / dw, ah / dh), sFill = Math.max(aw / dw, ah / dh), s = mode === 'fill' ? sFill : sFit, w = dw, h = dh;
+    if (mode === 'fitfill') { w = aw / s; h = ah / s; }
+    return { scale: s, w: w, h: h, x: (aw - w * s) / 2, y: (ah - h * s) / 2 };
+  };
+  // size a canvas for crisp drawing; returns ctx already scaled to CSS pixels
+  V.canvas = function (cv, cssW, cssH) {
+    var d = V.dpr(); cv.width = Math.round(cssW * d); cv.height = Math.round(cssH * d);
+    cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
+    var ctx = cv.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0); return ctx;
+  };
+
+  /* ================= UI ================= */
+  GK.ui = {
+    _css: function () {
+      if (!HAS_DOM || document.getElementById('gk-css')) return;
+      var s = document.createElement('style'); s.id = 'gk-css';
+      s.textContent = '.gk-toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:rgba(20,20,28,.92);color:#fff;font:600 14px/1.3 -apple-system,system-ui,sans-serif;padding:10px 14px;border-radius:12px;z-index:99999;pointer-events:none;max-width:86vw;text-align:center;transition:opacity .25s}' +
+        '.gk-sheet{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99998;display:flex;align-items:flex-end;justify-content:center}' +
+        '.gk-sheet>div{background:var(--gk-panel,#1b1b24);color:var(--gk-text,#fff);width:min(520px,100%);padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));border-radius:16px 16px 0 0;font:15px -apple-system,system-ui,sans-serif}' +
+        '.gk-sheet textarea{width:100%;box-sizing:border-box;min-height:110px;font:14px ui-monospace,monospace;background:#0e0e14;color:#fff;border:1px solid var(--gk-line,#444);border-radius:8px;padding:8px;-webkit-user-select:text;user-select:text}' +
+        '.gk-sheet button,.gk-panel button{font:600 15px -apple-system,system-ui,sans-serif;border:0;border-radius:10px;padding:10px 14px;margin-top:10px;background:var(--gk-signal,#3d6cf0);color:var(--gk-signal-ink,#fff);min-height:44px}' +
+        '.gk-panel{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:8px;z-index:99997;background:rgba(18,18,26,.94);color:#fff;font:14px -apple-system,system-ui,sans-serif;padding:10px 12px;border-radius:12px;min-width:180px;display:none}' +
+        '.gk-panel label{display:flex;align-items:center;gap:8px;min-height:32px}.gk-ph{display:flex;align-items:center;gap:10px;margin-bottom:4px}.gk-fps{opacity:.7;margin-left:auto}.gk-panel .gk-x{margin:0;padding:4px 10px;min-height:32px;background:#444}' +
+        '.gk-badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}.gk-b{border-radius:10px;padding:8px 6px;text-align:center;background:rgba(127,127,127,.12);font:12px/1.25 -apple-system,system-ui,sans-serif}' +
+        '.gk-bi{font-size:20px}.gk-bn{font-weight:700;margin:2px 0}.gk-bd{opacity:.7;font-size:11px}.gk-earned{background:rgba(255,196,64,.22)}.gk-failed{opacity:.55}.gk-open{opacity:.8}.gk-bc{text-align:center;margin-top:8px;opacity:.7;font:12px -apple-system,system-ui,sans-serif}' +
+        '.gk-coach{position:fixed;z-index:99990;pointer-events:none;border:3px solid var(--gk-signal,#3d6cf0);border-radius:999px;box-shadow:0 0 0 4px rgba(61,108,240,.25);animation:gkpulse 1.4s ease-in-out infinite}' +
+        '.gk-coach-t{position:fixed;z-index:99991;pointer-events:none;background:var(--gk-panel,#1b1b24);color:var(--gk-text,#fff);font:600 max(14px,calc(14px * var(--gk-text-scale,1)))/1.3 -apple-system,system-ui,sans-serif;padding:8px 12px;border-radius:10px;max-width:72vw;text-align:center}' +
+        '@keyframes gkpulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.12);opacity:.7}}' +
+        'html[data-gk-motion=calm] .gk-coach{animation-duration:2.8s}html[data-gk-motion=still] .gk-coach{animation:none}' +
+        '@media (prefers-reduced-motion:reduce){html:not([data-gk-motion=full]) .gk-coach{animation:none}}' +
+        '.gk-prefs>div{max-height:86vh;overflow:auto}.gk-gl{font:700 12px -apple-system,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;opacity:.7;margin:14px 0 4px}' +
+        '.gk-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px}.gk-row input[type=range]{flex:1;max-width:60%;min-height:32px}.gk-row input[type=checkbox]{width:24px;height:24px}' +
+        '.gk-seg{display:flex;gap:4px;background:rgba(127,127,127,.18);border-radius:10px;padding:3px}.gk-seg button{margin:0;padding:6px 10px;min-height:38px;background:transparent;color:inherit;font-size:14px}.gk-seg button[aria-pressed=true]{background:var(--gk-signal,#3d6cf0);color:var(--gk-signal-ink,#fff)}' +
+        '.gk-btns{display:flex;gap:8px;flex-wrap:wrap}.gk-btns button{flex:1}' +
+        '.gk-gear{position:fixed;z-index:99989;width:44px;height:44px;border-radius:12px;border:1px solid var(--gk-line,#444);background:var(--gk-panel,#1b1b24);color:var(--gk-text,#fff);font:22px/1 -apple-system,system-ui,sans-serif;opacity:.88;padding:0;margin:0;touch-action:manipulation}' +
+        '.gk-tr{top:calc(8px + env(safe-area-inset-top,0px));right:calc(8px + env(safe-area-inset-right,0px))}.gk-tl{top:calc(8px + env(safe-area-inset-top,0px));left:calc(8px + env(safe-area-inset-left,0px))}' +
+        '.gk-br{bottom:calc(8px + env(safe-area-inset-bottom,0px));right:calc(8px + env(safe-area-inset-right,0px))}.gk-bl{bottom:calc(8px + env(safe-area-inset-bottom,0px));left:calc(8px + env(safe-area-inset-left,0px))}' +
+        '.gk-pyw{min-height:44px}.gk-prefs .gk-row span{font-size:max(14px,calc(14px * var(--gk-text-scale,1)))}';
+      document.head.appendChild(s);
+    },
+    toast: function (text, ms) {
+      if (!HAS_DOM) return; GK.ui._css();
+      var t = document.createElement('div'); t.className = 'gk-toast'; t.setAttribute('role', 'status'); t.textContent = text;
+      document.body.appendChild(t);
+      setTimeout(function () { t.style.opacity = '0'; setTimeout(function () { t.remove(); }, 300); }, ms || 2000);
+    },
+    // a bottom sheet with selectable text (the last share fallback, and the save export box)
+    sheet: function (title, text, o) {
+      if (!HAS_DOM) return null; GK.ui._css(); o = o || {};
+      var s = document.createElement('div'); s.className = 'gk-sheet';
+      s.innerHTML = '<div role="dialog" aria-label="' + esc(title) + '"><b>' + esc(title) + '</b>' + (o.note ? '<p style="opacity:.75;margin:6px 0">' + esc(o.note) + '</p>' : '') + '<textarea' + (o.editable ? '' : ' readonly') + '></textarea><div style="display:flex;gap:8px;flex-wrap:wrap">' + (o.okLabel ? '<button class="gk-ok">' + esc(o.okLabel) + '</button>' : '') + '<button class="gk-close">Close</button></div></div>';
+      var ta = s.querySelector('textarea'); ta.value = text || '';
+      ['pointerdown', 'touchstart', 'click'].forEach(function (ev) { s.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+      s.querySelector('.gk-close').addEventListener('click', function () { s.remove(); });
+      if (o.okLabel) s.querySelector('.gk-ok').addEventListener('click', function () { if (!o.onOk || o.onOk(ta.value) !== false) s.remove(); });
+      document.body.appendChild(s);
+      if (!o.editable) setTimeout(function () { try { ta.focus(); ta.select(); } catch (e) {} }, 50);
+      return s;
+    },
+    // export/import UI for a save handle from GK.save.protect or GK.save.store
+    saveTools: function (handle, o) {
+      o = o || {};
+      return {
+        exportSave: function () { GK.ui.sheet('Your save code', handle.exportCode(), { note: 'Copy this somewhere safe. Paste it back with Import to restore.' }); },
+        importSave: function () {
+          GK.ui.sheet('Import a save code', '', { editable: true, okLabel: 'Import', note: 'This replaces your current progress. Your old save is kept as a backup.', onOk: function (v) {
+            if (handle.importCode(v)) { GK.ui.toast('Save imported', 1800); if (o.onImported) o.onImported(); return true; }
+            GK.ui.toast('That code did not work', 2000); return false;
+          } });
+        }
+      };
+    }
+  };
+
+  /* ================= LOOP ================= */
+  // fixed-step loop: update(dt) at `step`, render(alpha) every frame; pauses while the page is hidden; uses juice hitstop if given
+  GK.loop = function (update, render, o) {
+    o = o || {};
+    var step = o.step || 1 / 60, acc = 0, last = 0, running = false, raf = 0, J = o.juice;
+    var L = { paused: false };
+    function frame(t) {
+      if (!running) return;
+      raf = W.requestAnimationFrame(frame);
+      var dt = last ? Math.min(0.1, (t - last) / 1000) : step; last = t;
+      if (J) J.update(dt);
+      var gd = J ? J.scale(dt) : dt; if (o.assist && GK.prefs) gd *= GK.prefs.speed();
+      if (!L.paused) { acc += gd; var n = 0; while (acc >= step && n++ < 5) { update(step); acc -= step; } if (n >= 5) acc = 0; }
+      if (render) render(acc / step, dt);
+    }
+    L.start = function () { if (running) return L; running = true; last = 0; raf = W.requestAnimationFrame(frame); return L; };
+    L.stop = function () { running = false; if (W.cancelAnimationFrame) W.cancelAnimationFrame(raf); return L; };
+    if (HAS_DOM) on(document, 'visibilitychange', function () { if (document.visibilityState === 'hidden') { L.paused = true; if (o.onHide) o.onHide(); } else { last = 0; L.paused = false; } });
+    return L;
+  };
+
+
+  /* ================= PREFS (2.0): one settings store and one panel ================= */
+  // Saved per game page as gk.prefs.v1. Every change sets data-gk-* on <html> and calls GK.prefs.on() listeners.
+  var PREF_KEY = 'gk.prefs.v1';
+  var PDEF = { motion: 'auto', flash: 'normal', speed: 1, text: 1, vol: { master: 1, music: 1, sfx: 1 }, tips: true, x: {} };
+  var PENUM = { motion: ['auto', 'full', 'calm', 'still'], flash: ['normal', 'soft'], speed: [1, 0.75, 0.5], text: [1, 1.25, 1.5] };
+  function pclone(o) { return JSON.parse(JSON.stringify(o)); }
+  function pfix(k, v) {
+    if (PENUM[k]) return PENUM[k].indexOf(v) >= 0 ? v : PDEF[k];
+    if (k === 'tips') return v !== false;
+    if (k === 'x') return (v && typeof v === 'object') ? v : {};
+    if (k === 'vol') { var o = {}, d = PDEF.vol; for (var b in d) { var n = v && typeof v[b] === 'number' && isFinite(v[b]) ? v[b] : d[b]; o[b] = clamp(n, 0, 1); } return o; }
+    return v;
+  }
+  var P = GK.prefs = { key: PREF_KEY, data: null, _fns: [] };
+  P.load = function () {
+    var d = pclone(PDEF), o = null;
+    try { o = JSON.parse(LS.get(PREF_KEY) || 'null'); } catch (e) { o = null; }
+    if (o && typeof o === 'object') for (var k in PDEF) if (k in o) d[k] = pfix(k, o[k]);
+    P.data = d; P.apply(); return d;
+  };
+  P.save = function () { return LS.set(PREF_KEY, JSON.stringify(P.data)); };
+  P.get = function (k) { if (!P.data) P.load(); return P.data[k]; };
+  P.set = function (k, v) { if (!P.data) P.load(); if (!(k in PDEF)) return false; if (PENUM[k] && PENUM[k].indexOf(v) < 0) return false; P.data[k] = pfix(k, v); P.save(); P.apply(); P._emit(k); return true; };
+  P.setVol = function (bus, v) { var o = pclone(P.get('vol')); o[bus] = v; return P.set('vol', o); };
+  P.vol = function (bus) { var v = P.get('vol'); return v && typeof v[bus] === 'number' ? v[bus] : 1; };
+  P.extra = function (name, v) { var x = P.get('x'); if (arguments.length < 2) return x[name]; var o = pclone(x); o[name] = v; return P.set('x', o); };
+  P.on = function (fn) { P._fns.push(fn); return function () { P._fns = P._fns.filter(function (f) { return f !== fn; }); }; };
+  P._emit = function (k) { if (!P.data) return; P.apply(); if (A._applyPrefs) A._applyPrefs(); for (var i = 0; i < P._fns.length; i++) { try { P._fns[i](k, P.data); } catch (e) {} } };
+  // 'auto' follows the phone: reduce motion on means Calm
+  P.motion = function () { var m = P.get('motion'); return m === 'auto' ? (ENV.reducedMotion ? 'calm' : 'full') : m; };
+  P.motionScale = function () { var m = P.motion(); return m === 'still' ? 0 : m === 'calm' ? 0.35 : 1; };
+  P.speed = function () { return pfix('speed', P.get('speed')); };
+  P.text = function () { return pfix('text', P.get('text')); };
+  P.apply = function () {
+    if (!HAS_DOM || !P.data) return;
+    var r = document.documentElement; if (!r || !r.setAttribute) return;
+    r.setAttribute('data-gk-motion', P.motion()); r.setAttribute('data-gk-flash', P.data.flash); r.setAttribute('data-gk-text', String(P.text()));
+    if (P.data.speed !== 1) r.setAttribute('data-gk-assist', String(P.data.speed)); else if (r.removeAttribute) r.removeAttribute('data-gk-assist');
+    if (r.style && r.style.setProperty) r.style.setProperty('--gk-text-scale', String(P.text()));
+  };
+  P.assisted = function () { return P.speed() < 1; };
+  P.exportCode = function () { return exportRaw(PREF_KEY, JSON.stringify(P.data || P.load())); };
+  P.importCode = function (code) { var v = importRaw(PREF_KEY, code); if (v == null) return false; try { JSON.parse(v); } catch (e) { return false; } LS.set(PREF_KEY, v); P.load(); P._emit('all'); return true; };
+  P.reset = function () { LS.del(PREF_KEY); P.load(); P._emit('all'); };
+
+  /* ================= FLASH LIMITER (2.0) ================= */
+  // Route every screen flash through GK.flash.allow(strength 0..1). It returns the strength to draw (0 = skip):
+  // never more than 3 flashes in any second, strength capped, Soft flashes halves it, Calm trims it, Still turns flashes off.
+  var F = GK.flash = { max: 3, win: 1000, cap: 0.7, _t: [], count: 0, dropped: 0, peak: 0 };
+  F.calls = 0;
+  F.allow = function (amount) { F.calls++;
+    amount = amount === undefined ? 1 : +amount || 0;
+    var m = P.motion(); if (m === 'still' || amount <= 0) { if (amount > 0) F.dropped++; return 0; }
+    var t = now(); while (F._t.length && t - F._t[0] >= F.win) F._t.shift();
+    if (F._t.length >= F.max) { F.dropped++; return 0; }
+    F._t.push(t); F.count++; if (F._t.length > F.peak) F.peak = F._t.length;
+    var a = amount; if (P.get('flash') === 'soft') a *= 0.5; if (m === 'calm') a *= 0.7;
+    return Math.min(a, F.cap);
+  };
+  F.stats = function () { return { count: F.count, dropped: F.dropped, peakPerSecond: F.peak }; };
+  F.reset = function () { F._t.length = 0; F.count = F.dropped = F.peak = 0; };
+
+  /* ================= PERF (2.0) ================= */
+  GK.perf = {
+    realDPR: 1,
+    // cap the drawing resolution for a finished game that reads window.devicePixelRatio itself
+    capDPR: function (cap) {
+      if (!HAS_DOM) return false; cap = cap || 2;
+      try {
+        var o = W, d = null; while (o && !(d = Object.getOwnPropertyDescriptor(o, 'devicePixelRatio'))) o = Object.getPrototypeOf(o);
+        var val = d && 'value' in d ? d.value : 1;
+        var read = d && d.get ? function () { return d.get.call(W); } : function () { return val; };
+        GK.perf.realDPR = +read() || 1;
+        Object.defineProperty(W, 'devicePixelRatio', { configurable: true, enumerable: true, get: function () { var r = +read() || 1; return r > cap ? cap : r; }, set: function (v) { val = v; } });
+        GK.perf.dprCap = cap; return true;
+      } catch (e) { return false; }
+    },
+    // test switch: hold the frame rate at fps (30 = what an iPhone does in Low Power Mode)
+    fpsTest: function (fps) {
+      if (!HAS_DOM || !W.requestAnimationFrame || W.requestAnimationFrame._gk) return false;
+      var raf0 = W.requestAnimationFrame.bind(W), step = 1000 / (fps || 30), last = 0, q = [], pending = false, id = 0;
+      function tick(t) {
+        if (last && t - last < step - 2) { raf0(tick); return; }
+        last = t; var run = q; q = []; pending = false;
+        for (var i = 0; i < run.length; i++) { try { run[i].f(t); } catch (e) { setTimeout(function () { throw e; }, 0); } }
+      }
+      var fake = function (f) { id++; q.push({ f: f, id: id }); if (!pending) { pending = true; raf0(tick); } return id; };
+      fake._gk = true; W.requestAnimationFrame = fake;
+      W.cancelAnimationFrame = function (n) { q = q.filter(function (x) { return x.id !== n; }); };
+      GK.perf.fps = fps || 30; return true;
+    },
+    // ?fps=30 or #fps=30 in the address, or localStorage gk.fps = 30
+    auto: function () {
+      var loc = ''; try { loc = (W.location.search || '') + (W.location.hash || ''); } catch (e) {}
+      var m = /[?#&]fps=(\d+)/.exec(loc), f = m ? +m[1] : +(LS.get('gk.fps') || 0);
+      if (f >= 10 && f < 60) return GK.perf.fpsTest(f);
+      return false;
+    }
+  };
+
+  /* ================= THEME (2.0) ================= */
+  // Kit surfaces read these CSS variables. Defaults are the 1.x colors, so nothing changes until a game sets them.
+  var TOK = { ink: '#12141c', panel: '#1b1b24', line: '#444444', text: '#ffffff', muted: '#a3a9bf', signal: '#3d6cf0', 'signal-ink': '#ffffff', good: '#4fd69c', warn: '#ff6b5a', font: '-apple-system,system-ui,sans-serif', num: 'ui-monospace,SFMono-Regular,Menlo,monospace' };
+  GK.theme = {
+    tokens: TOK,
+    // the studio frame: dark ink panels, gold for the one main action
+    studio: { ink: '#12141c', panel: '#1d2130', line: '#353b52', text: '#eef0f6', muted: '#a3a9bf', signal: '#ffc23d', 'signal-ink': '#2a1d00', good: '#4fd69c', warn: '#ff6b5a' },
+    set: function (o) {
+      o = o || {}; for (var k in o) if (k in TOK) TOK[k] = o[k];
+      if (HAS_DOM && document.documentElement && document.documentElement.style && document.documentElement.style.setProperty) for (var j in o) if (j in TOK) document.documentElement.style.setProperty('--gk-' + j, o[j]);
+      return TOK;
+    },
+    get: function (k) { return TOK[k]; }
+  };
+
+  /* ================= TEXT, POPUPS, ROLLING SCORE (2.0) ================= */
+  // canvas text with a legibility floor: never under `min` (12) CSS px, times the player's text size, ink outline then fill
+  GK.ui.text = function (ctx, str, x, y, o) {
+    o = o || {}; if (!ctx) return 0;
+    var size = Math.max(o.min || 12, o.size || 14) * P.text();
+    ctx.save();
+    if (o.alpha !== undefined) ctx.globalAlpha = (ctx.globalAlpha === undefined ? 1 : ctx.globalAlpha) * o.alpha;
+    ctx.font = (o.weight || 700) + ' ' + Math.round(size) + 'px ' + (o.font || TOK.font);
+    ctx.textAlign = o.align || 'center'; ctx.textBaseline = o.baseline || 'middle';
+    var ow = o.outline === undefined ? Math.max(2, size * 0.16) : o.outline;
+    if (ow > 0) { ctx.lineJoin = 'round'; ctx.lineWidth = ow; ctx.strokeStyle = o.stroke || 'rgba(10,10,16,0.9)'; ctx.strokeText(str, x, y); }
+    ctx.fillStyle = o.color || '#ffffff'; ctx.fillText(str, x, y);
+    ctx.restore();
+    return size;
+  };
+  GK.ui.floor = function (px, min) { return Math.max(min || 12, px) * P.text(); };
+  // block taps on a button for `ms` after it appears, so a panic tap on a loss can't skip the Again screen
+  GK.ui.lockout = function (el, ms) {
+    if (!el) return el; ms = ms === undefined ? 400 : ms;
+    var until = now() + ms, stop = function (e) { if (now() < until) { e.stopPropagation(); if (e.preventDefault) e.preventDefault(); } };
+    if (!el._gkLock) { el._gkLock = true; ['pointerdown', 'pointerup', 'click', 'touchend'].forEach(function (ev) { el.addEventListener(ev, stop, true); }); }
+    el._gkUntil = until; el.__gkStop = stop;
+    return el;
+  };
+  GK.popups = {
+    // pooled number popups: pop in, rise and fade in about 0.7 s; hits within 120 ms near the same spot merge
+    create: function (o) {
+      o = o || {};
+      var Q = { list: [], max: o.max || 12, life: o.life || 0.7, merge: o.merge === undefined ? 120 : o.merge, size: o.size || 16,
+        colors: { score: '#ffc23d', heal: '#4fd69c', damage: '#ff6b5a', info: '#eef0f6' } };
+      Q.add = function (x, y, value, opt) {
+        opt = opt || {}; var kind = opt.kind || 'score', t = now();
+        for (var i = Q.list.length - 1; i >= 0; i--) {
+          var p = Q.list[i];
+          if (p.kind === kind && typeof p.v === 'number' && typeof value === 'number' && t - p.t0 < Q.merge && Math.abs(p.x - x) < 48 && Math.abs(p.y - y) < 48) { p.v += value; p.t0 = t; p.age = Math.min(p.age, 0.05); p.n++; return p; }
+        }
+        if (Q.list.length >= Q.max) Q.list.shift();
+        var np = { x: x, y: y, v: value, kind: kind, age: 0, t0: t, n: 1, label: opt.label, color: opt.color };
+        Q.list.push(np); return np;
+      };
+      Q.update = function (dt) { for (var i = Q.list.length - 1; i >= 0; i--) { Q.list[i].age += dt; if (Q.list[i].age >= Q.life) Q.list.splice(i, 1); } };
+      Q.text = function (p) { return p.label !== undefined ? String(p.label) : (typeof p.v === 'number' ? (p.v > 0 ? '+' : '') + Math.round(p.v).toLocaleString() : String(p.v)); };
+      Q.draw = function (ctx) {
+        var m = P.motion();
+        for (var i = 0; i < Q.list.length; i++) {
+          var p = Q.list[i], k = p.age / Q.life;
+          var rise = (m === 'still' ? 0 : m === 'calm' ? 14 : 28) * GK.ease.cubicOut(k);
+          var sc = m === 'full' && k < 0.15 ? 0.6 + 0.4 * GK.ease.backOut(k / 0.15) : 1;
+          var alpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
+          GK.ui.text(ctx, Q.text(p), p.x, p.y - rise, { size: Q.size * sc * (p.n > 1 ? 1.15 : 1), color: p.color || Q.colors[p.kind] || '#fff', alpha: alpha });
+        }
+      };
+      Q.clear = function () { Q.list.length = 0; };
+      return Q;
+    }
+  };
+  // score that eases toward its real value, with a short "+250" beside it and a bump on change
+  GK.roll = function (start, o) {
+    o = o || {};
+    var R = { target: start || 0, shown: start || 0, delta: 0, deltaT: 0, bump: 0 };
+    R.set = function (v) { if (v === R.target) return R; if (v > R.target) { R.delta = (R.deltaT > 0 ? R.delta : 0) + (v - R.target); R.deltaT = o.hold || 1; } R.target = v; R.bump = 1; return R; };
+    R.snap = function (v) { R.target = R.shown = v; R.delta = 0; R.deltaT = 0; return R; };
+    R.update = function (dt) {
+      if (P.motion() === 'still') R.shown = R.target;
+      else { R.shown = GK.ease.smooth(R.shown, R.target, o.speed || 12, dt); if (Math.abs(R.target - R.shown) < 0.5) R.shown = R.target; }
+      R.deltaT = Math.max(0, R.deltaT - dt); R.bump = Math.max(0, R.bump - dt * 6); return R;
+    };
+    R.text = function () { return Math.round(R.shown).toLocaleString(); };
+    R.deltaText = function () { return R.deltaT > 0 && R.delta ? '+' + Math.round(R.delta).toLocaleString() : ''; };
+    R.scale = function () { return P.motion() === 'full' ? 1 + 0.12 * R.bump : 1; };
+    return R;
+  };
+
+  /* ================= COACH and HINTS (2.0) ================= */
+  // GK.coach.create(id, steps, o): teach by doing. steps: [{id, text, target: element | () => element | {x,y,r}, done: () => bool}]
+  // Shows a pulsing ring on the first step not yet done; retires for good once all steps are done.
+  GK.coach = {
+    create: function (id, steps, o) {
+      o = o || {};
+      GK.wired('coach', id);
+      var key = 'gk.coach.' + id, C = { steps: steps || [], cur: -1, el: null, label: null, done: LS.get(key) === 'done' };
+      function where(s) {
+        var t = typeof s.target === 'function' ? s.target() : s.target; if (!t) return null;
+        if (t.getBoundingClientRect) { var r = t.getBoundingClientRect(); if (!r || (!r.width && !r.height)) return null; return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: Math.max(r.width, r.height) / 2 + 8 }; }
+        return (typeof t.x === 'number' && typeof t.y === 'number') ? { x: t.x, y: t.y, r: t.r || 36 } : null;
+      }
+      C.hide = function () { if (C.el) C.el.style.display = 'none'; if (C.label) C.label.style.display = 'none'; };
+      C.show = function (i, t) {
+        C.cur = i; if (!HAS_DOM) return; if (!t) { C.hide(); return; }
+        GK.ui._css();
+        if (!C.el) { C.el = document.createElement('div'); C.el.className = 'gk-coach'; C.el.setAttribute('aria-hidden', 'true'); document.body.appendChild(C.el);
+          C.label = document.createElement('div'); C.label.className = 'gk-coach-t'; C.label.setAttribute('role', 'status'); document.body.appendChild(C.label); }
+        var d = Math.round(t.r * 2);
+        C.el.style.cssText = 'display:block;left:' + Math.round(t.x - t.r) + 'px;top:' + Math.round(t.y - t.r) + 'px;width:' + d + 'px;height:' + d + 'px';
+        var s = C.steps[i];
+        if (s && s.text) { C.label.textContent = s.text; var below = t.y + t.r + 10, H = (W.innerHeight || 800); C.label.style.cssText = 'display:block;left:50%;transform:translateX(-50%);top:' + Math.round(below > H - 80 ? t.y - t.r - 46 : below) + 'px'; }
+        else C.label.style.display = 'none';
+      };
+      C.retire = function () { C.done = true; LS.set(key, 'done'); C.hide(); if (C._timer) clearInterval(C._timer); if (o.onRetire) o.onRetire(); };
+      C.reset = function () { LS.del(key); C.done = false; };
+      C.current = function () { return C.cur >= 0 ? C.steps[C.cur] : null; };
+      C.target = function () { var s = C.current(); return s ? where(s) : null; };
+      C.update = function () {
+        if (C.done) return null;
+        if (o.when && !o.when()) { C.hide(); return null; }
+        for (var i = 0; i < C.steps.length; i++) {
+          var s = C.steps[i], met = false; try { met = !!s.done(); } catch (e) {}
+          if (!met) { C.show(i, where(s)); return s; }
+        }
+        C.retire(); return null;
+      };
+      if (!C.done && HAS_DOM && o.auto !== false) C._timer = setInterval(C.update, o.every || 250);
+      return C;
+    }
+  };
+  // GK.hints.once(id, text): a short tip the first time something happens; at most one tip per 20 s
+  GK.hints = {
+    gap: 20000, _last: -1e9,
+    seen: function () { try { var a = JSON.parse(LS.get('gk.hints') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } },
+    once: function (id, text, o) {
+      o = o || {}; if (P.get('tips') === false) return false;
+      var s = GK.hints.seen(); if (s.indexOf(id) >= 0) return false;
+      var t = now(); if (t - GK.hints._last < GK.hints.gap) return false;
+      GK.hints._last = t; s.push(id); LS.set('gk.hints', JSON.stringify(s.slice(-200)));
+      if (GK.ui && HAS_DOM) GK.ui.toast(text, o.ms || 3200);
+      return true;
+    },
+    reset: function () { LS.del('gk.hints'); GK.hints._last = -1e9; }
+  };
+
+  /* ================= SETTINGS PANEL (2.0) ================= */
+  // GK.prefs.panel({ speed, text, music, save, extras:[{label,get(),set(v)}], onClose }) opens "Play your way"
+  P.panel = function (o) {
+    if (!HAS_DOM) return null; o = o || {}; GK.ui._css(); if (!P.data) P.load();
+    var s = document.createElement('div'); s.className = 'gk-sheet gk-prefs';
+    function seg(k, vals, labels) {
+      var cur = P.get(k), h = '<div class="gk-seg" role="group">';
+      for (var i = 0; i < vals.length; i++) h += '<button type="button" data-k="' + k + '" data-v="' + vals[i] + '" aria-pressed="' + (String(cur) === String(vals[i])) + '">' + esc(labels[i]) + '</button>';
+      return h + '</div>';
+    }
+    function row(label, ctl) { return '<div class="gk-row"><span>' + esc(label) + '</span>' + ctl + '</div>'; }
+    function slider(bus, label) { return row(label, '<input type="range" min="0" max="1" step="0.05" data-vol="' + bus + '" value="' + P.vol(bus) + '" aria-label="' + esc(label) + '">'); }
+    function sw(key, label, on) { return row(label, '<input type="checkbox" role="switch" data-sw="' + key + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(label) + '">'); }
+    var h = '<div role="dialog" aria-label="Play your way"><div class="gk-ph"><b>' + esc(o.title || 'Play your way') + '</b><button type="button" class="gk-x gk-done">Done</button></div>';
+    h += '<div class="gk-gl">Move</div>' + row('Motion', seg('motion', ['auto', 'full', 'calm', 'still'], ['Auto', 'Full', 'Calm', 'Still'])) + sw('flash', 'Soft flashes', P.get('flash') === 'soft');
+    if (o.speed) h += row('Game speed', seg('speed', [0.5, 0.75, 1], ['50%', '75%', '100%']));
+    if (o.text) h += '<div class="gk-gl">Read</div>' + row('Text size', seg('text', [1, 1.25, 1.5], ['A', 'A+', 'A++']));
+    if (o.sound !== false) { h += '<div class="gk-gl">Hear</div>' + slider('master', o.music ? 'All sound' : 'Sound'); if (o.music) h += slider('music', 'Music') + slider('sfx', 'Effects'); }
+    (o.rows || []).forEach(function (r) { h += r.label ? row(r.label, r.html || '') : (r.html || ''); });
+    (o.extras || []).forEach(function (x, i) { h += sw('x' + i, x.label, !!x.get()); });
+    h += '<div class="gk-gl">More</div><div class="gk-btns">' + (o.tips !== false ? '<button type="button" data-act="tips">Show tips again</button>' : '') +
+      (o.save ? '<button type="button" data-act="export">Export save</button><button type="button" data-act="import">Import save</button>' : '') + '</div></div>';
+    s.innerHTML = h;
+    ['pointerdown', 'touchstart'].forEach(function (ev) { s.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+    s.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var t = e.target || {}, ds = t.dataset || {};
+      if (t === s) { close(); return; }
+      if (ds.k) { var v = ds.k === 'motion' ? ds.v : +ds.v; P.set(ds.k, v); var bs = s.querySelectorAll('[data-k="' + ds.k + '"]'); for (var i = 0; i < bs.length; i++) bs[i].setAttribute('aria-pressed', String(bs[i].getAttribute('data-v') === String(ds.v))); return; }
+      if (ds.act === 'tips') { GK.hints.reset(); if (o.onTips) o.onTips(); GK.ui.toast('Tips will show again', 1600); return; }
+      if (ds.act === 'export' && o.save) { GK.ui.saveTools(o.save, o).exportSave(); return; }
+      if (ds.act === 'import' && o.save) { GK.ui.saveTools(o.save, o).importSave(); return; }
+      if (t.className && /gk-done/.test(t.className)) close();
+    });
+    s.addEventListener('change', function (e) {
+      var t = e.target || {}, ds = t.dataset || {};
+      if (ds.sw === 'flash') P.set('flash', t.checked ? 'soft' : 'normal');
+      else if (ds.sw && ds.sw.charAt(0) === 'x') { var x = (o.extras || [])[+ds.sw.slice(1)]; if (x) x.set(!!t.checked); }
+    });
+    s.addEventListener('input', function (e) { var t = e.target || {}, ds = t.dataset || {}; if (ds.vol) P.setVol(ds.vol, +t.value); });
+    function close() { s.remove(); P._panel = null; if (o.onClose) o.onClose(); }
+    if (P._panel && P._panel.remove) P._panel.remove();
+    document.body.appendChild(s); P._panel = s; GK.wired('panel'); if (o.onOpen) o.onOpen(s);
+    return { el: s, close: close };
+  };
+
+
+
+
+  /* ================= WIRING (2.1): settings button, studio frame, feature registry ================= */
+  // GK.wired(name, note) records which kit features a game turned on, so the bot check can see them.
+  var WIRED = {};
+  GK.wired = function (name, note) { if (name) WIRED[name] = note === undefined ? true : note; return WIRED; };
+  GK.wiredList = function () { var o = {}; for (var k in WIRED) o[k] = WIRED[k]; return o; };
+  // GK.ui.gear({ panel: {...GK.prefs.panel options}, corner: 'tr'|'tl'|'br'|'bl', onOpen, onClose, parent })
+  // a 44 px settings button in a safe-area corner that opens "Play your way". .show(bool) hides it during play if needed.
+  GK.ui.gear = function (o) {
+    if (!HAS_DOM) return null; o = o || {}; GK.ui._css();
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'gk-gear gk-' + (o.corner || 'tr');
+    b.setAttribute('aria-label', o.label || 'Settings'); b.setAttribute('data-gk-prefs', ''); b.textContent = '⚙';
+    ['pointerdown', 'touchstart', 'mousedown'].forEach(function (ev) { b.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+    b.addEventListener('click', function (e) { e.stopPropagation(); if (e.preventDefault) e.preventDefault(); GK.ui.openPrefs(o); });
+    (o.parent || document.body).appendChild(b); GK.wired('gear', o.corner || 'tr');
+    return { el: b, show: function (v) { b.style.display = v === false ? 'none' : ''; } };
+  };
+  // GK.ui.prefsButton(o): an inline "Play your way" button for a game's own settings screen (use instead of the gear)
+  GK.ui.prefsButton = function (o) {
+    if (!HAS_DOM) return null; o = o || {}; GK.ui._css();
+    var b = document.createElement('button'); b.type = 'button'; b.className = (o.className || '') + ' gk-pyw'; b.setAttribute('data-gk-prefs', '');
+    b.textContent = o.text || 'Play your way';
+    b.addEventListener('click', function (e) { e.stopPropagation(); GK.ui.openPrefs(o); });
+    GK.wired('gear', 'inline'); return b;
+  };
+  GK.ui.openPrefs = function (o) {
+    o = o || {}; var po = {}, src = o.panel || {}; for (var k in src) po[k] = src[k];
+    var c0 = po.onClose; po.onClose = function () { if (c0) c0(); if (o.onClose) o.onClose(); };
+    if (o.onOpen) o.onOpen();
+    return P.panel(po);
+  };
+  // GK.studio(): studio colors on every kit surface (panel, toasts, coach ring, sheets). The game's own art is not touched.
+  GK.studio = function (over) {
+    var t = {}, S = GK.theme.studio; for (var k in S) t[k] = S[k]; if (over) for (var j in over) t[j] = over[j];
+    GK.theme.set(t); GK.wired('theme', 'studio'); return t;
+  };
+  if (HAS_DOM) { try { P.load(); } catch (e) {} }
+
+  /* ================= RETROFIT (drop-in for a finished game) ================= */
+  // GK.retrofit({ game, saves: ['key', ...], validate }) goes in its own script tag right after the kit
+  // and before the game's script. It changes no save format and no game code:
+  //  - each listed localStorage key gets 3 rolling backups and is restored from the newest good one
+  //    when it is missing or broken;
+  //  - the first AudioContext the game makes is handed to GK.audio, so it is unlocked on every tap,
+  //    plays with the ringer switch on silent, and comes back after a call or a locked screen.
+  GK.retrofit = function (o) {
+    o = o || {};
+    var R = { game: o.game || '', saves: {}, made: 0, v: 2 };
+    // v2 automatic wins: sharpness cap (default 2), ?fps=30 test switch, hidden-page fade, master limiter
+    if (o.dpr !== false && GK.perf) { try { R.dpr = GK.perf.capDPR(o.dpr || 2); } catch (e) {} }
+    if (o.fps !== false && GK.perf) { try { R.fps = GK.perf.auto(); } catch (e) {} }
+    if (o.hideAudio === false) A.hideMode = false;
+    if (o.limiter === false) A.route = false;
+    var keys = o.saves || [];
+    for (var i = 0; i < keys.length; i++) { try { R.saves[keys[i]] = GK.save.protect(keys[i], { validate: o.validate, keep: o.keep }); } catch (e) {} }
+    if (o.audio !== false && HAS_DOM) {
+      A.init({ create: false });
+      var wrap = function (name) {
+        var C = W[name]; if (!C || C._gkWrapped) return;
+        var G = function (opts) {
+          var c = arguments.length ? new C(opts) : new C();
+          R.made++;
+          if (!A.ctx || A.ctx.state === 'closed') { A.adopt(c, c.destination); gesture(); }
+          return c;
+        };
+        G.prototype = C.prototype; G._gkWrapped = true; G._gkOriginal = C;
+        try { Object.setPrototypeOf(G, C); } catch (e) {}
+        try { W[name] = G; } catch (e) {}
+      };
+      wrap('AudioContext'); wrap('webkitAudioContext');
+    }
+    GK.retrofitted = R;
+    return R;
+  };
+
+  root.GK = GK;
+  if (typeof module !== 'undefined' && module.exports) module.exports = GK;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script id="gkboot">window.GK.retrofit({"game":"clause-and-effect","saves":["clause-effect-save-v1"]});</script>
+<script>
+"use strict";
+// Clause & Effect — single-file build. Sections: CONFIG, DATA, RULES (pure), STORAGE, AUDIO, STATE, RENDERER, UI, INPUT, BOOT.
+/* ================= CONFIG ================= */
+const CONFIG = {
+  VERSION: 1,
+  SAVE_KEY: 'clause-effect-save-v1',
+  MAX_TICKS: 60,          // default patience per run
+  TICK_MS: 260,           // animation time per tick at 1x
+  FAST_MULT: 3,           // speed multiplier on fast mode
+  CELL_MAX: 54,           // largest cell size in px
+  REPEAT_COUNTS: [2, 3, 4, 5, 6, 8],
+};
+
+/* ================= DATA ================= */
+const DIRS = { north: [0, -1], east: [1, 0], south: [0, 1], west: [-1, 0] };
+const DIR_ORDER = ['north', 'east', 'south', 'west'];
+
+// Commands the routine can hold. Action commands take one tick.
+const COMMANDS = {
+  step:   { label: 'step',        about: 'Move forward one stride.' },
+  left:   { label: 'turn left',   about: 'Turn 90° to the left.' },
+  right:  { label: 'turn right',  about: 'Turn 90° to the right.' },
+  around: { label: 'turn around', about: 'Face the other way.' },
+  wait:   { label: 'wait',        about: 'Do nothing for one tick.' },
+  repeat: { label: 'repeat',      about: 'Do one action several ticks in a row.' },
+  if:     { label: 'if',          about: 'Look one tile ahead, then pick one of two actions.' },
+};
+const ACTIONS = ['step', 'left', 'right', 'around', 'wait'];
+
+const SENSES = {
+  wall:  { label: 'wall ahead',  about: 'A filing wall is right in front.' },
+  open:  { label: 'path ahead',  about: 'Pip could step forward without bumping.' },
+  ink:   { label: 'ink ahead',   about: 'An ink spill is right in front.' },
+  guard: { label: 'guard ahead', about: 'A guard is right in front.' },
+  key:   { label: 'holding key', about: 'Pip is carrying the brass key.' },
+};
+
+// World clauses. Each has a sentence template with one slot.
+const CLAUSES = {
+  walls:  { pre: 'Walls are',              post: '.',                opts: { solid: 'solid', soft: 'soft' } },
+  hatch:  { pre: 'The hatch',              post: '.',                opts: { fixed: 'stays put', follows: 'follows Pip' } },
+  door:   { pre: 'The door opens',         post: '.',                opts: { key: 'with the key', anyone: 'for anyone' } },
+  guards: { pre: 'Guards are',             post: '.',                opts: { alert: 'alert', asleep: 'asleep' } },
+  ink:    { pre: 'Ink is',                 post: '.',                opts: { deadly: 'wet (it smudges Pip)', dry: 'dry' } },
+  spare:  { pre: 'A spare hatch appears',  post: '.',                opts: { none: 'nowhere', under: 'under Pip' } },
+  winOn:  { pre: 'Pip escapes by touching', post: '.',               opts: { hatch: 'the hatch', wall: 'any wall' } },
+  stride: { pre: "Pip's stride is",        post: '.',                opts: { 1: '1 tile', 2: '2 tiles (a hop)' } },
+  pace:   { pre: 'Guards move every',      post: '.',                opts: { 1: 'tick', 2: '2nd tick', 3: '3rd tick' } },
+};
+const CLAUSE_DEFAULTS = { walls: 'solid', hatch: 'fixed', door: 'key', guards: 'alert', ink: 'deadly', spare: 'none', winOn: 'hatch', stride: '1', pace: '1' };
+
+// The Auditor's seals. "lock" seals freeze a clause; "run" seals inspect the run afterwards.
+const SEALS = {
+  walls:    { text: 'Walls stay solid.',                         lock: ['walls', 'solid'] },
+  noCross:  { text: 'Pip may not pass through or hop over walls or locked doors.', run: t => !t.crossedWall },
+  hatchFix: { text: 'The hatch must not move.',                  run: t => !t.hatchMoved },
+  keyEsc:   { text: 'Pip must hold the key when escaping.',      run: t => t.hadKeyAtEnd || !t.levelHadKey },
+  guards:   { text: 'Guards stay alert.',                        lock: ['guards', 'alert'] },
+  oneHatch: { text: 'There is exactly one hatch.',               run: t => t.maxHatches <= 1 },
+  hatchOnly:{ text: 'Escapes go through the hatch.',             lock: ['winOn', 'hatch'] },
+  noInk:    { text: 'Pip may not touch ink, wet or dry.',        run: t => !t.touchedInk },
+  door:     { text: 'The door opens with the key.',              lock: ['door', 'key'] },
+  pen:      { text: 'The Pen holds ink for 2 strokes.',          static: (lv, led) => strokes(lv, led) <= 2 },
+};
+
+/* ================= LEVELS (content as data) =================
+ Map legend: # wall  . floor  p Pip  H hatch  k key  D door  ~ ink  G guard(see guards[])
+*/
+const LEVELS = [
+  {
+    id: 'facing', name: 'Facing Facts',
+    memo: 'Pip is an ink blot who wants out of the Registry. Pip does exactly what the ledger says. Tap the glowing word to change which way Pip starts.',
+    remark: 'A clerk who reads the ledger. Acceptable.',
+    hints: ['The hatch is to the east.', 'Set "Pip starts facing" to east, then Run.'],
+    map: ['#######', '#.....#', '#p...H#', '#.....#', '#######'],
+    face: { v: 'north' },
+    routine: [{ cmd: 'step', lock: true }],
+    palette: [], clauses: [], seals: [],
+    sol: { face: 'east' },
+  },
+  {
+    id: 'soft', name: 'Soft Paperwork',
+    memo: 'A filing wall blocks the way. But the ledger also describes the world, and some of it is not sealed yet.',
+    remark: 'Walls that are not walls. Irregular. I am sealing that clause.',
+    hints: ['Look at the World section.', 'Make walls soft.'],
+    map: ['#######', '#..#..#', '#p.#.H#', '#..#..#', '#######'],
+    face: { v: 'east', lock: true },
+    routine: [{ cmd: 'step', lock: true }],
+    palette: [], clauses: [{ key: 'walls', v: 'solid' }], seals: [],
+    sol: { clauses: { walls: 'soft' } },
+  },
+  {
+    id: 'stairs', name: 'Stairwell Clause',
+    memo: 'Sealed: walls stay solid. Write a routine instead. Pip reads one line per tick, top to bottom, then starts over.',
+    remark: 'Four lines, a hundred steps. Loops are permitted. For now.',
+    hints: ['The stairs go step, turn, step, turn.', 'step, turn right, step, turn left.'],
+    map: ['#######', '#p.####', '##..###', '###..##', '####.H#', '#######'],
+    face: { v: 'east', lock: true },
+    routine: [{}, {}, {}, {}],
+    palette: ['step', 'left', 'right', 'around', 'wait'],
+    clauses: [{ key: 'walls', v: 'solid' }], seals: ['walls'],
+    sol: { routine: ['step', 'right', 'step', 'left'] },
+  },
+  {
+    id: 'follow', name: 'Come Here, Hatch',
+    memo: 'This corridor twists too much for two lines. Who says Pip has to do the walking?',
+    remark: 'The hatch came to you. Hatches do not do that. Sealing.',
+    hints: ['Read the hatch clause.', 'Set the hatch to follow Pip. You can leave the routine empty.'],
+    map: ['#######', '#p#...#', '#.#.#.#', '#...#H#', '#######'],
+    face: { v: 'south', lock: true },
+    routine: [{}, {}],
+    palette: ['step', 'left', 'right', 'wait'],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'hatch', v: 'fixed' }], seals: ['walls'],
+    sol: { clauses: { hatch: 'follows' }, routine: ['step'] },
+  },
+  {
+    id: 'spiral', name: 'Bolted Down',
+    memo: 'New seal: the hatch must not move. You can still edit the clause, but I will check. Pip can look before stepping now.',
+    remark: 'One line that thinks. Good. Thinking is allowed. Bending is not.',
+    hints: ['Use one "if" line.', 'if wall ahead → turn right, otherwise → step.'],
+    map: ['#######', '#p....#', '#####.#', '#..H#.#', '#.###.#', '#.....#', '#######'],
+    face: { v: 'east', lock: true },
+    routine: [{}],
+    palette: ['step', 'left', 'right', 'if'], senses: ['wall', 'open'],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'hatch', v: 'fixed' }], seals: ['walls', 'hatchFix'],
+    sol: { routine: [{ cmd: 'if', sense: 'wall', then: 'right', else: 'step' }] },
+  },
+  {
+    id: 'door', name: 'Anyone May Enter',
+    memo: 'The key is boxed in. The door wants the key. Or does it?',
+    remark: 'A door that opens for anyone is a hole with hinges. Sealed.',
+    hints: ['Read the door clause.', 'Let the door open for anyone.'],
+    map: ['#######', '#~~~~~#', '#~#k#~#', '#p.D.H#', '#######'],
+    face: { v: 'east', lock: true },
+    routine: [{ cmd: 'step', lock: true }],
+    palette: [],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'hatch', v: 'fixed' }, { key: 'door', v: 'key' }, { key: 'ink', v: 'deadly', lock: true }],
+    seals: ['walls', 'hatchFix'],
+    sol: { clauses: { door: 'anyone' } },
+  },
+  {
+    id: 'keyholder', name: 'Keyholder',
+    memo: 'New seal: Pip must hold the key when escaping. "repeat" does one action several ticks in a row.',
+    remark: 'Out, back, through. Proper procedure at last.',
+    hints: ['Go east to the key, turn around, then walk west all the way.', 'repeat 3 × step, turn around, repeat 6 × step.'],
+    map: ['#########', '#HD.p..k#', '#########'],
+    face: { v: 'east', lock: true },
+    routine: [{}, {}, {}],
+    palette: ['step', 'left', 'right', 'around', 'wait', 'repeat'],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'door', v: 'key' }], seals: ['walls', 'hatchFix', 'keyEsc'],
+    sol: { routine: [{ cmd: 'repeat', n: 3, act: 'step' }, 'around', { cmd: 'repeat', n: 6, act: 'step' }] },
+  },
+  {
+    id: 'nap', name: 'Nap Time',
+    memo: 'A guard patrols the only corridor. Guards catch Pip if they meet on the same tile.',
+    remark: 'You put my guard to sleep. In writing. Sealed.',
+    hints: ['Read the guard clause.', 'Guards are asleep.'],
+    map: ['#########', '#p.....H#', '#########'],
+    guards: [{ x: 4, y: 1, dir: 'west' }],
+    face: { v: 'east', lock: true },
+    routine: [{ cmd: 'step', lock: true }],
+    palette: [],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'guards', v: 'alert' }], seals: ['walls', 'hatchFix', 'keyEsc'],
+    sol: { clauses: { guards: 'asleep' } },
+  },
+  {
+    id: 'shift', name: 'Night Shift',
+    memo: 'Sealed: guards stay alert. This one walks north and south across your hall. Watch its rhythm, then time your crossing.',
+    remark: 'Patience. A rare quality in an ink blot.',
+    hints: ['The guard reaches your hall every 4 ticks.', 'Try step, wait. Or step, step, wait.'],
+    map: ['#########', '####.####', '####.####', '#p.....H#', '####.####', '####.####', '#########'],
+    guards: [{ x: 4, y: 2, dir: 'north' }],
+    face: { v: 'east', lock: true },
+    routine: [{}, {}],
+    palette: ['step', 'wait'],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'guards', v: 'alert' }], seals: ['walls', 'guards', 'hatchFix'],
+    sol: { routine: ['step', 'wait'] },
+  },
+  {
+    id: 'vault', name: 'Hatch on Demand',
+    memo: 'The hatch sits inside a sealed vault. Every seal I own is on this page. Read the World section closely.',
+    remark: 'You PRINTED a hatch. Forgery. Sealed, stamped, and filed.',
+    hints: ['None of the seals mention spare hatches.', 'A spare hatch appears under Pip.'],
+    map: ['#######', '#p....#', '#.###.#', '#.#H#.#', '#.###.#', '#.....#', '#######'],
+    face: { v: 'east', lock: true },
+    routine: [{ cmd: 'if', sense: 'wall', then: 'right', else: 'step', lock: true }],
+    palette: [],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'hatch', v: 'fixed' }, { key: 'spare', v: 'none' }],
+    seals: ['walls', 'hatchFix', 'noCross'],
+    sol: { clauses: { spare: 'under' } },
+  },
+  {
+    id: 'marsh', name: 'Ink Marsh',
+    memo: 'New seal: exactly one hatch. The path is lined with wet ink, not walls. Pip can sense more than walls.',
+    remark: 'You read the ink instead of the walls. Very literate.',
+    hints: ['Walls never block this path. Ink does.', 'if ink ahead → turn left, otherwise → step.'],
+    map: ['#########', '#~~~~~~~#', '#~~~~~~~#', '#~~...~~#', '#~~.~.~~#', '#~~H~.~~#', '#~~~~.~~#', '#p....~~#', '#########'],
+    face: { v: 'east', lock: true },
+    routine: [{}],
+    palette: ['step', 'left', 'right', 'if'], senses: ['wall', 'open', 'ink'],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'ink', v: 'deadly' }, { key: 'spare', v: 'none' }],
+    seals: ['walls', 'hatchFix', 'oneHatch', 'noInk'],
+    sol: { routine: [{ cmd: 'if', sense: 'ink', then: 'left', else: 'step' }] },
+  },
+  {
+    id: 'touch', name: 'Fine Print',
+    memo: 'Guards everywhere, ink everywhere, and the hatch far away. Read what escaping actually means.',
+    remark: 'Escaping by touching a WALL. I will be rewriting that sentence myself.',
+    hints: ['Read the last clause. Then look at what is right next to Pip.', 'Pip escapes by touching any wall, and Pip starts facing west.'],
+    map: ['#########', '#~~~~~~~#', '#~G~G~G~#', '#p~~~~~H#', '#########'],
+    guards: [{ x: 2, y: 2, dir: 'south' }, { x: 4, y: 2, dir: 'north' }, { x: 6, y: 2, dir: 'south' }],
+    face: { v: 'east' },
+    routine: [{ cmd: 'step', lock: true }],
+    palette: [],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'ink', v: 'deadly' }, { key: 'winOn', v: 'hatch' }],
+    seals: ['walls', 'guards', 'hatchFix', 'oneHatch', 'noInk'],
+    sol: { face: 'west', clauses: { winOn: 'wall' } },
+  },
+  {
+    id: 'hop', name: 'Long Stride',
+    memo: 'Sealed: escapes go through the hatch. Not every clause is a cheat. Some are just tools, if they pass every seal.',
+    remark: 'You changed a rule and broke no seal. Annoyingly legal.',
+    hints: ['A 2-tile stride hops over the tile in between.', "Set Pip's stride to 2 tiles, then hop the ink and turn at the walls."],
+    map: ['#########', '#p~.~.~.#', '#######~#', '#.~.~H#.#', '#~#####~#', '#.~.~.~.#', '#########'],
+    face: { v: 'east', lock: true },
+    routine: [{}, {}],
+    palette: ['step', 'left', 'right', 'around', 'wait', 'if'], senses: ['wall', 'open', 'ink'],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'ink', v: 'deadly' }, { key: 'stride', v: '1' }],
+    seals: ['walls', 'noCross', 'hatchFix', 'oneHatch', 'hatchOnly', 'noInk'],
+    sol: { clauses: { stride: '2' }, routine: [{ cmd: 'if', sense: 'wall', then: 'right', else: 'step' }] },
+  },
+  {
+    id: 'pen', name: "The Auditor's Pen",
+    memo: 'The Auditor keeps a Pen in the far office. Take it to the hatch. Every seal is in force. Everything you learned is allowed.',
+    remark: 'Put. The Pen. Down.',
+    hints: [],
+    map: ['###########', '#####.#.###', '#####.#.###', '#HDp~.~.~k#', '#####.#.###', '#####.#.###', '###########'],
+    guards: [{ x: 5, y: 1, dir: 'south' }, { x: 7, y: 1, dir: 'north' }],
+    keyLook: 'pen',
+    face: { v: 'west' },
+    routine: [{}, {}, {}],
+    palette: ['step', 'left', 'right', 'around', 'wait', 'repeat', 'if'], senses: ['wall', 'open', 'ink', 'guard', 'key'],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'door', v: 'key' }, { key: 'stride', v: '1' }, { key: 'pace', v: '1' }],
+    seals: ['walls', 'noCross', 'hatchFix', 'keyEsc', 'guards', 'oneHatch', 'hatchOnly', 'noInk'],
+    sol: { face: 'east', clauses: { stride: '2', pace: '2' }, routine: [{ cmd: 'repeat', n: 4, act: 'step' }, 'around', { cmd: 'repeat', n: 3, act: 'step' }] },
+  },
+  {
+    id: 'audit', name: 'Audit the Auditor',
+    memo: 'Pip holds the Pen. The seals are just lines now. Strike a seal and rewrite a clause. The Pen has 2 strokes of ink.',
+    remark: 'APPROVED. ...Wait. Who stamped that?',
+    hints: ['Pick one old loophole. Strike the seal that blocks it, then change its clause.', 'Strike "exactly one hatch" and set a spare hatch under Pip.'],
+    map: ['##########', '#........#', '#p######H#', '##########'],
+    guards: [{ x: 5, y: 1, dir: 'west' }],
+    face: { v: 'north', lock: true },
+    routine: [{ cmd: 'step' }, {}, {}],
+    palette: ['step', 'left', 'right', 'around', 'wait', 'repeat', 'if'], senses: ['wall', 'open', 'ink', 'guard', 'key'],
+    clauses: [{ key: 'walls', v: 'solid' }, { key: 'hatch', v: 'fixed' }, { key: 'spare', v: 'none' }, { key: 'winOn', v: 'hatch' }, { key: 'guards', v: 'alert' }],
+    seals: ['walls', 'hatchFix', 'oneHatch', 'hatchOnly', 'guards', 'pen'],
+    strikable: true,
+    sol: { clauses: { spare: 'under' }, struck: { oneHatch: true } },
+  },
+];
+
+/* ================= RULES (pure) ================= */
+// Apply a reference solution (data) to a fresh ledger. Used for par and for tests.
+function applySol(level, sol) {
+  const led = freshLedger(level);
+  if (sol.face) led.face = sol.face;
+  if (sol.clauses) Object.assign(led.clauses, sol.clauses);
+  if (sol.struck) Object.assign(led.struck, sol.struck);
+  if (sol.routine) sol.routine.forEach((r, i) => { Object.assign(led.routine[i], typeof r === 'string' ? { cmd: r } : r); });
+  return led;
+}
+
+function parseMap(level) {
+  const rows = level.map;
+  const h = rows.length, w = Math.max(...rows.map(r => r.length));
+  const tiles = [], hatches = [], keys = [];
+  let pip = null;
+  for (let y = 0; y < h; y++) {
+    const row = [];
+    for (let x = 0; x < w; x++) {
+      const c = rows[y][x] || '#';
+      if (c === 'p') { pip = { x, y }; row.push('.'); }
+      else if (c === 'H') { hatches.push({ x, y }); row.push('.'); }
+      else if (c === 'k') { keys.push({ x, y }); row.push('.'); }
+      else if (c === 'G') row.push('.');
+      else row.push(c);
+    }
+    tiles.push(row);
+  }
+  return { w, h, tiles, pip, hatches, keys };
+}
+
+// Build an editable ledger from level data (deep copy so edits never touch DATA).
+function freshLedger(level) {
+  return {
+    face: level.face.v,
+    routine: level.routine.map(l => ({ cmd: l.cmd || null, n: l.n || 3, act: l.act || 'step', sense: l.sense || (level.senses ? level.senses[0] : 'wall'), then: l.then || 'right', else: l.else || 'step' })),
+    clauses: Object.fromEntries(level.clauses.map(c => [c.key, c.v])),
+    struck: {},
+  };
+}
+
+// Effective rule values: defaults, then the ledger's clauses, then seals that lock.
+function resolveRules(level, ledger) {
+  const r = Object.assign({}, CLAUSE_DEFAULTS, ledger.clauses);
+  for (const s of level.seals) {
+    if (ledger.struck[s]) continue;
+    const seal = SEALS[s];
+    if (seal.lock && !level.strikable) r[seal.lock[0]] = seal.lock[1];
+  }
+  return r;
+}
+
+// Which ledger slots count as Pen strokes in the finale: struck seals + changed clauses.
+function strokes(level, ledger) {
+  let n = Object.keys(ledger.struck).filter(k => ledger.struck[k]).length;
+  for (const c of level.clauses) if (ledger.clauses[c.key] !== c.v) n++;
+  return n;
+}
+
+function isLocked(level, kind, key) {
+  // kind: 'clause' → a clause locked by data or by a lock seal (non-strikable levels)
+  if (kind === 'clause') {
+    const c = level.clauses.find(c => c.key === key);
+    if (c && c.lock) return true;
+    if (!level.strikable) for (const s of level.seals) if (SEALS[s].lock && SEALS[s].lock[0] === key) return true;
+    return false;
+  }
+  return false;
+}
+
+function usedLines(ledger) { return ledger.routine.filter(l => l.cmd).length; }
+
+function newSim(level, ledger) {
+  const m = parseMap(level);
+  return {
+    w: m.w, h: m.h, tiles: m.tiles,
+    pip: { x: m.pip.x, y: m.pip.y, dir: ledger.face, pc: 0, rep: 0, key: false },
+    hatches: m.hatches.map(h => ({ ...h })), keys: m.keys.map(k => ({ ...k })),
+    guards: (level.guards || []).map(g => ({ x: g.x, y: g.y, dir: g.dir })),
+    tick: 0, status: 'run', reason: '',
+    trace: { crossedWall: false, hatchMoved: false, hadKeyAtEnd: false, maxHatches: m.hatches.length, touchedInk: false, levelHadKey: m.keys.length > 0 },
+    events: [],
+  };
+}
+
+function inB(s, x, y) { return x >= 0 && y >= 0 && x < s.w && y < s.h; }
+function tileAt(s, x, y) { return inB(s, x, y) ? s.tiles[y][x] : '#'; }
+function doorOpen(s, rules) { return rules.door === 'anyone' || s.pip.key; }
+function solidForPip(s, rules, x, y) {
+  if (!inB(s, x, y)) return true;
+  const t = s.tiles[y][x];
+  if (t === '#') return rules.walls === 'solid' || x === 0 || y === 0 || x === s.w - 1 || y === s.h - 1;
+  if (t === 'D') return !doorOpen(s, rules);
+  return false;
+}
+function solidForGuard(s, rules, x, y, self) {
+  if (!inB(s, x, y)) return true;
+  const t = s.tiles[y][x];
+  if (t === '#') return true;
+  if (t === 'D') return !doorOpen(s, rules);
+  return s.guards.some(g => g !== self && g.x === x && g.y === y);
+}
+function turn(dir, how) {
+  const i = DIR_ORDER.indexOf(dir);
+  if (how === 'left') return DIR_ORDER[(i + 3) % 4];
+  if (how === 'right') return DIR_ORDER[(i + 1) % 4];
+  if (how === 'around') return DIR_ORDER[(i + 2) % 4];
+  return dir;
+}
+function ahead(s) { const d = DIRS[s.pip.dir]; return { x: s.pip.x + d[0], y: s.pip.y + d[1] }; }
+function sense(s, rules, what) {
+  const a = ahead(s);
+  switch (what) {
+    case 'wall': return tileAt(s, a.x, a.y) === '#';
+    case 'open': return !solidForPip(s, rules, a.x, a.y);
+    case 'ink': return tileAt(s, a.x, a.y) === '~';
+    case 'guard': return s.guards.some(g => g.x === a.x && g.y === a.y);
+    case 'key': return s.pip.key;
+  }
+  return false;
+}
+
+// Do one action; returns event name.
+function doAction(s, rules, act, ev) {
+  const p = s.pip;
+  if (act === 'step') {
+    const d = DIRS[p.dir], st = Number(rules.stride) || 1;
+    const mx = p.x + d[0], my = p.y + d[1];
+    const tx = p.x + d[0] * st, ty = p.y + d[1] * st;
+    // A hop (stride 2) flies over the middle tile; it fails if the middle is off the map.
+    let bx = null, by = null;
+    if (st === 2 && !inB(s, mx, my)) { bx = mx; by = my; }
+    else if (solidForPip(s, rules, tx, ty)) { bx = tx; by = ty; if (st === 2 && solidForPip(s, rules, mx, my)) { bx = mx; by = my; } }
+    if (bx !== null) {
+      ev.bump = { x: bx, y: by };
+      if (tileAt(s, bx, by) === '#') ev.touchWall = true;
+      return;
+    }
+    if (st === 2) {
+      const mt = tileAt(s, mx, my);
+      if (mt === '#' || (mt === 'D' && !doorOpen(s, rules))) s.trace.crossedWall = true;
+    }
+    ev.move = { fx: p.x, fy: p.y, hop: st === 2 };
+    p.x = tx; p.y = ty;
+    if (tileAt(s, p.x, p.y) === '#') { s.trace.crossedWall = true; ev.touchWall = true; }
+  } else if (act === 'left' || act === 'right' || act === 'around') {
+    p.dir = turn(p.dir, act); ev.turn = act;
+  } else { ev.wait = true; }
+}
+
+function bfsStep(s, rules, from, to) {
+  // One step from `from` toward `to` along tiles Pip could stand on (never through walls).
+  const key = (x, y) => y * s.w + x, seen = new Map();
+  const q = [[to.x, to.y]]; seen.set(key(to.x, to.y), null);
+  while (q.length) {
+    const [x, y] = q.shift();
+    if (x === from.x && y === from.y) break;
+    for (const d of DIR_ORDER) {
+      const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+      if (!inB(s, nx, ny) || seen.has(key(nx, ny)) || tileAt(s, nx, ny) === '#') continue;
+      if (tileAt(s, nx, ny) === 'D' && !doorOpen(s, rules)) continue;
+      seen.set(key(nx, ny), [x, y]); q.push([nx, ny]);
+    }
+  }
+  const prev = seen.get(key(from.x, from.y));
+  return prev ? { x: prev[0], y: prev[1] } : null;
+}
+
+function onHatch(s) { return s.hatches.some(h => h.x === s.pip.x && h.y === s.pip.y); }
+
+// Advance the simulation by one tick. Mutates and returns s (callers clone if needed).
+function step(level, ledger, s) {
+  if (s.status !== 'run') return s;
+  const rules = resolveRules(level, ledger);
+  const p = s.pip;
+  s.tick++;
+  const ev = { tick: s.tick };
+
+  // Spare hatches are printed before Pip moves.
+  if (rules.spare === 'under' && !onHatch(s)) { s.hatches.push({ x: p.x, y: p.y }); ev.spare = true; }
+  s.trace.maxHatches = Math.max(s.trace.maxHatches, s.hatches.length);
+  if (ev.spare && rules.winOn === 'hatch') { ev.line = -1; return finish(level, ledger, s, 'win', '', ev); }
+
+  // Pip reads one routine line.
+  const lines = ledger.routine.map((l, i) => ({ l, i })).filter(o => o.l.cmd);
+  if (lines.length === 0) { ev.wait = true; ev.line = -1; }
+  else {
+    if (p.pc >= lines.length) p.pc = 0;
+    const { l, i } = lines[p.pc];
+    ev.line = i;
+    let advance = true;
+    if (l.cmd === 'repeat') {
+      if (p.rep <= 0) p.rep = l.n;
+      doAction(s, rules, l.act, ev);
+      p.rep--; ev.rep = l.n - p.rep;
+      if (p.rep > 0) advance = false;
+    } else if (l.cmd === 'if') {
+      const yes = sense(s, rules, l.sense); ev.branch = yes ? 'then' : 'else';
+      doAction(s, rules, yes ? l.then : l.else, ev);
+    } else doAction(s, rules, l.cmd, ev);
+    if (advance) p.pc = (p.pc + 1) % lines.length;
+  }
+
+  // Pickups and hazards.
+  const ki = s.keys.findIndex(k => k.x === p.x && k.y === p.y);
+  if (ki >= 0) { s.keys.splice(ki, 1); p.key = true; ev.key = true; }
+  const won = () => (rules.winOn === 'hatch' && onHatch(s)) || (rules.winOn === 'wall' && ev.touchWall);
+  if (tileAt(s, p.x, p.y) === '~') {
+    s.trace.touchedInk = true;
+    if (rules.ink === 'deadly' && !won()) return finish(level, ledger, s, 'smudged', 'Pip stepped in wet ink and smudged.', ev);
+  }
+  if (won()) return finish(level, ledger, s, 'win', '', ev);
+
+  // The hatch may wander toward Pip.
+  if (rules.hatch === 'follows') {
+    for (const h of s.hatches) {
+      if (h.x === p.x && h.y === p.y) continue;
+      const nx = bfsStep(s, rules, h, p);
+      if (nx) { h.x = nx.x; h.y = nx.y; s.trace.hatchMoved = true; ev.hatchMove = true; }
+    }
+    if (rules.winOn === 'hatch' && onHatch(s)) return finish(level, ledger, s, 'win', '', ev);
+  }
+
+  // Guards patrol, then catch.
+  if (rules.guards === 'alert' && s.guards.length) {
+    const pace = Number(rules.pace) || 1;
+    const before = s.guards.map(g => ({ x: g.x, y: g.y }));
+    if (s.tick % pace === 0) {
+      for (const g of s.guards) {
+        let d = DIRS[g.dir];
+        if (solidForGuard(s, rules, g.x + d[0], g.y + d[1], g)) { g.dir = turn(g.dir, 'around'); d = DIRS[g.dir]; }
+        if (!solidForGuard(s, rules, g.x + d[0], g.y + d[1], g)) { g.x += d[0]; g.y += d[1]; }
+      }
+      ev.guardsMoved = true;
+    }
+    const pf = ev.move ? { x: ev.move.fx, y: ev.move.fy } : { x: p.x, y: p.y };
+    for (let i = 0; i < s.guards.length; i++) {
+      const g = s.guards[i], b = before[i];
+      const same = g.x === p.x && g.y === p.y;
+      const swap = b.x === p.x && b.y === p.y && g.x === pf.x && g.y === pf.y;
+      if (same || swap) return finish(level, ledger, s, 'caught', 'A guard caught Pip.', ev);
+    }
+  }
+
+  const max = level.maxTicks || CONFIG.MAX_TICKS;
+  if (s.tick >= max) return finish(level, ledger, s, 'timeout', `Pip ran out of patience after ${max} ticks.`, ev);
+  s.events.push(ev);
+  return s;
+}
+
+function finish(level, ledger, s, status, reason, ev) {
+  ev.end = status;
+  s.events.push(ev);
+  s.status = status; s.reason = reason;
+  if (status === 'win') {
+    s.trace.hadKeyAtEnd = s.pip.key;
+    const broken = checkSeals(level, ledger, s.trace);
+    if (broken) { s.status = 'void'; s.reason = broken; s.voidSeal = broken; }
+  }
+  return s;
+}
+
+function checkSeals(level, ledger, trace) {
+  for (const id of level.seals) {
+    if (ledger.struck[id]) continue;
+    const seal = SEALS[id];
+    if (seal.run && !seal.run(trace)) return seal.text;
+    if (seal.static && !seal.static(level, ledger)) return seal.text;
+    if (seal.lock && level.strikable && ledger.clauses[seal.lock[0]] !== undefined && ledger.clauses[seal.lock[0]] !== seal.lock[1]) return seal.text;
+  }
+  return null;
+}
+
+// Run to completion (used by tests and the star calculation).
+function runAll(level, ledger) {
+  const s = newSim(level, ledger);
+  while (s.status === 'run') step(level, ledger, s);
+  return s;
+}
+
+function computePars() {
+  for (const lv of LEVELS) {
+    const led = applySol(lv, lv.sol || {});
+    const s = runAll(lv, led);
+    lv.par = { ticks: s.tick, lines: usedLines(led), ok: s.status === 'win' };
+  }
+}
+
+function starsFor(level, ledger, s) {
+  if (s.status !== 'win') return 0;
+  let st = 1;
+  if (s.tick <= level.par.ticks) st++;
+  if (usedLines(ledger) <= level.par.lines) st++;
+  return st;
+}
+
+// Which loophole closed the finale? (for the ending collection)
+function loopholeOf(level, ledger) {
+  const r = resolveRules(level, ledger);
+  if (r.spare === 'under' && ledger.struck.oneHatch) return 'forgery';
+  if (r.winOn === 'wall' && ledger.struck.hatchOnly) return 'fineprint';
+  if (r.hatch === 'follows' && ledger.struck.hatchFix) return 'summons';
+  if (r.walls === 'soft' && ledger.struck.walls) return 'softwall';
+  if (r.guards === 'asleep' && ledger.struck.guards) return 'nap';
+  return 'other';
+}
+const ENDINGS = {
+  forgery:   { name: 'The Forgery',   line: 'You printed a hatch with the Auditor\'s own Pen.' },
+  fineprint: { name: 'The Fine Print', line: 'You touched a wall and called it a door.' },
+  summons:   { name: 'The Summons',   line: 'You called the hatch, and it came.' },
+  softwall:  { name: 'The Soft Wall', line: 'You walked out through the paperwork.' },
+  nap:       { name: 'The Long Nap',  line: 'Everyone slept. You walked.' },
+  other:     { name: 'The Unfiled',   line: 'You found a way nobody wrote down.' },
+};
+
+computePars();
+
+/* ================= STORAGE (localStorage in try/catch, autosave every action) ================= */
+const Storage = {
+  data: null, notice: '', available: true,
+  blank() { return { v: 1, unlocked: 1, stars: {}, best: {}, drafts: {}, endings: {}, hints: {}, settings: { sound: true, music: true, fast: false, inspect: false, theme: 'system' }, cur: 0 }; },
+  load() {
+    let raw = null;
+    try { raw = localStorage.getItem(CONFIG.SAVE_KEY); } catch (e) { this.available = false; this.notice = 'This browser window is not saving progress.'; }
+    if (!raw) { this.data = this.blank(); return; }
+    try {
+      const d = JSON.parse(raw);
+      if (!d || d.v !== 1 || typeof d.unlocked !== 'number') throw new Error('bad save');
+      const b = this.blank();
+      this.data = Object.assign(b, d, { settings: Object.assign(b.settings, d.settings || {}) });
+      this.data.unlocked = Math.max(1, Math.min(LEVELS.length, this.data.unlocked));
+    } catch (e) {
+      try { localStorage.setItem(CONFIG.SAVE_KEY + '.backup', raw); } catch (_) {}
+      this.data = this.blank();
+      this.notice = 'Your old save could not be read, so a backup copy was kept and a fresh ledger started.';
+    }
+  },
+  save() { try { localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(this.data)); } catch (e) { this.available = false; } },
+  reset() { try { localStorage.removeItem(CONFIG.SAVE_KEY); } catch (e) {} this.data = this.blank(); this.save(); },
+};
+
+// A saved draft must still fit the level's shape, otherwise use a fresh ledger for that level only.
+function validDraft(lv, d) {
+  try {
+    if (!d || !Array.isArray(d.routine) || d.routine.length !== lv.routine.length) return false;
+    if (!DIRS[d.face]) return false;
+    for (const c of lv.clauses) if (!(d.clauses[c.key] in CLAUSES[c.key].opts)) return false;
+    for (const l of d.routine) if (l.cmd && !COMMANDS[l.cmd]) return false;
+    return typeof d.struck === 'object';
+  } catch (e) { return false; }
+}
+
+/* ================= AUDIO (generated WebAudio, no files) ================= */
+const Sound = {
+  ctx: null, master: null, musicGain: null, musicTimer: null, nextNote: 0, beat: 0,
+  init() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {}); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try {
+      this.ctx = new AC();
+      this.master = this.ctx.createGain(); this.master.gain.value = 0.55; this.master.connect(this.ctx.destination);
+      this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = 0.16; this.musicGain.connect(this.master);
+      this.syncMusic();
+    } catch (e) { this.ctx = null; }
+  },
+  on() { return this.ctx && Storage.data.settings.sound; },
+  tone(f, d, type = 'square', vol = 0.12, slide = 0, when = 0, dest) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + when;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), t + d);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g); g.connect(dest || this.master); o.start(t); o.stop(t + d + 0.02);
+  },
+  noise(d, vol = 0.2, hp = 400, when = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + when, n = Math.floor(this.ctx.sampleRate * d);
+    const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate), ch = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / n) ** 2;
+    const s = this.ctx.createBufferSource(); s.buffer = buf;
+    const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+    const g = this.ctx.createGain(); g.gain.value = vol;
+    s.connect(f); f.connect(g); g.connect(this.master); s.start(t);
+  },
+  sfx(name) {
+    if (!this.on()) return;
+    switch (name) {
+      case 'tap': this.tone(880, 0.04, 'triangle', 0.08); break;
+      case 'pick': this.tone(660, 0.05, 'triangle', 0.1); this.tone(990, 0.07, 'triangle', 0.08, 0, 0.04); break;
+      case 'step': this.tone(220, 0.05, 'triangle', 0.08, -60); break;
+      case 'hop': this.tone(300, 0.14, 'sine', 0.1, 400); break;
+      case 'turn': this.tone(520, 0.03, 'square', 0.04); break;
+      case 'bump': this.tone(110, 0.09, 'square', 0.1, -50); this.noise(0.05, 0.06, 800); break;
+      case 'key': [988, 1319, 1568].forEach((f, i) => this.tone(f, 0.12, 'triangle', 0.09, 0, i * 0.05)); break;
+      case 'guard': this.tone(150, 0.03, 'sine', 0.03); break;
+      case 'hatch': this.tone(400, 0.08, 'sine', 0.05, 120); break;
+      case 'win': [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.1, 0, i * 0.07)); break;
+      case 'caught': [392, 330, 262, 196].forEach((f, i) => this.tone(f, 0.18, 'square', 0.08, 0, i * 0.09)); break;
+      case 'smudge': this.tone(240, 0.4, 'sine', 0.12, -180); this.noise(0.3, 0.05, 300); break;
+      case 'void': this.noise(0.12, 0.35, 120); this.tone(70, 0.25, 'sine', 0.25, -30); break;
+      case 'timeout': this.tone(300, 0.3, 'triangle', 0.08, -150); break;
+      case 'stroke': this.noise(0.18, 0.12, 2500); break;
+    }
+  },
+  // Gentle generated office music: a plucked pentatonic walk over a soft drone.
+  syncMusic() {
+    if (!this.ctx) return;
+    const want = Storage.data.settings.music && !document.hidden;
+    if (want && !this.musicTimer) { this.nextNote = this.ctx.currentTime + 0.1; this.musicTimer = setInterval(() => this.schedule(), 100); }
+    if (!want && this.musicTimer) { clearInterval(this.musicTimer); this.musicTimer = null; }
+  },
+  schedule() {
+    const scale = [0, 2, 4, 7, 9, 12, 14, 16];
+    const roots = [196, 174.6, 220, 164.8];
+    while (this.nextNote < this.ctx.currentTime + 0.3) {
+      const bar = Math.floor(this.beat / 8) % 4, root = roots[bar];
+      const pos = this.beat % 8;
+      if (pos === 0) this.tone(root / 2, 2.6, 'sine', 0.22, 0, this.nextNote - this.ctx.currentTime, this.musicGain);
+      const r = Math.sin(this.beat * 12.9898) * 43758.5453; const rnd = r - Math.floor(r);
+      if (pos % 2 === 0 || rnd > 0.6) {
+        const deg = scale[Math.floor(rnd * scale.length)];
+        this.tone(root * 2 ** (deg / 12), 0.35, 'triangle', 0.12, 0, this.nextNote - this.ctx.currentTime, this.musicGain);
+      }
+      this.beat++; this.nextNote += 0.34;
+    }
+  },
+};
+
+/* ================= STATE ================= */
+const State = {
+  screen: 'title', li: 0, ledger: null, sim: null, running: false, timer: null,
+  path: [], lastResult: null, brokenSeal: null, hintShown: 0, picker: null, edited: false,
+  level() { return LEVELS[this.li]; },
+};
+
+function snapshot(s) {
+  return { pip: { ...s.pip }, guards: s.guards.map(g => ({ ...g })), hatches: s.hatches.map(h => ({ ...h })), keys: s.keys.map(k => ({ ...k })), tick: s.tick };
+}
+
+/* ================= RENDERER (canvas board; reads state, never changes rules) ================= */
+const Render = {
+  cv: null, g: null, cell: 40, w: 0, h: 0, dpr: 1, anim: null, parts: [], floats: [], shake: 0, colors: {}, t: 0,
+  attach(cv) { this.cv = cv; this.g = cv.getContext('2d'); this.readColors(); this.resize(); },
+  readColors() {
+    const cs = getComputedStyle(document.documentElement);
+    for (const k of ['paper', 'card', 'rule', 'ink', 'ink-soft', 'slot', 'stamp', 'brass', 'spill', 'lamp', 'ok', 'cell-a', 'cell-b', 'wall', 'wall-top', 'guard']) this.colors[k] = cs.getPropertyValue('--' + k).trim() || '#888';
+  },
+  resize() {
+    if (!this.cv) return;
+    const lv = State.level(); const m = parseMap(lv);
+    const wrap = this.cv.parentElement; const availW = Math.max(200, wrap.clientWidth - 16);
+    const desk = window.innerWidth >= 860;
+    const availH = desk ? window.innerHeight * 0.62 : Math.max(200, window.innerHeight * 0.4);
+    this.cell = Math.floor(Math.min(CONFIG.CELL_MAX, availW / m.w, availH / m.h));
+    this.w = m.w; this.h = m.h; this.dpr = Math.min(3, window.devicePixelRatio || 1);
+    this.cv.width = this.cell * m.w * this.dpr; this.cv.height = this.cell * m.h * this.dpr;
+    this.cv.style.width = this.cell * m.w + 'px'; this.cv.style.height = this.cell * m.h + 'px';
+  },
+  burst(x, y, color, n = 16, speed = 2.2) {
+    n = Math.round(n * GK.prefs.motionScale());
+    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = (0.4 + Math.random()) * speed; this.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.6, life: 1, color, r: 2 + Math.random() * 3 }); }
+  },
+  float(text, x, y, color) { this.floats.push({ text, x, y, life: 1, color }); },
+  frame(now) {
+    this.t = GK.prefs.motion() === 'still' ? 0 : now / 1000;
+    const g = this.g; if (!g || State.screen !== 'play') return;
+    const lv = State.level(), led = State.ledger, rules = resolveRules(lv, led);
+    const c = this.cell, C = this.colors;
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    let sx = 0, sy = 0;
+    if (this.shake > 0.1) { sx = (Math.random() - 0.5) * this.shake; sy = (Math.random() - 0.5) * this.shake; this.shake *= 0.86; }
+    g.save(); g.translate(sx, sy);
+    const base = State.sim || newSim(lv, led);
+    // Tiles
+    for (let y = 0; y < base.h; y++) for (let x = 0; x < base.w; x++) {
+      const t = base.tiles[y][x], px = x * c, py = y * c;
+      g.fillStyle = (x + y) % 2 ? C['cell-a'] : C['cell-b']; g.fillRect(px, py, c, c);
+      g.strokeStyle = C.rule; g.globalAlpha = 0.6; g.lineWidth = 1; g.beginPath(); g.moveTo(px, py + c - 0.5); g.lineTo(px + c, py + c - 0.5); g.stroke(); g.globalAlpha = 1;
+      if (t === '#') this.wall(px, py, c, rules, x, y, base);
+      else if (t === '~') this.ink(px, py, c, rules, x, y);
+      else if (t === 'D') this.door(px, py, c, doorOpen(base, rules));
+    }
+    // Footprints of the last run
+    g.fillStyle = C.slot; g.globalAlpha = 0.28;
+    for (const p of State.path) { g.beginPath(); g.arc(p.x * c + c / 2, p.y * c + c / 2, Math.max(2, c * 0.07), 0, 7); g.fill(); }
+    g.globalAlpha = 1;
+    // Interpolation
+    const a = this.anim; let k = 1;
+    if (a) { k = Math.min(1, (performance.now() - a.t0) / a.dur); }
+    const ease = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+    const from = a ? a.from : snapshot(base), to = a ? a.to : snapshot(base);
+    // Hatches
+    to.hatches.forEach((h, i) => {
+      const f = from.hatches[i] || h; const hx = f.x + (h.x - f.x) * ease, hy = f.y + (h.y - f.y) * ease;
+      this.hatch(hx * c, hy * c, c, rules.hatch === 'follows', i >= (from.hatches.length) && a ? ease : 1);
+    });
+    if (!State.sim && rules.spare === 'under') this.hatch(base.pip.x * c, base.pip.y * c, c, false, 0.35 + 0.15 * Math.sin(this.t * 4));
+    // Keys
+    for (const kk of from.keys) if (to.keys.some(q => q.x === kk.x && q.y === kk.y) || k < 1) this.key(kk.x * c, kk.y * c, c, lv.keyLook);
+    // Guards
+    to.guards.forEach((gd, i) => {
+      const f = from.guards[i] || gd; const gx = f.x + (gd.x - f.x) * ease, gy = f.y + (gd.y - f.y) * ease;
+      this.guard(gx * c, gy * c, c, gd.dir, rules.guards === 'alert');
+    });
+    // Pip
+    const fp = from.pip, tp = to.pip;
+    let px = fp.x + (tp.x - fp.x) * ease, py = fp.y + (tp.y - fp.y) * ease, lift = 0;
+    if (a && a.ev && a.ev.bump) { const b = a.ev.bump, s = Math.sin(Math.PI * k) * 0.22; px += (b.x - fp.x) * s * (Math.abs(b.x - fp.x) > 1 ? 0.5 : 1); py += (b.y - fp.y) * s * (Math.abs(b.y - fp.y) > 1 ? 0.5 : 1); }
+    if (a && a.ev && a.ev.move && a.ev.move.hop) lift = Math.sin(Math.PI * k) * 0.45;
+    const ang0 = DIR_ORDER.indexOf(fp.dir), ang1 = DIR_ORDER.indexOf(tp.dir);
+    let da = ang1 - ang0; if (da > 2) da -= 4; if (da < -2) da += 4;
+    const ang = (ang0 + da * ease) * Math.PI / 2;
+    const gone = State.sim && State.sim.status === 'win' && k >= 1;
+    if (!gone) this.pip(px * c, (py - lift) * c, c, ang, tp.key || fp.key, lift, lv.keyLook, State.sim && State.sim.status === 'smudged' && k >= 1, rules.stride === '2');
+    g.restore();
+    // Particles and floating text
+    for (const p of this.parts) { p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.life -= 0.02; g.globalAlpha = Math.max(0, p.life); g.fillStyle = p.color; g.beginPath(); g.arc(p.x, p.y, p.r, 0, 7); g.fill(); }
+    this.parts = this.parts.filter(p => p.life > 0);
+    g.textAlign = 'center'; g.font = `700 ${GK.ui.floor(c * 0.32)}px ${getComputedStyle(document.body).getPropertyValue('--f-code') || 'monospace'}`;
+    for (const f of this.floats) { f.y -= 0.6; f.life -= 0.018; g.globalAlpha = Math.max(0, f.life); g.fillStyle = f.color; g.fillText(f.text, f.x, f.y); }
+    this.floats = this.floats.filter(f => f.life > 0);
+    g.globalAlpha = 1;
+  },
+  wall(px, py, c, rules, x, y, s) {
+    const g = this.g, C = this.colors, border = x === 0 || y === 0 || x === s.w - 1 || y === s.h - 1;
+    const soft = rules.walls === 'soft' && !border;
+    g.globalAlpha = soft ? 0.35 : 1;
+    g.fillStyle = C.wall; g.fillRect(px + 1, py + 1, c - 2, c - 2);
+    g.fillStyle = C['wall-top']; g.fillRect(px + 1, py + 1, c - 2, c * 0.18);
+    g.fillStyle = C.paper; g.globalAlpha *= 0.45;
+    g.fillRect(px + c * 0.38, py + c * 0.42, c * 0.24, c * 0.07); g.fillRect(px + c * 0.38, py + c * 0.7, c * 0.24, c * 0.07);
+    g.globalAlpha = 1;
+    if (soft) { g.setLineDash([4, 4]); g.strokeStyle = C.wall; g.lineWidth = 1.5; g.strokeRect(px + 2, py + 2, c - 4, c - 4); g.setLineDash([]); }
+    if (rules.winOn === 'wall') { g.strokeStyle = C.brass; g.lineWidth = 2; g.globalAlpha = 0.5 + 0.4 * Math.sin(this.t * 3 + x + y); g.strokeRect(px + 2, py + 2, c - 4, c - 4); g.globalAlpha = 1; }
+  },
+  ink(px, py, c, rules, x, y) {
+    const g = this.g, C = this.colors, dry = rules.ink === 'dry';
+    g.fillStyle = C.spill; g.globalAlpha = dry ? 0.35 : 0.85;
+    this.blob(px + c / 2, py + c / 2, 9, i => c * (0.37 + 0.07 * Math.sin(i * 2.3 + x * 1.7 + y * 3.1 + (dry ? 0 : this.t * 1.5))), 1); g.fill();
+    if (!dry) { g.globalAlpha = 0.5; g.fillStyle = C.paper; g.beginPath(); g.arc(px + c * 0.38, py + c * 0.38, c * 0.05, 0, 7); g.fill(); }
+    if (dry) { g.strokeStyle = C.spill; g.globalAlpha = 0.6; g.lineWidth = 1; g.beginPath(); g.moveTo(px + c * 0.3, py + c * 0.35); g.lineTo(px + c * 0.5, py + c * 0.55); g.lineTo(px + c * 0.68, py + c * 0.45); g.stroke(); }
+    g.globalAlpha = 1;
+  },
+  door(px, py, c, open) {
+    const g = this.g, C = this.colors;
+    if (open) { g.strokeStyle = C.brass; g.lineWidth = 2; g.strokeRect(px + c * 0.12, py + c * 0.08, c * 0.76, c * 0.84); return; }
+    g.fillStyle = C.ink; g.fillRect(px + c * 0.1, py + c * 0.06, c * 0.8, c * 0.88);
+    g.fillStyle = C.stamp;
+    for (let i = 0; i < 4; i++) g.fillRect(px + c * 0.1, py + c * (0.12 + i * 0.21), c * 0.8, c * 0.08);
+    g.fillStyle = C.brass; g.beginPath(); g.arc(px + c * 0.72, py + c * 0.52, c * 0.07, 0, 7); g.fill();
+  },
+  hatch(px, py, c, follows, alpha) {
+    const g = this.g, C = this.colors, cx = px + c / 2, cy = py + c / 2;
+    g.globalAlpha = alpha;
+    g.fillStyle = C.brass; g.beginPath(); g.arc(cx, cy, c * 0.36, 0, 7); g.fill();
+    g.fillStyle = C.ink; g.beginPath(); g.arc(cx, cy, c * 0.26, 0, 7); g.fill();
+    g.strokeStyle = C.brass; g.lineWidth = Math.max(1.5, c * 0.05);
+    const r = this.t * 0.6;
+    g.beginPath(); for (let i = 0; i < 4; i++) { const a = r + i * Math.PI / 2; g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * c * 0.24, cy + Math.sin(a) * c * 0.24); } g.stroke();
+    if (follows) { g.fillStyle = C.brass; for (let i = 0; i < 3; i++) { const a = this.t * 4 + i * 2.1; g.beginPath(); g.arc(cx + Math.cos(a) * c * 0.44, cy + Math.sin(a) * c * 0.44, c * 0.04, 0, 7); g.fill(); } }
+    g.globalAlpha = 1;
+  },
+  key(px, py, c, look) {
+    const g = this.g, C = this.colors, cx = px + c / 2, cy = py + c / 2 + Math.sin(this.t * 3) * c * 0.04;
+    g.strokeStyle = C.brass; g.fillStyle = C.brass; g.lineWidth = Math.max(2, c * 0.08); g.lineCap = 'round';
+    if (look === 'pen') {
+      g.beginPath(); g.moveTo(cx - c * 0.22, cy + c * 0.24); g.lineTo(cx + c * 0.2, cy - c * 0.24); g.stroke();
+      g.beginPath(); g.ellipse(cx + c * 0.12, cy - c * 0.14, c * 0.08, c * 0.22, Math.PI / 4, 0, 7); g.fill();
+      return;
+    }
+    g.beginPath(); g.arc(cx - c * 0.14, cy, c * 0.12, 0, 7); g.stroke();
+    g.beginPath(); g.moveTo(cx - c * 0.02, cy); g.lineTo(cx + c * 0.26, cy); g.moveTo(cx + c * 0.18, cy); g.lineTo(cx + c * 0.18, cy + c * 0.1); g.moveTo(cx + c * 0.26, cy); g.lineTo(cx + c * 0.26, cy + c * 0.12); g.stroke();
+  },
+  guard(px, py, c, dir, alert) {
+    const g = this.g, C = this.colors, cx = px + c / 2, cy = py + c / 2, d = DIRS[dir];
+    if (alert) { g.fillStyle = C.lamp; g.globalAlpha = 0.16; g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, c * 1.05, Math.atan2(d[1], d[0]) - 0.5, Math.atan2(d[1], d[0]) + 0.5); g.closePath(); g.fill(); g.globalAlpha = 1; }
+    g.fillStyle = C.guard; this.round(cx - c * 0.32, cy - c * 0.32, c * 0.64, c * 0.64, c * 0.16); g.fill();
+    g.fillStyle = C.paper; g.fillRect(cx - c * 0.2, cy + c * 0.08, c * 0.4, c * 0.08);
+    g.fillStyle = alert ? C.lamp : C['ink-soft'];
+    g.beginPath(); g.arc(cx + d[0] * c * 0.16, cy + d[1] * c * 0.16 - c * 0.04, c * (alert ? 0.11 : 0.07), 0, 7); g.fill();
+    if (!alert) { g.fillStyle = C['ink-soft']; g.font = `700 ${c * 0.3}px monospace`; g.textAlign = 'center'; g.fillText('z', cx + c * 0.3, cy - c * 0.3 - Math.sin(this.t * 2) * c * 0.06); }
+  },
+  pip(px, py, c, ang, key, lift, look, smudged, hopper) {
+    const g = this.g, C = this.colors, cx = px + c / 2, cy = py + c / 2;
+    // shadow
+    g.fillStyle = C.ink; g.globalAlpha = 0.15; g.beginPath(); g.ellipse(cx, cy + c * 0.3 + lift * c, c * 0.24 * (1 - lift * 0.5), c * 0.07, 0, 0, 7); g.fill(); g.globalAlpha = 1;
+    const wob = smudged ? 1.6 : 1;
+    g.fillStyle = C.ink;
+    this.blob(cx, cy + (smudged ? c * 0.12 : 0), 12, i => c * 0.3 * wob * (1 + 0.07 * Math.sin(i * 3 + this.t * 5)), smudged ? 0.5 : 1); g.fill();
+    if (smudged) return;
+    if (hopper) { g.strokeStyle = C.slot; g.lineWidth = 2; g.beginPath(); g.moveTo(cx - c * 0.12, cy + c * 0.3); g.lineTo(cx - c * 0.06, cy + c * 0.38); g.lineTo(cx, cy + c * 0.3); g.lineTo(cx + c * 0.06, cy + c * 0.38); g.lineTo(cx + c * 0.12, cy + c * 0.3); g.stroke(); }
+    const dx = Math.cos(ang - Math.PI / 2), dy = Math.sin(ang - Math.PI / 2);
+    const ex = -dy, ey = dx; // perpendicular for the eye pair
+    for (const s of [-1, 1]) {
+      const ox = cx + dx * c * 0.12 + ex * s * c * 0.1, oy = cy + dy * c * 0.12 + ey * s * c * 0.1 - c * 0.03;
+      g.fillStyle = C.paper; g.beginPath(); g.arc(ox, oy, c * 0.075, 0, 7); g.fill();
+      g.fillStyle = C.ink; g.beginPath(); g.arc(ox + dx * c * 0.03, oy + dy * c * 0.03, c * 0.035, 0, 7); g.fill();
+    }
+    if (key) { g.save(); g.translate(0, -c * 0.4); this.key(px, py, c * 0.7, look); g.restore(); }
+  },
+  // Smooth closed blob through n radial points (quadratic curves through midpoints).
+  blob(cx, cy, n, rad, sy) {
+    const g = this.g, pts = [];
+    for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, r = rad(i); pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r * sy]); }
+    g.beginPath();
+    const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+    let m = mid(pts[n - 1], pts[0]); g.moveTo(m[0], m[1]);
+    for (let i = 0; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n], mm = mid(p, q); g.quadraticCurveTo(p[0], p[1], mm[0], mm[1]); }
+    g.closePath();
+  },
+  round(x, y, w, h, r) { const g = this.g; g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); },
+};
+
+/* ================= UI HELPERS ================= */
+const $ = (sel, el = document) => el.querySelector(sel);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+let toastTimer = null;
+function toast(msg) {
+  let t = $('#toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
+  t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+const app = () => $('#app');
+function totalStars() { return Object.values(Storage.data.stars).reduce((a, b) => a + b, 0); }
+
+/* ================= SCREENS ================= */
+function showTitle() {
+  stopRun(); State.screen = 'title';
+  const cont = Storage.data.unlocked > 1;
+  app().innerHTML = `
+  <div class="screen title-screen">
+    <div class="form-no">Registry form 7-B · Request for exit</div>
+    <h1 class="title-mark">Clause <span>&amp;</span><br>Effect</h1>
+    <p class="lede">Pip is a small ink blot filed away in the Registry. Everything here obeys the ledger, and the ledger can be edited. The Auditor will notice, and the Auditor will seal every loophole you use.</p>
+    <div class="btn-row">
+      <button class="btn primary" id="go">${cont ? 'Continue' : 'Start'} ▶</button>
+      <button class="btn" id="lv">Levels</button>
+    </div>
+    <p class="fineprint">15 levels. Tap a glowing word to rewrite it, then Run. Keys: Space runs, S steps one tick, R resets, H shows a hint.${Storage.notice ? ' ' + esc(Storage.notice) : ''}</p>
+  </div>`;
+  $('#go').onclick = () => { Sound.init(); openLevel(Math.min(Storage.data.unlocked - 1, Storage.data.cur || 0)); };
+  $('#lv').onclick = () => { Sound.init(); showLevels(); };
+  $('#go').focus();
+}
+
+function showLevels() {
+  stopRun(); State.screen = 'levels';
+  const d = Storage.data, found = Object.keys(d.endings).length;
+  const tiles = LEVELS.map((lv, i) => {
+    const locked = i >= d.unlocked, st = d.stars[lv.id] || 0;
+    const kind = st && lv.sol && (lv.sol.clauses || lv.sol.struck) && !lv.sol.routine ? 'loophole' : '';
+    return `<button class="lvl ${locked ? 'locked' : ''} ${i === d.cur ? 'cur' : ''}" data-i="${i}" ${locked ? 'aria-disabled="true"' : ''}>
+      <span class="no">${String(i + 1).padStart(2, '0')}</span>
+      ${kind && !locked ? `<span class="kind">${kind}</span>` : ''}
+      <span class="nm">${locked ? 'Sealed file' : esc(lv.name)}</span>
+      <span class="st" aria-label="${st} of 3 stars">${locked ? '🔒' : '★'.repeat(st) + '☆'.repeat(3 - st)}</span>
+    </button>`;
+  }).join('');
+  const endingList = Object.entries(ENDINGS).filter(([k]) => k !== 'other').map(([k, e]) => `<div class="ending ${d.endings[k] ? 'got' : ''}">${d.endings[k] ? `<b>${esc(e.name)}</b>: ${esc(e.line)}` : '??? An unfound loophole'}</div>`).join('');
+  app().innerHTML = `
+  <div class="screen">
+    <div class="topbar"><button class="icon-btn" id="home" aria-label="Title screen">⌂</button><h1>The Registry</h1><button class="icon-btn" id="set" aria-label="Settings">⚙</button></div>
+    <div class="levels">${tiles}</div>
+    <div class="summary"><span>Stars <b>${totalStars()}</b> / ${LEVELS.length * 3}</span><span>Loopholes found in the final audit <b>${found}</b> / 5</span></div>
+    ${d.unlocked >= LEVELS.length || found ? `<div class="endings">${endingList}</div>` : ''}
+    <p class="fineprint">A star for escaping, one for matching the par in ticks, and one for using no more routine lines than par.</p>
+  </div>`;
+  app().querySelectorAll('.lvl').forEach(b => b.onclick = () => {
+    const i = +b.dataset.i; if (i >= d.unlocked) { toast('Finish the level before it to unseal this file.'); return; }
+    openLevel(i);
+  });
+  $('#home').onclick = showTitle; $('#set').onclick = showSettings;
+}
+
+function showSettings() {
+  const s = Storage.data.settings;
+  openSheet(`<h3>Settings</h3>
+    <div class="opts">
+      <button class="opt" data-k="sound"><b>Sound effects: ${s.sound ? 'on' : 'off'}</b></button>
+      <button class="opt" data-k="music"><b>Music: ${s.music ? 'on' : 'off'}</b></button>
+      <button class="opt" data-k="fast"><b>Start runs at 3× speed: ${s.fast ? 'on' : 'off'}</b></button>
+      <button class="opt" data-k="inspect"><b>Inspector: ${s.inspect ? 'shown' : 'hidden'}</b><span>Shows what the Auditor tracks during a run.</span></button>
+      <button class="opt" data-k="theme"><b>Theme: ${s.theme}</b><span>System, light or dark.</span></button>
+      <button class="opt clear" data-k="reset"><b>Erase all progress</b><span>Asks once more before erasing.</span></button>
+    </div>`, sheet => {
+    sheet.querySelectorAll('.opt').forEach(b => b.onclick = () => {
+      const k = b.dataset.k;
+      if (k === 'reset') {
+        sheet.querySelector('.opts').innerHTML = `<p class="ctx">Erase every star, draft and ending?</p><button class="opt clear" id="yes"><b>Yes, erase everything</b></button><button class="opt" id="no"><b>Keep my progress</b></button>`;
+        $('#yes', sheet).onclick = () => { Storage.reset(); closeSheet(); toast('Progress erased.'); showTitle(); };
+        $('#no', sheet).onclick = closeSheet; return;
+      }
+      if (k === 'theme') { s.theme = { system: 'light', light: 'dark', dark: 'system' }[s.theme]; applyTheme(); }
+      else s[k] = !s[k];
+      Storage.save(); Sound.syncMusic(); closeSheet(); showSettings();
+      if (State.screen === 'play') renderPlay(); else if (State.screen === 'levels') showLevels();
+    });
+    const pyw = GK.ui.prefsButton({ className: 'opt', onOpen: closeSheet, panel: { text: true, tips: false } });
+    if (pyw) { pyw.innerHTML = '<b>Play your way</b><span>Motion, flashes, text size and sound level.</span>'; sheet.querySelector('.opts').insertBefore(pyw, sheet.querySelector('.opt.clear')); }
+  });
+}
+function applyTheme() {
+  const t = Storage.data.settings.theme;
+  if (t === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+  setTimeout(() => Render.readColors(), 30);
+}
+
+/* ---------- Play screen ---------- */
+function openLevel(i) {
+  stopRun();
+  State.li = i; State.screen = 'play'; State.sim = null; State.path = []; State.brokenSeal = null; State.lastResult = null;
+  const lv = LEVELS[i], draft = Storage.data.drafts[lv.id];
+  State.ledger = validDraft(lv, draft) ? JSON.parse(JSON.stringify(draft)) : freshLedger(lv);
+  State.edited = !!draft;
+  State.hintShown = Storage.data.hints[lv.id] || 0;
+  Storage.data.cur = i; Storage.save();
+  app().innerHTML = `
+  <div class="screen">
+    <div class="topbar"><button class="icon-btn" id="back" aria-label="All levels">☰</button><h2 id="lname"></h2><button class="icon-btn" id="set" aria-label="Settings">⚙</button></div>
+    <div class="play">
+      <div class="board-col">
+        <div class="memo" id="memo"></div>
+        <div class="board-wrap" id="bw"><canvas id="board" aria-label="Puzzle board. Tap a tile to see what it is."></canvas><div id="result" role="status" aria-live="polite" hidden></div></div>
+        <div class="hud" id="hud"></div>
+      </div>
+      <div class="ledger-col">
+        <div class="ledger" id="ledger"></div>
+        <div class="tools"><button class="btn" id="hint">Hint</button><button class="btn" id="fresh">Clear my edits</button></div>
+        <div id="hintbox"></div>
+        <div id="inspect"></div>
+      </div>
+    </div>
+  </div>
+  <div class="controls" id="controls">
+    <button class="btn primary" id="run">▶ Run</button>
+    <button class="btn small" id="stepb" aria-label="Step one tick">⏭</button>
+    <button class="btn small" id="resetb" aria-label="Reset the board">⟲</button>
+    <button class="btn small" id="speed" aria-label="Toggle speed"></button>
+  </div>`;
+  State.fast = Storage.data.settings.fast;
+  Render.attach($('#board'));
+  $('#back').onclick = showLevels; $('#set').onclick = showSettings;
+  $('#run').onclick = () => { Sound.init(); toggleRun(); };
+  $('#stepb').onclick = () => { Sound.init(); stepOnce(); };
+  $('#resetb').onclick = () => { resetBoard(); };
+  $('#speed').onclick = () => { State.fast = !State.fast; renderControls(); };
+  $('#hint').onclick = showHint;
+  $('#board').addEventListener('click', e => {
+    const r = e.currentTarget.getBoundingClientRect(), c = Render.cell;
+    const x = Math.floor((e.clientX - r.left) / c), y = Math.floor((e.clientY - r.top) / c);
+    const info = tileInfo(x, y); if (info) toast(info);
+  });
+  $('#fresh').onclick = () => {
+    stopRun(); State.ledger = freshLedger(lv); delete Storage.data.drafts[lv.id]; Storage.save(); State.edited = false; resetBoard(); renderPlay(); toast('Ledger restored to the original.');
+  };
+  renderPlay();
+}
+
+function renderPlay() {
+  if (State.screen !== 'play') return;
+  const lv = State.level();
+  $('#lname').textContent = `${State.li + 1}. ${lv.name}`;
+  $('#memo').innerHTML = `<span class="from">${State.li === LEVELS.length - 1 ? 'Memo · from the Pen' : 'Memo · Registry'}</span>${esc(lv.memo)}`;
+  renderLedger(); renderHud(); renderControls(); renderHint(); renderInspector();
+}
+
+function slotBtn(kind, i, text, extra = '') { return `<button class="slot ${extra}" data-k="${kind}" data-i="${i}">${esc(text)}</button>`; }
+
+function renderLedger() {
+  const lv = State.level(), led = State.ledger, rules = resolveRules(lv, led);
+  const activeLine = State.sim && State.sim.events.length ? State.sim.events[State.sim.events.length - 1].line : null;
+  const hot = !State.edited && State.li <= 1;
+  let h = '';
+  h += `<div class="sect"><span>Pip</span></div>`;
+  h += `<div class="line"><span class="ln"></span><span class="word">Pip starts facing</span>${lv.face.lock ? `<span class="slot locked" data-k="lockedface">${led.face}</span>` : slotBtn('face', 0, led.face, hot && State.li === 0 ? 'hot' : '')}</div>`;
+  h += `<div class="sect"><span>Routine</span><em>one line per tick, then it loops</em></div>`;
+  led.routine.forEach((l, i) => {
+    const src = lv.routine[i];
+    const act = activeLine === i && State.sim && (State.running || State.sim.status !== 'run') ? 'active' : '';
+    if (src.lock) {
+      h += `<div class="line ${act}" data-line="${i}"><span class="ln">${i + 1}</span><span class="slot locked" data-k="lockedline">${esc(lineText(l))}</span><span class="lock-tag">🔒 fixed</span></div>`;
+      return;
+    }
+    let inner = slotBtn('cmd', i, l.cmd ? COMMANDS[l.cmd].label : '+ write a line', l.cmd ? '' : 'empty');
+    if (l.cmd === 'repeat') inner += slotBtn('n', i, String(l.n)) + `<span class="word">×</span>` + slotBtn('act', i, COMMANDS[l.act].label);
+    if (l.cmd === 'if') inner += slotBtn('sense', i, SENSES[l.sense].label) + `<span class="word">→</span>` + slotBtn('then', i, COMMANDS[l.then].label) + `<span class="word">else</span>` + slotBtn('else', i, COMMANDS[l.else].label);
+    h += `<div class="line ${act}" data-line="${i}"><span class="ln">${i + 1}</span>${inner}</div>`;
+  });
+  if (lv.clauses.length) {
+    h += `<div class="sect"><span>World</span><em>the Registry's clauses</em></div>`;
+    for (const c of lv.clauses) {
+      const def = CLAUSES[c.key], v = led.clauses[c.key];
+      const sealedBy = !lv.strikable && lv.seals.find(s => SEALS[s].lock && SEALS[s].lock[0] === c.key);
+      let slot;
+      if (c.lock) slot = `<span class="slot locked" data-k="lockedclause" data-key="${c.key}">${esc(def.opts[v])}</span><span class="lock-tag">🔒 fixed</span>`;
+      else if (sealedBy) slot = `<span class="slot sealed" data-k="sealedclause" data-seal="${sealedBy}">${esc(def.opts[rules[c.key]])}</span><span class="seal-tag">SEALED</span>`;
+      else slot = slotBtn('clause', c.key, def.opts[v], hot && State.li === 1 ? 'hot' : '');
+      h += `<div class="line"><span class="ln"></span><span class="word">${esc(def.pre)}</span>${slot}</div>`;
+    }
+  }
+  if (lv.seals.length) {
+    h += `<div class="sect"><span>The Auditor's seals</span><em>${lv.strikable ? 'tap a seal to strike it' : 'checked on every escape'}</em></div>`;
+    if (lv.strikable) { const used = strokes(lv, led); h += `<div class="pen-ink">Pen ink: ${'●'.repeat(Math.max(0, 2 - used))}${'○'.repeat(Math.min(2, used))} ${used > 2 ? `(over by ${used - 2})` : `(${2 - used} left)`}</div>`; }
+    for (const id of lv.seals) {
+      const s = SEALS[id], struck = !!led.struck[id], broken = State.brokenSeal === s.text;
+      const when = s.lock ? (lv.strikable ? 'checks the clause' : 'locks a clause') : 'checked at the end';
+      const tag = lv.strikable && id !== 'pen' ? 'button' : 'div';
+      h += `<${tag} class="seal-line ${struck ? 'struck' : ''} ${broken ? 'broken' : ''}" ${tag === 'button' ? `data-k="strike" data-i="${id}" style="width:100%;text-align:left;border:0;background:none;cursor:pointer"` : ''}><span class="dot">§</span><span class="txt">${esc(s.text)}</span><span class="when">${struck ? 'struck out' : (id === 'pen' ? 'permanent ink' : when)}</span></${tag}>`;
+    }
+  }
+  const el = $('#ledger'); el.innerHTML = h;
+  el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => onSlot(b));
+}
+
+function lineText(l) {
+  if (!l.cmd) return '(blank)';
+  if (l.cmd === 'repeat') return `repeat ${l.n} × ${COMMANDS[l.act].label}`;
+  if (l.cmd === 'if') return `if ${SENSES[l.sense].label} → ${COMMANDS[l.then].label} else ${COMMANDS[l.else].label}`;
+  return COMMANDS[l.cmd].label;
+}
+
+function onSlot(b) {
+  Sound.init();
+  const k = b.dataset.k, i = b.dataset.i, lv = State.level(), led = State.ledger;
+  if (k === 'lockedline' || k === 'lockedface' || k === 'lockedclause') { Sound.sfx('bump'); toast('That line is fixed by the Registry.'); return; }
+  if (k === 'sealedclause') { Sound.sfx('bump'); toast(`Sealed by the Auditor: ${SEALS[b.dataset.seal].text}`); return; }
+  if (k === 'strike') {
+    led.struck[i] = !led.struck[i]; if (!led.struck[i]) delete led.struck[i];
+    Sound.sfx('stroke'); edited(); return;
+  }
+  Sound.sfx('tap');
+  const L = led.routine[i];
+  const pick = (title, ctx, options, cur, apply, extra) => openPicker({ title, ctx, options, cur, extra, onPick: v => { apply(v); Sound.sfx('pick'); edited(b); } });
+  if (k === 'face') pick('Pip starts facing', 'Which way Pip looks before the first tick.', DIR_ORDER.map(d => ({ v: d, label: d })), led.face, v => led.face = v);
+  else if (k === 'clause') { const def = CLAUSES[i]; pick(def.pre + ' …', 'A clause of the Registry. Seals may still check the result.', Object.entries(def.opts).map(([v, label]) => ({ v, label })), led.clauses[i], v => led.clauses[i] = v); }
+  else if (k === 'cmd') {
+    const opts = lv.palette.map(c => ({ v: c, label: COMMANDS[c].label, about: COMMANDS[c].about }));
+    if (L.cmd) opts.push({ v: null, label: 'erase this line', about: 'Blank lines are skipped and take no time.', clear: true });
+    pick(`Line ${+i + 1}`, 'Pick what Pip does on this line.', opts, L.cmd, v => {
+      L.cmd = v;
+      if (v === 'if' && !(lv.senses || []).includes(L.sense)) L.sense = (lv.senses || ['wall'])[0];
+    });
+  } else if (k === 'n') pick('Repeat how many ticks?', lineText(L), CONFIG.REPEAT_COUNTS.map(n => ({ v: n, label: n + ' ticks' })), L.n, v => L.n = v);
+  else if (k === 'act' || k === 'then' || k === 'else') {
+    const ctx = k === 'act' ? 'The action to repeat.' : k === 'then' ? `What Pip does when "${SENSES[L.sense].label}" is true.` : `What Pip does otherwise.`;
+    pick(k === 'act' ? 'Repeat which action?' : k === 'then' ? 'Then' : 'Else', ctx, ACTIONS.map(a => ({ v: a, label: COMMANDS[a].label, about: COMMANDS[a].about })), L[k], v => L[k] = v);
+  } else if (k === 'sense') pick('If Pip sees…', 'Pip looks one tile ahead (or at its own hands).', (lv.senses || []).map(s => ({ v: s, label: SENSES[s].label, about: SENSES[s].about })), L.sense, v => L.sense = v);
+}
+
+// Plain-language description of whatever is on a tile (tap the board to learn the pieces).
+function tileInfo(x, y) {
+  const lv = State.level(), s = State.sim || newSim(lv, State.ledger), r = resolveRules(lv, State.ledger);
+  if (x < 0 || y < 0 || x >= s.w || y >= s.h) return '';
+  if (s.pip.x === x && s.pip.y === y) return `Pip, facing ${s.pip.dir}${s.pip.key ? ', holding the key' : ''}. Pip follows the routine one line per tick.`;
+  const g = s.guards.find(q => q.x === x && q.y === y);
+  if (g) return r.guards === 'alert' ? `A guard walking ${g.dir}. It turns around at walls and catches Pip on the same tile.` : 'A sleeping guard. Pip can tiptoe past.';
+  if (s.hatches.some(h => h.x === x && h.y === y)) return 'The hatch. Reach it to escape.';
+  if (s.keys.some(k => k.x === x && k.y === y)) return lv.keyLook === 'pen' ? "The Auditor's Pen. It also works as the key." : 'The brass key. Pip picks it up by stepping on it.';
+  const t = s.tiles[y][x];
+  if (t === '#') return r.walls === 'soft' && x > 0 && y > 0 && x < s.w - 1 && y < s.h - 1 ? 'A soft wall. Pip can walk through it.' : 'A filing wall. Solid.';
+  if (t === '~') return r.ink === 'dry' ? 'Dry ink. Harmless, unless a seal forbids touching it.' : 'Wet ink. Pip smudges if it steps here.';
+  if (t === 'D') return doorOpen(s, r) ? 'An open door.' : 'A locked door. It opens while Pip holds the key.';
+  return 'Floor.';
+}
+
+function edited() {
+  const lv = State.level();
+  State.edited = true; Storage.data.drafts[lv.id] = JSON.parse(JSON.stringify(State.ledger)); Storage.save();
+  stopRun(); State.sim = null; State.brokenSeal = null; hideResult();
+  renderPlay();
+}
+
+/* ---------- Picker sheet ---------- */
+function openSheet(html, wire) {
+  closeSheet();
+  const bg = document.createElement('div'); bg.className = 'sheet-bg'; bg.id = 'sheetbg';
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
+  bg.addEventListener('click', e => { if (e.target === bg) closeSheet(); });
+  document.body.appendChild(bg);
+  wire && wire(bg.firstChild);
+  const first = bg.querySelector('.opt.sel') || bg.querySelector('.opt'); first && first.focus();
+}
+function closeSheet() { const s = $('#sheetbg'); if (s) s.remove(); State.picker = null; }
+function openPicker(p) {
+  State.picker = p;
+  const opts = p.options.map((o, n) => `<button class="opt ${o.v === p.cur ? 'sel' : ''} ${o.clear ? 'clear' : ''}" data-n="${n}"><b>${esc(o.label)}<kbd>${n + 1}</kbd></b>${o.about ? `<span>${esc(o.about)}</span>` : ''}</button>`).join('');
+  openSheet(`<h3>${esc(p.title)}</h3><p class="ctx">${esc(p.ctx)}</p><div class="opts">${opts}</div>`, sheet => {
+    sheet.querySelectorAll('.opt').forEach(b => b.onclick = () => { const o = p.options[+b.dataset.n]; closeSheet(); p.onPick(o.v); });
+  });
+}
+
+/* ---------- Running ---------- */
+function tickMs() { return CONFIG.TICK_MS / (State.fast ? CONFIG.FAST_MULT : 1); }
+function ensureSim() {
+  const lv = State.level();
+  if (!State.sim || State.sim.status !== 'run') { State.sim = newSim(lv, State.ledger); State.path = [{ x: State.sim.pip.x, y: State.sim.pip.y }]; State.brokenSeal = null; hideResult(); }
+}
+function toggleRun() {
+  if (State.running) { stopRun(); renderControls(); return; }
+  ensureSim(); State.running = true; renderControls(); loop();
+}
+function stopRun() { State.running = false; clearTimeout(State.timer); State.timer = null; }
+function loop() {
+  if (!State.running) return;
+  advance();
+  if (State.sim && State.sim.status === 'run') State.timer = setTimeout(loop, tickMs());
+  else { State.running = false; renderControls(); }
+}
+function stepOnce() { stopRun(); ensureSim(); advance(); renderControls(); }
+function resetBoard() { stopRun(); State.sim = null; State.brokenSeal = null; hideResult(); renderLedger(); renderHud(); renderControls(); renderInspector(); }
+
+function advance() {
+  const lv = State.level(), s = State.sim; if (!s || s.status !== 'run') return;
+  const from = snapshot(s);
+  step(lv, State.ledger, s);
+  const ev = s.events[s.events.length - 1];
+  Render.anim = { from, to: snapshot(s), t0: performance.now(), dur: tickMs() * 0.92, ev };
+  State.path.push({ x: s.pip.x, y: s.pip.y });
+  const c = Render.cell, cx = s.pip.x * c + c / 2, cy = s.pip.y * c + c / 2;
+  if (ev.move) Sound.sfx(ev.move.hop ? 'hop' : 'step');
+  else if (ev.bump) Sound.sfx('bump');
+  else if (ev.turn) Sound.sfx('turn');
+  if (ev.key) { Sound.sfx('key'); setTimeout(() => { Render.burst(cx, cy, Render.colors.brass, 14); Render.float('key!', cx, cy - c * 0.3, Render.colors.brass); }, tickMs() * 0.8); }
+  if (ev.hatchMove) Sound.sfx('hatch');
+  if (ev.guardsMoved) Sound.sfx('guard');
+  if (ev.spare) Render.float('printed!', cx, cy - c * 0.4, Render.colors.brass);
+  renderLedger(); renderHud(); renderInspector();
+  if (s.status !== 'run') setTimeout(() => endRun(s), Math.min(420, tickMs() + 60));
+}
+
+function endRun(s) {
+  if (State.sim !== s) return;
+  const lv = State.level(), c = Render.cell, cx = s.pip.x * c + c / 2, cy = s.pip.y * c + c / 2;
+  const d = Storage.data;
+  if (s.status === 'win') {
+    Sound.sfx('win'); Render.burst(cx, cy, Render.colors.brass, 26, 3); Render.burst(cx, cy, Render.colors.slot, 18, 2.4);
+    const stars = starsFor(lv, State.ledger, s), prev = d.stars[lv.id] || 0;
+    d.stars[lv.id] = Math.max(prev, stars);
+    const b = d.best[lv.id]; if (!b || s.tick < b.ticks) d.best[lv.id] = { ticks: s.tick, lines: usedLines(State.ledger) };
+    if (State.li + 1 >= d.unlocked && State.li + 1 < LEVELS.length) d.unlocked = State.li + 2;
+    let ending = null;
+    if (lv.strikable) { ending = loopholeOf(lv, State.ledger); d.endings[ending] = true; }
+    Storage.save();
+    if (lv.strikable) { setTimeout(() => showFinale(ending, s), 700); return; }
+    showResult(`
+      <div class="big win">ESCAPED</div>
+      <div class="stars" aria-label="${stars} of 3 stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</div>
+      <div class="meta">${s.tick} ticks (par ${lv.par.ticks}) · ${usedLines(State.ledger)} routine lines (par ${lv.par.lines})</div>
+      <div class="remark" id="remark"></div>
+      <div class="btn-row">${State.li + 1 < LEVELS.length ? '<button class="btn primary" id="next">Next level ▶</button>' : ''}<button class="btn" id="again">Replay</button></div>`);
+    typewrite($('#remark'), 'The Auditor: ' + lv.remark);
+    const nb = $('#next'); if (nb) { nb.onclick = () => openLevel(State.li + 1); nb.focus(); }
+    $('#again').onclick = () => { resetBoard(); };
+  } else if (s.status === 'void') {
+    Sound.sfx('void'); Render.shake = 14 * GK.prefs.motionScale(); State.brokenSeal = s.voidSeal; renderLedger();
+    showResult(`
+      <div class="stamp-void">VOID</div>
+      <div class="remark">Pip reached the exit, but the run broke a seal: <b>${esc(s.reason)}</b></div>
+      <div class="btn-row"><button class="btn primary" id="edit">Back to the ledger</button></div>`);
+    $('#edit').onclick = () => { resetBoard(); State.brokenSeal = s.voidSeal; renderLedger(); }; $('#edit').focus();
+  } else {
+    const label = { caught: 'CAUGHT', smudged: 'SMUDGED', timeout: 'STALLED' }[s.status];
+    Sound.sfx(s.status === 'timeout' ? 'timeout' : s.status === 'smudged' ? 'smudge' : 'caught'); Render.shake = (s.status === 'timeout' ? 0 : 10) * GK.prefs.motionScale();
+    if (s.status === 'smudged') Render.burst(cx, cy, Render.colors.spill, 20, 2);
+    $('#bw').classList.remove('shake'); void $('#bw').offsetWidth; if (s.status !== 'timeout') $('#bw').classList.add('shake');
+    showResult(`
+      <div class="big bad">${label}</div>
+      <div class="remark">${esc(s.reason)} (tick ${s.tick})</div>
+      <div class="btn-row"><button class="btn primary" id="edit">Edit the ledger</button><button class="btn" id="hint2">Hint</button></div>`);
+    $('#edit').onclick = resetBoard; $('#edit').focus();
+    $('#hint2').onclick = () => { resetBoard(); showHint(); };
+  }
+}
+function showResult(html) { const r = $('#result'); if (!r) return; r.className = 'result'; r.innerHTML = `<div class="card">${html}</div>`; r.hidden = false; }
+function hideResult() { const r = $('#result'); if (r) { r.hidden = true; r.innerHTML = ''; } }
+function typewrite(el, text) {
+  if (!el) return;
+  if (GK.prefs.motion() !== 'full') { el.textContent = text; return; }
+  let n = 0; const t = setInterval(() => { if (!el.isConnected) return clearInterval(t); el.textContent = text.slice(0, ++n); if (n >= text.length) clearInterval(t); }, 22);
+}
+
+function renderHud() {
+  const lv = State.level(), s = State.sim;
+  const max = lv.maxTicks || CONFIG.MAX_TICKS;
+  const best = Storage.data.best[lv.id], st = Storage.data.stars[lv.id] || 0;
+  const msg = !s ? (State.edited ? 'Ready. Press Run.' : 'Tap a glowing slot to rewrite it, then press Run.') : s.status === 'run' ? (s.pip.key ? 'Pip has the key.' : 'Running…') : '';
+  $('#hud').innerHTML = `<span>Tick <b>${s ? s.tick : 0}</b>/${max}</span><span>Par <b>${lv.par.ticks}</b> ticks · <b>${lv.par.lines}</b> lines</span><span>Best <b>${best ? best.ticks : '–'}</b></span><span aria-label="${st} stars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</span><span class="msg">${msg}</span>`;
+}
+function renderControls() {
+  const r = $('#run'); if (!r) return;
+  const done = State.sim && State.sim.status !== 'run';
+  r.textContent = State.running ? '❚❚ Pause' : (State.sim && State.sim.tick > 0 && !done ? '▶ Resume' : '▶ Run');
+  r.classList.toggle('hot', !State.running && State.edited && !State.sim && State.li <= 1);
+  $('#speed').textContent = State.fast ? '3×' : '1×';
+}
+function showHint() {
+  const lv = State.level();
+  if (!lv.hints.length) { toast('No hints here. Everything you need, you have already used.'); return; }
+  State.hintShown = Math.min(lv.hints.length, State.hintShown + 1);
+  Storage.data.hints[lv.id] = State.hintShown; Storage.save(); renderHint();
+}
+function renderHint() {
+  const lv = State.level(), n = State.hintShown;
+  $('#hintbox').innerHTML = n ? lv.hints.slice(0, n).map((h, i) => `<div class="hintbox"><b>Hint ${i + 1}.</b> ${esc(h)}</div>`).join('') : '';
+  const hb = $('#hint'); if (hb) { hb.textContent = n >= lv.hints.length ? 'All hints shown' : `Hint (${n}/${lv.hints.length})`; hb.disabled = !lv.hints.length || n >= lv.hints.length; }
+}
+function renderInspector() {
+  const box = $('#inspect'); if (!box) return;
+  if (!Storage.data.settings.inspect) { box.innerHTML = ''; return; }
+  const lv = State.level(), s = State.sim || newSim(lv, State.ledger), r = resolveRules(lv, State.ledger), t = s.trace;
+  box.innerHTML = `<div class="inspector">
+    <span><span class="k">tick</span> ${s.tick}</span><span><span class="k">Pip</span> (${s.pip.x},${s.pip.y}) ${s.pip.dir}</span>
+    <span><span class="k">holding key</span> ${s.pip.key}</span><span><span class="k">hatches</span> ${s.hatches.length} (max ${t.maxHatches})</span>
+    <span><span class="k">hatch moved</span> ${t.hatchMoved}</span><span><span class="k">crossed wall</span> ${t.crossedWall}</span>
+    <span><span class="k">touched ink</span> ${t.touchedInk}</span><span><span class="k">stride</span> ${r.stride}</span>
+    <span><span class="k">walls</span> ${r.walls}</span><span><span class="k">guards</span> ${r.guards} / every ${r.pace}</span>
+  </div>`;
+}
+
+/* ---------- Finale ---------- */
+function showFinale(endingKey, s) {
+  stopRun(); State.screen = 'finale';
+  const e = ENDINGS[endingKey], d = Storage.data, found = Object.keys(d.endings).filter(k => k !== 'other').length;
+  app().innerHTML = `
+  <div class="screen title-screen">
+    <div class="form-no">Registry form 0 · Exit granted</div>
+    <div class="stamp-void ok">APPROVED</div>
+    <div class="finale-card">
+      <h2>${esc(e.name)}</h2>
+      <p class="lede">${esc(e.line)} Pip drops through the hatch and out of the Registry for good.</p>
+      <p class="lede">The Auditor stares at the ledger for a long time, then writes one more line: <i>"Request: transfer to a department with fewer ink blots."</i></p>
+      <div class="summary"><span>Loopholes found <b>${found}</b> / 5</span><span>Stars <b>${totalStars()}</b> / ${LEVELS.length * 3}</span></div>
+      <p class="fineprint">The final audit has five different loopholes that fit in two strokes of ink. Each one counts once.</p>
+      <div class="btn-row"><button class="btn primary" id="again">Find another loophole</button><button class="btn" id="lv">All levels</button></div>
+    </div>
+  </div>`;
+  if (GK.prefs.motion() !== 'still') { const c = document.createElement('canvas'); c.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:30;width:100%;height:100%'; document.body.appendChild(c);
+  confetti(c); }
+  $('#again').onclick = () => { const lv = LEVELS[LEVELS.length - 1]; delete d.drafts[lv.id]; Storage.save(); openLevel(LEVELS.length - 1); };
+  $('#lv').onclick = showLevels; $('#again').focus();
+}
+function confetti(cv) {
+  const g = cv.getContext('2d'), W = cv.width = innerWidth, H = cv.height = innerHeight;
+  const cols = [Render.colors.stamp, Render.colors.brass, Render.colors.slot, Render.colors.ink];
+  const ps = Array.from({ length: Math.round(90 * GK.prefs.motionScale()) }, () => ({ x: Math.random() * W, y: -Math.random() * H * 0.5, vy: 1.5 + Math.random() * 2.5, vx: (Math.random() - 0.5) * 1.5, r: Math.random() * 6, a: Math.random() * 6, c: cols[Math.floor(Math.random() * 4)] }));
+  let n = 0; (function f() { g.clearRect(0, 0, W, H); for (const p of ps) { p.y += p.vy; p.x += p.vx; p.a += 0.1; g.save(); g.translate(p.x, p.y); g.rotate(p.a); g.fillStyle = p.c; g.fillRect(-4, -2, 8, 4 + p.r); g.restore(); } if (++n < 260) requestAnimationFrame(f); else cv.remove(); })();
+}
+
+/* ================= INPUT (keyboard + touch map to the same actions) ================= */
+document.addEventListener('keydown', e => {
+  if (document.querySelector('.gk-prefs')) return;
+  if (State.picker || $('#sheetbg')) {
+    if (e.key === 'Escape') { closeSheet(); e.preventDefault(); }
+    const n = parseInt(e.key, 10);
+    if (State.picker && n >= 1 && n <= State.picker.options.length) { const p = State.picker, o = p.options[n - 1]; closeSheet(); p.onPick(o.v); e.preventDefault(); }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const list = [...document.querySelectorAll('#sheetbg .opt')], i = list.indexOf(document.activeElement);
+      const j = (i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length; list[j] && list[j].focus(); e.preventDefault();
+    }
+    return;
+  }
+  if (State.screen !== 'play') return;
+  const onButton = document.activeElement && document.activeElement.tagName === 'BUTTON';
+  if ((e.key === ' ' || e.key === 'Enter') && !onButton) { e.preventDefault(); Sound.init(); toggleRun(); }
+  else if (e.key === ' ' && onButton && document.activeElement.id === 'run') { /* default click */ }
+  else if (e.key.toLowerCase() === 's' && !e.metaKey && !e.ctrlKey) { Sound.init(); stepOnce(); }
+  else if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey) resetBoard();
+  else if (e.key.toLowerCase() === 'h') showHint();
+  else if (e.key === 'Escape') showLevels();
+});
+document.addEventListener('pointerdown', () => Sound.init(), { once: true });
+document.addEventListener('visibilitychange', () => Sound.syncMusic());
+window.addEventListener('resize', () => { if (State.screen === 'play') Render.resize(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => Render.readColors());
+
+function rafLoop(now) { try { Render.frame(now); } catch (e) { console.error(e); } requestAnimationFrame(rafLoop); }
+
+/* ================= BOOT ================= */
+let Coach = null;
+function boot() {
+  Storage.load(); applyTheme();
+  GK.studio();
+  GK.wired('motion', 'board shake and particle bursts; Calm/Still turn off the page animations and the typewriter remark (was the phone reduced-motion rule); Calm thins the finale confetti, Still drops it and stops the board wobble and glints');
+  GK.wired('text', 'page CSS scaled (bottom controls, level-card tags and line numbers capped at 125%), canvas floating words');
+  Coach = GK.coach.create('clause-and-effect-first', [{ target: () => $('#ledger .slot[data-k=face]') || $('#ledger button.slot'), done: () => State.edited || !!State.sim || State.li > 0 || totalStars() > 0 }], { when: () => State.screen === 'play' && !$('#sheetbg') && !State.running && !!$('#result') && $('#result').hidden });
+  showTitle();
+  requestAnimationFrame(rafLoop);
+}
+boot();
+
+</script>

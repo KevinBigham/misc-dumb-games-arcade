@@ -1,0 +1,2662 @@
+<title>Kilnshot</title>
+<style>
+/* Layout: one-screen app. HUD strip, the kiln yard canvas filling the middle, a thumb-reach button bar.
+   Single deliberate look (daylit glaze studio: chalk-blue plaster, ochre shelves, cobalt keepers, ember orange). */
+:root {
+  --plaster: #cfe1e4; --plaster-d: #a9c6cc; --ink: #1e2a33; --ink-soft: #4d5f6b;
+  --ochre: #c58b3c; --ochre-d: #8d5d22; --cobalt: #2448a8; --ember: #ff6a1f; --ember-hot: #ffc93d;
+  --bisque: #ead7b9; --panel: #f3f0e6; --panel-edge: #b9cfd3; --good: #2f7d4a; --bad: #b2321f;
+  --f-display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", "Helvetica Neue", system-ui, sans-serif;
+  --f-body: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body { margin: 0; background: var(--plaster-d); color: var(--ink); font-family: var(--f-body); overflow: hidden;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
+#app { height: 100%; display: flex; flex-direction: column; max-width: 560px; margin: 0 auto; background: var(--plaster);
+  padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); box-sizing: border-box; }
+#hud { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px; min-height: 40px; }
+#hName { flex: 1; min-width: 0; font-family: var(--f-display); font-weight: 800; font-size: 17px; letter-spacing: .02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#hName small { font-family: var(--f-body); font-weight: 700; color: var(--ink-soft); font-size: 12px; letter-spacing: .08em; margin-right: 6px; }
+#hEmbers { display: flex; gap: 4px; align-items: center; }
+#hEmbers i { width: 11px; height: 11px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, var(--ember-hot), var(--ember) 60%, #b5370c); box-shadow: 0 0 6px rgba(255,106,31,.6); }
+#hEmbers i.spent { background: #9fb4b9; box-shadow: none; }
+#hPar { font-size: 12px; font-weight: 800; letter-spacing: .08em; color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#cv { display: block; touch-action: none; border-radius: 6px; }
+#hint { position: absolute; left: 12px; right: 12px; top: 8px; margin: 0 auto; max-width: 420px; background: rgba(243,240,230,.94);
+  border: 1px solid var(--panel-edge); border-radius: 10px; padding: 8px 12px; font-size: 14px; line-height: 1.35; text-align: center;
+  box-shadow: 0 4px 14px rgba(30,42,51,.12); transition: opacity .35s; pointer-events: none; }
+#hint.off { opacity: 0; }
+#toast { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font-family: var(--f-display); font-weight: 800; font-size: 20px;
+  color: var(--ink); text-shadow: 0 2px 0 rgba(255,255,255,.7); pointer-events: none; transition: opacity .3s; }
+#bar { display: flex; gap: 8px; padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
+#bar button, .ov button { font: inherit; font-weight: 800; font-size: 15px; border-radius: 12px; border: 2px solid var(--ink); background: var(--panel);
+  color: var(--ink); min-height: 46px; padding: 0 14px; cursor: pointer; touch-action: manipulation; }
+#bar button { flex: 1; }
+#bar button.icon { flex: 0 0 52px; padding: 0; }
+button:focus-visible { outline: 3px solid var(--cobalt); outline-offset: 2px; }
+button:active { transform: translateY(1px); }
+button.primary { background: var(--ember); border-color: #7a2a08; color: #2a0e02; }
+button:disabled { opacity: .4; }
+#ov { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(30,42,51,.38);
+  padding: max(12px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.ov { width: 100%; max-width: 420px; max-height: 100%; overflow: auto; background: var(--panel); border: 2px solid var(--ink); border-radius: 18px;
+  padding: 18px 16px; box-sizing: border-box; box-shadow: 0 10px 0 rgba(30,42,51,.25); display: flex; flex-direction: column; gap: 12px; }
+.ov h1 { margin: 0; font-family: var(--f-display); font-weight: 900; font-size: 52px; line-height: .95; letter-spacing: .01em; text-align: center;
+  color: var(--ember); -webkit-text-stroke: 2px var(--ink); text-shadow: 3px 4px 0 var(--ink); text-wrap: balance; }
+.ov h2 { margin: 0; font-family: var(--f-display); font-weight: 900; font-size: 30px; text-align: center; text-wrap: balance; }
+.ov p { margin: 0; line-height: 1.4; text-align: center; }
+.ov .sub { color: var(--ink-soft); font-size: 14px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row button { flex: 1 1 120px; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+.stars { text-align: center; font-size: 40px; letter-spacing: 6px; color: var(--ochre); text-shadow: 0 2px 0 var(--ochre-d); }
+.stars .dim { color: #c8d4d6; text-shadow: none; }
+.how { display: grid; grid-template-columns: 26px 1fr; gap: 6px 8px; font-size: 14px; line-height: 1.3; align-items: center; }
+.how b { display: inline-block; width: 22px; height: 22px; border-radius: 50%; }
+.chap { border-top: 1px dashed var(--panel-edge); padding-top: 10px; }
+.chap h3 { margin: 0 0 2px; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+.chap p { text-align: left; font-size: 13px; color: var(--ink-soft); margin-bottom: 8px; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tiles button { min-height: 58px; padding: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 13px; }
+.tiles button span { font-size: 11px; font-weight: 700; color: var(--ink-soft); line-height: 1.1; }
+.tiles button em { font-style: normal; color: var(--ochre); letter-spacing: 1px; font-size: 13px; }
+.tiles button.locked { background: #dde6e7; border-style: dashed; color: #7f9196; }
+.share { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: #fff; border: 1px solid var(--panel-edge); border-radius: 8px; padding: 8px; white-space: pre-wrap; user-select: text; -webkit-user-select: text; }
+.bar-prog { height: 10px; background: #dde6e7; border-radius: 6px; overflow: hidden; border: 1px solid var(--panel-edge); }
+.bar-prog i { display: block; height: 100%; width: 0; background: var(--ember); transition: width .15s; }
+.tiny { font-size: 12px; color: var(--ink-soft); text-align: center; }
+@media (prefers-reduced-motion: reduce) { #hint, #toast, .bar-prog i { transition: none; } }
+</style>
+<div id="app">
+  <div id="hud"><div id="hName"></div><div id="hEmbers" aria-label="Embers left"></div><div id="hPar"></div></div>
+  <div id="stage"><canvas id="cv" aria-label="Kiln yard. Drag back anywhere and release to throw an ember."></canvas>
+    <div id="hint" class="off"></div><div id="toast"></div>
+    <div id="ov" hidden><div class="ov" id="card"></div></div>
+  </div>
+  <div id="bar">
+    <button id="bMenu" class="icon" aria-label="Levels">&#9776;</button>
+    <button id="bRetry">Retry</button>
+    <button id="bHint" class="icon" aria-label="Show the hint">?</button>
+    <button id="bSound" class="icon" aria-label="Sound on">&#9835;</button>
+  </div>
+</div>
+<script id="gamekit">/* GameKit 2.0 : shared starter kit for single-file phone games.
+   Paste inline in a script tag before the game's own script. No build step, no network.
+   Modules: GK.rng, GK.daily, GK.save, GK.audio, GK.input, GK.juice, GK.ease,
+            GK.badges, GK.share, GK.view, GK.ui, GK.loop, GK.prefs, GK.flash, GK.perf,
+            GK.theme, GK.popups, GK.roll, GK.coach, GK.hints, GK.retrofit.  README.md has the API.
+   All code here is the studio's own (no third-party code). */
+(function (root) {
+  'use strict';
+  var GK = { version: '2.0.0' };
+  var HAS_DOM = typeof window !== 'undefined' && typeof document !== 'undefined';
+  var W = HAS_DOM ? window : {};
+  function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function on(t, ev, fn, opt) { if (t && t.addEventListener) t.addEventListener(ev, fn, opt); }
+  function off(t, ev, fn, opt) { if (t && t.removeEventListener) t.removeEventListener(ev, fn, opt); }
+  GK.clamp = clamp;
+  GK.now = now;
+
+  /* ---------- environment ---------- */
+  var ENV = GK.env = (function () {
+    var ua = HAS_DOM && navigator.userAgent || '';
+    var touchMac = HAS_DOM && /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+    var ios = /iPhone|iPad|iPod/.test(ua) || !!touchMac;
+    var reduced = false;
+    try { reduced = HAS_DOM && W.matchMedia && W.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    return { ios: ios, android: /Android/.test(ua), touch: HAS_DOM && (('ontouchstart' in W) || navigator.maxTouchPoints > 0), reducedMotion: !!reduced };
+  })();
+  // follow the phone's reduce-motion setting live (2.0)
+  if (HAS_DOM && W.matchMedia) {
+    try {
+      var mqRM = W.matchMedia('(prefers-reduced-motion: reduce)');
+      var onRM = function () { ENV.reducedMotion = !!mqRM.matches; if (GK.prefs && GK.prefs._emit) GK.prefs._emit('motion'); };
+      if (mqRM && mqRM.addEventListener) mqRM.addEventListener('change', onRM); else if (mqRM && mqRM.addListener) mqRM.addListener(onRM);
+    } catch (e) {}
+  }
+
+  /* ---------- storage (never throws) ---------- */
+  var mem = {};
+  var LS = GK.ls = {
+    get: function (k) { try { var v = W.localStorage.getItem(k); return v == null ? (k in mem ? mem[k] : null) : v; } catch (e) { return k in mem ? mem[k] : null; } },
+    set: function (k, v) { mem[k] = v; try { W.localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+    del: function (k) { delete mem[k]; try { W.localStorage.removeItem(k); } catch (e) {} }
+  };
+
+  /* ================= RNG ================= */
+  // hash4: string -> four 32-bit words (multiply-xorshift mixing, one pass per lane)
+  var HMUL = [0x85ebca6b, 0xc2b2ae35, 0x27d4eb2f, 0x165667b1];
+  function hash4(str) {
+    str = String(str);
+    var h = [0x6a09e667 ^ str.length, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a], M = HMUL;
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      for (var j = 0; j < 4; j++) {
+        h[j] = Math.imul(h[j] ^ c, M[j]);
+        h[j] ^= h[j] >>> 15;
+        c = (c + h[j]) | 0;
+      }
+    }
+    for (var k = 0; k < 4; k++) {
+      var x = h[k] ^ h[(k + 1) & 3];
+      x = Math.imul(x ^ (x >>> 16), 0x7feb352d);
+      x = Math.imul(x ^ (x >>> 15), 0x846ca68b);
+      h[k] = (x ^ (x >>> 16)) >>> 0;
+    }
+    return h;
+  }
+  function hash32(str) { return hash4(str)[0]; }
+  // sfc32 generator (small fast counting, 128-bit state); state is kept so a run can resume.
+  function sfc(s) {
+    var a = s[0] | 0, b = s[1] | 0, c = s[2] | 0, d = s[3] | 0;
+    function next() {
+      var t = (((a + b) | 0) + d) | 0;
+      d = (d + 1) | 0;
+      a = b ^ (b >>> 9);
+      b = (c + (c << 3)) | 0;
+      c = (c << 21) | (c >>> 11);
+      c = (c + t) | 0;
+      return (t >>> 0) / 4294967296;
+    }
+    for (var i = 0; i < 12; i++) next();
+    next.state = function () { return [a >>> 0, b >>> 0, c >>> 0, d >>> 0]; };
+    next.load = function (st) { a = st[0] | 0; b = st[1] | 0; c = st[2] | 0; d = st[3] | 0; };
+    return next;
+  }
+  // mulberry32: kept so shipped games keep their exact dailies
+  function mulberry32(seed) {
+    var s = seed >>> 0;
+    return function () {
+      s = (s + 0x6d2b79f5) | 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function wrap(fn, seedStr) {
+    var R = {
+      seed: seedStr,
+      next: fn,
+      float: function (a, b) { if (b === undefined) { b = a === undefined ? 1 : a; a = 0; } return a + fn() * (b - a); },
+      int: function (lo, hi) { return lo + Math.floor(fn() * (hi - lo + 1)); }, // inclusive
+      chance: function (p) { return fn() < p; },
+      pick: function (arr) { return arr[Math.floor(fn() * arr.length)]; },
+      sign: function () { return fn() < 0.5 ? -1 : 1; },
+      shuffle: function (arr) { for (var i = arr.length - 1; i > 0; i--) { var j = Math.floor(fn() * (i + 1)); var t = arr[i]; arr[i] = arr[j]; arr[j] = t; } return arr; },
+      weighted: function (items, weights) {
+        var tot = 0, i; for (i = 0; i < weights.length; i++) tot += Math.max(0, weights[i]);
+        var r = fn() * tot; for (i = 0; i < items.length; i++) { r -= Math.max(0, weights[i]); if (r < 0) return items[i]; }
+        return items[items.length - 1];
+      },
+      sub: function (label, n) { return GK.rng.make(seedFor(seedStr, label, n)); },
+      state: function () { return fn.state ? fn.state() : null; },
+      load: function (st) { if (fn.load && st) fn.load(st); return R; }
+    };
+    return R;
+  }
+  function seedFor(base, label, n) { return String(base) + '/' + label + (n === undefined ? '' : '#' + n); }
+  var CONS = 'BCDFGHJKLMNPQRSTVWXZ';
+  GK.rng = {
+    hash32: hash32,
+    hash4: hash4,
+    mulberry32: mulberry32,
+    seedFor: seedFor,
+    make: function (seed) { var s = String(seed); return wrap(sfc(hash4(s)), s); },
+    legacy: function (seed32) { return wrap(mulberry32(seed32), String(seed32)); },
+    streams: function (seed) { return { game: GK.rng.make(seedFor(seed, 'game')), fx: GK.rng.make(seedFor(seed, 'fx')) }; },
+    code: function (src) { // 9-letter shareable code, no vowels: BCD-FGH-JKL
+      var r = src && src.next ? src : GK.rng.make(src === undefined ? Math.random() + ':' + Date.now() : src);
+      var out = ''; for (var i = 0; i < 9; i++) { if (i && i % 3 === 0) out += '-'; out += CONS[Math.floor(r.next() * CONS.length)]; }
+      return out;
+    },
+    normalize: function (text) { // any typed text becomes a seed; codes ignore case, spaces and dashes
+      var t = String(text || '').trim();
+      var c = t.toUpperCase().replace(/[\s\-_.]/g, '');
+      if (/^[BCDFGHJKLMNPQRSTVWXZ]{9}$/.test(c)) return c.slice(0, 3) + '-' + c.slice(3, 6) + '-' + c.slice(6);
+      return t;
+    },
+    // bounded retry for generators: never loops on the clock
+    tries: function (max, fn) { for (var i = 0; i < max; i++) { var v = fn(i); if (v !== undefined && v !== null && v !== false) return v; } return null; }
+  };
+
+  /* ================= DAILY ================= */
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function partsIn(date, tz) {
+    if (!tz) return { y: date.getFullYear(), m: date.getMonth() + 1, d: date.getDate(), H: date.getHours(), M: date.getMinutes(), S: date.getSeconds() };
+    try {
+      var f = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' });
+      var o = {}; f.formatToParts(date).forEach(function (p) { o[p.type] = p.value; });
+      return { y: +o.year, m: +o.month, d: +o.day, H: (+o.hour) % 24, M: +o.minute, S: +o.second };
+    } catch (e) { return partsIn(date, null); }
+  }
+  GK.daily = {
+    // YYYY-MM-DD on the player's own clock (or a fixed zone, e.g. {tz:'America/Chicago'})
+    key: function (opts, date) { var p = partsIn(date || new Date(), opts && opts.tz); return p.y + '-' + pad(p.m) + '-' + pad(p.d); },
+    seed: function (gameId, key) { return gameId + '|' + (key || GK.daily.key()); },
+    msToNext: function (opts, date) {
+      var p = partsIn(date || new Date(), opts && opts.tz);
+      return ((23 - p.H) * 3600 + (59 - p.M) * 60 + (60 - p.S)) * 1000;
+    },
+    countdown: function (ms) {
+      var s = Math.max(0, Math.ceil(ms / 1000)); var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+      return h > 0 ? h + 'h ' + pad(m) + 'm' : m + 'm ' + pad(s % 60) + 's';
+    },
+    // record a day played. st = {days:0,last:''}; returns true on a new day. Counts total days, never resets.
+    mark: function (st, key) { key = key || GK.daily.key(); if (st.last === key) return false; st.last = key; st.days = (st.days | 0) + 1; return true; },
+    label: function (key) { var p = key.split('-'); var mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][(+p[1]) - 1]; return mo + ' ' + (+p[2]); },
+    // "Lantern Drum Nov 6: 1234" + optional emoji row
+    shareLine: function (o) { return (o.game || 'Game') + ' ' + GK.daily.label(o.key || GK.daily.key()) + ': ' + o.score + (o.grid ? '\n' + o.grid : '') + (o.tail ? '\n' + o.tail : ''); }
+  };
+
+  /* ================= SAVE ================= */
+  function b64e(s) { if (typeof btoa !== 'undefined') return btoa(unescape(encodeURIComponent(s))); return Buffer.from(s, 'utf8').toString('base64'); }
+  function b64d(s) { if (typeof atob !== 'undefined') return decodeURIComponent(escape(atob(s))); return Buffer.from(s, 'base64').toString('utf8'); }
+  function sum(s) { return (hash32('gk-save|' + s) >>> 0).toString(36); }
+  function okJSON(raw) { if (raw == null || raw === '') return false; try { JSON.parse(raw); return true; } catch (e) { return false; } }
+  var hideFns = [];
+  var hideBound = false;
+  function bindHide() {
+    if (hideBound || !HAS_DOM) return; hideBound = true;
+    var fire = function () { for (var i = 0; i < hideFns.length; i++) { try { hideFns[i](); } catch (e) {} } };
+    on(W, 'pagehide', fire);
+    on(document, 'visibilitychange', function () { if (document.visibilityState === 'hidden') fire(); });
+  }
+  function rotate(key, raw, keep) {
+    keep = keep || 3;
+    if (!raw || LS.get(key + '.bak1') === raw) return false;
+    for (var i = keep; i > 1; i--) { var prev = LS.get(key + '.bak' + (i - 1)); if (prev != null) LS.set(key + '.bak' + i, prev); }
+    LS.set(key + '.bak1', raw); return true;
+  }
+  function backups(key, keep) { var out = []; for (var i = 1; i <= (keep || 3); i++) { var v = LS.get(key + '.bak' + i); if (v != null) out.push(v); } return out; }
+  function exportRaw(key, raw) { var body = b64e(JSON.stringify({ k: key, v: raw, t: Date.now() })); return 'GK1.' + body + '.' + sum(body); }
+  function importRaw(key, code) {
+    code = String(code || '').replace(/\s+/g, '');
+    var p = code.split('.'); if (p.length !== 3 || p[0] !== 'GK1' || sum(p[1]) !== p[2]) return null;
+    try { var o = JSON.parse(b64d(p[1])); if (o.k !== key || typeof o.v !== 'string') return null; return o.v; } catch (e) { return null; }
+  }
+  GK.save = {
+    onHide: function (fn) { hideFns.push(fn); bindHide(); },
+    persist: function () { try { if (navigator.storage && navigator.storage.persist) return navigator.storage.persist().catch(function () { return false; }); } catch (e) {} return Promise.resolve(false); },
+    // Retrofit an existing game: no format change. Keeps 3 rolling backups (one per session),
+    // restores the newest good backup when the key is missing or unreadable, and adds export/import.
+    protect: function (key, opts) {
+      opts = opts || {};
+      var valid = opts.validate || okJSON;
+      var keep = opts.keep || 3;
+      var raw = LS.get(key), restored = false;
+      if (!valid(raw)) {
+        var bs = backups(key, keep);
+        for (var i = 0; i < bs.length; i++) if (valid(bs[i])) { LS.set(key, bs[i]); raw = bs[i]; restored = true; break; }
+      }
+      if (valid(raw)) rotate(key, raw, keep);
+      GK.save.persist();
+      return {
+        key: key, restored: restored,
+        backups: function () { return backups(key, keep); },
+        exportCode: function () { return exportRaw(key, LS.get(key) || ''); },
+        importCode: function (code) { var v = importRaw(key, code); if (v == null || !valid(v)) return false; rotate(key, LS.get(key), keep); LS.set(key, v); return true; }
+      };
+    },
+    // New games: versioned store {v,t,d} with defaults, migrations, backups and save on hide.
+    store: function (key, opts) {
+      opts = opts || {};
+      var version = opts.version || 1, defaults = opts.defaults || {}, keep = opts.keep || 3;
+      function fresh() { return JSON.parse(JSON.stringify(defaults)); }
+      function parse(raw) { try { var o = JSON.parse(raw); return (o && typeof o === 'object' && typeof o.v === 'number' && o.d && typeof o.d === 'object') ? o : null; } catch (e) { return null; } }
+      function fill(d) { var f = fresh(); for (var k in f) if (!(k in d) || typeof d[k] !== typeof f[k]) d[k] = f[k]; return d; }
+      var S = { key: key, data: null, restored: false };
+      S.load = function () {
+        var raw = LS.get(key), o = parse(raw);
+        if (!o) { var bs = backups(key, keep); for (var i = 0; i < bs.length && !o; i++) { o = parse(bs[i]); if (o) S.restored = true; } }
+        var d = o ? o.d : fresh(), v = o ? o.v : version;
+        while (o && v < version && opts.migrate) { d = opts.migrate(d, v) || d; v++; }
+        S.data = fill(d);
+        if (o && raw && parse(raw)) rotate(key, raw, keep);
+        return S.data;
+      };
+      S.save = function () { if (!S.data) return false; return LS.set(key, JSON.stringify({ v: version, t: Date.now(), d: S.data })); };
+      S.reset = function () { rotate(key, LS.get(key), keep); S.data = fresh(); S.save(); return S.data; };
+      S.exportCode = function () { S.save(); return exportRaw(key, LS.get(key) || ''); };
+      S.importCode = function (code) { var v = importRaw(key, code); if (v == null || !parse(v)) return false; rotate(key, LS.get(key), keep); LS.set(key, v); S.load(); return true; };
+      S.backups = function () { return backups(key, keep); };
+      S.load();
+      GK.save.onHide(S.save);
+      GK.save.persist();
+      return S;
+    }
+  };
+
+  /* ================= AUDIO ================= */
+  var A = GK.audio = { ctx: null, master: null, bank: {}, volume: 1, muted: false, unlocked: false, _last: {}, _voices: {} };
+  var GESTURES = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'];
+  function silentWavURL() {
+    try {
+      var n = 800, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+      var w = function (o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+      w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true);
+      v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+      v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+      for (var i = 0; i < n; i++) v.setUint8(44 + i, 128);
+      return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    } catch (e) { return null; }
+  }
+  var silentEl = null, silentDone = false;
+  function playSilentEl() { // routes Web Audio to the media channel so the ringer switch does not mute it
+    if (silentDone || !HAS_DOM || !W.Audio) return;
+    try {
+      if (!silentEl) { var u = silentWavURL(); if (!u) { silentDone = true; return; } silentEl = new W.Audio(u); silentEl.setAttribute('playsinline', ''); silentEl.loop = false; silentEl.volume = 0.01; }
+      var p = silentEl.play(); silentDone = true;
+      if (p && p.catch) p.catch(function () { silentDone = false; });
+    } catch (e) {}
+  }
+  function poke() { // tiny silent buffer, needed by older iOS to open the output
+    var c = A.ctx; if (!c || !c.createBuffer) return;
+    try { var b = c.createBuffer(1, 1, c.sampleRate || 44100), s = c.createBufferSource(); s.buffer = b; s.connect(c.destination); s.start(0); } catch (e) {}
+  }
+  function gesture() {
+    if (!A.ctx) { if (A.autoCreate === false) return; A.ensure(); }
+    var c = A.ctx; if (!c) return;
+    playSilentEl();
+    if (c.state !== 'running' && !A.held) { try { var p = c.resume(); if (p && p.then) p.then(check, function () {}); } catch (e) {} poke(); }
+    check();
+  }
+  function check() {
+    var c = A.ctx;
+    if (c && c.state === 'running') {
+      if (!A.unlocked) { A.unlocked = true; ringerHint(); if (A._onUnlock) A._onUnlock(); }
+      if (silentDone) { // stay listening until both are done; re-arm happens on interruption
+        for (var i = 0; i < GESTURES.length; i++) off(W, GESTURES[i], gesture, true);
+        A._armed = false;
+      }
+    }
+  }
+  function arm() { if (A._armed || !HAS_DOM) return; A._armed = true; for (var i = 0; i < GESTURES.length; i++) on(W, GESTURES[i], gesture, true); }
+  function watch() {
+    var c = A.ctx; if (!c || c._gkWatched) return; c._gkWatched = true;
+    // the game's own suspend() (pause, mute, hidden tab) is a hold: taps and focus must not resume it; its own resume() lifts it
+    A.held = false;
+    if (typeof c.suspend === 'function' && typeof c.resume === 'function') {
+      var s0 = c.suspend, r0 = c.resume;
+      c._gkSuspend0 = s0; c._gkResume0 = r0;
+      try {
+        c.suspend = function () { if (A.ctx === c) A.held = true; return s0.apply(c, arguments); };
+        c.resume = function () { if (A.ctx === c) A.held = false; return r0.apply(c, arguments); };
+      } catch (e) {}
+    }
+    var prev = c.onstatechange;
+    var h = function (e) { if (A.ctx.state !== 'running') { A.unlocked = false; arm(); } else check(); if (A._onState) A._onState(A.ctx.state); };
+    if (c.addEventListener) c.addEventListener('statechange', h); else c.onstatechange = function (e) { if (prev) prev.call(c, e); h(e); };
+  }
+  if (HAS_DOM) {
+    var wake = function () { if (A.ctx && A.ctx.state !== 'running' && !A.held && document.visibilityState !== 'hidden') { try { A.ctx.resume().catch(function () {}); } catch (e) {} arm(); } };
+    on(document, 'visibilitychange', wake); on(W, 'focus', wake); on(W, 'pageshow', wake);
+    // 2.0: fade out and suspend sound while the page is hidden (no music behind a locked screen); a game's own hold still wins
+    on(document, 'visibilitychange', function () { if (document.visibilityState === 'hidden') hideAudio(); else showAudio(); });
+    on(W, 'pagehide', hideAudio); on(W, 'pageshow', showAudio);
+  }
+  function busGain() { var c = A.ctx; return c && c._gkBus && c._gkBus.in && c._gkBus.in.gain; }
+  A._fadeTo = function (v, tc) {
+    var g = busGain(), c = A.ctx; if (!g) return;
+    try { if (g.cancelScheduledValues) g.cancelScheduledValues(c.currentTime); if (g.setTargetAtTime) g.setTargetAtTime(v, c.currentTime, tc || 0.06); else g.value = v; } catch (e) { try { g.value = v; } catch (e2) {} }
+  };
+  A.level = function () { return GK.prefs ? GK.prefs.vol('master') : 1; };
+  A.hideMode = true; // false: leave sound running while the page is hidden
+  function hideAudio() {
+    var c = A.ctx; if (!c || A.hideMode === false || c.state !== 'running' || A._hid) return;
+    A._hid = true; A.hidSuspends = (A.hidSuspends | 0); A._fadeTo(0, 0.05);
+    var s0 = c._gkSuspend0 || c.suspend;
+    setTimeout(function () {
+      if (A._hid && A.ctx === c && c.state === 'running' && !A.held && (!HAS_DOM || document.visibilityState === 'hidden')) {
+        try { var p = s0.call(c); A.hidSuspends++; if (p && p.catch) p.catch(function () {}); } catch (e) {}
+      }
+    }, 220);
+  }
+  function showAudio() {
+    if (!A._hid) return; A._hid = false;
+    var c = A.ctx;
+    if (c && c.state !== 'running' && !A.held) { try { var p = (c._gkResume0 || c.resume).call(c); if (p && p.catch) p.catch(function () {}); } catch (e) {} arm(); }
+    A._fadeTo(A.level(), 0.08);
+  }
+  A._hideNow = hideAudio; A._showNow = showAudio;
+  A.init = function (opts) {
+    opts = opts || {};
+    A._onUnlock = opts.onUnlock; A._onState = opts.onState;
+    if (opts.create === false) A.autoCreate = false; // the game makes its own context later and hands it over with adopt()
+    if (opts.ctx) A.adopt(opts.ctx, opts.output);
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    arm();
+    return A;
+  };
+  A.ensure = function () {
+    if (A.ctx) return A.ctx;
+    var C = W.AudioContext || W.webkitAudioContext; if (!C) return null;
+    try { A.adopt(new C({ latencyHint: 'interactive' })); } catch (e) { try { A.adopt(new C()); } catch (e2) { return null; } }
+    return A.ctx;
+  };
+  // Adopt a game's own AudioContext; output = the node kit sounds should feed (default: a new master gain)
+  A.limiter = true; A.route = true;
+  A.adopt = function (ctx, output) {
+    A.ctx = ctx; A._external = !!output;
+    var bus = A.route !== false ? routeToBus(ctx) : null;
+    var out = bus ? bus.in : ctx.destination;
+    if (output && output !== ctx.destination) A.master = output;
+    else if (output) A.master = out;
+    else { A.master = ctx.createGain(); A.master._gkOwn = true; A.master.connect(out); }
+    // music and sound-effect channels for games that let the kit mix (Gloamrush-style buses)
+    try { A.music = ctx.createGain(); A.music._gkOwn = true; A.music.connect(A.master); A.sfx = ctx.createGain(); A.sfx._gkOwn = true; A.sfx.connect(A.master); } catch (e) { A.music = A.sfx = null; }
+    A._applyVol(); A._applyPrefs(); watch(); arm();
+    for (var k in A.bank) A.bank[k].buf = null; // re-render for this context
+    return ctx;
+  };
+  A._applyVol = function () { if (A.master && A.master.gain && !A._external) A.master.gain.value = A.muted ? 0 : A.volume; };
+  A.setVolume = function (v) { A.volume = clamp(v, 0, 1); A._applyVol(); };
+  A.setMuted = function (m) { A.muted = !!m; A._applyVol(); };
+  // call inside a tap handler right after adopt() so the very first tap also unlocks
+  A.unlockNow = function () { gesture(); };
+  A.running = function () { return !!(A.ctx && A.ctx.state === 'running'); };
+  // ---- 2.0 master bus: everything that would go to the speaker goes through one gain and a limiter ----
+  function setP(p, v) { if (p) { try { p.value = v; } catch (e) {} } }
+  function makeBus(c) {
+    if (c._gkBus) return c._gkBus;
+    var B = { in: null, lim: null };
+    try {
+      B.in = c.createGain(); B.in._gkOwn = true;
+      if (A.limiter !== false && c.createDynamicsCompressor) {
+        var L = c.createDynamicsCompressor(); L._gkOwn = true;
+        setP(L.threshold, -4); setP(L.knee, 4); setP(L.ratio, 12); setP(L.attack, 0.003); setP(L.release, 0.15);
+        B.in.connect(L); L.connect(c.destination); B.lim = L;
+      } else B.in.connect(c.destination);
+    } catch (e) { return null; }
+    setP(B.in.gain, A.level());
+    c._gkBus = B; return B;
+  }
+  function redirect(fn, isDis) {
+    var f = function (t) {
+      var c = A.ctx;
+      if (t && c && t === c.destination && c._gkBus && !this._gkOwn) {
+        var a = Array.prototype.slice.call(arguments); a[0] = c._gkBus.in;
+        var r = fn.apply(this, a); return isDis ? r : t;
+      }
+      return fn.apply(this, arguments);
+    };
+    f._gk = true; return f;
+  }
+  function wrapNode(n) {
+    if (!n || n._gkW || typeof n.connect !== 'function') return n;
+    try { n.connect = redirect(n.connect); if (typeof n.disconnect === 'function') n.disconnect = redirect(n.disconnect, true); n._gkW = true; } catch (e) {}
+    return n;
+  }
+  function routeToBus(c) {
+    var B = makeBus(c); if (!B) return null;
+    if (c._gkRouted) return B; c._gkRouted = true;
+    var AN = W.AudioNode;
+    if (AN && AN.prototype && typeof AN.prototype.connect === 'function') {
+      if (!AN.prototype.connect._gk) {
+        try { AN.prototype.connect = redirect(AN.prototype.connect); AN.prototype.disconnect = redirect(AN.prototype.disconnect, true); } catch (e) {}
+      }
+    } else {
+      // no AudioNode global (old engines, test stubs): wrap each node the context makes
+      var names = {}, pr = c;
+      while (pr && pr !== Object.prototype) { try { Object.getOwnPropertyNames(pr).forEach(function (n) { if (/^create/.test(n)) names[n] = 1; }); } catch (e) {} pr = Object.getPrototypeOf(pr); }
+      for (var k in names) {
+        if (typeof c[k] !== 'function') continue;
+        (function (name) { var f0 = c[name]; try { c[name] = function () { return wrapNode(f0.apply(c, arguments)); }; } catch (e) {} })(k);
+      }
+    }
+    return B;
+  }
+  A.bus = function () { return A.ctx && A.ctx._gkBus || null; };
+  A._applyPrefs = function () {
+    var c = A.ctx; if (!c || !GK.prefs) return;
+    if (!A._hid) { var g = busGain(); if (g) setP(g, A.level()); }
+    if (A.music && A.music.gain) setP(A.music.gain, GK.prefs.vol('music'));
+    if (A.sfx && A.sfx.gain) setP(A.sfx.gain, GK.prefs.vol('sfx'));
+  };
+  // duck the music channel under a big moment: to `to` (0.3) for `hold` seconds, then glide back
+  A.duck = function (to, hold) {
+    var c = A.ctx, g = A.music && A.music.gain; if (!c || !g) return false;
+    var lvl = GK.prefs ? GK.prefs.vol('music') : 1, t = c.currentTime;
+    try { if (g.cancelScheduledValues) g.cancelScheduledValues(t); g.setTargetAtTime(lvl * (to === undefined ? 0.3 : to), t, 0.03); g.setTargetAtTime(lvl, t + (hold === undefined ? 0.5 : hold), 0.15); } catch (e) { return false; }
+    return true;
+  };
+  // combos climb a pentatonic scale: rate for streak n (0-based). Melodic notes get no pitch jitter.
+  var PENTA = [0, 2, 4, 7, 9];
+  A.ladder = function (n, base) { n = Math.max(0, n | 0); var semi = PENTA[n % 5] + 12 * Math.floor(n / 5); semi = Math.min(semi, 24); return Math.pow(2, ((base || 0) + semi) / 12); };
+  A.combo = function (n, o) { o = o || {}; return A.play(o.sound || 'combo', { rate: A.ladder(n, o.key), jitter: 0, vol: o.vol, gap: 0 }); };
+  A.comboBreak = function (o) { return A.play('comboBreak', o); };
+  // Synth spec: {wave:'sine'|'square'|'tri'|'saw'|'noise', f:Hz, f2:end Hz, dur:s, a:attack s, vol:0..1, at:start s} or an array of them
+  function osc(wave, ph) {
+    if (wave === 'square') return ph % 1 < 0.5 ? 1 : -1;
+    if (wave === 'saw') return 2 * (ph % 1) - 1;
+    if (wave === 'tri') { var x = ph % 1; return x < 0.5 ? 4 * x - 1 : 3 - 4 * x; }
+    return Math.sin(ph * 6.283185307);
+  }
+  A.render = function (spec, rate) {
+    rate = rate || 44100;
+    var layers = Array.isArray(spec) ? spec : [spec], end = 0, i;
+    for (i = 0; i < layers.length; i++) end = Math.max(end, (layers[i].at || 0) + (layers[i].dur || 0.1));
+    var n = Math.ceil(end * rate) + 1, out = new Float32Array(n), nz = mulberry32(7);
+    for (i = 0; i < layers.length; i++) {
+      var L = layers[i], dur = L.dur || 0.1, s0 = Math.floor((L.at || 0) * rate), len = Math.floor(dur * rate);
+      var a = Math.max(1, Math.floor((L.a === undefined ? 0.004 : L.a) * rate)), ph = 0, f = L.f || 440, f2 = L.f2 || f, vol = L.vol === undefined ? 0.5 : L.vol;
+      for (var j = 0; j < len && s0 + j < n; j++) {
+        var t = j / len, freq = f * Math.pow(f2 / f, t);
+        ph += freq / rate;
+        var env = (j < a ? j / a : 1) * Math.pow(1 - t, L.curve || 2);
+        out[s0 + j] += (L.wave === 'noise' ? nz() * 2 - 1 : osc(L.wave, ph)) * env * vol;
+      }
+    }
+    for (i = 0; i < n; i++) out[i] = clamp(out[i], -1, 1);
+    return out;
+  };
+  A.define = function (name, spec) { A.bank[name] = { spec: spec, buf: null }; return A; };
+  A.std = function () {
+    A.define('tap', { wave: 'tri', f: 660, f2: 520, dur: 0.06, vol: 0.35 });
+    A.define('success', [{ wave: 'tri', f: 523, dur: 0.09, vol: 0.35 }, { wave: 'tri', f: 784, dur: 0.14, vol: 0.35, at: 0.07 }]);
+    A.define('fail', [{ wave: 'square', f: 220, f2: 110, dur: 0.22, vol: 0.18 }, { wave: 'noise', dur: 0.08, vol: 0.12 }]);
+    A.define('combo', { wave: 'sine', f: 880, f2: 1320, dur: 0.1, vol: 0.3 });
+    A.define('win', [{ wave: 'tri', f: 523, dur: 0.12, vol: 0.3 }, { wave: 'tri', f: 659, dur: 0.12, vol: 0.3, at: 0.1 }, { wave: 'tri', f: 784, dur: 0.12, vol: 0.3, at: 0.2 }, { wave: 'sine', f: 1047, dur: 0.35, vol: 0.3, at: 0.3 }]);
+    // 2.0: a bright click and a layer an octave up so a hit is heard on a phone speaker, not just hiss
+    A.define('hit', [{ wave: 'noise', dur: 0.06, vol: 0.22 }, { wave: 'square', f: 1800, f2: 600, dur: 0.012, vol: 0.25 }, { wave: 'sine', f: 280, f2: 120, dur: 0.12, vol: 0.35 }, { wave: 'sine', f: 140, f2: 60, dur: 0.14, vol: 0.3 }]);
+    A.define('comboBreak', [{ wave: 'tri', f: 523, dur: 0.08, vol: 0.22 }, { wave: 'tri', f: 392, dur: 0.16, vol: 0.2, at: 0.07 }]);
+    return A;
+  };
+  // play(name,{vol,rate,jitter=0.05}): +/-5% pitch so repeats do not sound robotic; caps 4 voices and 25 ms repeats per sound
+  A.play = function (name, o) {
+    o = o || {};
+    var c = A.ctx, e = A.bank[name];
+    if (!c || !e || A.muted || c.state !== 'running') return false;
+    var t = now(); if (A._last[name] && t - A._last[name] < (o.gap === undefined ? 25 : o.gap)) return false;
+    if ((A._voices[name] | 0) >= (o.voices || 4)) return false;
+    try {
+      if (!e.buf) { var data = A.render(e.spec, c.sampleRate || 44100); e.buf = c.createBuffer(1, data.length, c.sampleRate || 44100); e.buf.getChannelData(0).set(data); }
+      var src = c.createBufferSource(), g = c.createGain();
+      src.buffer = e.buf;
+      var j = o.jitter === undefined ? 0.05 : o.jitter;
+      src.playbackRate.value = (o.rate || 1) * (1 + (Math.random() * 2 - 1) * j);
+      g.gain.value = o.vol === undefined ? 1 : o.vol;
+      src.connect(g); g.connect((o.bus === 'music' ? A.music : A.sfx) || A.master || c.destination);
+      A._voices[name] = (A._voices[name] | 0) + 1; A._last[name] = t;
+      src.onended = function () { A._voices[name] = Math.max(0, (A._voices[name] | 0) - 1); };
+      src.start(0);
+      ringerHint();
+      return true;
+    } catch (err) { return false; }
+  };
+  // one-time hint on iPhone, the first time sound unlocks
+  var hinted = false;
+  function ringerHint() {
+    if (hinted || !ENV.ios || A.noHint) return; hinted = true;
+    if (LS.get('gk.ringerHint')) return; LS.set('gk.ringerHint', '1');
+    if (GK.ui && HAS_DOM) setTimeout(function () { GK.ui.toast('No sound? Check the ringer switch', 3200); }, 400);
+  }
+
+  /* ================= INPUT ================= */
+  GK.input = {
+    // attach(el,{onDown,onMove,onUp,stick:{dead:.1,radius:56,follow:true}}) : one pointer layer for touch, pen and mouse
+    attach: function (el, o) {
+      o = o || {};
+      var H = { queue: [], down: {}, count: 0, stick: null, el: el };
+      if (el.style) { el.style.touchAction = 'none'; el.style.webkitUserSelect = 'none'; el.style.userSelect = 'none'; el.style.webkitTouchCallout = 'none'; el.style.webkitTapHighlightColor = 'transparent'; }
+      var st = o.stick ? (H.stick = { x: 0, y: 0, active: false, id: null, ox: 0, oy: 0, px: 0, py: 0, dead: o.stick.dead || 0.1, r: o.stick.radius || 56, follow: o.stick.follow !== false }) : null;
+      function pos(e) { var r = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 0, top: 0 }; return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+      function upd(p) {
+        var dx = p.x - st.ox, dy = p.y - st.oy, d = Math.sqrt(dx * dx + dy * dy);
+        if (st.follow && d > st.r) { st.ox = p.x - dx / d * st.r; st.oy = p.y - dy / d * st.r; dx = p.x - st.ox; dy = p.y - st.oy; d = st.r; }
+        var m = Math.min(1, d / st.r); if (m < st.dead) { st.x = st.y = 0; } else { var k = (m - st.dead) / (1 - st.dead) / (d || 1) * st.r; st.x = dx / st.r * k; st.y = dy / st.r * k; }
+        st.px = p.x; st.py = p.y;
+      }
+      H._down = function (e) {
+        if (e.cancelable) e.preventDefault();
+        try { el.setPointerCapture && el.setPointerCapture(e.pointerId); } catch (x) {}
+        var p = pos(e); H.down[e.pointerId] = p; H.count++;
+        var ev = { type: 'down', x: p.x, y: p.y, id: e.pointerId, t: now(), kind: e.pointerType };
+        H.queue.push(ev);
+        if (st && st.id === null) { st.id = e.pointerId; st.active = true; st.ox = p.x; st.oy = p.y; st.x = st.y = 0; st.px = p.x; st.py = p.y; }
+        if (o.onDown) o.onDown(ev, e);
+      };
+      H._move = function (e) {
+        if (!(e.pointerId in H.down)) return;
+        var p = pos(e); H.down[e.pointerId] = p;
+        if (st && st.id === e.pointerId) upd(p);
+        if (o.onMove) o.onMove({ type: 'move', x: p.x, y: p.y, id: e.pointerId, t: now() }, e);
+      };
+      H._up = function (e) {
+        if (!(e.pointerId in H.down)) return;
+        var p = pos(e); delete H.down[e.pointerId]; H.count = Math.max(0, H.count - 1);
+        var ev = { type: 'up', x: p.x, y: p.y, id: e.pointerId, t: now() };
+        H.queue.push(ev);
+        if (st && st.id === e.pointerId) { st.id = null; st.active = false; st.x = st.y = 0; }
+        if (o.onUp) o.onUp(ev, e);
+      };
+      var stop = function (e) { if (e.cancelable) e.preventDefault(); };
+      on(el, 'pointerdown', H._down, { passive: false });
+      on(el, 'pointermove', H._move, { passive: false });
+      on(el, 'pointerup', H._up); on(el, 'pointercancel', H._up); on(el, 'lostpointercapture', H._up);
+      on(el, 'contextmenu', stop); on(el, 'selectstart', stop); on(el, 'gesturestart', stop); on(el, 'dblclick', stop);
+      on(el, 'touchmove', stop, { passive: false });
+      H.drain = function () { var q = H.queue; H.queue = []; return q; };
+      H.held = function () { return H.count > 0; };
+      H.detach = function () {
+        off(el, 'pointerdown', H._down, { passive: false }); off(el, 'pointermove', H._move, { passive: false }); off(el, 'pointerup', H._up);
+        off(el, 'pointercancel', H._up); off(el, 'lostpointercapture', H._up); off(el, 'contextmenu', stop); off(el, 'selectstart', stop);
+        off(el, 'gesturestart', stop); off(el, 'dblclick', stop); off(el, 'touchmove', stop, { passive: false });
+      };
+      return H;
+    },
+    // buffer: a press counts if it happened within `win` seconds before the moment it can be used
+    buffer: function (win) {
+      win = win === undefined ? 0.1 : win; var t = -1e9;
+      return { press: function (at) { t = at; }, ready: function (at) { return at - t <= win; }, consume: function (at) { if (at - t <= win) { t = -1e9; return true; } return false; }, clear: function () { t = -1e9; } };
+    },
+    // coyote: grace after leaving a ledge
+    coyote: function (win) {
+      win = win === undefined ? 0.1 : win; var t = -1e9, used = false;
+      return { ground: function (at) { t = at; used = false; }, can: function (at) { return !used && at - t <= win; }, use: function () { used = true; } };
+    },
+    keys: function (target) {
+      var K = { held: {}, pressed: [] };
+      on(target || W, 'keydown', function (e) { if (!K.held[e.key]) K.pressed.push(e.key); K.held[e.key] = true; });
+      on(target || W, 'keyup', function (e) { K.held[e.key] = false; });
+      on(W, 'blur', function () { K.held = {}; });
+      K.drain = function () { var p = K.pressed; K.pressed = []; return p; };
+      return K;
+    }
+  };
+
+  /* ================= EASING ================= */
+  GK.ease = {
+    linear: function (t) { return t; },
+    quadOut: function (t) { return 1 - (1 - t) * (1 - t); },
+    cubicOut: function (t) { var u = 1 - t; return 1 - u * u * u; },
+    backOut: function (t, s) { s = s === undefined ? 1.70158 : s; var u = t - 1; return u * u * ((s + 1) * u + s) + 1; },
+    smooth: function (cur, target, k, dt) { return cur + (target - cur) * (1 - Math.exp(-k * dt)); }, // frame-rate independent
+    lerp: function (a, b, t) { return a + (b - a) * t; }
+  };
+
+  /* ================= JUICE ================= */
+  function ihash(i) { i = Math.imul((i ^ 61) ^ (i >>> 16), 9); i ^= i >>> 4; i = Math.imul(i, 0x27d4eb2d); i ^= i >>> 15; return (i >>> 0) / 4294967296 * 2 - 1; }
+  function noise1(x, lane) { var i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return ihash(i + lane * 7919) * (1 - u) + ihash(i + 1 + lane * 7919) * u; }
+  GK.noise1 = noise1;
+  var hapticLabel = null;
+  GK.juice = {
+    create: function (o) {
+      o = o || {};
+      var follow = o.reducedMotion === undefined && o.followPrefs !== false && !!GK.prefs;
+      var red = o.reducedMotion === undefined ? ENV.reducedMotion : o.reducedMotion;
+      if (follow) red = GK.prefs.motion() !== 'full';
+      var J = {
+        on: { shake: true, hitstop: true, squash: true, haptics: true, particles: true, flash: !red, numbers: true },
+        follow: follow,
+        shakeScale: follow ? 1 : red ? 0.35 : 1, maxShake: o.maxShake || 10, maxRot: o.maxRot || 0.03, decay: o.decay || 0.8, freq: o.freq || 15,
+        trauma: 0, kx: 0, ky: 0, t: 0, stopT: 0, recT: 0, recDur: 0.06, x: 0, y: 0, rot: 0, fps: 0, _fpsAcc: 0, _fpsN: 0
+      };
+      J.addTrauma = function (a) { J.trauma = clamp(J.trauma + a, 0, 1); };
+      // follow mode: motion scale comes live from GK.prefs (Full 1, Calm .35, Still 0); flash goes through GK.flash
+      J.mscale = function () { return follow ? GK.prefs.motionScale() : 1; };
+      J.kick = function (dx, dy) { if (!J.on.shake) return; var m = J.shakeScale * J.mscale(); J.kx += dx * m; J.ky += dy * m; };
+      J.flashOK = function (amount) { if (!J.on.flash) return 0; return follow ? GK.flash.allow(amount === undefined ? 1 : amount) : (amount === undefined ? 1 : amount); };
+      J.hitstop = function (sec) { if (!J.on.hitstop) return; J.stopT = Math.max(J.stopT, sec); J.recT = J.recDur; };
+      // call once per frame with real dt; returns {x,y,rot} camera offset; J.scale(dt) gives the game dt after hitstop
+      J.update = function (dt) {
+        J.t += dt;
+        J.trauma = Math.max(0, J.trauma - J.decay * dt);
+        var s = J.on.shake ? J.trauma * J.trauma * J.shakeScale * J.mscale() : 0;
+        J.x = J.maxShake * s * noise1(J.t * J.freq, 1) + J.kx;
+        J.y = J.maxShake * s * noise1(J.t * J.freq, 2) + J.ky;
+        J.rot = J.maxRot * s * noise1(J.t * J.freq, 3);
+        var k = Math.exp(-18 * dt); J.kx *= k; J.ky *= k;
+        if (Math.abs(J.kx) < 0.05) J.kx = 0; if (Math.abs(J.ky) < 0.05) J.ky = 0;
+        J._fpsAcc += dt; J._fpsN++; if (J._fpsAcc >= 0.5) { J.fps = Math.round(J._fpsN / J._fpsAcc); J._fpsAcc = 0; J._fpsN = 0; }
+        return J;
+      };
+      J.scale = function (dt) {
+        if (J.stopT > 0) { J.stopT -= dt; return 0; }
+        if (J.recT > 0) { J.recT = Math.max(0, J.recT - dt); return dt * (0.2 + 0.8 * GK.ease.quadOut(1 - J.recT / J.recDur)); }
+        return dt;
+      };
+      J.frozen = function () { return J.stopT > 0; };
+      // squash: s = J.squash() then J.squashTo(s,'jump'|'land'|'hit') and J.squashStep(s,dt); draw with scale(s.sx,s.sy)
+      J.squash = function () { return { sx: 1, sy: 1 }; };
+      J.squashTo = function (s, kind) {
+        if (!J.on.squash) return s;
+        var m = kind === 'jump' ? [0.6, 1.4] : kind === 'land' ? [1.4, 0.6] : kind === 'hit' ? [1.25, 0.8] : (kind || [1.2, 0.8]);
+        var f = follow ? (GK.prefs.motion() === 'still' ? 0 : GK.prefs.motion() === 'calm' ? 0.5 : 1) : red ? 0.5 : 1; s.sx = 1 + (m[0] - 1) * f; s.sy = 1 + (m[1] - 1) * f; return s;
+      };
+      J.squashStep = function (s, dt, rate) { var r = (rate || 1.75) * dt * 2; s.sx += clamp(1 - s.sx, -r, r); s.sy += clamp(1 - s.sy, -r, r); return s; };
+      J.haptic = function (kind) { if (J.on.haptics) GK.juice.haptic(kind); };
+      J.apply = function (ctx) { if (ctx && (J.x || J.y || J.rot)) { ctx.translate(J.x, J.y); if (J.rot) ctx.rotate(J.rot); } };
+      return J;
+    },
+    // Android: vibrate. iPhone (Safari 17.4+): a hidden switch toggle gives a light tick, only inside a real tap
+    // (call from click or pointerup on touch, not touch pointerdown). Elsewhere: nothing.
+    haptic: function (kind) {
+      if (!HAS_DOM) return false;
+      var pat = { tap: 8, light: 8, hit: 18, heavy: 30, success: [10, 40, 14], fail: [30, 50, 30] }[kind] || 10;
+      try { if (navigator.vibrate) return navigator.vibrate(pat); } catch (e) {}
+      if (!ENV.ios) return false;
+      try {
+        if (!hapticLabel) {
+          var lab = document.createElement('label'), inp = document.createElement('input');
+          inp.type = 'checkbox'; inp.setAttribute('switch', ''); inp.tabIndex = -1; lab.setAttribute('aria-hidden', 'true');
+          lab.appendChild(inp); lab.style.cssText = 'position:fixed;left:-100px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden';
+          document.body.appendChild(lab); hapticLabel = lab;
+        }
+        hapticLabel.click(); return true;
+      } catch (e) { return false; }
+    },
+    // Hidden tuning panel: opens with ?juice or #juice in the address, or 5 quick taps in the top-left corner.
+    // extra: [{label,get(),set(v)}] for game-specific toggles; po.keys limits which built-in toggles show.
+    panel: function (J, extra, po) {
+      if (!HAS_DOM) return null;
+      po = po || {};
+      var P = { el: null, open: false };
+      function build() {
+        GK.ui._css();
+        var el = document.createElement('div'); el.className = 'gk-panel'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Juice settings');
+        var html = '<div class="gk-ph"><b>Juice</b><span class="gk-fps">-- fps</span><button class="gk-x" aria-label="Close">x</button></div>';
+        var keys = po.keys || Object.keys(J.on);
+        keys.forEach(function (k) { html += '<label><input type="checkbox" data-k="' + k + '"' + (J.on[k] ? ' checked' : '') + '> ' + k + '</label>'; });
+        (extra || []).forEach(function (x, i) { html += '<label><input type="checkbox" data-x="' + i + '"' + (x.get() ? ' checked' : '') + '> ' + x.label + '</label>'; });
+        html += '<label>shake size <input type="range" min="0" max="2" step="0.1" value="' + J.shakeScale + '" data-r="1"></label>';
+        el.innerHTML = html;
+        el.addEventListener('change', function (e) {
+          var t = e.target;
+          if (t.dataset.k) J.on[t.dataset.k] = t.checked;
+          if (t.dataset.x !== undefined) extra[+t.dataset.x].set(t.checked);
+          if (t.dataset.r) J.shakeScale = +t.value;
+        });
+        el.querySelector('.gk-x').addEventListener('click', function () { P.hide(); });
+        ['pointerdown', 'touchstart', 'click'].forEach(function (ev) { el.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+        document.body.appendChild(el); P.el = el;
+        var fpsEl = el.querySelector('.gk-fps');
+        P._timer = setInterval(function () { if (P.open) fpsEl.textContent = J.fps + ' fps'; }, 500);
+      }
+      P.show = function () { if (!P.el) build(); P.el.style.display = 'block'; P.open = true; };
+      P.hide = function () { if (P.el) P.el.style.display = 'none'; P.open = false; };
+      P.toggle = function () { if (P.open) P.hide(); else P.show(); };
+      var loc = '';
+      try { loc = (W.location.search || '') + (W.location.hash || ''); } catch (e) {}
+      if (/[?#&]juice\b/.test(loc)) setTimeout(P.show, 0);
+      var taps = [];
+      on(W, 'pointerdown', function (e) {
+        if (e.clientX > 48 || e.clientY > 48 + ((GK.view.insets && GK.view.insets.t) || 0)) { taps.length = 0; return; }
+        var t = now(); taps.push(t); while (taps.length && t - taps[0] > 2000) taps.shift();
+        if (taps.length >= 5) { taps.length = 0; P.toggle(); }
+      }, true);
+      return P;
+    }
+  };
+
+  /* ================= BADGES ================= */
+  // defs: [{id,name,desc,test?(stats),hidden?,funny?}]; st: a plain object in the game's save (badges stored at st[id]=time)
+  GK.badges = {
+    create: function (defs, st, opts) {
+      opts = opts || {};
+      var B = { defs: defs, st: st, failed: {}, listeners: [] };
+      B.has = function (id) { return !!st[id]; };
+      B.earn = function (id) {
+        if (st[id]) return false; var d = B.get(id); if (!d) return false;
+        st[id] = Date.now(); delete B.failed[id];
+        for (var i = 0; i < B.listeners.length; i++) B.listeners[i](d);
+        if (opts.toast !== false && GK.ui && HAS_DOM) GK.ui.toast('Badge: ' + d.name, 2400);
+        return true;
+      };
+      B.fail = function (id) { if (!st[id]) B.failed[id] = true; };
+      B.startRun = function () { B.failed = {}; };
+      B.get = function (id) { for (var i = 0; i < defs.length; i++) if (defs[i].id === id) return defs[i]; return null; };
+      B.check = function (stats) { var got = []; defs.forEach(function (d) { if (d.test && !st[d.id] && d.test(stats)) { if (B.earn(d.id)) got.push(d); } }); return got; };
+      B.onEarn = function (fn) { B.listeners.push(fn); };
+      B.count = function () { var n = 0; defs.forEach(function (d) { if (st[d.id]) n++; }); return n; };
+      B.list = function () {
+        return defs.map(function (d) {
+          var s = st[d.id] ? 'earned' : B.failed[d.id] ? 'failed' : 'open';
+          return { id: d.id, name: (d.hidden && s !== 'earned') ? '???' : d.name, desc: (d.hidden && s !== 'earned') ? 'Hidden' : d.desc, state: s, funny: !!d.funny };
+        });
+      };
+      B.render = function (el) {
+        if (!HAS_DOM || !el) return; GK.ui._css();
+        var h = '<div class="gk-badges">'; B.list().forEach(function (b) {
+          h += '<div class="gk-b gk-' + b.state + '" title="' + esc(b.desc) + '"><div class="gk-bi">' + (b.state === 'earned' ? '★' : b.state === 'failed' ? '✕' : '·') + '</div><div class="gk-bn">' + esc(b.name) + '</div><div class="gk-bd">' + esc(b.desc) + '</div></div>';
+        });
+        el.innerHTML = h + '</div><div class="gk-bc">' + B.count() + ' of ' + defs.length + '</div>';
+      };
+      return B;
+    },
+    // two paths to each milestone: play it enough OR win enough. Both count, so less skilled players still progress.
+    milestones: function (playsAt, winsAt, nameFn) {
+      var out = [];
+      (playsAt || []).forEach(function (n) { out.push({ id: 'plays' + n, name: nameFn ? nameFn('plays', n) : n + (n === 1 ? ' run' : ' runs'), desc: 'Play ' + n + (n === 1 ? ' run' : ' runs'), test: function (s) { return (s.plays | 0) >= n; } }); });
+      (winsAt || []).forEach(function (n) { out.push({ id: 'wins' + n, name: nameFn ? nameFn('wins', n) : n + (n === 1 ? ' win' : ' wins'), desc: 'Win ' + n + (n === 1 ? ' time' : ' times'), test: function (s) { return (s.wins | 0) >= n; } }); });
+      return out;
+    }
+  };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  GK.esc = esc;
+
+  /* ================= SHARE ================= */
+  GK.share = {
+    // resolves 'shared' | 'copied' | 'sheet' | 'cancel'. Falls back share -> clipboard -> selectable text sheet.
+    text: function (text, o) {
+      o = o || {};
+      return new Promise(function (res) {
+        function copyLegacy() {
+          try {
+            var ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+            document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+            var ok = document.execCommand && document.execCommand('copy'); ta.remove(); return !!ok;
+          } catch (e) { return false; }
+        }
+        function sheet() { GK.ui.sheet(o.title || 'Copy your result', text); res('sheet'); }
+        function clip() {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).then(function () { if (GK.ui) GK.ui.toast('Copied', 1600); res('copied'); }, function () { if (copyLegacy()) { GK.ui.toast('Copied', 1600); res('copied'); } else sheet(); });
+              return;
+            }
+          } catch (e) {}
+          if (copyLegacy()) { GK.ui.toast('Copied', 1600); res('copied'); } else sheet();
+        }
+        var data = { text: text }; if (o.title) data.title = o.title;
+        try {
+          if (o.preferCopy !== true && navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+            navigator.share(data).then(function () { res('shared'); }, function (e) { if (e && e.name === 'AbortError') res('cancel'); else clip(); });
+            return;
+          }
+        } catch (e) {}
+        clip();
+      });
+    },
+    button: function (el, getText, o) { on(el, 'click', function (e) { e.stopPropagation(); GK.share.text(typeof getText === 'function' ? getText() : getText, o); }); return el; }
+  };
+
+  /* ================= VIEW ================= */
+  var V = GK.view = { insets: { t: 0, r: 0, b: 0, l: 0 }, w: 0, h: 0, dprCap: 2, _fns: [] };
+  V.init = function (o) {
+    o = o || {}; if (o.dprCap) V.dprCap = o.dprCap;
+    if (!HAS_DOM) return V;
+    var m = document.querySelector('meta[name=viewport]');
+    if (!m) { m = document.createElement('meta'); m.name = 'viewport'; document.head.appendChild(m); }
+    var c = m.getAttribute('content') || 'width=device-width,initial-scale=1';
+    if (!/viewport-fit/.test(c)) m.setAttribute('content', c + ',viewport-fit=cover');
+    if (!V._probe) {
+      var p = document.createElement('div'); p.setAttribute('aria-hidden', 'true');
+      p.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+      document.body.appendChild(p); V._probe = p;
+      var fire = function () { V.measure(); for (var i = 0; i < V._fns.length; i++) V._fns[i](V); };
+      on(W, 'resize', fire); on(W, 'orientationchange', function () { setTimeout(fire, 120); });
+      if (W.visualViewport) on(W.visualViewport, 'resize', fire);
+    }
+    V.measure();
+    return V;
+  };
+  V.measure = function () {
+    if (!HAS_DOM) return V;
+    if (V._probe && W.getComputedStyle) { var cs = W.getComputedStyle(V._probe); V.insets = { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 }; }
+    var vv = W.visualViewport; V.w = vv ? vv.width : W.innerWidth; V.h = vv ? vv.height : W.innerHeight;
+    return V;
+  };
+  V.onResize = function (fn) { V._fns.push(fn); };
+  V.dpr = function () { return Math.min(V.dprCap, (HAS_DOM && W.devicePixelRatio) || 1); };
+  // fit a design-size box (dw x dh) into aw x ah. mode 'fit' letterboxes, 'fill' crops, 'fitfill' fits then grows the short side.
+  V.fit = function (dw, dh, aw, ah, mode) {
+    var sFit = Math.min(aw / dw, ah / dh), sFill = Math.max(aw / dw, ah / dh), s = mode === 'fill' ? sFill : sFit, w = dw, h = dh;
+    if (mode === 'fitfill') { w = aw / s; h = ah / s; }
+    return { scale: s, w: w, h: h, x: (aw - w * s) / 2, y: (ah - h * s) / 2 };
+  };
+  // size a canvas for crisp drawing; returns ctx already scaled to CSS pixels
+  V.canvas = function (cv, cssW, cssH) {
+    var d = V.dpr(); cv.width = Math.round(cssW * d); cv.height = Math.round(cssH * d);
+    cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
+    var ctx = cv.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0); return ctx;
+  };
+
+  /* ================= UI ================= */
+  GK.ui = {
+    _css: function () {
+      if (!HAS_DOM || document.getElementById('gk-css')) return;
+      var s = document.createElement('style'); s.id = 'gk-css';
+      s.textContent = '.gk-toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:rgba(20,20,28,.92);color:#fff;font:600 14px/1.3 -apple-system,system-ui,sans-serif;padding:10px 14px;border-radius:12px;z-index:99999;pointer-events:none;max-width:86vw;text-align:center;transition:opacity .25s}' +
+        '.gk-sheet{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99998;display:flex;align-items:flex-end;justify-content:center}' +
+        '.gk-sheet>div{background:var(--gk-panel,#1b1b24);color:var(--gk-text,#fff);width:min(520px,100%);padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));border-radius:16px 16px 0 0;font:15px -apple-system,system-ui,sans-serif}' +
+        '.gk-sheet textarea{width:100%;box-sizing:border-box;min-height:110px;font:14px ui-monospace,monospace;background:#0e0e14;color:#fff;border:1px solid var(--gk-line,#444);border-radius:8px;padding:8px;-webkit-user-select:text;user-select:text}' +
+        '.gk-sheet button,.gk-panel button{font:600 15px -apple-system,system-ui,sans-serif;border:0;border-radius:10px;padding:10px 14px;margin-top:10px;background:var(--gk-signal,#3d6cf0);color:var(--gk-signal-ink,#fff);min-height:44px}' +
+        '.gk-panel{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:8px;z-index:99997;background:rgba(18,18,26,.94);color:#fff;font:14px -apple-system,system-ui,sans-serif;padding:10px 12px;border-radius:12px;min-width:180px;display:none}' +
+        '.gk-panel label{display:flex;align-items:center;gap:8px;min-height:32px}.gk-ph{display:flex;align-items:center;gap:10px;margin-bottom:4px}.gk-fps{opacity:.7;margin-left:auto}.gk-panel .gk-x{margin:0;padding:4px 10px;min-height:32px;background:#444}' +
+        '.gk-badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}.gk-b{border-radius:10px;padding:8px 6px;text-align:center;background:rgba(127,127,127,.12);font:12px/1.25 -apple-system,system-ui,sans-serif}' +
+        '.gk-bi{font-size:20px}.gk-bn{font-weight:700;margin:2px 0}.gk-bd{opacity:.7;font-size:11px}.gk-earned{background:rgba(255,196,64,.22)}.gk-failed{opacity:.55}.gk-open{opacity:.8}.gk-bc{text-align:center;margin-top:8px;opacity:.7;font:12px -apple-system,system-ui,sans-serif}' +
+        '.gk-coach{position:fixed;z-index:99990;pointer-events:none;border:3px solid var(--gk-signal,#3d6cf0);border-radius:999px;box-shadow:0 0 0 4px rgba(61,108,240,.25);animation:gkpulse 1.4s ease-in-out infinite}' +
+        '.gk-coach-t{position:fixed;z-index:99991;pointer-events:none;background:var(--gk-panel,#1b1b24);color:var(--gk-text,#fff);font:600 max(14px,calc(14px * var(--gk-text-scale,1)))/1.3 -apple-system,system-ui,sans-serif;padding:8px 12px;border-radius:10px;max-width:72vw;text-align:center}' +
+        '@keyframes gkpulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.12);opacity:.7}}' +
+        'html[data-gk-motion=calm] .gk-coach{animation-duration:2.8s}html[data-gk-motion=still] .gk-coach{animation:none}' +
+        '@media (prefers-reduced-motion:reduce){html:not([data-gk-motion=full]) .gk-coach{animation:none}}' +
+        '.gk-prefs>div{max-height:86vh;overflow:auto}.gk-gl{font:700 12px -apple-system,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;opacity:.7;margin:14px 0 4px}' +
+        '.gk-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px}.gk-row input[type=range]{flex:1;max-width:60%;min-height:32px}.gk-row input[type=checkbox]{width:24px;height:24px}' +
+        '.gk-seg{display:flex;gap:4px;background:rgba(127,127,127,.18);border-radius:10px;padding:3px}.gk-seg button{margin:0;padding:6px 10px;min-height:38px;background:transparent;color:inherit;font-size:14px}.gk-seg button[aria-pressed=true]{background:var(--gk-signal,#3d6cf0);color:var(--gk-signal-ink,#fff)}' +
+        '.gk-btns{display:flex;gap:8px;flex-wrap:wrap}.gk-btns button{flex:1}';
+      document.head.appendChild(s);
+    },
+    toast: function (text, ms) {
+      if (!HAS_DOM) return; GK.ui._css();
+      var t = document.createElement('div'); t.className = 'gk-toast'; t.setAttribute('role', 'status'); t.textContent = text;
+      document.body.appendChild(t);
+      setTimeout(function () { t.style.opacity = '0'; setTimeout(function () { t.remove(); }, 300); }, ms || 2000);
+    },
+    // a bottom sheet with selectable text (the last share fallback, and the save export box)
+    sheet: function (title, text, o) {
+      if (!HAS_DOM) return null; GK.ui._css(); o = o || {};
+      var s = document.createElement('div'); s.className = 'gk-sheet';
+      s.innerHTML = '<div role="dialog" aria-label="' + esc(title) + '"><b>' + esc(title) + '</b>' + (o.note ? '<p style="opacity:.75;margin:6px 0">' + esc(o.note) + '</p>' : '') + '<textarea' + (o.editable ? '' : ' readonly') + '></textarea><div style="display:flex;gap:8px;flex-wrap:wrap">' + (o.okLabel ? '<button class="gk-ok">' + esc(o.okLabel) + '</button>' : '') + '<button class="gk-close">Close</button></div></div>';
+      var ta = s.querySelector('textarea'); ta.value = text || '';
+      ['pointerdown', 'touchstart', 'click'].forEach(function (ev) { s.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+      s.querySelector('.gk-close').addEventListener('click', function () { s.remove(); });
+      if (o.okLabel) s.querySelector('.gk-ok').addEventListener('click', function () { if (!o.onOk || o.onOk(ta.value) !== false) s.remove(); });
+      document.body.appendChild(s);
+      if (!o.editable) setTimeout(function () { try { ta.focus(); ta.select(); } catch (e) {} }, 50);
+      return s;
+    },
+    // export/import UI for a save handle from GK.save.protect or GK.save.store
+    saveTools: function (handle, o) {
+      o = o || {};
+      return {
+        exportSave: function () { GK.ui.sheet('Your save code', handle.exportCode(), { note: 'Copy this somewhere safe. Paste it back with Import to restore.' }); },
+        importSave: function () {
+          GK.ui.sheet('Import a save code', '', { editable: true, okLabel: 'Import', note: 'This replaces your current progress. Your old save is kept as a backup.', onOk: function (v) {
+            if (handle.importCode(v)) { GK.ui.toast('Save imported', 1800); if (o.onImported) o.onImported(); return true; }
+            GK.ui.toast('That code did not work', 2000); return false;
+          } });
+        }
+      };
+    }
+  };
+
+  /* ================= LOOP ================= */
+  // fixed-step loop: update(dt) at `step`, render(alpha) every frame; pauses while the page is hidden; uses juice hitstop if given
+  GK.loop = function (update, render, o) {
+    o = o || {};
+    var step = o.step || 1 / 60, acc = 0, last = 0, running = false, raf = 0, J = o.juice;
+    var L = { paused: false };
+    function frame(t) {
+      if (!running) return;
+      raf = W.requestAnimationFrame(frame);
+      var dt = last ? Math.min(0.1, (t - last) / 1000) : step; last = t;
+      if (J) J.update(dt);
+      var gd = J ? J.scale(dt) : dt; if (o.assist && GK.prefs) gd *= GK.prefs.speed();
+      if (!L.paused) { acc += gd; var n = 0; while (acc >= step && n++ < 5) { update(step); acc -= step; } if (n >= 5) acc = 0; }
+      if (render) render(acc / step, dt);
+    }
+    L.start = function () { if (running) return L; running = true; last = 0; raf = W.requestAnimationFrame(frame); return L; };
+    L.stop = function () { running = false; if (W.cancelAnimationFrame) W.cancelAnimationFrame(raf); return L; };
+    if (HAS_DOM) on(document, 'visibilitychange', function () { if (document.visibilityState === 'hidden') { L.paused = true; if (o.onHide) o.onHide(); } else { last = 0; L.paused = false; } });
+    return L;
+  };
+
+
+  /* ================= PREFS (2.0): one settings store and one panel ================= */
+  // Saved per game page as gk.prefs.v1. Every change sets data-gk-* on <html> and calls GK.prefs.on() listeners.
+  var PREF_KEY = 'gk.prefs.v1';
+  var PDEF = { motion: 'auto', flash: 'normal', speed: 1, text: 1, vol: { master: 1, music: 1, sfx: 1 }, tips: true, x: {} };
+  var PENUM = { motion: ['auto', 'full', 'calm', 'still'], flash: ['normal', 'soft'], speed: [1, 0.75, 0.5], text: [1, 1.25, 1.5] };
+  function pclone(o) { return JSON.parse(JSON.stringify(o)); }
+  function pfix(k, v) {
+    if (PENUM[k]) return PENUM[k].indexOf(v) >= 0 ? v : PDEF[k];
+    if (k === 'tips') return v !== false;
+    if (k === 'x') return (v && typeof v === 'object') ? v : {};
+    if (k === 'vol') { var o = {}, d = PDEF.vol; for (var b in d) { var n = v && typeof v[b] === 'number' && isFinite(v[b]) ? v[b] : d[b]; o[b] = clamp(n, 0, 1); } return o; }
+    return v;
+  }
+  var P = GK.prefs = { key: PREF_KEY, data: null, _fns: [] };
+  P.load = function () {
+    var d = pclone(PDEF), o = null;
+    try { o = JSON.parse(LS.get(PREF_KEY) || 'null'); } catch (e) { o = null; }
+    if (o && typeof o === 'object') for (var k in PDEF) if (k in o) d[k] = pfix(k, o[k]);
+    P.data = d; P.apply(); return d;
+  };
+  P.save = function () { return LS.set(PREF_KEY, JSON.stringify(P.data)); };
+  P.get = function (k) { if (!P.data) P.load(); return P.data[k]; };
+  P.set = function (k, v) { if (!P.data) P.load(); if (!(k in PDEF)) return false; if (PENUM[k] && PENUM[k].indexOf(v) < 0) return false; P.data[k] = pfix(k, v); P.save(); P.apply(); P._emit(k); return true; };
+  P.setVol = function (bus, v) { var o = pclone(P.get('vol')); o[bus] = v; return P.set('vol', o); };
+  P.vol = function (bus) { var v = P.get('vol'); return v && typeof v[bus] === 'number' ? v[bus] : 1; };
+  P.extra = function (name, v) { var x = P.get('x'); if (arguments.length < 2) return x[name]; var o = pclone(x); o[name] = v; return P.set('x', o); };
+  P.on = function (fn) { P._fns.push(fn); return function () { P._fns = P._fns.filter(function (f) { return f !== fn; }); }; };
+  P._emit = function (k) { if (!P.data) return; P.apply(); if (A._applyPrefs) A._applyPrefs(); for (var i = 0; i < P._fns.length; i++) { try { P._fns[i](k, P.data); } catch (e) {} } };
+  // 'auto' follows the phone: reduce motion on means Calm
+  P.motion = function () { var m = P.get('motion'); return m === 'auto' ? (ENV.reducedMotion ? 'calm' : 'full') : m; };
+  P.motionScale = function () { var m = P.motion(); return m === 'still' ? 0 : m === 'calm' ? 0.35 : 1; };
+  P.speed = function () { return pfix('speed', P.get('speed')); };
+  P.text = function () { return pfix('text', P.get('text')); };
+  P.apply = function () {
+    if (!HAS_DOM || !P.data) return;
+    var r = document.documentElement; if (!r || !r.setAttribute) return;
+    r.setAttribute('data-gk-motion', P.motion()); r.setAttribute('data-gk-flash', P.data.flash); r.setAttribute('data-gk-text', String(P.text()));
+    if (P.data.speed !== 1) r.setAttribute('data-gk-assist', String(P.data.speed)); else if (r.removeAttribute) r.removeAttribute('data-gk-assist');
+    if (r.style && r.style.setProperty) r.style.setProperty('--gk-text-scale', String(P.text()));
+  };
+  P.assisted = function () { return P.speed() < 1; };
+  P.exportCode = function () { return exportRaw(PREF_KEY, JSON.stringify(P.data || P.load())); };
+  P.importCode = function (code) { var v = importRaw(PREF_KEY, code); if (v == null) return false; try { JSON.parse(v); } catch (e) { return false; } LS.set(PREF_KEY, v); P.load(); P._emit('all'); return true; };
+  P.reset = function () { LS.del(PREF_KEY); P.load(); P._emit('all'); };
+
+  /* ================= FLASH LIMITER (2.0) ================= */
+  // Route every screen flash through GK.flash.allow(strength 0..1). It returns the strength to draw (0 = skip):
+  // never more than 3 flashes in any second, strength capped, Soft flashes halves it, Calm trims it, Still turns flashes off.
+  var F = GK.flash = { max: 3, win: 1000, cap: 0.7, _t: [], count: 0, dropped: 0, peak: 0 };
+  F.allow = function (amount) {
+    amount = amount === undefined ? 1 : +amount || 0;
+    var m = P.motion(); if (m === 'still' || amount <= 0) { if (amount > 0) F.dropped++; return 0; }
+    var t = now(); while (F._t.length && t - F._t[0] >= F.win) F._t.shift();
+    if (F._t.length >= F.max) { F.dropped++; return 0; }
+    F._t.push(t); F.count++; if (F._t.length > F.peak) F.peak = F._t.length;
+    var a = amount; if (P.get('flash') === 'soft') a *= 0.5; if (m === 'calm') a *= 0.7;
+    return Math.min(a, F.cap);
+  };
+  F.stats = function () { return { count: F.count, dropped: F.dropped, peakPerSecond: F.peak }; };
+  F.reset = function () { F._t.length = 0; F.count = F.dropped = F.peak = 0; };
+
+  /* ================= PERF (2.0) ================= */
+  GK.perf = {
+    realDPR: 1,
+    // cap the drawing resolution for a finished game that reads window.devicePixelRatio itself
+    capDPR: function (cap) {
+      if (!HAS_DOM) return false; cap = cap || 2;
+      try {
+        var o = W, d = null; while (o && !(d = Object.getOwnPropertyDescriptor(o, 'devicePixelRatio'))) o = Object.getPrototypeOf(o);
+        var val = d && 'value' in d ? d.value : 1;
+        var read = d && d.get ? function () { return d.get.call(W); } : function () { return val; };
+        GK.perf.realDPR = +read() || 1;
+        Object.defineProperty(W, 'devicePixelRatio', { configurable: true, enumerable: true, get: function () { var r = +read() || 1; return r > cap ? cap : r; }, set: function (v) { val = v; } });
+        GK.perf.dprCap = cap; return true;
+      } catch (e) { return false; }
+    },
+    // test switch: hold the frame rate at fps (30 = what an iPhone does in Low Power Mode)
+    fpsTest: function (fps) {
+      if (!HAS_DOM || !W.requestAnimationFrame || W.requestAnimationFrame._gk) return false;
+      var raf0 = W.requestAnimationFrame.bind(W), step = 1000 / (fps || 30), last = 0, q = [], pending = false, id = 0;
+      function tick(t) {
+        if (last && t - last < step - 2) { raf0(tick); return; }
+        last = t; var run = q; q = []; pending = false;
+        for (var i = 0; i < run.length; i++) { try { run[i].f(t); } catch (e) { setTimeout(function () { throw e; }, 0); } }
+      }
+      var fake = function (f) { id++; q.push({ f: f, id: id }); if (!pending) { pending = true; raf0(tick); } return id; };
+      fake._gk = true; W.requestAnimationFrame = fake;
+      W.cancelAnimationFrame = function (n) { q = q.filter(function (x) { return x.id !== n; }); };
+      GK.perf.fps = fps || 30; return true;
+    },
+    // ?fps=30 or #fps=30 in the address, or localStorage gk.fps = 30
+    auto: function () {
+      var loc = ''; try { loc = (W.location.search || '') + (W.location.hash || ''); } catch (e) {}
+      var m = /[?#&]fps=(\d+)/.exec(loc), f = m ? +m[1] : +(LS.get('gk.fps') || 0);
+      if (f >= 10 && f < 60) return GK.perf.fpsTest(f);
+      return false;
+    }
+  };
+
+  /* ================= THEME (2.0) ================= */
+  // Kit surfaces read these CSS variables. Defaults are the 1.x colors, so nothing changes until a game sets them.
+  var TOK = { ink: '#12141c', panel: '#1b1b24', line: '#444444', text: '#ffffff', muted: '#a3a9bf', signal: '#3d6cf0', 'signal-ink': '#ffffff', good: '#4fd69c', warn: '#ff6b5a', font: '-apple-system,system-ui,sans-serif', num: 'ui-monospace,SFMono-Regular,Menlo,monospace' };
+  GK.theme = {
+    tokens: TOK,
+    // the studio frame: dark ink panels, gold for the one main action
+    studio: { ink: '#12141c', panel: '#1d2130', line: '#353b52', text: '#eef0f6', muted: '#a3a9bf', signal: '#ffc23d', 'signal-ink': '#2a1d00', good: '#4fd69c', warn: '#ff6b5a' },
+    set: function (o) {
+      o = o || {}; for (var k in o) if (k in TOK) TOK[k] = o[k];
+      if (HAS_DOM && document.documentElement && document.documentElement.style && document.documentElement.style.setProperty) for (var j in o) if (j in TOK) document.documentElement.style.setProperty('--gk-' + j, o[j]);
+      return TOK;
+    },
+    get: function (k) { return TOK[k]; }
+  };
+
+  /* ================= TEXT, POPUPS, ROLLING SCORE (2.0) ================= */
+  // canvas text with a legibility floor: never under `min` (12) CSS px, times the player's text size, ink outline then fill
+  GK.ui.text = function (ctx, str, x, y, o) {
+    o = o || {}; if (!ctx) return 0;
+    var size = Math.max(o.min || 12, o.size || 14) * P.text();
+    ctx.save();
+    if (o.alpha !== undefined) ctx.globalAlpha = (ctx.globalAlpha === undefined ? 1 : ctx.globalAlpha) * o.alpha;
+    ctx.font = (o.weight || 700) + ' ' + Math.round(size) + 'px ' + (o.font || TOK.font);
+    ctx.textAlign = o.align || 'center'; ctx.textBaseline = o.baseline || 'middle';
+    var ow = o.outline === undefined ? Math.max(2, size * 0.16) : o.outline;
+    if (ow > 0) { ctx.lineJoin = 'round'; ctx.lineWidth = ow; ctx.strokeStyle = o.stroke || 'rgba(10,10,16,0.9)'; ctx.strokeText(str, x, y); }
+    ctx.fillStyle = o.color || '#ffffff'; ctx.fillText(str, x, y);
+    ctx.restore();
+    return size;
+  };
+  GK.ui.floor = function (px, min) { return Math.max(min || 12, px) * P.text(); };
+  // block taps on a button for `ms` after it appears, so a panic tap on a loss can't skip the Again screen
+  GK.ui.lockout = function (el, ms) {
+    if (!el) return el; ms = ms === undefined ? 400 : ms;
+    var until = now() + ms, stop = function (e) { if (now() < until) { e.stopPropagation(); if (e.preventDefault) e.preventDefault(); } };
+    if (!el._gkLock) { el._gkLock = true; ['pointerdown', 'pointerup', 'click', 'touchend'].forEach(function (ev) { el.addEventListener(ev, stop, true); }); }
+    el._gkUntil = until; el.__gkStop = stop;
+    return el;
+  };
+  GK.popups = {
+    // pooled number popups: pop in, rise and fade in about 0.7 s; hits within 120 ms near the same spot merge
+    create: function (o) {
+      o = o || {};
+      var Q = { list: [], max: o.max || 12, life: o.life || 0.7, merge: o.merge === undefined ? 120 : o.merge, size: o.size || 16,
+        colors: { score: '#ffc23d', heal: '#4fd69c', damage: '#ff6b5a', info: '#eef0f6' } };
+      Q.add = function (x, y, value, opt) {
+        opt = opt || {}; var kind = opt.kind || 'score', t = now();
+        for (var i = Q.list.length - 1; i >= 0; i--) {
+          var p = Q.list[i];
+          if (p.kind === kind && typeof p.v === 'number' && typeof value === 'number' && t - p.t0 < Q.merge && Math.abs(p.x - x) < 48 && Math.abs(p.y - y) < 48) { p.v += value; p.t0 = t; p.age = Math.min(p.age, 0.05); p.n++; return p; }
+        }
+        if (Q.list.length >= Q.max) Q.list.shift();
+        var np = { x: x, y: y, v: value, kind: kind, age: 0, t0: t, n: 1, label: opt.label, color: opt.color };
+        Q.list.push(np); return np;
+      };
+      Q.update = function (dt) { for (var i = Q.list.length - 1; i >= 0; i--) { Q.list[i].age += dt; if (Q.list[i].age >= Q.life) Q.list.splice(i, 1); } };
+      Q.text = function (p) { return p.label !== undefined ? String(p.label) : (typeof p.v === 'number' ? (p.v > 0 ? '+' : '') + Math.round(p.v).toLocaleString() : String(p.v)); };
+      Q.draw = function (ctx) {
+        var m = P.motion();
+        for (var i = 0; i < Q.list.length; i++) {
+          var p = Q.list[i], k = p.age / Q.life;
+          var rise = (m === 'still' ? 0 : m === 'calm' ? 14 : 28) * GK.ease.cubicOut(k);
+          var sc = m === 'full' && k < 0.15 ? 0.6 + 0.4 * GK.ease.backOut(k / 0.15) : 1;
+          var alpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
+          GK.ui.text(ctx, Q.text(p), p.x, p.y - rise, { size: Q.size * sc * (p.n > 1 ? 1.15 : 1), color: p.color || Q.colors[p.kind] || '#fff', alpha: alpha });
+        }
+      };
+      Q.clear = function () { Q.list.length = 0; };
+      return Q;
+    }
+  };
+  // score that eases toward its real value, with a short "+250" beside it and a bump on change
+  GK.roll = function (start, o) {
+    o = o || {};
+    var R = { target: start || 0, shown: start || 0, delta: 0, deltaT: 0, bump: 0 };
+    R.set = function (v) { if (v === R.target) return R; if (v > R.target) { R.delta = (R.deltaT > 0 ? R.delta : 0) + (v - R.target); R.deltaT = o.hold || 1; } R.target = v; R.bump = 1; return R; };
+    R.snap = function (v) { R.target = R.shown = v; R.delta = 0; R.deltaT = 0; return R; };
+    R.update = function (dt) {
+      if (P.motion() === 'still') R.shown = R.target;
+      else { R.shown = GK.ease.smooth(R.shown, R.target, o.speed || 12, dt); if (Math.abs(R.target - R.shown) < 0.5) R.shown = R.target; }
+      R.deltaT = Math.max(0, R.deltaT - dt); R.bump = Math.max(0, R.bump - dt * 6); return R;
+    };
+    R.text = function () { return Math.round(R.shown).toLocaleString(); };
+    R.deltaText = function () { return R.deltaT > 0 && R.delta ? '+' + Math.round(R.delta).toLocaleString() : ''; };
+    R.scale = function () { return P.motion() === 'full' ? 1 + 0.12 * R.bump : 1; };
+    return R;
+  };
+
+  /* ================= COACH and HINTS (2.0) ================= */
+  // GK.coach.create(id, steps, o): teach by doing. steps: [{id, text, target: element | () => element | {x,y,r}, done: () => bool}]
+  // Shows a pulsing ring on the first step not yet done; retires for good once all steps are done.
+  GK.coach = {
+    create: function (id, steps, o) {
+      o = o || {};
+      var key = 'gk.coach.' + id, C = { steps: steps || [], cur: -1, el: null, label: null, done: LS.get(key) === 'done' };
+      function where(s) {
+        var t = typeof s.target === 'function' ? s.target() : s.target; if (!t) return null;
+        if (t.getBoundingClientRect) { var r = t.getBoundingClientRect(); if (!r || (!r.width && !r.height)) return null; return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: Math.max(r.width, r.height) / 2 + 8 }; }
+        return (typeof t.x === 'number' && typeof t.y === 'number') ? { x: t.x, y: t.y, r: t.r || 36 } : null;
+      }
+      C.hide = function () { if (C.el) C.el.style.display = 'none'; if (C.label) C.label.style.display = 'none'; };
+      C.show = function (i, t) {
+        C.cur = i; if (!HAS_DOM) return; if (!t) { C.hide(); return; }
+        GK.ui._css();
+        if (!C.el) { C.el = document.createElement('div'); C.el.className = 'gk-coach'; C.el.setAttribute('aria-hidden', 'true'); document.body.appendChild(C.el);
+          C.label = document.createElement('div'); C.label.className = 'gk-coach-t'; C.label.setAttribute('role', 'status'); document.body.appendChild(C.label); }
+        var d = Math.round(t.r * 2);
+        C.el.style.cssText = 'display:block;left:' + Math.round(t.x - t.r) + 'px;top:' + Math.round(t.y - t.r) + 'px;width:' + d + 'px;height:' + d + 'px';
+        var s = C.steps[i];
+        if (s && s.text) { C.label.textContent = s.text; var below = t.y + t.r + 10, H = (W.innerHeight || 800); C.label.style.cssText = 'display:block;left:50%;transform:translateX(-50%);top:' + Math.round(below > H - 80 ? t.y - t.r - 46 : below) + 'px'; }
+        else C.label.style.display = 'none';
+      };
+      C.retire = function () { C.done = true; LS.set(key, 'done'); C.hide(); if (C._timer) clearInterval(C._timer); if (o.onRetire) o.onRetire(); };
+      C.reset = function () { LS.del(key); C.done = false; };
+      C.current = function () { return C.cur >= 0 ? C.steps[C.cur] : null; };
+      C.target = function () { var s = C.current(); return s ? where(s) : null; };
+      C.update = function () {
+        if (C.done) return null;
+        if (o.when && !o.when()) { C.hide(); return null; }
+        for (var i = 0; i < C.steps.length; i++) {
+          var s = C.steps[i], met = false; try { met = !!s.done(); } catch (e) {}
+          if (!met) { C.show(i, where(s)); return s; }
+        }
+        C.retire(); return null;
+      };
+      if (!C.done && HAS_DOM && o.auto !== false) C._timer = setInterval(C.update, o.every || 250);
+      return C;
+    }
+  };
+  // GK.hints.once(id, text): a short tip the first time something happens; at most one tip per 20 s
+  GK.hints = {
+    gap: 20000, _last: -1e9,
+    seen: function () { try { var a = JSON.parse(LS.get('gk.hints') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } },
+    once: function (id, text, o) {
+      o = o || {}; if (P.get('tips') === false) return false;
+      var s = GK.hints.seen(); if (s.indexOf(id) >= 0) return false;
+      var t = now(); if (t - GK.hints._last < GK.hints.gap) return false;
+      GK.hints._last = t; s.push(id); LS.set('gk.hints', JSON.stringify(s.slice(-200)));
+      if (GK.ui && HAS_DOM) GK.ui.toast(text, o.ms || 3200);
+      return true;
+    },
+    reset: function () { LS.del('gk.hints'); GK.hints._last = -1e9; }
+  };
+
+  /* ================= SETTINGS PANEL (2.0) ================= */
+  // GK.prefs.panel({ speed, text, music, save, extras:[{label,get(),set(v)}], onClose }) opens "Play your way"
+  P.panel = function (o) {
+    if (!HAS_DOM) return null; o = o || {}; GK.ui._css(); if (!P.data) P.load();
+    var s = document.createElement('div'); s.className = 'gk-sheet gk-prefs';
+    function seg(k, vals, labels) {
+      var cur = P.get(k), h = '<div class="gk-seg" role="group">';
+      for (var i = 0; i < vals.length; i++) h += '<button type="button" data-k="' + k + '" data-v="' + vals[i] + '" aria-pressed="' + (String(cur) === String(vals[i])) + '">' + esc(labels[i]) + '</button>';
+      return h + '</div>';
+    }
+    function row(label, ctl) { return '<div class="gk-row"><span>' + esc(label) + '</span>' + ctl + '</div>'; }
+    function slider(bus, label) { return row(label, '<input type="range" min="0" max="1" step="0.05" data-vol="' + bus + '" value="' + P.vol(bus) + '" aria-label="' + esc(label) + '">'); }
+    function sw(key, label, on) { return row(label, '<input type="checkbox" role="switch" data-sw="' + key + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(label) + '">'); }
+    var h = '<div role="dialog" aria-label="Play your way"><div class="gk-ph"><b>' + esc(o.title || 'Play your way') + '</b><button type="button" class="gk-x gk-done">Done</button></div>';
+    h += '<div class="gk-gl">Move</div>' + row('Motion', seg('motion', ['auto', 'full', 'calm', 'still'], ['Auto', 'Full', 'Calm', 'Still'])) + sw('flash', 'Soft flashes', P.get('flash') === 'soft');
+    if (o.speed) h += row('Game speed', seg('speed', [0.5, 0.75, 1], ['50%', '75%', '100%']));
+    if (o.text) h += '<div class="gk-gl">Read</div>' + row('Text size', seg('text', [1, 1.25, 1.5], ['A', 'A+', 'A++']));
+    h += '<div class="gk-gl">Hear</div>' + slider('master', o.music ? 'All sound' : 'Sound');
+    if (o.music) h += slider('music', 'Music') + slider('sfx', 'Effects');
+    (o.extras || []).forEach(function (x, i) { h += sw('x' + i, x.label, !!x.get()); });
+    h += '<div class="gk-gl">More</div><div class="gk-btns">' + (o.tips !== false ? '<button type="button" data-act="tips">Show tips again</button>' : '') +
+      (o.save ? '<button type="button" data-act="export">Export save</button><button type="button" data-act="import">Import save</button>' : '') + '</div></div>';
+    s.innerHTML = h;
+    ['pointerdown', 'touchstart'].forEach(function (ev) { s.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+    s.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var t = e.target || {}, ds = t.dataset || {};
+      if (t === s) { close(); return; }
+      if (ds.k) { var v = ds.k === 'motion' ? ds.v : +ds.v; P.set(ds.k, v); var bs = s.querySelectorAll('[data-k="' + ds.k + '"]'); for (var i = 0; i < bs.length; i++) bs[i].setAttribute('aria-pressed', String(bs[i].getAttribute('data-v') === String(ds.v))); return; }
+      if (ds.act === 'tips') { GK.hints.reset(); if (o.onTips) o.onTips(); GK.ui.toast('Tips will show again', 1600); return; }
+      if (ds.act === 'export' && o.save) { GK.ui.saveTools(o.save, o).exportSave(); return; }
+      if (ds.act === 'import' && o.save) { GK.ui.saveTools(o.save, o).importSave(); return; }
+      if (t.className && /gk-done/.test(t.className)) close();
+    });
+    s.addEventListener('change', function (e) {
+      var t = e.target || {}, ds = t.dataset || {};
+      if (ds.sw === 'flash') P.set('flash', t.checked ? 'soft' : 'normal');
+      else if (ds.sw && ds.sw.charAt(0) === 'x') { var x = (o.extras || [])[+ds.sw.slice(1)]; if (x) x.set(!!t.checked); }
+    });
+    s.addEventListener('input', function (e) { var t = e.target || {}, ds = t.dataset || {}; if (ds.vol) P.setVol(ds.vol, +t.value); });
+    function close() { s.remove(); if (o.onClose) o.onClose(); }
+    document.body.appendChild(s); P._panel = s;
+    return { el: s, close: close };
+  };
+
+
+
+  /* ================= RETROFIT (drop-in for a finished game) ================= */
+  // GK.retrofit({ game, saves: ['key', ...], validate }) goes in its own script tag right after the kit
+  // and before the game's script. It changes no save format and no game code:
+  //  - each listed localStorage key gets 3 rolling backups and is restored from the newest good one
+  //    when it is missing or broken;
+  //  - the first AudioContext the game makes is handed to GK.audio, so it is unlocked on every tap,
+  //    plays with the ringer switch on silent, and comes back after a call or a locked screen.
+  GK.retrofit = function (o) {
+    o = o || {};
+    var R = { game: o.game || '', saves: {}, made: 0, v: 2 };
+    // v2 automatic wins: sharpness cap (default 2), ?fps=30 test switch, hidden-page fade, master limiter
+    if (o.dpr !== false && GK.perf) { try { R.dpr = GK.perf.capDPR(o.dpr || 2); } catch (e) {} }
+    if (o.fps !== false && GK.perf) { try { R.fps = GK.perf.auto(); } catch (e) {} }
+    if (o.hideAudio === false) A.hideMode = false;
+    if (o.limiter === false) A.route = false;
+    var keys = o.saves || [];
+    for (var i = 0; i < keys.length; i++) { try { R.saves[keys[i]] = GK.save.protect(keys[i], { validate: o.validate, keep: o.keep }); } catch (e) {} }
+    if (o.audio !== false && HAS_DOM) {
+      A.init({ create: false });
+      var wrap = function (name) {
+        var C = W[name]; if (!C || C._gkWrapped) return;
+        var G = function (opts) {
+          var c = arguments.length ? new C(opts) : new C();
+          R.made++;
+          if (!A.ctx || A.ctx.state === 'closed') { A.adopt(c, c.destination); gesture(); }
+          return c;
+        };
+        G.prototype = C.prototype; G._gkWrapped = true; G._gkOriginal = C;
+        try { Object.setPrototypeOf(G, C); } catch (e) {}
+        try { W[name] = G; } catch (e) {}
+      };
+      wrap('AudioContext'); wrap('webkitAudioContext');
+    }
+    GK.retrofitted = R;
+    return R;
+  };
+
+  root.GK = GK;
+  if (typeof module !== 'undefined' && module.exports) module.exports = GK;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script id="gkboot">window.GK.retrofit({"game":"kilnshot","saves":["kilnshot.v1"]});</script>
+<script>
+// ===================== KILNSHOT CORE =====================
+// CONFIG + seeded RNG + pure deterministic physics/rules. No DOM in this file.
+// Determinism: fixed timestep, only + - * / sqrt in the simulation (no trig),
+// launch velocities quantized to integers, iteration order fixed.
+
+const CONFIG = {
+  W: 360, H: 640,
+  DT: 1 / 240,            // fixed physics step (s)
+  G: 800,                 // gravity px/s^2
+  MAXV: 1000,             // max launch speed
+  POWER: 4.4,             // launch speed per world px of pull
+  MIN_PULL: 16,           // pulls shorter than this cancel
+  BEAD_R: 7,
+  SEG_HALF: 3,            // half thickness of ledges
+  MAX_SPEED: 1300,
+  BREAK_SPEED: 150,       // impact needed to crack a flawed pot (and a good one!)
+  HARD_SPEED: 470,        // impact needed to crack a thick-glazed pot
+  FALL_BREAK: 120,        // a falling pot shatters on impacts above this
+  PASS_KEEP: 0.72,        // ember keeps this much speed after smashing through
+  REL_INHERIT: 0.3,      // released beads inherit this much of the hitter's velocity
+  REL_SPREAD: 190,        // ...plus this much radial speed
+  REST_SPEED: 24, REST_TIME: 0.45,
+  BEAD_LIFE: 8, SHOT_MAX: 12,
+  E_STONE: 0.55, F_STONE: 0.05,
+  E_PEG: 0.55, E_POT: 0.4,
+  SPRING_MIN: 640,        // a reed mat always throws at least this hard
+  CLAY_COOL: 0.25,        // stuck embers vanish after this
+  LATCH_COOLDOWN: 0.4, LATCH_MIN: 50,
+  POT_MASS: 3,
+  PREVIEW_T: 0.38,        // seconds of flight the aim preview shows
+  EXTRA_EMBERS: 2,        // embers beyond par
+  WALL_TOP: -500,
+};
+
+// 12 unit directions (precomputed so no trig runs in the sim)
+const DIRS = [
+  [1, 0], [0.8660254, 0.5], [0.5, 0.8660254], [0, 1], [-0.5, 0.8660254], [-0.8660254, 0.5],
+  [-1, 0], [-0.8660254, -0.5], [-0.5, -0.8660254], [0, -1], [0.5, -0.8660254], [0.8660254, -0.5]
+];
+
+// mulberry32 seeded RNG
+function makeRng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashStr(s) { let h = 2166136261 >>> 0; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h; }
+
+// ---------- world construction ----------
+function makeWorld(level) {
+  const C = CONFIG;
+  const segs = [];
+  const frame = level.frame !== false;
+  if (frame) {
+    segs.push({ x1: 0, y1: C.WALL_TOP, x2: 0, y2: C.H, mat: 'stone', frame: 1 });
+    segs.push({ x1: C.W, y1: C.WALL_TOP, x2: C.W, y2: C.H, mat: 'stone', frame: 1 });
+    if (!level.pit) segs.push({ x1: 0, y1: 628, x2: C.W, y2: 628, mat: level.floor || 'stone', frame: 1 });
+  }
+  for (const s of (level.segs || [])) segs.push({ x1: s[0], y1: s[1], x2: s[2], y2: s[3], mat: s[4] || 'stone', gate: s[5] || null });
+  const pots = (level.pots || []).map((p, i) => ({
+    id: i, x: p.x, y: p.y, r: p.r || 16, kind: p.k === 'k' ? 'keeper' : 'second',
+    n: p.n || 0, hard: !!p.hard, cord: p.cord ? { ax: p.cord[0], ay: p.cord[1] } : null,
+    dyn: false, vx: 0, vy: 0, rest: 0, broken: false, breaking: false
+  }));
+  const pegs = (level.pegs || []).map(p => ({ x: p[0], y: p[1], r: p[2] || 8 }));
+  const latches = (level.latches || []).map((l, i) => ({ id: i, x: l.x, y: l.y, r: l.r || 10, t: l.t.slice(), cd: 0, flips: 0 }));
+  const gates = Object.assign({}, level.gates || {});
+  const fans = (level.fans || []).map(f => ({ x: f[0], y: f[1], w: f[2], h: f[3], ax: f[4], ay: f[5] }));
+  return {
+    level, segs, pots, pegs, latches, gates, fans,
+    sling: { x: level.sling[0], y: level.sling[1] },
+    beads: [], t: 0, steps: 0, shotT: 0, shots: 0, inShot: false,
+    keeperBroken: false, events: [], chain: 0, breakQueue: [], nextBeadId: 1,
+  };
+}
+
+function secondsLeft(w) { let n = 0; for (const p of w.pots) if (p.kind === 'second' && !p.broken) n++; return n; }
+function secondsTotal(w) { let n = 0; for (const p of w.pots) if (p.kind === 'second') n++; return n; }
+function embersFor(level) { return level.embers || (level.par + CONFIG.EXTRA_EMBERS); }
+function isWon(w) { return !w.keeperBroken && secondsLeft(w) === 0; }
+
+// quantize + clamp a launch vector exactly like the game does
+function clampLaunch(vx, vy) {
+  vx = Math.round(vx); vy = Math.round(vy);
+  const s2 = vx * vx + vy * vy, M = CONFIG.MAXV;
+  if (s2 > M * M) { const k = M / Math.sqrt(s2); vx = Math.round(vx * k); vy = Math.round(vy * k); }
+  // rounding can push us 1 over; nudge
+  while (vx * vx + vy * vy > M * M + 2 * M) { vx -= Math.sign(vx); vy -= Math.sign(vy); }
+  return [vx, vy];
+}
+function pullToLaunch(px, py) { return clampLaunch(-px * CONFIG.POWER, -py * CONFIG.POWER); }
+
+function launch(w, vx, vy) {
+  const v = clampLaunch(vx, vy);
+  w.beads.push(mkBead(w, w.sling.x, w.sling.y, v[0], v[1], 0));
+  w.inShot = true; w.shotT = 0; w.shots++; w.chain = 0;
+  w.events.push({ type: 'launch', x: w.sling.x, y: w.sling.y, s: Math.sqrt(v[0] * v[0] + v[1] * v[1]) });
+  return v;
+}
+function mkBead(w, x, y, vx, vy, gen) {
+  return { id: w.nextBeadId++, x, y, vx, vy, r: CONFIG.BEAD_R, age: 0, still: 0, stuck: 0, gen, alive: true, lastTouch: -1 };
+}
+
+// ---------- geometry helpers ----------
+function closestOnSeg(px, py, s) {
+  const dx = s.x2 - s.x1, dy = s.y2 - s.y1; const L2 = dx * dx + dy * dy;
+  let t = L2 > 0 ? ((px - s.x1) * dx + (py - s.y1) * dy) / L2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return [s.x1 + t * dx, s.y1 + t * dy];
+}
+function segSolid(w, s) { return !s.gate || !!w.gates[s.gate]; }
+
+// bounce body b off a contact normal n with restitution e and tangential friction f
+function respond(b, nx, ny, e, f) {
+  const vn = b.vx * nx + b.vy * ny;
+  if (vn >= 0) return 0;
+  const tx = b.vx - vn * nx, ty = b.vy - vn * ny;
+  b.vx = tx * (1 - f) - vn * e * nx;
+  b.vy = ty * (1 - f) - vn * e * ny;
+  return -vn;
+}
+
+function applyFields(w, b, dt) {
+  let ax = 0, ay = CONFIG.G;
+  for (const f of w.fans) if (b.x >= f.x && b.x <= f.x + f.w && b.y >= f.y && b.y <= f.y + f.h) { ax += f.ax; ay += f.ay; }
+  b.vx += ax * dt; b.vy += ay * dt;
+  const s2 = b.vx * b.vx + b.vy * b.vy, M = CONFIG.MAX_SPEED;
+  if (s2 > M * M) { const k = M / Math.sqrt(s2); b.vx *= k; b.vy *= k; }
+  b.x += b.vx * dt; b.y += b.vy * dt;
+}
+
+// ---------- the step ----------
+function step(w) {
+  const C = CONFIG, dt = C.DT;
+  w.t += dt; w.steps++; w.shotT += dt;
+  for (const l of w.latches) if (l.cd > 0) l.cd -= dt;
+
+  for (const b of w.beads) {
+    if (!b.alive) continue;
+    b.age += dt;
+    if (b.stuck > 0) { b.stuck += dt; if (b.stuck > C.CLAY_COOL) b.alive = false; continue; }
+    applyFields(w, b, dt);
+    // ledges
+    for (const s of w.segs) {
+      if (!segSolid(w, s)) continue;
+      const c = closestOnSeg(b.x, b.y, s);
+      let dx = b.x - c[0], dy = b.y - c[1]; const R = b.r + C.SEG_HALF;
+      const d2 = dx * dx + dy * dy; if (d2 >= R * R) continue;
+      let d = Math.sqrt(d2), nx, ny;
+      if (d < 1e-9) { const sx = s.x2 - s.x1, sy = s.y2 - s.y1, L = Math.sqrt(sx * sx + sy * sy); nx = -sy / L; ny = sx / L; d = 0; }
+      else { nx = dx / d; ny = dy / d; }
+      b.x = c[0] + nx * R; b.y = c[1] + ny * R;
+      if (s.mat === 'clay') {
+        const imp = -(b.vx * nx + b.vy * ny);
+        b.vx = 0; b.vy = 0; b.stuck = dt;
+        w.events.push({ type: 'clay', x: b.x, y: b.y, s: imp });
+        break;
+      } else if (s.mat === 'spring') {
+        const imp = respond(b, nx, ny, 1.0, 0);
+        if (imp > 0) {
+          const vn = b.vx * nx + b.vy * ny; // now positive
+          if (vn < C.SPRING_MIN) { b.vx += (C.SPRING_MIN - vn) * nx; b.vy += (C.SPRING_MIN - vn) * ny; }
+          w.events.push({ type: 'spring', x: b.x, y: b.y, s: imp });
+        }
+      } else {
+        const imp = respond(b, nx, ny, C.E_STONE, C.F_STONE);
+        if (imp > 60) w.events.push({ type: 'tick', x: b.x, y: b.y, s: imp });
+      }
+    }
+    if (!b.alive || b.stuck) continue;
+    // stone pegs
+    for (const p of w.pegs) {
+      const dx = b.x - p.x, dy = b.y - p.y, R = b.r + p.r, d2 = dx * dx + dy * dy;
+      if (d2 >= R * R || d2 < 1e-12) continue;
+      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+      b.x = p.x + nx * R; b.y = p.y + ny * R;
+      const imp = respond(b, nx, ny, C.E_PEG, C.F_STONE);
+      if (imp > 60) w.events.push({ type: 'tick', x: b.x, y: b.y, s: imp });
+    }
+    // latches
+    for (const l of w.latches) {
+      const dx = b.x - l.x, dy = b.y - l.y, R = b.r + l.r, d2 = dx * dx + dy * dy;
+      if (d2 >= R * R || d2 < 1e-12) continue;
+      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+      b.x = l.x + nx * R; b.y = l.y + ny * R;
+      const imp = respond(b, nx, ny, 0.5, 0.05);
+      if (imp > C.LATCH_MIN && l.cd <= 0) {
+        l.cd = C.LATCH_COOLDOWN; l.flips++;
+        for (const g of l.t) w.gates[g] = !w.gates[g];
+        dropUnsupported(w);
+        w.events.push({ type: 'latch', x: l.x, y: l.y, id: l.id });
+      }
+    }
+    // pots (static and falling)
+    for (const p of w.pots) {
+      if (p.broken || p.breaking) continue;
+      // cords
+      if (p.cord) {
+        const cs = { x1: p.cord.ax, y1: p.cord.ay, x2: p.x, y2: p.y - p.r };
+        const c = closestOnSeg(b.x, b.y, cs); const dx = b.x - c[0], dy = b.y - c[1];
+        if (dx * dx + dy * dy < (b.r + 1) * (b.r + 1)) {
+          p.cord = null; p.dyn = true; p.vx = 0; p.vy = 0; p.rest = 0;
+          w.events.push({ type: 'cut', x: c[0], y: c[1] });
+        }
+      }
+      const dx = b.x - p.x, dy = b.y - p.y, R = b.r + p.r, d2 = dx * dx + dy * dy;
+      if (d2 >= R * R || d2 < 1e-12) continue;
+      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+      const rvx = b.vx - p.vx, rvy = b.vy - p.vy;
+      const imp = -(rvx * nx + rvy * ny);
+      if (imp <= 0) { b.x = p.x + nx * R; b.y = p.y + ny * R; continue; }
+      const thr = p.hard ? C.HARD_SPEED : C.BREAK_SPEED;
+      if (imp >= thr) {
+        queueBreak(w, p, b.vx, b.vy);
+        b.vx *= C.PASS_KEEP; b.vy *= C.PASS_KEEP;
+      } else {
+        b.x = p.x + nx * R; b.y = p.y + ny * R;
+        if (!p.dyn) { respond(b, nx, ny, C.E_POT, 0.05); }
+        else {
+          // two-body exchange, pot is heavier
+          const m1 = 1, m2 = C.POT_MASS, j = (1 + C.E_POT) * imp / (1 / m1 + 1 / m2);
+          b.vx += j / m1 * nx; b.vy += j / m1 * ny; p.vx -= j / m2 * nx; p.vy -= j / m2 * ny;
+        }
+        if (imp > 40) w.events.push({ type: 'clink', x: b.x, y: b.y, s: imp, kind: p.kind, id: p.id });
+      }
+    }
+    // lifetime / rest / out of world
+    const sp2 = b.vx * b.vx + b.vy * b.vy;
+    if (sp2 < C.REST_SPEED * C.REST_SPEED) b.still += dt; else b.still = 0;
+    if (b.still > C.REST_TIME || b.age > C.BEAD_LIFE || b.y > C.H + 60 || b.x < -60 || b.x > C.W + 60) b.alive = false;
+  }
+
+  // falling pots
+  for (const p of w.pots) {
+    if (!p.dyn || p.broken || p.breaking) continue;
+    applyFields(w, p, dt);
+    let hit = 0;
+    for (const s of w.segs) {
+      if (!segSolid(w, s)) continue;
+      const c = closestOnSeg(p.x, p.y, s); let dx = p.x - c[0], dy = p.y - c[1]; const R = p.r + C.SEG_HALF;
+      const d2 = dx * dx + dy * dy; if (d2 >= R * R || d2 < 1e-12) continue;
+      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+      p.x = c[0] + nx * R; p.y = c[1] + ny * R;
+      const imp = s.mat === 'spring' ? respond(p, nx, ny, 1.0, 0) : respond(p, nx, ny, 0.3, 0.1);
+      if (s.mat === 'clay') { p.vx = 0; p.vy = 0; }
+      if (imp > hit) hit = imp;
+    }
+    for (const q of w.pegs) {
+      const dx = p.x - q.x, dy = p.y - q.y, R = p.r + q.r, d2 = dx * dx + dy * dy;
+      if (d2 >= R * R || d2 < 1e-12) continue;
+      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+      p.x = q.x + nx * R; p.y = q.y + ny * R;
+      const imp = respond(p, nx, ny, 0.3, 0.1); if (imp > hit) hit = imp;
+    }
+    for (const q of w.pots) {
+      if (q === p || q.broken || q.breaking) continue;
+      const dx = p.x - q.x, dy = p.y - q.y, R = p.r + q.r, d2 = dx * dx + dy * dy;
+      if (d2 >= R * R || d2 < 1e-12) continue;
+      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+      const rvx = p.vx - q.vx, rvy = p.vy - q.vy; const imp = -(rvx * nx + rvy * ny);
+      if (imp <= 0) continue;
+      p.x = q.x + nx * R; p.y = q.y + ny * R;
+      const thr = q.hard ? C.HARD_SPEED : C.BREAK_SPEED;
+      if (imp >= thr) queueBreak(w, q, p.vx, p.vy);
+      if (!q.dyn) respond(p, nx, ny, 0.3, 0.1);
+      else { const j = (1.3) * imp / 2; p.vx += j * nx; p.vy += j * ny; q.vx -= j * nx; q.vy -= j * ny; }
+      if (imp > hit) hit = imp;
+    }
+    if (hit >= C.FALL_BREAK) { queueBreak(w, p, p.vx, p.vy); continue; }
+    if (p.y > C.H + 80) { // fell out of the world: a lost pot counts as broken (it shattered below)
+      queueBreak(w, p, p.vx, p.vy, true); continue;
+    }
+    const sp2 = p.vx * p.vx + p.vy * p.vy;
+    if (sp2 < C.REST_SPEED * C.REST_SPEED) p.rest += dt; else p.rest = 0;
+    if (p.rest > C.REST_TIME) { p.dyn = false; p.vx = 0; p.vy = 0; w.events.push({ type: 'settle', x: p.x, y: p.y }); }
+  }
+
+  // resolve breaks (in queue order)
+  if (w.breakQueue.length) {
+    const q = w.breakQueue; w.breakQueue = [];
+    for (const br of q) doBreak(w, br);
+  }
+  // compact dead beads occasionally
+  if ((w.steps & 63) === 0 && w.beads.length > 0) w.beads = w.beads.filter(b => b.alive);
+}
+
+// pots resting on a door that just swung open start to fall
+function dropUnsupported(w) {
+  for (const p of w.pots) {
+    if (p.broken || p.dyn || p.cord) continue;
+    for (const s of w.segs) {
+      if (!s.gate || w.gates[s.gate]) continue;
+      const c = closestOnSeg(p.x, p.y, s); const dx = p.x - c[0], dy = p.y - c[1];
+      if (dy < 0 && dx * dx + dy * dy <= (p.r + CONFIG.SEG_HALF + 1.5) * (p.r + CONFIG.SEG_HALF + 1.5)) { p.dyn = true; p.vx = 0; p.vy = 0; p.rest = 0; break; }
+    }
+  }
+}
+function queueBreak(w, p, hvx, hvy, offscreen) {
+  if (p.breaking || p.broken) return;
+  p.breaking = true;
+  w.breakQueue.push({ p, hvx, hvy, off: !!offscreen });
+}
+function doBreak(w, br) {
+  const C = CONFIG, p = br.p;
+  p.breaking = false; p.broken = true; p.dyn = false; p.cord = null;
+  w.chain++;
+  if (p.kind === 'keeper') w.keeperBroken = true;
+  w.events.push({ type: 'break', x: p.x, y: p.y, kind: p.kind, chain: w.chain, id: p.id, n: p.n, off: br.off });
+  if (p.n > 0 && !br.off) {
+    // fountain: beads fan evenly across the upper half-circle, then inherit part of the hit
+    for (let i = 0; i < p.n; i++) {
+      const ux = p.n === 1 ? 0 : -0.94 + 1.88 * i / (p.n - 1);
+      const uy = -Math.sqrt(1 - ux * ux);
+      const vx = br.hvx * C.REL_INHERIT + ux * C.REL_SPREAD;
+      const vy = br.hvy * C.REL_INHERIT + uy * C.REL_SPREAD;
+      w.beads.push(mkBead(w, p.x + ux * p.r * 0.5, p.y + uy * p.r * 0.5, vx, vy, 1));
+    }
+  }
+}
+
+function shotOver(w) {
+  if (!w.inShot) return true;
+  if (w.shotT > CONFIG.SHOT_MAX) return true;
+  if (w.breakQueue.length) return false;
+  for (const b of w.beads) if (b.alive) return false;
+  for (const p of w.pots) if (p.dyn && !p.broken) return false;
+  return true;
+}
+function endShot(w) {
+  w.inShot = false; w.beads = []; w.breakQueue = [];
+  for (const p of w.pots) if (p.dyn && !p.broken) { p.dyn = false; p.vx = 0; p.vy = 0; } // freeze anything still sliding at timeout
+}
+
+// Run a whole shot to completion. Returns summary.
+function runShot(w, vx, vy, onStep) {
+  const s0 = secondsLeft(w);
+  launch(w, vx, vy);
+  let guard = 0;
+  while (!shotOver(w) && guard++ < 1e6) { step(w); if (onStep) onStep(w); else w.events.length = 0; }
+  endShot(w);
+  return { broke: s0 - secondsLeft(w), keeper: w.keeperBroken, left: secondsLeft(w) };
+}
+
+// Replay a full attempt from level data
+function replay(level, shots) {
+  const w = makeWorld(level);
+  for (const s of shots) { if (w.keeperBroken || secondsLeft(w) === 0) break; runShot(w, s[0], s[1]); }
+  w.events.length = 0;
+  return w;
+}
+
+// Aim preview: simulate the ember alone from the sling, through one stone bounce, until the next contact or PREVIEW_T.
+function preview(w, vx, vy, maxT) {
+  const C = CONFIG; const v = clampLaunch(vx, vy);
+  const b = { x: w.sling.x, y: w.sling.y, vx: v[0], vy: v[1], r: C.BEAD_R };
+  const pts = []; const T = maxT || C.PREVIEW_T; let t = 0, k = 0, bounces = 1;
+  while (t < T) {
+    applyFields(w, b, C.DT); t += C.DT; k++;
+    if ((k % 8) === 0) pts.push([b.x, b.y]);
+    let hit = false;
+    for (const s of w.segs) {
+      if (!segSolid(w, s)) continue;
+      const c = closestOnSeg(b.x, b.y, s); let dx = b.x - c[0], dy = b.y - c[1]; const R = b.r + C.SEG_HALF, d2 = dx * dx + dy * dy;
+      if (d2 >= R * R) continue;
+      // bounce once off plain stone (walls, shelves) so a bank shot shows its line; stop at anything else
+      if (bounces > 0 && s.mat === 'stone' && d2 > 0) {
+        const d = Math.sqrt(d2); dx /= d; dy /= d; const vn = b.vx * dx + b.vy * dy;
+        if (vn < 0) { b.vx -= (1 + C.E_STONE) * vn * dx; b.vy -= (1 + C.E_STONE) * vn * dy; }
+        b.x = c[0] + dx * R; b.y = c[1] + dy * R; bounces--; pts.push([b.x, b.y]);
+      } else hit = true;
+      break;
+    }
+    if (!hit) for (const p of w.pots) { if (p.broken) continue; const dx = b.x - p.x, dy = b.y - p.y, R = b.r + p.r; if (dx * dx + dy * dy < R * R) { hit = true; break; } }
+    if (!hit) for (const p of w.pegs) { const dx = b.x - p.x, dy = b.y - p.y, R = b.r + p.r; if (dx * dx + dy * dy < R * R) { hit = true; break; } }
+    if (!hit) for (const p of w.latches) { const dx = b.x - p.x, dy = b.y - p.y, R = b.r + p.r; if (dx * dx + dy * dy < R * R) { hit = true; break; } }
+    if (hit) { pts.push([b.x, b.y]); break; }
+  }
+  return pts;
+}
+
+// World snapshot used by Renderer/tests to compare states
+function boardKey(w) {
+  return w.pots.map(p => p.broken ? 'x' : (Math.round(p.x) + ',' + Math.round(p.y) + (p.cord ? 'c' : ''))).join('|') + '#' + Object.keys(w.gates).sort().map(k => k + (w.gates[k] ? 1 : 0)).join('');
+}
+function cloneWorld(w) {
+  return {
+    level: w.level, segs: w.segs, pegs: w.pegs, fans: w.fans, sling: w.sling,
+    pots: w.pots.map(p => Object.assign({}, p, { cord: p.cord ? Object.assign({}, p.cord) : null })),
+    latches: w.latches.map(l => Object.assign({}, l, { t: l.t })),
+    gates: Object.assign({}, w.gates), beads: [], t: w.t, steps: w.steps, shotT: 0, shots: w.shots, inShot: false,
+    keeperBroken: w.keeperBroken, events: [], chain: 0, breakQueue: [], nextBeadId: w.nextBeadId,
+  };
+}
+
+function starsFor(level, shots) { if (shots <= level.par) return 3; if (shots <= level.par + 1) return 2; return 1; }
+
+// ===================== KILNSHOT DATA: LEVELS =====================
+// Each chapter teaches one idea, then a twist level blocks the obvious approach.
+// segs: [x1,y1,x2,y2, mat('stone'|'spring'|'clay'), gate?]
+// pots: {x,y,k:'s'(flawed, smash it) | 'k'(keeper, spare it), r, n:beads inside, hard, cord:[ax,ay]}
+// pegs: [x,y,r]  latches: {x,y,t:[gates]}  gates:{A:true=closed}  fans:[x,y,w,h,ax,ay]
+const CHAPTERS = [
+  { n: 1, name: 'The Throw', idea: 'Pull back, let go, smash the cracked pots.' },
+  { n: 2, name: 'Keepers', idea: 'Glossy blue pots are good. Do not break them.' },
+  { n: 3, name: 'Ember Jars', idea: 'Jars full of embers spill and chain.' },
+  { n: 4, name: 'Cords', idea: 'Cut a cord and the pot drops.' },
+  { n: 5, name: 'Reed & Clay', idea: 'Reed mats fling you up. Wet clay swallows you.' },
+  { n: 6, name: 'Latches', idea: 'Strike a latch to swing its doors.' },
+  { n: 7, name: 'Bellows', idea: 'Kiln air pushes everything it touches.' },
+  { n: 8, name: 'Thick Glaze', idea: 'Only a hard, direct hit cracks a thick pot.' },
+];
+
+const LEVELS = [
+  // ---------- 1. The Throw ----------
+  { id: 'L01', ch: 1, name: 'First Firing', par: 1, sling: [56, 556],
+    hint: 'Pull back anywhere on the screen, aim, and let go.',
+    segs: [[210, 470, 320, 470]],
+    pots: [{ x: 265, y: 451 }] },
+  { id: 'L02', mirror: true, ch: 1, name: 'Over the Wall', par: 1, sling: [56, 556],
+    hint: 'Pull down farther for a higher, harder throw.',
+    segs: [[170, 628, 170, 390]],
+    pots: [{ x: 270, y: 609 }] },
+  { id: 'L03', ch: 1, name: 'Punch Through', par: 1, sling: [44, 410],
+    hint: 'An ember smashes straight through a cracked pot and keeps flying.',
+    segs: [[0, 426, 70, 426], [150, 440, 350, 440], [350, 440, 350, 400]],
+    pots: [{ x: 190, y: 421 }, { x: 240, y: 421 }, { x: 290, y: 421 }] },
+  { id: 'L04', ch: 1, name: 'Off the Wall', par: 1, sling: [56, 556],
+    hint: 'Twist: the roof blocks every straight throw. Let the far wall drop you in.',
+    segs: [[180, 628, 180, 250], [180, 250, 305, 250]],
+    pots: [{ x: 300, y: 609 }] },
+  // ---------- 2. Keepers ----------
+  { id: 'L05', ch: 2, name: 'Mind the Good Pot', par: 1, sling: [56, 556],
+    hint: 'The glossy blue pot is a keeper. Break it and the firing is ruined.',
+    segs: [],
+    pots: [{ x: 200, y: 609, k: 'k' }, { x: 236, y: 609, k: 'k' }, { x: 300, y: 609 }] },
+  { id: 'L06', mirror: true, ch: 2, name: 'Soft Touch', par: 1, sling: [56, 556],
+    hint: 'Twist: punching through now hits the keeper. Come in from above.',
+    segs: [[140, 420, 330, 420], [330, 420, 330, 380]],
+    pots: [{ x: 210, y: 401, k: 'k' }, { x: 260, y: 401 }] },
+  { id: 'L07', ch: 2, name: 'Crowded Shelf', par: 2, sling: [56, 556],
+    hint: 'Two cracked pots, three keepers. Pick your lines.',
+    segs: [[120, 460, 340, 460], [180, 300, 360, 300]],
+    pots: [{ x: 160, y: 441, k: 'k' }, { x: 210, y: 441 }, { x: 260, y: 441, k: 'k' }, { x: 260, y: 281 }, { x: 310, y: 281, k: 'k' }] },
+  // ---------- 3. Ember Jars ----------
+  { id: 'L08', ch: 3, name: 'Full Jar', par: 1, sling: [56, 556],
+    hint: 'A jar of embers bursts when it cracks. Hit the one on top.',
+    segs: [[120, 470, 250, 470]],
+    pots: [{ x: 184, y: 395, n: 8 }, { x: 168, y: 423 }, { x: 200, y: 423 }, { x: 152, y: 451 }, { x: 184, y: 451 }, { x: 216, y: 451 }] },
+  { id: 'L09', ch: 3, name: 'Chain Shelf', par: 1, sling: [56, 556],
+    hint: 'One crack can start a cascade. Find the first domino.',
+    segs: [[140, 220, 180, 220], [190, 310, 230, 310], [240, 400, 280, 400], [215, 628, 215, 500]],
+    pots: [{ x: 160, y: 201, n: 3 }, { x: 210, y: 291, n: 3 }, { x: 260, y: 381, n: 4 },
+           { x: 260, y: 609 }, { x: 298, y: 609 }, { x: 336, y: 609 }] },
+  { id: 'L10', mirror: true, ch: 3, name: 'Hot Spill', par: 1, sling: [56, 556],
+    hint: 'Twist: spilled embers fall where they are thrown. A keeper waits below.',
+    segs: [[150, 300, 210, 300], [250, 628, 250, 590]],
+    pots: [{ x: 180, y: 281, n: 4 }, { x: 180, y: 609, k: 'k' }, { x: 300, y: 609 }, { x: 335, y: 609 }] },
+  // ---------- 4. Cords ----------
+  { id: 'L11', ch: 4, name: 'Cut Loose', par: 1, sling: [56, 556],
+    hint: 'This pot is caged. Cut its cord and it drops.',
+    segs: [[205, 380, 205, 460], [275, 380, 275, 460], [205, 460, 275, 460], [205, 380, 232, 380], [248, 380, 275, 380]],
+    pots: [{ x: 240, y: 420, cord: [240, 90] }] },
+  { id: 'L12', ch: 4, name: 'Drop Zone', par: 1, sling: [56, 556],
+    hint: 'Cut the cord and drop the jar right into the bin.',
+    segs: [[170, 628, 170, 330], [225, 180, 225, 280], [275, 180, 275, 280], [225, 180, 242, 180], [258, 180, 275, 180]],
+    pots: [{ x: 250, y: 250, n: 6, cord: [250, 60] }, { x: 210, y: 609 }, { x: 250, y: 609 }, { x: 290, y: 609 }, { x: 330, y: 609 }] },
+  { id: 'L13', ch: 4, name: 'Hanging Keeper', par: 1, sling: [56, 556],
+    hint: 'Twist: that cord holds a keeper. Do not cut it.',
+    segs: [[260, 470, 345, 470]],
+    pots: [{ x: 220, y: 420, k: 'k', cord: [220, 40] }, { x: 300, y: 451 }] },
+  // ---------- 5. Reed & Clay ----------
+  { id: 'L14', mirror: true, ch: 5, name: 'Reed Mat', par: 1, sling: [56, 556],
+    hint: 'Green reed mats always fling you up hard.',
+    segs: [[170, 60, 170, 470], [240, 400, 360, 400], [240, 340, 360, 340], [190, 620, 330, 620, 'spring']],
+    pots: [{ x: 320, y: 381 }] },
+  { id: 'L15', ch: 5, name: 'Wet Clay', par: 2, sling: [56, 556], floor: 'clay',
+    hint: 'Twist: brown clay swallows embers. No floor bounces today.',
+    segs: [[220, 410, 360, 410], [260, 470, 360, 470], [120, 610, 180, 560, 'spring']],
+    pots: [{ x: 320, y: 451 }, { x: 290, y: 609 }] },
+  { id: 'L16', ch: 5, name: 'Too Much Spring', par: 2, sling: [56, 556],
+    hint: 'Twist: a reed mat flings embers straight into a keeper. Land elsewhere.',
+    segs: [[200, 622, 300, 622, 'spring'], [190, 350, 310, 350], [120, 200, 200, 200]],
+    pots: [{ x: 250, y: 331, k: 'k' }, { x: 160, y: 181 }, { x: 330, y: 609 }, { x: 170, y: 609 }] },
+  // ---------- 6. Latches ----------
+  { id: 'L17', ch: 6, name: 'The Latch', par: 2, sling: [56, 556], gates: { A: true },
+    hint: 'Strike the gold latch to swing its door open.',
+    segs: [[240, 500, 360, 500], [240, 420, 360, 420], [240, 420, 240, 500, 'stone', 'A']],
+    latches: [{ x: 150, y: 260, t: ['A'] }],
+    pots: [{ x: 310, y: 481 }] },
+  { id: 'L18', mirror: true, ch: 6, name: 'Two Doors', par: 3, sling: [56, 556], gates: { A: true, B: false },
+    hint: 'Each strike swings both doors. Think about the order.',
+    segs: [[220, 260, 360, 260], [220, 200, 360, 200], [220, 200, 220, 260, 'stone', 'A'],
+           [220, 520, 360, 520], [220, 460, 360, 460], [220, 460, 220, 520, 'stone', 'B']],
+    latches: [{ x: 100, y: 330, t: ['A', 'B'] }],
+    pots: [{ x: 310, y: 241 }, { x: 310, y: 501 }] },
+  { id: 'L19', ch: 6, name: 'Trapdoor', par: 1, sling: [56, 556], gates: { A: true },
+    hint: 'Twist: a door can be a floor too.',
+    segs: [[200, 240, 280, 240, 'stone', 'A'], [200, 140, 200, 240], [280, 140, 280, 240], [200, 140, 280, 140],
+           [180, 628, 180, 470]],
+    latches: [{ x: 110, y: 230, t: ['A'] }],
+    pots: [{ x: 240, y: 221, n: 7 }, { x: 205, y: 609 }, { x: 240, y: 609 }, { x: 285, y: 609 }, { x: 325, y: 609 }] },
+  // ---------- 7. Bellows ----------
+  { id: 'L20', ch: 7, name: 'Bellows', par: 1, sling: [56, 556],
+    hint: 'Blue kiln air lifts anything that drifts into it.',
+    segs: [[200, 628, 200, 330], [200, 200, 360, 200], [260, 140, 360, 140]],
+    fans: [[210, 210, 60, 410, 0, -1500]],
+    pots: [{ x: 320, y: 181 }] },
+  { id: 'L21', ch: 7, name: 'Crosswind', par: 1, sling: [56, 556],
+    hint: 'Air pushes sideways too. Throw into the wind.',
+    segs: [[0, 160, 90, 160], [90, 160, 90, 135], [0, 300, 120, 300]],
+    fans: [[0, 0, 360, 250, -850, 0]],
+    pots: [{ x: 40, y: 141 }, { x: 160, y: 609, k: 'k' }] },
+  { id: 'L22', ch: 7, name: 'Hot Draft', par: 1, sling: [56, 556],
+    hint: 'Twist: rising air shields that pot from above. Come in low.',
+    segs: [[150, 628, 150, 590]],
+    fans: [[250, 160, 110, 468, 0, -1500]],
+    pots: [{ x: 200, y: 609, k: 'k' }, { x: 300, y: 609 }, { x: 290, y: 200, k: 'k' }] },
+  // ---------- 8. Thick Glaze ----------
+  { id: 'L23', mirror: true, ch: 8, name: 'Thick Glaze', par: 1, sling: [44, 410],
+    hint: 'Green-glazed pots shrug off soft hits. Line them up and throw hard.',
+    segs: [[0, 426, 70, 426], [160, 440, 330, 440]],
+    pots: [{ x: 200, y: 421, hard: true }, { x: 250, y: 421, hard: true }, { x: 300, y: 421 }] },
+  { id: 'L24', ch: 8, name: "The Master's Kiln", par: 3, sling: [180, 556], gates: { A: true },
+    hint: 'Everything you learned, in one firing. Plan your throws.',
+    segs: [[20, 420, 150, 420], [270, 560, 360, 560], [270, 560, 270, 628, 'stone', 'A']],
+    pegs: [[72, 330, 8]],
+    latches: [{ x: 310, y: 190, t: ['A'] }],
+    pots: [{ x: 72, y: 190, n: 6, cord: [72, 40] }, { x: 38, y: 401 }, { x: 108, y: 401 },
+           { x: 320, y: 609, hard: true }, { x: 320, y: 541, k: 'k' }] },
+
+];
+
+// Some levels are authored on the left and flipped here, so throws don't all bank off the same wall.
+function mirrorLevel(l) {
+  const W = CONFIG.W, fx = (x) => W - x;
+  l.sling = [fx(l.sling[0]), l.sling[1]];
+  if (l.segs) l.segs = l.segs.map(s => [fx(s[0]), s[1], fx(s[2]), s[3]].concat(s.slice(4)));
+  if (l.pots) l.pots = l.pots.map(p => Object.assign({}, p, { x: fx(p.x) }, p.cord ? { cord: [fx(p.cord[0]), p.cord[1]] } : {}));
+  if (l.pegs) l.pegs = l.pegs.map(p => [fx(p[0])].concat(p.slice(1)));
+  if (l.latches) l.latches = l.latches.map(q => Object.assign({}, q, { x: fx(q.x) }));
+  if (l.fans) l.fans = l.fans.map(f => [W - f[0] - f[2], f[1], f[2], f[3], -f[4], f[5]]);
+  delete l.mirror;
+}
+for (const l of LEVELS) if (l.mirror) mirrorLevel(l);
+
+// ===================== KILNSHOT DAILY KILN =====================
+// A seeded level generator plus a small greedy solver that sets the day's par.
+// Everyone gets the same level and par for a date (seeded RNG + deterministic physics).
+
+function genDaily(seed) {
+  const rnd = makeRng(seed);
+  const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+  const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
+  const slingX = pick([56, 56, 180]);
+  const lvl = { id: 'D' + seed, ch: 0, name: 'Daily Kiln', par: 3, sling: [slingX, 556], hint: 'Today’s firing. Beat the kiln’s par.', segs: [], pots: [], pegs: [] };
+  // ledges
+  const ledges = [];
+  const nL = ri(2, 4);
+  for (let t = 0; t < 40 && ledges.length < nL; t++) {
+    const w = ri(6, 14) * 10, x = ri(10, 34) * 10 - w / 2, y = ri(18, 50) * 10;
+    if (x < 10 || x + w > 350) continue;
+    if (Math.abs(x + w / 2 - slingX) < 70 && y > 430) continue;
+    let ok = true;
+    for (const L of ledges) if (x < L.x + L.w + 30 && L.x < x + w + 30 && Math.abs(y - L.y) < 90) ok = false;
+    if (!ok) continue;
+    ledges.push({ x, y, w });
+    lvl.segs.push([x, y, x + w, y]);
+  }
+  // spots where pots can sit
+  const spots = [];
+  for (const L of ledges) for (let px = L.x + 18; px <= L.x + L.w - 18; px += 34) spots.push([px, L.y - 19]);
+  for (let px = 130; px <= 340; px += 34) if (Math.abs(px - slingX) > 80) spots.push([px, 609]);
+  // shuffle spots
+  for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = spots[i]; spots[i] = spots[j]; spots[j] = t; }
+  const nS = ri(3, 5), nK = ri(0, 2);
+  for (let i = 0; i < nS && spots.length; i++) { const s = spots.pop(); lvl.pots.push({ x: s[0], y: s[1] }); }
+  for (let i = 0; i < nK && spots.length; i++) { const s = spots.pop(); lvl.pots.push({ x: s[0], y: s[1], k: 'k' }); }
+  // a jar? (the highest second becomes a jar)
+  if (rnd() < 0.6) {
+    let hi = null; for (const p of lvl.pots) if (p.k !== 'k' && (!hi || p.y < hi.y)) hi = p;
+    if (hi) hi.n = ri(4, 7);
+  }
+  // a hanging pot?
+  if (rnd() < 0.35) {
+    const x = ri(12, 32) * 10, y = ri(14, 26) * 10;
+    let clear = true; for (const p of lvl.pots) if (Math.abs(p.x - x) < 40 && Math.abs(p.y - y) < 60) clear = false;
+    for (const L of ledges) if (x > L.x - 20 && x < L.x + L.w + 20 && L.y < y + 40) clear = false;
+    if (clear) lvl.pots.push({ x, y, cord: [x, ri(3, 8) * 10], n: rnd() < 0.5 ? 4 : 0 });
+  }
+  // a reed mat on the floor?
+  if (rnd() < 0.3) { const x = ri(12, 26) * 10; if (Math.abs(x + 40 - slingX) > 90) lvl.segs.push([x, 621, x + 80, 621, 'spring']); }
+  return lvl;
+}
+
+// Greedy daily solver, coarse to fine so it runs in a few seconds on a phone.
+// Each round: fire a coarse launch grid, take the most promising cells, test a fine 3x3 around each,
+// and keep the best shot whose neighbours mostly agree (a robust, human-repeatable throw).
+// It is a generator: it yields progress 0..1 so the page can time-slice it.
+function* dailySolve(lvl, maxShots) {
+  const M = CONFIG.MAXV, CO = 80, FI = 40, coarse = [];
+  for (let vx = -M; vx <= M; vx += CO) for (let vy = -M; vy <= 400; vy += CO) { const s = vx * vx + vy * vy; if (s <= M * M && s >= 160 * 160) coarse.push([vx, vy]); }
+  const shots = []; const w = makeWorld(lvl);
+  for (let k = 0; k < maxShots; k++) {
+    const cache = new Map(); const left0 = secondsLeft(w), key0 = boardKey(w);
+    const score = (vx, vy) => {
+      const id = vx + ',' + vy; if (cache.has(id)) return cache.get(id);
+      const s = vx * vx + vy * vy; let r = 0;
+      if (s <= M * M && s >= 120 * 120) { const c = cloneWorld(w); runShot(c, vx, vy); r = c.keeperBroken ? -1 : (left0 - secondsLeft(c)) * 1000 + (boardKey(c) === key0 ? 0 : 1); }
+      cache.set(id, r); return r;
+    };
+    let i = 0;
+    for (const v of coarse) { score(v[0], v[1]); if ((++i & 15) === 0) yield (k + 0.8 * i / coarse.length) / maxShots; }
+    const cands = coarse.filter(v => cache.get(v[0] + ',' + v[1]) > 0).sort((a, b) => cache.get(b[0] + ',' + b[1]) - cache.get(a[0] + ',' + a[1])).slice(0, 8);
+    let best = null, bestScore = 0, ci = 0;
+    for (const c of cands) {
+      const r = score(c[0], c[1]); let same = 0;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) if ((dx || dy) && score(c[0] + dx * FI, c[1] + dy * FI) === r) same++;
+      yield (k + 0.8 + 0.2 * (++ci) / cands.length) / maxShots;
+      if (same < 3) continue;
+      const sc = r * 10 + same; if (sc > bestScore) { bestScore = sc; best = c; }
+    }
+    if (!best) return { ok: false, shots };
+    shots.push(best); runShot(w, best[0], best[1]);
+    if (secondsLeft(w) === 0) return { ok: true, shots, par: shots.length };
+  }
+  return { ok: false, shots };
+}
+
+function dailyRow(dateStr) {
+  if (typeof DAILY_TABLE === 'undefined') return null;
+  const a = Date.UTC(+DAILY_TABLE.start.slice(0, 4), +DAILY_TABLE.start.slice(5, 7) - 1, +DAILY_TABLE.start.slice(8, 10));
+  const b = Date.UTC(+dateStr.slice(0, 4), +dateStr.slice(5, 7) - 1, +dateStr.slice(8, 10));
+  const i = Math.round((b - a) / 864e5); const rows = DAILY_TABLE.rows.split('|');
+  if (!(i >= 0 && i < rows.length)) return null;
+  const n = rows[i].split(' ').map(Number); if (n.length < 4 || n.some(x => !Number.isFinite(x))) return null;
+  const proof = []; for (let k = 2; k + 1 < n.length; k += 2) proof.push([n[k], n[k + 1]]);
+  return { sub: n[0], par: n[1], proof };
+}
+
+// Build the daily level for a date string like "2026-11-06": tries a few sub-seeds until one is solvable.
+function* buildDaily(dateStr) {
+  const base = hashStr('kilnshot:' + dateStr);
+  // fast path: the precomputed cache, re-proven here by replaying its throws
+  const row = dailyRow(dateStr);
+  if (row) {
+    const lvl = genDaily((base + row.sub * 7919) >>> 0);
+    if (validateLevel(lvl).ok) {
+      const w = replay(lvl, row.proof);
+      if (secondsLeft(w) === 0 && !w.keeperBroken && row.proof.length === row.par) { lvl.par = row.par; lvl.proof = row.proof; lvl.date = dateStr; return lvl; }
+    }
+  }
+  for (let t = 0; t < 12; t++) {
+    const lvl = genDaily((base + t * 7919) >>> 0);
+    if (!validateLevel(lvl).ok) continue;
+    if (secondsTotal(makeWorld(lvl)) < 2) continue;
+    const g = dailySolve(lvl, 4); let r;
+    while (true) { const n = g.next(); if (n.done) { r = n.value; break; } yield (t + n.value) / 12; }
+    if (r.ok) { lvl.par = r.par; lvl.proof = r.shots; lvl.date = dateStr; return lvl; }
+  }
+  // fallback: a hand-made easy level so the day always has a firing
+  const fb = JSON.parse(JSON.stringify(LEVELS[0])); fb.id = 'D' + base; fb.name = 'Daily Kiln'; fb.date = dateStr; fb.proof = null; return fb;
+}
+
+// Content validator (Untrusted-style): every level must be well formed and winnable in principle.
+function validateLevel(l) {
+  const errs = [];
+  const num = (v) => typeof v === 'number' && isFinite(v);
+  if (!l || typeof l !== 'object') return { ok: false, errs: ['not an object'] };
+  if (!Array.isArray(l.sling) || !num(l.sling[0]) || !num(l.sling[1])) errs.push('bad sling');
+  if (!(l.par >= 1)) errs.push('bad par');
+  const pots = l.pots || [];
+  if (!pots.some(p => p.k !== 'k')) errs.push('no cracked pot to break');
+  for (const p of pots) {
+    if (!num(p.x) || !num(p.y)) errs.push('bad pot');
+    if (p.x < 0 || p.x > CONFIG.W || p.y > 628) errs.push('pot out of bounds');
+    if (Math.abs(p.x - l.sling[0]) < 30 && Math.abs(p.y - l.sling[1]) < 30) errs.push('pot on the sling');
+  }
+  for (let i = 0; i < pots.length; i++) for (let j = i + 1; j < pots.length; j++) {
+    const a = pots[i], b = pots[j], r = (a.r || 16) + (b.r || 16);
+    if ((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) < (r - 1) * (r - 1)) errs.push('pots overlap ' + i + ',' + j);
+  }
+  for (const s of (l.segs || [])) if (s.length < 4 || !s.slice(0, 4).every(num)) errs.push('bad ledge');
+  return { ok: errs.length === 0, errs };
+}
+
+// Precomputed Daily Kiln cache (built by tests/daily-test.js). Day 0 = 2026-11-01.
+// Each row: sub-seed, par, then the proof throws. The game re-checks every row by replaying it, and solves live past the end.
+const DAILY_TABLE = { start: '2026-11-01', rows: "0 2 280 -920 520 -680|1 2 -680 -520 -680 -440|0 2 -920 200 -840 -440|1 2 -680 -200 -280 -760|1 3 -920 -200 -120 -840 200 -600|2 3 -920 -280 520 -680 -120 -840|5 4 -440 -600 -600 -760 -520 -40 440 -520|1 4 -680 -520 -440 -840 -440 -760 -600 -760|0 3 -920 40 -200 -840 -200 -920|2 2 -280 -920 -120 -920|1 2 -920 -200 200 -920|1 2 -760 -440 -280 -920|1 3 -680 -680 -360 -520 -280 -840|1 3 -920 -40 -200 -680 -200 -840|0 2 -440 -840 -520 -680|0 2 -920 -200 -600 -440|0 3 -760 -360 520 -760 440 -840|3 2 -840 -360 680 -520|2 3 -280 -680 600 -600 -760 -600|0 1 280 -920|0 2 440 -840 440 -840|0 2 -920 40 -280 -920|3 3 -920 200 -280 -840 -280 -760|1 1 -520 -680|0 3 -680 -600 -680 -360 -200 -920|0 3 -760 -360 520 -760 520 -840|0 2 760 -520 -200 -840|1 4 -920 200 -280 -920 -360 -600 -200 -840|0 2 -920 -200 440 -680|0 2 -360 -840 -920 -120|3 4 -520 -600 -920 -200 -520 -760 120 -920|1 3 280 -840 -840 360 -120 -920|0 2 -920 -120 -520 -600|2 4 -760 -600 -520 40 -360 -680 -440 -840|0 2 -520 -600 -840 200|0 2 -520 -120 -520 -440|1 1 680 -600|0 2 -440 -840 -600 -760|1 2 -360 -840 -760 -360|0 1 360 -840|1 3 -920 200 -520 -760 -120 -760|0 1 -520 -600|2 2 -280 -920 -920 -200|1 2 -520 -760 -920 -200|2 1 600 -520|0 2 -280 -840 -360 -920|2 3 -920 -120 -760 -440 -360 -840|3 2 280 -840 -920 -200|2 3 -520 -120 -440 -760 -280 -680|1 3 -920 -200 -680 -600 -280 -760|1 3 360 -840 -360 -680 -440 -680|0 1 -40 -840|1 1 -440 -840|0 1 -600 -760|0 1 -440 -600|3 2 -600 360 -360 -920|2 3 -920 -200 -680 -600 -600 -680|0 2 -920 -120 -280 -840|5 3 -920 -40 -600 -440 200 -840|1 2 -920 -200 280 -920|0 1 -920 -40|0 3 -920 -200 -520 -440 -200 -920|2 3 -920 -40 -360 -840 -280 -760|1 2 600 200 -680 -600|2 3 520 -680 -920 -120 440 -840|2 2 -280 -600 -760 -360|0 3 -600 40 360 -840 -120 -920|0 2 -840 -280 -600 -40|3 4 -920 -200 -120 -920 -120 -920 -120 -840|3 2 -920 200 -120 -920|1 3 -840 -360 -120 -920 -280 -680|0 1 440 -520|0 3 -920 -200 -520 -680 -280 -760|0 1 -920 -120|1 1 -280 -840|4 1 360 -600|2 1 -680 -680|0 2 -520 -760 -280 -920|1 3 -920 -200 -280 -920 -360 -840|2 3 -760 -200 -360 -520 200 -920|0 2 120 -920 -360 -680|0 3 -920 -200 -360 -920 -360 -840|3 2 -920 -40 -680 -680|2 2 40 -920 -920 -200|0 2 -920 -120 -520 -840|2 1 -920 120|0 2 440 -840 -440 -600|2 3 -920 -200 360 -840 -280 -840|2 3 -920 -200 -440 -840 -360 -760|0 2 600 -600 -200 -920|0 4 -680 -680 -440 -600 -200 -840 -120 -920|0 3 -920 -200 -280 -840 -520 -760|0 2 120 -840 -760 -600|5 3 -600 -760 680 -520 120 -920|0 3 -920 -200 440 -600 -280 -840|0 2 -760 -40 -440 -440|3 3 -920 -40 -520 -440 -120 -920|1 3 -600 -600 -600 -680 -360 -840|2 2 360 -680 -920 -200|2 1 -600 -600|0 1 -680 -520|0 3 -920 -40 -600 -680 -360 -840|4 2 -920 -200 -280 -920|0 3 -920 -200 -120 -920 600 -760|0 2 -920 -200 -600 -760|1 2 -440 -600 -440 -840|0 2 -920 -120 -440 360|5 2 280 120 -200 -840|0 1 -280 -840|2 2 -920 -40 -280 -840|0 2 -600 360 -760 -600|0 2 200 -920 -520 -520|0 1 -520 -600|1 4 -520 -520 -280 -920 -920 -120 -120 -840|4 1 -920 200|0 3 -920 40 -520 -440 -440 -760|4 3 -920 40 -440 -680 360 -440|2 3 -440 -360 -600 360 -360 -760|1 3 -680 -520 -600 -760 -360 -440|7 3 -920 -40 -120 -920 -680 -520|4 2 -440 -840 -920 -200|2 3 -920 -40 -280 -920 -200 -680|0 2 -280 -760 -600 -760|2 3 -280 -680 -200 -840 -120 -920|0 2 -920 200 440 -840|0 2 -600 -600 120 -920|0 1 440 -520|1 2 -440 -840 -440 -680|0 2 -920 40 -120 -920|0 3 -920 40 -680 -680 440 -840|1 3 -360 -840 -360 -760 -440 -760|1 1 -680 -600|3 2 -760 -440 -520 -600|1 2 -920 -200 40 -920|0 2 -920 -40 360 -840|1 2 -920 -40 -600 -440|1 2 -920 -40 -200 -920|0 2 -920 40 -360 -840|1 2 -920 200 -680 -600|4 2 -440 -840 -840 360|1 2 -920 -280 -200 -840|1 3 -920 -200 600 -600 -280 -920|0 2 -920 -200 360 -760|10 2 840 -120 -280 -840|1 3 -920 -40 -360 -840 -280 -920|0 3 -920 -40 -280 -440 -120 -920|1 2 -280 -760 -360 -840|1 1 -520 -760|3 1 -920 -40|1 2 -920 -120 -120 -840|1 3 -520 -440 360 -840 440 -840|0 2 360 -680 -920 -200|1 3 -760 -520 -920 -200 -360 -840|0 1 360 -840|0 1 520 -760|5 2 -920 -40 -360 -840|2 2 -920 -40 -360 -760|2 3 -920 -280 -600 -760 -440 -840|0 3 -520 -680 -440 -680 520 -680|3 4 600 -600 -280 -920 -360 -600 -200 -840|0 3 -920 -120 -600 -600 -280 -840|3 2 680 360 -280 -760|0 2 -920 -280 280 -840|1 3 -920 -200 -120 -920 -360 -680|1 1 -520 -760|3 3 -920 40 -680 -680 200 -920|0 2 -760 -440 -600 -600|0 2 -440 -680 440 -680|1 2 680 -680 -920 -200|0 3 -920 -200 -600 -680 360 -840|5 1 -360 -760|0 1 -920 200|4 2 -600 -360 -280 -840|4 3 -920 -200 -280 -840 -520 -520|1 2 -360 -680 -920 -200|1 4 520 40 -680 360 -760 -440 200 -920|0 2 -920 200 -600 -520|1 2 -760 -600 -840 -520|1 1 -200 -840|9 4 -920 -200 280 -920 -280 -760 -280 -760|5 3 -840 -360 -680 -680 -280 -840|0 1 440 -840|0 1 200 -920|0 2 -920 -120 -200 -840|0 2 -520 -200 -200 -920|4 3 680 200 -680 -680 -680 -120|0 2 600 -760 -760 -520|0 3 -920 -120 -120 -920 520 -760|0 2 -920 40 -280 -840|0 3 -920 -200 280 -840 280 -760|1 3 -920 -200 -600 -760 280 -920|0 3 -760 -600 -120 -920 280 -760|1 1 -360 -760|2 2 -920 40 -920 120|0 4 -760 -520 -600 -680 -360 -600 -280 -840|0 3 520 -760 -120 -760 360 -600|1 2 -280 -840 440 -600|3 2 -920 -40 280 -840|5 3 -920 -120 -120 -840 520 -840|3 1 -760 -520|0 3 -920 -120 440 -760 -360 -600|0 3 -600 -440 -440 -440 -280 -760|0 3 -520 -600 -920 -200 440 -760|0 4 -920 -360 -760 -600 -680 -600 -520 -840|2 2 -280 -680 -200 -920|3 2 -920 200 -200 -760|0 1 -360 -840|2 2 -600 40 360 -680|0 2 -920 -120 120 -920|6 2 -840 -40 -440 -440|0 3 -920 -200 -680 -360 -440 -680|1 3 -920 -120 360 -760 440 -840|0 3 -520 -360 200 -680 360 -840|0 2 600 40 -760 -120|0 3 -920 -40 -440 -760 -200 -920|4 1 360 -680|1 2 200 -840 -920 -200|0 2 -680 -600 -360 -680|1 3 -920 -200 -680 -600 -120 -920|3 4 -840 -200 -280 -920 -280 -840 -360 -840|0 3 -920 280 -200 -840 -120 -920|1 3 -920 200 -200 -920 280 -840|0 3 -680 -680 -360 -360 -200 -920|5 3 -360 -840 -920 -200 -520 -840|1 3 -680 -600 -440 40 -200 -680|0 4 -760 -360 360 -760 360 -760 360 -680|1 1 520 280|2 2 -920 -280 -360 -680|0 3 -920 -200 520 -760 -440 -840|1 1 -360 -680|0 3 -920 120 -280 -840 -120 -840|0 1 -920 -120|2 2 120 -920 -920 40|1 3 -40 -920 -760 -600 -600 -760|1 3 -600 40 680 -520 -280 -840|2 1 440 -840|0 1 -920 -200|0 1 -520 -760|1 1 -360 -440|0 3 -920 40 -600 -760 440 -760|3 1 -520 -600|0 3 -920 40 -760 -440 -120 -760|1 3 -840 -200 -440 -40 -120 -920|1 2 -920 -200 -600 -520|4 2 -440 -840 -360 -760|2 3 -920 40 -440 -520 -280 -840|4 2 520 -760 600 -760|5 1 -520 -520|8 2 -920 -120 -760 -600|0 3 -920 -200 -280 -840 -520 -440|0 3 -920 40 -440 -760 -360 -920|0 4 -920 -200 -680 -680 -760 -600 -600 -520|3 3 -920 -200 -440 -840 280 -920|0 2 -920 40 -600 -760|0 3 -920 200 -520 -760 -360 -840|0 3 -600 -440 -360 -760 -200 -760|1 3 -840 -360 280 -760 360 -680|0 2 520 -840 -200 -920|3 1 -920 -40|4 2 -840 40 520 -760|0 2 -920 200 280 -920|0 3 -920 -280 -120 -840 -360 -920|0 1 -280 -840|0 2 -760 -440 -280 -840|0 2 -920 -200 -520 -680|0 3 -920 120 -360 -920 -200 -760|3 3 -920 -200 -440 -680 -760 -440|0 2 -360 -600 -520 -680|0 3 -440 -600 -840 360 440 -840|0 3 -920 280 -440 -760 -440 -840|1 2 -920 -200 520 -680|0 3 -680 -600 680 -600 -520 -840|2 3 -920 -40 -680 -680 -200 -920|0 2 -840 360 -440 40|0 4 200 -920 -920 -200 -680 -600 280 -920|1 3 -920 40 -600 -440 440 -840|1 2 -280 -920 -920 -200|0 2 -280 -840 -440 -840|0 2 -840 120 -440 -840|1 3 -840 360 -680 -520 -280 -760|0 3 -200 -760 -840 -200 -360 -520|0 4 -440 -840 200 -920 440 -840 440 -760|5 3 -360 -840 -600 -680 -600 -600|3 2 -920 200 -360 -840|1 3 -520 -360 -600 -760 -280 -680|1 4 -760 -600 -760 -360 -600 -760 200 -920|0 1 -120 -840|2 3 -920 -120 -520 -760 -600 -600|0 2 520 -760 -920 -200|0 3 -920 -120 -440 -760 -440 -840|0 3 -360 -920 -120 -920 -120 -680|0 2 -280 -920 -360 -920|2 3 -920 -280 -360 -840 -200 -840|3 2 520 -760 -920 -200|3 3 -680 -520 280 -920 280 -840|1 2 -440 -760 -440 -840|1 2 -360 -760 -920 -200|6 2 -920 40 -280 -920|0 2 -520 -520 -920 -200|3 2 -280 -920 -920 -200|1 3 -920 -120 -360 -600 -200 -840|1 4 -760 -520 -920 -200 -200 -920 -120 -920|0 1 -280 -840|1 3 -680 -40 -360 -680 -360 -840|2 2 -920 -40 -120 -840|5 2 -440 -840 -920 40|0 4 -920 120 -600 -680 -360 -600 280 -840|0 3 600 -120 -440 -520 -440 -120|0 2 -840 360 -120 -840|7 2 520 200 440 -840|2 3 -600 120 -360 -760 280 -760|0 1 -280 -920|0 1 -280 -760|0 2 -920 -200 -600 -680|0 1 760 -600|0 3 -760 360 -360 -840 -120 -920|1 3 -920 -200 -440 -840 -360 -840|0 1 -360 -600|1 2 -920 -200 -680 -440|2 4 -360 -680 -600 -680 -440 -840 -440 -760|0 2 -840 200 -520 -760|0 3 -920 -40 -360 -600 280 -920|5 2 -520 -600 -520 -840|1 2 -200 -920 -920 -200|0 3 -920 -200 600 -680 520 -520|0 3 -920 40 -280 -840 -120 -920|0 3 -920 -200 -520 -600 -760 -600|0 2 -920 -200 -360 -840|1 3 -600 -40 -840 -440 440 -840|0 2 -920 -200 -360 -760|0 1 440 -840|0 3 -920 40 -200 -920 -280 -920|1 2 -600 -440 -920 -200|2 3 -920 -200 -760 -600 -200 -840|1 2 -920 -280 -280 -680|0 2 -920 120 -760 -600|0 2 760 40 -680 -680|3 3 520 -680 -600 -440 -360 -840|0 3 -920 40 -680 -680 360 -840|1 4 -920 -280 -520 -760 -440 200 -280 -920|4 2 520 -760 -680 -440|1 3 -920 40 -440 -520 -200 -920|1 2 -920 40 -360 -840|1 3 -840 -360 -280 -920 200 -840|4 1 -920 -40|3 4 -920 -40 -120 -760 -120 -840 -280 -920|2 3 -600 -120 -440 -600 -280 -840|1 2 -920 -40 -840 -440|0 4 -600 40 200 -920 440 -600 280 -840|0 3 -600 -440 -520 120 440 -840|1 1 -440 -680|1 1 120 -840|3 2 360 -680 520 -600|0 2 -920 -120 200 -920|0 2 120 -920 -600 -40|0 2 -920 -200 -440 -760|0 1 520 280|0 2 -440 -840 -920 -200|2 3 -840 -360 -520 -680 -360 -280|0 4 -920 -280 -520 -440 -440 -840 -520 -760|0 1 -440 -520|1 3 -360 -680 360 -840 440 -840|0 2 -920 40 -600 -760|0 2 -360 -760 -920 -200|0 2 -600 -600 -440 -680|1 2 600 120 -280 -840|3 2 -920 -200 440 -600|0 1 -440 -600|0 3 -920 40 -360 -520 120 -920|0 3 -920 -120 200 -920 -280 -600|1 4 -920 -200 -440 -840 -360 -760 -600 -760|1 2 -520 -520 -520 -680|5 1 -360 -840|2 2 -920 40 -760 -520|0 2 -920 40 -520 -440|0 1 -760 -520|1 1 -680 -520|3 2 -440 -680 440 -840|2 2 -920 40 -360 -840|1 2 -280 -680 -840 -360|0 1 -920 40|0 3 -920 280 -920 -120 -200 -920|5 2 -840 40 440 -840|0 2 -920 40 -360 -840|2 3 -920 -40 -280 -840 -120 -920|0 3 -680 -600 -920 -200 -520 -840|1 2 -680 -600 -600 -520|1 3 -440 -760 -920 -200 -520 -760|7 2 -520 120 -280 -520|0 2 -920 -40 -520 -680|1 1 -360 -920|0 2 -440 -760 440 -760|1 4 -360 -840 -520 -680 -280 -680 -280 -440|8 2 -920 -40 -200 -920|1 3 -920 -200 -840 -360 -600 -600|3 3 -920 -120 -280 -840 -280 -760|0 3 -840 -440 -280 -920 520 -760|7 2 -920 -120 -360 -760|0 2 -920 120 -600 -200|5 2 280 -840 -920 -200|1 3 -840 -440 -840 360 600 -680|2 3 -520 -840 -760 -520 360 -840|0 2 -920 -40 -520 -440|1 3 -920 40 -360 -760 -360 -600|1 2 -520 -600 -520 -680|1 4 -920 -200 -680 -600 -760 -520 120 -920|4 3 -920 -120 -360 -600 -360 -920|0 3 -840 -440 -360 -840 -120 -840|0 3 -920 200 -360 -520 -280 -840|0 2 -920 -40 -760 -520|0 2 -280 -840 -520 -840|2 2 -360 -760 -760 -520|0 2 -600 -520 -600 -520|0 4 -440 -760 -920 -200 440 -760 440 -840|2 3 -920 -200 -440 -600 -360 -760|0 2 -120 -920 760 -520|5 3 -360 -920 -200 -760 -200 -680|0 2 -840 -440 -280 -760|0 2 -600 -760 440 -840|1 3 -920 -200 -440 -600 360 -840|7 1 -840 200|0 2 -440 -840 -440 -840|2 1 -920 -120|0 4 -920 -200 360 -680 -280 -920 360 -760|3 2 -920 40 520 -760|1 2 -600 -600 -920 -120" };
+
+// ===================== KILNSHOT APP =====================
+// State, Storage, Audio, Renderer, Input, UI. Rules live in core.js and never touch the DOM.
+(function () {
+'use strict';
+const $ = (id) => document.getElementById(id);
+const C = CONFIG;
+const DEBUG = /[?&#]debug/.test(location.search + location.hash);
+
+// ---------------- Storage ----------------
+const SKEY = 'kilnshot.v1';
+const Storage = {
+  data: null,
+  fresh() { return { v: 1, best: {}, cur: null, sound: true, daily: { cache: null, best: {}, fired: 0 }, seenHelp: false, debug: false }; },
+  load() {
+    let raw = null;
+    try { raw = localStorage.getItem(SKEY); } catch (e) { raw = null; }
+    let d = this.fresh();
+    if (raw) {
+      try { d = this.validate(JSON.parse(raw)); }
+      catch (e) {
+        // never silently destroy the only save: keep the broken copy beside the fresh one
+        try { localStorage.setItem(SKEY + '.corrupt', raw); } catch (e2) {}
+        d = this.fresh(); d.recovered = true;
+      }
+    }
+    this.data = d; return d;
+  },
+  validate(o) {
+    if (!o || typeof o !== 'object' || o.v !== 1) throw new Error('bad save');
+    const d = this.fresh();
+    const ids = new Set(LEVELS.map(l => l.id));
+    if (o.best && typeof o.best === 'object') for (const k of Object.keys(o.best)) {
+      const b = o.best[k]; if (!ids.has(k) || !b) continue;
+      const stars = b.stars | 0, shots = b.shots | 0;
+      if (stars >= 1 && stars <= 3 && shots >= 1 && shots < 100) d.best[k] = { stars, shots };
+    }
+    if (o.cur && typeof o.cur === 'object' && typeof o.cur.id === 'string' && Array.isArray(o.cur.shots)) {
+      const okShots = o.cur.shots.length <= 20 && o.cur.shots.every(s => Array.isArray(s) && s.length === 2 && s.every(n => Number.isFinite(n) && Math.abs(n) <= C.MAXV));
+      if (okShots && (ids.has(o.cur.id) || o.cur.id === 'daily')) d.cur = { id: o.cur.id, shots: o.cur.shots.map(s => [Math.round(s[0]), Math.round(s[1])]) };
+    }
+    d.sound = o.sound !== false;
+    d.seenHelp = !!o.seenHelp; d.debug = !!o.debug;
+    if (o.daily && typeof o.daily === 'object') {
+      const c = o.daily.cache;
+      if (c && typeof c.date === 'string' && c.level && validateLevel(c.level).ok) d.daily.cache = c;
+      if (o.daily.best && typeof o.daily.best === 'object') for (const k of Object.keys(o.daily.best)) {
+        const b = o.daily.best[k]; if (/^\d{4}-\d{2}-\d{2}$/.test(k) && b && (b.shots | 0) >= 1) d.daily.best[k] = { shots: b.shots | 0, par: b.par | 0 };
+      }
+      d.daily.fired = Object.keys(d.daily.best).length;
+    }
+    return d;
+  },
+  save() { try { localStorage.setItem(SKEY, JSON.stringify(this.data)); } catch (e) { /* private mode: play on without saving */ } },
+};
+
+// ---------------- Audio (WebAudio, generated; starts on first gesture) ----------------
+const Audio = {
+  ctx: null, master: null, noiseBuf: null,
+  init() {
+    if (this.ctx) { if (this.ctx.state === 'suspended' && Storage.data.sound && !document.hidden) this.ctx.resume().catch(() => {}); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    try {
+      this.ctx = new AC(); this.master = this.ctx.createGain(); this.master.gain.value = Storage.data.sound ? 0.55 : 0; this.master.connect(this.ctx.destination);
+      const n = this.ctx.sampleRate * 0.5; this.noiseBuf = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
+      const ch = this.noiseBuf.getChannelData(0); const r = makeRng(7); for (let i = 0; i < n; i++) ch[i] = r() * 2 - 1;
+      // iOS unlock: play a silent blip inside the gesture
+      const o = this.ctx.createOscillator(), g = this.ctx.createGain(); g.gain.value = 0; o.connect(g); g.connect(this.master); o.start(); o.stop(this.ctx.currentTime + 0.01);
+    } catch (e) { this.ctx = null; }
+  },
+  ok() { return this.ctx && this.ctx.state === 'running' && Storage.data.sound; },
+  setOn(on) { if (this.master) this.master.gain.value = on ? 0.55 : 0; if (this.ctx) { if (on && !document.hidden) this.ctx.resume().catch(() => {}); else if (!on) this.ctx.suspend().catch(() => {}); } },
+  tone(freq, dur, type, vol, slideTo, delay) {
+    if (!this.ok()) return; const t = this.ctx.currentTime + (delay || 0);
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(freq, t); if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + 0.02);
+  },
+  noise(dur, freq, q, vol, type, delay) {
+    if (!this.ok()) return; const t = this.ctx.currentTime + (delay || 0);
+    const s = this.ctx.createBufferSource(); s.buffer = this.noiseBuf; const f = this.ctx.createBiquadFilter(); f.type = type || 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+    const g = this.ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random() * 0.3); s.stop(t + dur + 0.02);
+  },
+  // pentatonic ladder so a chain climbs in pitch
+  SCALE: [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31, 33, 36],
+  play(e) {
+    switch (e.type) {
+      case 'launch': this.noise(0.18, 900, 0.8, 0.25, 'bandpass'); this.tone(140, 0.12, 'sine', 0.3, 70); break;
+      case 'tick': this.tone(900 + Math.min(600, e.s), 0.05, 'triangle', Math.min(0.18, e.s / 2500)); break;
+      case 'clink': this.tone(e.kind === 'keeper' ? 1320 : 1560, 0.09, 'sine', 0.12); this.tone(2340, 0.06, 'sine', 0.05); break;
+      case 'break': {
+        if (e.kind === 'keeper') { this.noise(0.3, 1800, 0.7, 0.4); this.tone(196, 0.5, 'sawtooth', 0.12, 98); this.tone(233, 0.5, 'sawtooth', 0.08, 110); break; }
+        const st = this.SCALE[Math.min(this.SCALE.length - 1, (e.chain || 1) - 1)];
+        this.noise(0.14, 2600, 1.2, 0.35); this.noise(0.06, 5200, 2, 0.15);
+        this.tone(392 * Math.pow(2, st / 12), 0.28, 'triangle', 0.22); this.tone(784 * Math.pow(2, st / 12), 0.16, 'sine', 0.06, null, 0.01);
+        break;
+      }
+      case 'spring': this.tone(180, 0.22, 'sine', 0.2, 620); break;
+      case 'clay': this.noise(0.12, 260, 0.9, 0.35, 'lowpass'); break;
+      case 'latch': this.tone(330, 0.06, 'square', 0.08); this.tone(495, 0.08, 'square', 0.07, null, 0.07); break;
+      case 'cut': this.noise(0.05, 6500, 3, 0.25, 'highpass'); break;
+      case 'settle': this.tone(220, 0.08, 'sine', 0.08); break;
+    }
+  },
+  win(stars) { const n = [523, 659, 784, 1047]; n.forEach((f, i) => this.tone(f, 0.22, 'triangle', 0.18, null, i * 0.09)); if (stars === 3) this.tone(1319, 0.4, 'sine', 0.12, null, 0.4); },
+  lose() { [392, 330, 262].forEach((f, i) => this.tone(f, 0.25, 'triangle', 0.16, null, i * 0.12)); },
+};
+document.addEventListener('visibilitychange', () => {
+  if (!Audio.ctx) return;
+  if (document.hidden) Audio.ctx.suspend().catch(() => {});
+  else if (Storage.data && Storage.data.sound) Audio.ctx.resume().catch(() => {});
+});
+
+// ---------------- State ----------------
+const S = {
+  mode: 'title',       // title | play | shot | over
+  level: null, levelIdx: -1, isDaily: false,
+  world: null, shots: [],
+  aim: null,           // {sx,sy,cx,cy} in world coords
+  kbAim: { ax: 0.62, ay: -0.78, p: 0.62 },
+  fx: [], texts: [], trails: new Map(), shake: 0, hitStop: 0, flash: 0,
+  speed: 1, hold: false, acc: 0, last: 0, hintT: 0, result: null,
+  dailyBuilding: false,
+};
+
+// ---------------- Renderer ----------------
+const cv = $('cv'), ctx = cv.getContext('2d');
+let scale = 1, dpr = 1, bg = null;
+function fit() {
+  const st = $('stage'); const r = st.getBoundingClientRect();
+  const sw = Math.max(200, r.width - 8), sh = Math.max(300, r.height - 8);
+  scale = Math.min(sw / C.W, sh / C.H);
+  dpr = Math.min(3, window.devicePixelRatio || 1);
+  cv.style.width = Math.round(C.W * scale) + 'px'; cv.style.height = Math.round(C.H * scale) + 'px';
+  cv.width = Math.round(C.W * scale * dpr); cv.height = Math.round(C.H * scale * dpr);
+  bg = null;
+}
+window.addEventListener('resize', fit);
+
+function makeBg() {
+  const c = document.createElement('canvas'); c.width = C.W * 2; c.height = C.H * 2; const g = c.getContext('2d'); g.scale(2, 2);
+  const grd = g.createLinearGradient(0, 0, 0, C.H); grd.addColorStop(0, '#dcebee'); grd.addColorStop(1, '#bcd5da');
+  g.fillStyle = grd; g.fillRect(0, 0, C.W, C.H);
+  const r = makeRng(42);
+  // plaster trowel marks
+  for (let i = 0; i < 140; i++) {
+    g.fillStyle = r() < 0.5 ? 'rgba(255,255,255,.10)' : 'rgba(80,120,130,.06)';
+    const x = r() * C.W, y = r() * C.H, w = 20 + r() * 60, h = 3 + r() * 7;
+    g.beginPath(); g.ellipse(x, y, w, h, (r() - 0.5) * 0.3, 0, Math.PI * 2); g.fill();
+  }
+  // a high window of light
+  g.fillStyle = 'rgba(255,255,240,.18)'; g.beginPath(); g.moveTo(230, 0); g.lineTo(330, 0); g.lineTo(200, C.H); g.lineTo(60, C.H); g.closePath(); g.fill();
+  // floor: packed earth
+  g.fillStyle = '#9a7a55'; g.fillRect(0, 628, C.W, 12); g.fillStyle = '#7c5f40'; g.fillRect(0, 628, C.W, 2);
+  for (let i = 0; i < 60; i++) { g.fillStyle = 'rgba(60,40,20,.25)'; g.fillRect(r() * C.W, 631 + r() * 8, 2, 1); }
+  return c;
+}
+
+function potPath(g, x, y, r, jar) {
+  // a turned-pot silhouette that fits a circle of radius r
+  g.beginPath();
+  const nw = jar ? r * 0.62 : r * 0.42, top = y - r, neckY = y - r * 0.62;
+  g.moveTo(x - nw, top + 1);
+  g.quadraticCurveTo(x - nw * 0.9, neckY, x - r * 0.98, y - r * 0.05);
+  g.quadraticCurveTo(x - r * 1.02, y + r * 0.78, x - r * 0.45, y + r * 0.98);
+  g.lineTo(x + r * 0.45, y + r * 0.98);
+  g.quadraticCurveTo(x + r * 1.02, y + r * 0.78, x + r * 0.98, y - r * 0.05);
+  g.quadraticCurveTo(x + nw * 0.9, neckY, x + nw, top + 1);
+  g.closePath();
+}
+function drawPot(g, p, t) {
+  const { x, y, r } = p; const jar = p.n > 0;
+  g.save();
+  if (p.wob) { g.translate(x, y + r); g.rotate(Math.sin(t * 40) * p.wob * 0.08); g.translate(-x, -y - r); }
+  // shadow
+  g.fillStyle = 'rgba(30,42,51,.18)'; g.beginPath(); g.ellipse(x + 2, y + r + 1, r * 0.8, 3, 0, 0, Math.PI * 2); g.fill();
+  potPath(g, x, y, r, jar);
+  if (p.kind === 'keeper') {
+    const gr = g.createLinearGradient(x - r, y - r, x + r, y + r); gr.addColorStop(0, '#3e66cc'); gr.addColorStop(1, '#16347f');
+    g.fillStyle = gr; g.fill(); g.lineWidth = 2; g.strokeStyle = '#0c1d4a'; g.stroke();
+    // white brush band + gloss
+    g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 2.2; g.beginPath();
+    g.moveTo(x - r * 0.8, y + r * 0.15); g.bezierCurveTo(x - r * 0.3, y - r * 0.2, x + r * 0.2, y + r * 0.5, x + r * 0.82, y + r * 0.1); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(x - r * 0.45, y - r * 0.25, r * 0.16, r * 0.3, -0.4, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#e8b84a'; g.fillRect(x - r * (jar ? 0.62 : 0.42), y - r, r * (jar ? 1.24 : 0.84), 2.5);
+  } else if (p.hard) {
+    const gr = g.createLinearGradient(x, y - r, x, y + r); gr.addColorStop(0, '#8fbf95'); gr.addColorStop(1, '#4a7a55');
+    g.fillStyle = gr; g.fill(); g.lineWidth = 3.5; g.strokeStyle = '#2b4a33'; g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1.5; potPath(g, x, y, r * 0.78, jar); g.stroke();
+    // thick drips
+    g.fillStyle = '#5f9168'; for (let i = -1; i <= 1; i++) { g.beginPath(); g.ellipse(x + i * r * 0.45, y + r * 0.55, 2.2, 4.5, 0, 0, Math.PI * 2); g.fill(); }
+    drawCrack(g, x, y, r, '#203826');
+  } else {
+    g.fillStyle = '#ead7b9'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#7a5a3a'; g.stroke();
+    g.fillStyle = 'rgba(160,110,70,.18)'; g.beginPath(); g.ellipse(x + r * 0.35, y + r * 0.3, r * 0.45, r * 0.5, 0, 0, Math.PI * 2); g.fill();
+    drawCrack(g, x, y, r, '#6b2f1d');
+  }
+  if (jar) {
+    // glowing embers in the mouth
+    const glow = 0.6 + 0.4 * Math.sin(t * 5 + p.id);
+    g.fillStyle = `rgba(255,${150 + 60 * glow | 0},40,.95)`; g.beginPath(); g.ellipse(x, y - r + 2, r * 0.5, 3.5, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(255,190,60,.25)'; g.beginPath(); g.arc(x, y - r, r * 0.8, Math.PI, 0); g.fill();
+    // ember count badge, readable at phone size
+    const bx = x + r * 0.78, by = y - r * 0.55;
+    g.fillStyle = '#1e2a33'; g.beginPath(); g.arc(bx, by, 7.5, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#ffc93d'; g.lineWidth = 1.5; g.stroke();
+    g.fillStyle = '#ffe9a8'; g.font = '800 10px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(p.n), bx, by + 0.5); g.textBaseline = 'alphabetic';
+  }
+  g.restore();
+}
+function drawCrack(g, x, y, r, col) {
+  g.strokeStyle = col; g.lineWidth = 1.6; g.beginPath();
+  g.moveTo(x - r * 0.15, y - r * 0.85); g.lineTo(x + r * 0.1, y - r * 0.45); g.lineTo(x - r * 0.12, y - r * 0.1); g.lineTo(x + r * 0.2, y + r * 0.3);
+  g.moveTo(x + r * 0.1, y - r * 0.45); g.lineTo(x + r * 0.42, y - r * 0.3); g.stroke();
+}
+
+function drawSeg(g, s, w, t) {
+  const solid = !s.gate || w.gates[s.gate];
+  const dx = s.x2 - s.x1, dy = s.y2 - s.y1, L = Math.hypot(dx, dy); if (L < 1) return;
+  g.save(); g.translate(s.x1, s.y1); g.rotate(Math.atan2(dy, dx));
+  const H = C.SEG_HALF * 2 + 2;
+  if (s.gate) {
+    if (solid) {
+      g.fillStyle = '#8a4b2a'; g.fillRect(-2, -H / 2 - 1, L + 4, H + 2); g.fillStyle = '#b06a3e';
+      for (let i = 0; i < L; i += 10) g.fillRect(i + 1, -H / 2, 8, H);
+      g.fillStyle = '#e8b84a'; g.font = '800 9px system-ui'; g.textAlign = 'center'; g.save(); g.translate(L / 2, 3); if (Math.abs(dy) > Math.abs(dx)) g.rotate(-Math.PI / 2); g.fillText(s.gate, 0, 0); g.restore();
+    } else { g.setLineDash([4, 5]); g.strokeStyle = 'rgba(138,75,42,.5)'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 0); g.lineTo(L, 0); g.stroke(); g.setLineDash([]); }
+  } else if (s.mat === 'spring') {
+    g.fillStyle = '#5d8a32'; g.fillRect(0, -H / 2, L, H); g.fillStyle = '#9cc65a';
+    for (let i = 2; i < L; i += 6) g.fillRect(i, -H / 2 + 1, 3, H - 2);
+    const bob = Math.sin(t * 9) * 0.8; g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(0, -H / 2 + bob, L, 1.5);
+  } else if (s.mat === 'clay') {
+    g.fillStyle = '#5a3a24'; g.fillRect(0, -H / 2, L, H); g.fillStyle = 'rgba(255,230,200,.35)';
+    for (let i = 3; i < L; i += 11) { g.beginPath(); g.ellipse(i, -1, 2.5, 1.2, 0, 0, Math.PI * 2); g.fill(); }
+  } else {
+    // ochre wooden shelf
+    g.fillStyle = '#8d5d22'; g.fillRect(-1, -H / 2, L + 2, H); g.fillStyle = '#c58b3c'; g.fillRect(-1, -H / 2, L + 2, H - 3);
+    g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(-1, -H / 2, L + 2, 1.2);
+  }
+  g.restore();
+}
+
+function render(now) {
+  const t = now / 1000;
+  if (!bg) bg = makeBg();
+  const g = ctx; g.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+  let sx = 0, sy = 0; if (S.shake > 0.3) { const r = S.shake; sx = (Math.random() - 0.5) * r; sy = (Math.random() - 0.5) * r; }
+  g.save(); g.translate(sx, sy);
+  g.drawImage(bg, 0, 0, C.W, C.H);
+  const w = S.world;
+  if (w) {
+    // bellows air
+    for (const f of w.fans) {
+      g.fillStyle = 'rgba(255,255,255,.22)'; g.fillRect(f.x, f.y, f.w, f.h);
+      g.strokeStyle = 'rgba(70,120,190,.35)'; g.lineWidth = 1.2; const sp = Math.hypot(f.ax, f.ay) || 1, ux = f.ax / sp, uy = f.ay / sp;
+      g.save(); g.beginPath(); g.rect(f.x, f.y, f.w, f.h); g.clip();
+      for (let i = 0; i < 18; i++) {
+        const ph = ((t * 0.9 + i * 0.37) % 1); const px = f.x + ((i * 53) % f.w) + ux * ph * (f.w + f.h) * 0.6, py = f.y + ((i * 97) % f.h) + uy * ph * (f.w + f.h) * 0.6;
+        const qx = f.x + ((px - f.x) % f.w + f.w) % f.w, qy = f.y + ((py - f.y) % f.h + f.h) % f.h;
+        g.beginPath(); g.moveTo(qx, qy); g.lineTo(qx - ux * 12, qy - uy * 12); g.stroke();
+      }
+      g.restore();
+    }
+    for (const s of w.segs) if (!s.frame) drawSeg(g, s, w, t);
+    if (w.level.floor === 'clay') drawSeg(g, { x1: 0, y1: 628, x2: C.W, y2: 628, mat: 'clay' }, w, t);
+    // cords
+    for (const p of w.pots) if (p.cord && !p.broken) {
+      g.strokeStyle = '#7a5a3a'; g.lineWidth = 1.6; g.setLineDash([3, 2]); g.beginPath(); g.moveTo(p.cord.ax, p.cord.ay); g.lineTo(p.x, p.y - p.r); g.stroke(); g.setLineDash([]);
+      g.fillStyle = '#5a4030'; g.beginPath(); g.arc(p.cord.ax, p.cord.ay, 3, 0, Math.PI * 2); g.fill();
+    }
+    for (const p of w.pegs) { g.fillStyle = '#6f8790'; g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.fill(); g.fillStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.arc(p.x - p.r * 0.3, p.y - p.r * 0.3, p.r * 0.35, 0, Math.PI * 2); g.fill(); }
+    for (const l of w.latches) {
+      const spin = l.flips * Math.PI / 2;
+      g.save(); g.translate(l.x, l.y); g.fillStyle = '#d7a227'; g.beginPath(); g.arc(0, 0, l.r, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#6b4c0c'; g.lineWidth = 2; g.stroke();
+      g.rotate(spin); g.strokeStyle = '#6b4c0c'; g.lineWidth = 2.4; g.beginPath(); g.moveTo(-l.r * 0.55, 0); g.lineTo(l.r * 0.55, 0); g.moveTo(0, -l.r * 0.55); g.lineTo(0, l.r * 0.55); g.stroke();
+      g.restore(); g.fillStyle = '#4a3508'; g.font = '800 9px system-ui'; g.textAlign = 'center'; g.fillText(l.t.join(''), l.x, l.y - l.r - 3);
+    }
+    for (const p of w.pots) if (!p.broken) drawPot(g, p, t);
+    // kiln + sling
+    drawKiln(g, w.sling.x, w.sling.y, t);
+    // aim
+    if (S.mode === 'play' && S.aim) drawAim(g, w);
+    else if (S.mode === 'play' && !S.aim && embersLeft() > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 4); g.fillStyle = `rgba(255,200,80,${0.25 + pulse * 0.3})`; g.beginPath(); g.arc(w.sling.x, w.sling.y, C.BEAD_R + 6 + pulse * 3, 0, Math.PI * 2); g.fill();
+      drawEmber(g, w.sling.x, w.sling.y, C.BEAD_R, t);
+    }
+    // trails + beads
+    for (const b of w.beads) {
+      if (!b.alive) continue;
+      let tr = S.trails.get(b.id); if (!tr) { tr = []; S.trails.set(b.id, tr); }
+      tr.push([b.x, b.y]); if (tr.length > 10) tr.shift();
+      for (let i = 0; i < tr.length; i++) { const a = i / tr.length; g.fillStyle = `rgba(255,${120 + 80 * a | 0},40,${a * 0.45})`; g.beginPath(); g.arc(tr[i][0], tr[i][1], C.BEAD_R * (0.4 + 0.5 * a), 0, Math.PI * 2); g.fill(); }
+      drawEmber(g, b.x, b.y, b.stuck ? C.BEAD_R * (1 - b.stuck / C.CLAY_COOL * 0.7) : C.BEAD_R, t);
+    }
+    if (DEBUG || Storage.data.debug) drawDebug(g, w);
+  }
+  // particles
+  for (const f of S.fx) {
+    g.save(); g.globalAlpha = Math.max(0, Math.min(1, f.life / f.max * 1.5));
+    if (f.k === 'shard') { g.translate(f.x, f.y); g.rotate(f.a); g.fillStyle = f.c; g.beginPath(); g.moveTo(-f.s, -f.s * 0.6); g.lineTo(f.s, -f.s * 0.2); g.lineTo(-f.s * 0.2, f.s * 0.8); g.closePath(); g.fill(); }
+    else if (f.k === 'spark') { g.fillStyle = f.c; g.fillRect(f.x - 1, f.y - 1, 2.4, 2.4); }
+    else if (f.k === 'ring') { g.strokeStyle = f.c; g.lineWidth = 2; g.beginPath(); g.arc(f.x, f.y, f.s * (1 - f.life / f.max) + 4, 0, Math.PI * 2); g.stroke(); }
+    g.restore();
+  }
+  for (const tx of S.texts) {
+    g.save(); g.globalAlpha = Math.min(1, tx.life * 2); g.font = `900 ${tx.size}px ${'system-ui'}`; g.textAlign = 'center';
+    g.lineWidth = 4; g.strokeStyle = '#1e2a33'; g.strokeText(tx.s, tx.x, tx.y); g.fillStyle = tx.c; g.fillText(tx.s, tx.x, tx.y); g.restore();
+  }
+  g.restore();
+  if (S.flash > 0) { g.fillStyle = `rgba(255,240,200,${S.flash * 0.5})`; g.fillRect(0, 0, C.W, C.H); }
+}
+function drawEmber(g, x, y, r, t) {
+  const gr = g.createRadialGradient(x - r * 0.3, y - r * 0.3, 1, x, y, r * 1.6);
+  gr.addColorStop(0, '#fff6c8'); gr.addColorStop(0.35, '#ffc93d'); gr.addColorStop(0.7, '#ff6a1f'); gr.addColorStop(1, 'rgba(200,50,10,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(x, y, r * 1.6, 0, Math.PI * 2); g.fill();
+}
+function drawKiln(g, x, y, t) {
+  const by = y + 14;
+  g.save();
+  g.fillStyle = '#7d4a33'; g.beginPath(); g.moveTo(x - 26, by + 40); g.lineTo(x - 26, by + 12); g.quadraticCurveTo(x - 24, by - 6, x, by - 8); g.quadraticCurveTo(x + 24, by - 6, x + 26, by + 12); g.lineTo(x + 26, by + 40); g.closePath(); g.fill();
+  g.strokeStyle = 'rgba(40,20,10,.35)'; g.lineWidth = 1; for (let i = 0; i < 5; i++) { g.beginPath(); g.moveTo(x - 26, by + 4 + i * 8); g.lineTo(x + 26, by + 4 + i * 8); g.stroke(); }
+  const fl = 0.7 + 0.3 * Math.sin(t * 11) * Math.sin(t * 7.3);
+  g.fillStyle = `rgba(255,${130 + 70 * fl | 0},40,1)`; g.beginPath(); g.arc(x, by + 24, 9, Math.PI, 0); g.lineTo(x + 9, by + 34); g.lineTo(x - 9, by + 34); g.closePath(); g.fill();
+  // cradle prongs
+  g.strokeStyle = '#3a2a20'; g.lineWidth = 3; g.lineCap = 'round'; g.beginPath(); g.moveTo(x - 8, by - 6); g.lineTo(x - 11, y - 4); g.moveTo(x + 8, by - 6); g.lineTo(x + 11, y - 4); g.stroke();
+  g.restore();
+}
+function drawAim(g, w) {
+  const a = S.aim; const v = pullToLaunch(a.cx - a.sx, a.cy - a.sy);
+  const pullLen = Math.hypot(a.cx - a.sx, a.cy - a.sy); const ok = pullLen >= C.MIN_PULL;
+  const sp = Math.hypot(v[0], v[1]), frac = sp / C.MAXV;
+  // band from cradle to pulled-back ember
+  const bx = w.sling.x - v[0] / C.MAXV * 26, by = w.sling.y - v[1] / C.MAXV * 26;
+  g.strokeStyle = '#3a2a20'; g.lineWidth = 2; g.beginPath(); g.moveTo(w.sling.x - 11, w.sling.y - 4); g.lineTo(bx, by); g.lineTo(w.sling.x + 11, w.sling.y - 4); g.stroke();
+  if (ok) {
+    const ch = S.level && S.level.ch; const pts = preview(w, v[0], v[1], ch === 1 ? 0.75 : ch === 2 ? 0.55 : 0); // longer guide while learning
+    for (let i = 0; i < pts.length; i++) { const f = 1 - i / pts.length; g.fillStyle = `rgba(30,42,51,${0.25 + 0.55 * f})`; g.beginPath(); g.arc(pts[i][0], pts[i][1], 2.4 + f * 1.4, 0, Math.PI * 2); g.fill(); }
+    // power ring
+    g.strokeStyle = frac > 0.97 ? '#b2321f' : '#1e2a33'; g.lineWidth = 3; g.beginPath(); g.arc(w.sling.x, w.sling.y, 18, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); g.stroke();
+  }
+  drawEmber(g, bx, by, C.BEAD_R, 0);
+  // finger anchor
+  g.strokeStyle = 'rgba(30,42,51,.25)'; g.lineWidth = 1.5; g.setLineDash([3, 4]); g.beginPath(); g.moveTo(a.sx, a.sy); g.lineTo(a.cx, a.cy); g.stroke(); g.setLineDash([]);
+  g.fillStyle = ok ? 'rgba(30,42,51,.25)' : 'rgba(178,50,31,.25)'; g.beginPath(); g.arc(a.sx, a.sy, 6, 0, Math.PI * 2); g.fill();
+}
+function drawDebug(g, w) {
+  g.save(); g.strokeStyle = 'rgba(200,0,120,.6)'; g.lineWidth = 0.8;
+  for (const s of w.segs) { if (s.gate && !w.gates[s.gate]) continue; g.beginPath(); g.moveTo(s.x1, s.y1); g.lineTo(s.x2, s.y2); g.stroke(); }
+  for (const p of w.pots) if (!p.broken) { g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.stroke(); }
+  for (const b of w.beads) if (b.alive) { g.beginPath(); g.moveTo(b.x, b.y); g.lineTo(b.x + b.vx * 0.05, b.y + b.vy * 0.05); g.stroke(); }
+  g.fillStyle = 'rgba(200,0,120,.9)'; g.font = '10px ui-monospace,monospace'; g.textAlign = 'left';
+  const last = S.shots[S.shots.length - 1];
+  g.fillText(`steps ${w.steps} beads ${w.beads.filter(b => b.alive).length} chain ${w.chain} last ${last ? last.join(',') : '-'} board ${boardKey(w).slice(0, 40)}`, 4, 12);
+  if (S.level && S.level.proof) g.fillText('kiln proof: ' + JSON.stringify(S.level.proof), 4, 24);
+  g.restore();
+}
+
+// ---------------- FX from rule events ----------------
+const SHARD = { second: ['#ead7b9', '#d9bd94', '#7a5a3a'], keeper: ['#2448a8', '#3e66cc', '#ffffff'], hard: ['#6f9c78', '#8fbf95', '#2b4a33'] };
+function handleEvents(w) {
+  for (const e of w.events) {
+    Audio.play(e);
+    if (e.type === 'break') {
+      const p = w.pots[e.id]; const pal = e.kind === 'keeper' ? SHARD.keeper : p && p.hard ? SHARD.hard : SHARD.second;
+      for (let i = 0; i < 14; i++) S.fx.push({ k: 'shard', x: e.x, y: e.y, vx: (Math.random() - 0.5) * 320, vy: -Math.random() * 260 - 40, a: Math.random() * 6, va: (Math.random() - 0.5) * 20, s: 2.5 + Math.random() * 3.5, c: pal[i % 3], life: 1.1, max: 1.1, g: 1 });
+      for (let i = 0; i < 8; i++) S.fx.push({ k: 'spark', x: e.x, y: e.y, vx: (Math.random() - 0.5) * 220, vy: (Math.random() - 0.5) * 220, c: '#ffc93d', life: 0.4, max: 0.4, g: 0 });
+      S.fx.push({ k: 'ring', x: e.x, y: e.y, s: 30, c: e.kind === 'keeper' ? '#b2321f' : '#ffb340', life: 0.35, max: 0.35, g: 0 });
+      S.shake = Math.min(9, S.shake + 2.5 + e.chain * 0.6); S.hitStop = Math.min(0.09, 0.03 + e.chain * 0.008);
+      if (e.kind === 'keeper') { S.texts.push({ s: 'Keeper cracked!', x: Math.max(70, Math.min(290, e.x)), y: e.y - 24, size: 18, c: '#ffb3a6', life: 1.6, vy: -14 }); S.flash = 0.6; }
+      else if (e.chain >= 2) S.texts = S.texts.filter(x => !x.chain), S.texts.push({ chain: 1, s: 'Chain ×' + e.chain, x: Math.max(50, Math.min(310, e.x)), y: e.y - 22, size: 14 + Math.min(10, e.chain * 1.5), c: '#ffd04a', life: 1.1, vy: -30 });
+    } else if (e.type === 'clink') { const p = w.pots[e.id]; if (p) p.wob = 1; }
+    else if (e.type === 'spring') { S.fx.push({ k: 'ring', x: e.x, y: e.y, s: 18, c: '#9cc65a', life: 0.3, max: 0.3, g: 0 }); }
+    else if (e.type === 'clay') { for (let i = 0; i < 6; i++) S.fx.push({ k: 'spark', x: e.x, y: e.y, vx: (Math.random() - 0.5) * 90, vy: -Math.random() * 90, c: '#5a3a24', life: 0.5, max: 0.5, g: 1 }); }
+    else if (e.type === 'cut') { S.fx.push({ k: 'ring', x: e.x, y: e.y, s: 12, c: '#7a5a3a', life: 0.25, max: 0.25, g: 0 }); }
+    else if (e.type === 'latch') { S.fx.push({ k: 'ring', x: e.x, y: e.y, s: 24, c: '#d7a227', life: 0.35, max: 0.35, g: 0 }); S.shake = Math.min(6, S.shake + 1.5); }
+    else if (e.type === 'tick' && e.s > 300) { S.shake = Math.min(4, S.shake + 0.6); }
+  }
+  w.events.length = 0;
+}
+function tickFx(dt) {
+  for (const f of S.fx) { f.life -= dt; f.x += f.vx * dt || 0; f.y += f.vy * dt || 0; if (f.g) f.vy += 700 * dt; if (f.va) f.a += f.va * dt; }
+  S.fx = S.fx.filter(f => f.life > 0);
+  for (const t of S.texts) { t.life -= dt; t.y += t.vy * dt; }
+  S.texts = S.texts.filter(t => t.life > 0);
+  S.shake *= Math.pow(0.0015, dt); S.flash = Math.max(0, S.flash - dt * 1.5);
+  if (S.world) for (const p of S.world.pots) if (p.wob) { p.wob -= dt * 2.5; if (p.wob < 0) p.wob = 0; }
+}
+
+// ---------------- Game flow ----------------
+function embersLeft() { return S.level ? embersFor(S.level) - S.shots.length : 0; }
+function levelLabel(l) { return l.ch ? l.ch + '-' + (LEVELS.filter(x => x.ch === l.ch).indexOf(l) + 1) : 'Daily'; }
+function unlockedIdx() { // cleared levels plus the next two
+  let n = 0; for (let i = 0; i < LEVELS.length; i++) if (Storage.data.best[LEVELS[i].id]) n = i + 1;
+  let open = 0, out = new Set(); for (let i = 0; i < LEVELS.length; i++) { if (Storage.data.best[LEVELS[i].id]) out.add(i); else if (open < 2 && i <= n + 1) { out.add(i); open++; } }
+  return out;
+}
+function startLevel(lvl, shots, daily) {
+  S.level = lvl; S.isDaily = !!daily; S.levelIdx = daily ? -1 : LEVELS.indexOf(lvl);
+  S.shots = (shots || []).slice(); S.world = replay(lvl, S.shots); S.world.shots = S.shots.length;
+  S.aim = null; S.fx = []; S.texts = []; S.trails.clear(); S.result = null; S.mode = 'play';
+  Storage.data.cur = { id: daily ? 'daily' : lvl.id, shots: S.shots }; Storage.save();
+  hideOverlay(); updateHud();
+  showHint(S.shots.length === 0);
+  checkOver(true);
+}
+function retry() { if (!S.level || S.mode === 'title' || S.dailyBuilding) return; startLevel(S.level, [], S.isDaily); toast(''); }
+function fire(vx, vy) {
+  if (S.mode !== 'play' || embersLeft() <= 0) return;
+  const v = clampLaunch(vx, vy);
+  S.shots.push(v); Storage.data.cur = { id: S.isDaily ? 'daily' : S.level.id, shots: S.shots }; Storage.save(); // commit before resolving
+  launch(S.world, v[0], v[1]); S.mode = 'shot'; S.acc = 0; S.aim = null; S.trails.clear();
+  hideHint(); updateHud();
+}
+function finishShot() {
+  endShot(S.world); S.world.events.length = 0; S.mode = 'play'; updateHud(); checkOver(false);
+}
+function checkOver(silent) {
+  const w = S.world;
+  if (w.keeperBroken) return over('keeper', silent);
+  if (secondsLeft(w) === 0) return over('won', silent);
+  if (embersLeft() <= 0) return over('spent', silent);
+}
+function over(kind, silent) {
+  S.mode = 'over'; const shots = S.shots.length; const lvl = S.level;
+  let stars = 0, newBest = false;
+  if (kind === 'won') {
+    stars = starsFor(lvl, shots);
+    if (S.isDaily) {
+      const b = Storage.data.daily.best[lvl.date];
+      if (!b || shots < b.shots) { Storage.data.daily.best[lvl.date] = { shots, par: lvl.par }; newBest = true; }
+      Storage.data.daily.fired = Object.keys(Storage.data.daily.best).length;
+    } else {
+      const b = Storage.data.best[lvl.id];
+      if (!b || stars > b.stars || shots < b.shots) { Storage.data.best[lvl.id] = { stars: Math.max(stars, b ? b.stars : 0), shots: Math.min(shots, b ? b.shots : 99) }; newBest = true; }
+    }
+    Storage.save();
+  }
+  Storage.data.cur = null; Storage.save(); // a finished attempt is never resumed
+  S.result = { kind, stars, shots, newBest };
+  const delay = silent ? 0 : (kind === 'won' ? 650 : 900);
+  setTimeout(() => { if (S.mode === 'over' && S.result && S.result.kind === kind) { showResult(); if (!silent) kind === 'won' ? Audio.win(stars) : Audio.lose(); } }, delay);
+}
+
+// ---------------- Main loop ----------------
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - (S.last || now)) / 1000); S.last = now;
+  if (S.mode === 'shot' && S.world) {
+    if (S.hitStop > 0) S.hitStop -= dt;
+    else {
+      S.acc += dt * (S.hold ? 3 : 1);
+      let n = 0;
+      while (S.acc >= C.DT && n < 240) { step(S.world); S.acc -= C.DT; n++; if (S.world.events.length) { handleEvents(S.world); if (S.hitStop > 0) { S.acc = 0; break; } } if (shotOver(S.world)) { finishShot(); break; } }
+    }
+  }
+  tickFx(dt);
+  if (S.hintT > 0) { S.hintT -= dt; if (S.hintT <= 0) hideHint(); }
+  render(now);
+}
+
+// ---------------- Input ----------------
+function toWorld(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale]; }
+let pid = null;
+const stage = $('stage');
+stage.addEventListener('pointerdown', (e) => {
+  Audio.init();
+  if (!$('ov').hidden) return;
+  if (S.mode === 'shot') { S.hold = true; return; }
+  if (S.mode !== 'play' || embersLeft() <= 0) return;
+  if (e.target !== cv && e.target !== stage) return;
+  pid = e.pointerId; try { stage.setPointerCapture(e.pointerId); } catch (er) {}
+  const p = toWorld(e); S.aim = { sx: p[0], sy: p[1], cx: p[0], cy: p[1] };
+  e.preventDefault();
+});
+stage.addEventListener('pointermove', (e) => {
+  if (!S.aim || e.pointerId !== pid) return; const p = toWorld(e); S.aim.cx = p[0]; S.aim.cy = p[1]; e.preventDefault();
+});
+function endAim(e, cancel) {
+  S.hold = false;
+  if (!S.aim || (e && e.pointerId !== pid)) return; pid = null;
+  const a = S.aim; S.aim = null;
+  if (cancel) return;
+  const dx = a.cx - a.sx, dy = a.cy - a.sy;
+  if (Math.hypot(dx, dy) < C.MIN_PULL) { toast('Pull farther back to throw'); return; }
+  const v = pullToLaunch(dx, dy); fire(v[0], v[1]);
+}
+stage.addEventListener('pointerup', (e) => endAim(e, false));
+stage.addEventListener('pointercancel', (e) => endAim(e, true));
+window.addEventListener('blur', () => { S.aim = null; S.hold = false; });
+
+window.addEventListener('keydown', (e) => {
+  Audio.init();
+  const k = e.key;
+  if (!$('ov').hidden) {
+    if (k === 'Escape' && S.level && S.mode !== 'title') { if (S.mode === 'over') return; hideOverlay(); }
+    return;
+  }
+  if (k === 'r' || k === 'R') { retry(); return; }
+  if (k === 'Escape' || k === 'm' || k === 'M') { showSelect(); return; }
+  if (k === 'h' || k === '?') { showHint(true); return; }
+  if (S.mode === 'shot' && (k === ' ' || k === 'Enter')) { S.hold = true; e.preventDefault(); return; }
+  if (S.mode !== 'play') return;
+  const A = S.kbAim; let ang = Math.atan2(A.ay, A.ax), used = true;
+  if (k === 'ArrowLeft') ang -= e.shiftKey ? 0.004 : 0.03; else if (k === 'ArrowRight') ang += e.shiftKey ? 0.004 : 0.03;
+  else if (k === 'ArrowUp') A.p = Math.min(1, A.p + (e.shiftKey ? 0.004 : 0.025)); else if (k === 'ArrowDown') A.p = Math.max(0.1, A.p - (e.shiftKey ? 0.004 : 0.025));
+  else if (k === ' ' || k === 'Enter') { const v = [A.ax * A.p * C.MAXV, A.ay * A.p * C.MAXV]; S.aim = null; fire(v[0], v[1]); e.preventDefault(); return; }
+  else used = false;
+  if (used) {
+    e.preventDefault(); A.ax = Math.cos(ang); A.ay = Math.sin(ang);
+    const w = S.world, L = A.p * C.MAXV / C.POWER; // show it as a pull from the sling
+    S.aim = { sx: w.sling.x, sy: w.sling.y, cx: w.sling.x - A.ax * L, cy: w.sling.y - A.ay * L, kb: true };
+  }
+});
+window.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') S.hold = false; });
+
+// ---------------- UI ----------------
+function updateHud() {
+  const l = S.level; if (!l) { $('hName').textContent = 'Kilnshot'; $('hEmbers').innerHTML = ''; $('hPar').textContent = ''; return; }
+  $('hName').innerHTML = `<small>${levelLabel(l)}</small>${esc(l.name)}`;
+  const tot = embersFor(l), used = S.shots.length; let h = '';
+  for (let i = 0; i < tot; i++) h += `<i class="${i < used ? 'spent' : ''}"></i>`;
+  $('hEmbers').innerHTML = h; $('hPar').textContent = 'PAR ' + l.par;
+  $('bSound').setAttribute('aria-label', Storage.data.sound ? 'Sound on' : 'Sound off'); $('bSound').style.opacity = Storage.data.sound ? 1 : 0.45;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function showHint(force) { if (!S.level) return; const h = $('hint'); h.textContent = S.level.hint; h.classList.remove('off'); S.hintT = force ? 6 : 4; }
+function hideHint() { $('hint').classList.add('off'); S.hintT = 0; }
+let toastT = 0;
+function toast(s) { const t = $('toast'); t.textContent = s; t.style.opacity = s ? 1 : 0; clearTimeout(toastT); if (s) toastT = setTimeout(() => { t.style.opacity = 0; }, 1600); }
+function showOverlay(html) { $('card').innerHTML = html; $('ov').hidden = false; const b = $('card').querySelector('button.primary') || $('card').querySelector('button'); if (b) try { b.focus({ preventScroll: true }); } catch (e) {} }
+function hideOverlay() { $('ov').hidden = true; }
+function totalStars() { let s = 0; for (const k in Storage.data.best) s += Storage.data.best[k].stars; return s; }
+function nextUnbeaten() { for (let i = 0; i < LEVELS.length; i++) if (!Storage.data.best[LEVELS[i].id]) return i; return LEVELS.length - 1; }
+function on(id, f) { const el = $(id); if (el) el.onclick = (e) => { Audio.init(); f(e); }; }
+
+function showTitle() {
+  S.mode = 'title';
+  const cur = Storage.data.cur; const resumable = cur && cur.shots.length > 0 && cur.id !== 'daily' && LEVELS.find(l => l.id === cur.id);
+  showOverlay(`
+    <h1>KILN<br>SHOT</h1>
+    <p><b>Smash the cracked pots. Spare the good ones.</b></p>
+    <div class="how">
+      <b style="background:radial-gradient(circle at 40% 35%,#fff6c8,#ffc93d 40%,#ff6a1f 75%)"></b><span>Drag back anywhere, aim, let go to throw an ember.</span>
+      <b style="background:#ead7b9;border:2px solid #7a5a3a"></b><span>Cracked bisque pots: break them all.</span>
+      <b style="background:#2448a8;border:2px solid #0c1d4a"></b><span>Blue keepers: one crack and the firing fails.</span>
+      <b style="background:#c58b3c;border:2px solid #8d5d22"></b><span>Fewest throws earns 3 stars. Hold the screen to speed up a throw.</span>
+    </div>
+    <div class="col">
+      <button class="primary" id="tPlay">${resumable ? 'Continue' : (totalStars() ? 'Play' : 'Start firing')}</button>
+      <div class="row"><button id="tLevels">Levels</button><button id="tDaily">Daily kiln</button></div>
+    </div>
+    <p class="tiny">${totalStars()} of ${LEVELS.length * 3} stars${Storage.data.daily.fired ? ' · ' + Storage.data.daily.fired + ' daily firings' : ''}${Storage.data.recovered ? ' · your old save could not be read, so it was set aside and a fresh one started' : ''}</p>`);
+  on('tPlay', () => { if (resumable) startLevel(LEVELS.find(l => l.id === cur.id), cur.shots); else startLevel(LEVELS[nextUnbeaten()]); });
+  on('tLevels', showSelect); on('tDaily', startDaily);
+}
+function showSelect() {
+  if (S.mode === 'shot') return;
+  const open = unlockedIdx(); let h = `<h2>Levels</h2><p class="sub">${totalStars()} of ${LEVELS.length * 3} stars. Clear a level to open the next ones. ◆ means you beat the kiln’s par.</p>`;
+  for (const ch of CHAPTERS) {
+    h += `<div class="chap"><h3>${ch.n}. ${esc(ch.name)}</h3><p>${esc(ch.idea)}</p><div class="tiles">`;
+    LEVELS.forEach((l, i) => {
+      if (l.ch !== ch.n) return; const b = Storage.data.best[l.id]; const lk = !open.has(i);
+      h += `<button data-i="${i}" class="${lk ? 'locked' : ''}" ${lk ? 'aria-disabled="true"' : ''}>${levelLabel(l)}<span>${esc(l.name)}</span><em>${b ? '★'.repeat(b.stars) + '<span style="color:#c8d4d6">' + '★'.repeat(3 - b.stars) + '</span>' + (b.shots < l.par ? '<span style="color:#ff6a1f" aria-label="beat par"> ◆</span>' : '') : (lk ? 'locked' : '· · ·')}</em></button>`;
+    });
+    h += '</div></div>';
+  }
+  h += `<div class="row"><button id="sBack">Back</button><button id="sDaily">Daily kiln</button></div>
+    <div class="row"><button id="sDebug" style="font-size:12px;min-height:36px">${Storage.data.debug ? 'Hide' : 'Show'} physics overlay</button></div>`;
+  showOverlay(h);
+  $('card').querySelectorAll('button[data-i]').forEach(b => b.onclick = () => {
+    Audio.init(); const i = +b.dataset.i; if (!open.has(i)) { b.textContent = 'Clear an earlier level first'; return; }
+    const l = LEVELS[i]; const cur = Storage.data.cur; startLevel(l, cur && cur.id === l.id ? cur.shots : []);
+  });
+  on('sBack', () => { if (S.level && S.mode !== 'title' && S.mode !== 'over') hideOverlay(); else showTitle(); });
+  on('sDaily', startDaily);
+  on('sDebug', () => { Storage.data.debug = !Storage.data.debug; Storage.save(); showSelect(); });
+}
+function starsHtml(n) { return `<div class="stars" aria-label="${n} of 3 stars">${'★'.repeat(n)}<span class="dim">${'★'.repeat(3 - n)}</span></div>`; }
+function showResult() {
+  const r = S.result, l = S.level;
+  if (r.kind === 'won') {
+    const beat = r.shots < l.par;
+    let h = `<h2>${beat ? 'Master firing!' : r.stars === 3 ? 'Clean firing!' : 'Fired!'}</h2>${starsHtml(r.stars)}
+      <p>${r.shots} ${r.shots === 1 ? 'throw' : 'throws'} · par ${l.par}${beat ? ' · you beat the kiln’s par' : ''}</p>`;
+    if (S.isDaily) {
+      const share = `Kilnshot daily ${l.date}\n${r.shots} ${r.shots === 1 ? 'throw' : 'throws'} (par ${l.par}) ${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)}`;
+      h += `<div class="share" id="shareTxt">${esc(share)}</div><div class="row"><button id="rCopy">Copy result</button><button class="primary" id="rRetry">Fire again</button></div><div class="row"><button id="rLevels">Levels</button></div>`;
+      showOverlay(h);
+      on('rCopy', () => { const t = $('shareTxt').textContent; const done = () => { $('rCopy').textContent = 'Copied'; };
+        try { navigator.clipboard.writeText(t).then(done, () => selectText($('shareTxt'))); } catch (e) { selectText($('shareTxt')); } });
+    } else {
+      const hasNext = S.levelIdx < LEVELS.length - 1;
+      h += `<div class="row"><button id="rRetry">Retry</button>${hasNext ? '<button class="primary" id="rNext">Next level</button>' : '<button class="primary" id="rLevels2">All levels</button>'}</div><div class="row"><button id="rLevels">Levels</button></div>`;
+      if (!hasNext) h += `<p class="sub">That was the last firing. Try the daily kiln for a new level every day.</p>`;
+      showOverlay(h);
+      on('rNext', () => startLevel(LEVELS[S.levelIdx + 1])); on('rLevels2', showSelect);
+    }
+  } else {
+    const msg = r.kind === 'keeper' ? ['A keeper cracked', 'The blue pots are good work. Find a line that misses them.'] : ['Out of embers', `${secondsLeft(S.world)} cracked ${secondsLeft(S.world) === 1 ? 'pot is' : 'pots are'} still standing. Look for a throw that chains.`];
+    showOverlay(`<h2>${msg[0]}</h2><p class="sub">${msg[1]}</p><div class="row"><button class="primary" id="rRetry">Retry (R)</button></div><div class="row"><button id="rLevels">Levels</button></div>`);
+  }
+  on('rRetry', retry); on('rLevels', showSelect);
+}
+function selectText(el) { try { const r = document.createRange(); r.selectNodeContents(el); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } catch (e) {} }
+
+function todayStr() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function startDaily() {
+  const date = todayStr(); const c = Storage.data.daily.cache;
+  if (c && c.date === date) { const cur = Storage.data.cur; startLevel(c.level, cur && cur.id === 'daily' ? cur.shots : [], true); return; }
+  if (S.dailyBuilding) return; S.dailyBuilding = true;
+  showOverlay(`<h2>Firing today’s kiln</h2><p class="sub">Building ${date}’s level and finding its par. Everyone gets the same one.</p><div class="bar-prog"><i id="dProg"></i></div>`);
+  const gen = buildDaily(date); let lvl = null;
+  const pump = () => {
+    const t0 = performance.now();
+    while (performance.now() - t0 < 24) { const n = gen.next(); if (n.done) { lvl = n.value; break; } const pr = $('dProg'); if (pr) pr.style.width = Math.round(n.value * 100) + '%'; }
+    if (!lvl) { setTimeout(pump, 0); return; }
+    S.dailyBuilding = false;
+    Storage.data.daily.cache = { date, level: lvl }; if (Storage.data.cur && Storage.data.cur.id === 'daily') Storage.data.cur = null; Storage.save();
+    startLevel(lvl, [], true);
+  };
+  setTimeout(pump, 30);
+}
+
+on('bMenu', showSelect); on('bRetry', retry); on('bHint', () => showHint(true));
+on('bSound', () => { Storage.data.sound = !Storage.data.sound; Storage.save(); Audio.setOn(Storage.data.sound); updateHud(); toast(Storage.data.sound ? 'Sound on' : 'Sound off'); });
+
+// ---------------- Boot ----------------
+Storage.load(); fit(); updateHud();
+// if the last session was mid-level, put the board back exactly (replaying the committed throws)
+const cur = Storage.data.cur;
+if (cur && cur.id !== 'daily' && LEVELS.find(l => l.id === cur.id) && cur.shots.length) { startLevel(LEVELS.find(l => l.id === cur.id), cur.shots); showTitle(); S.mode = S.result ? 'over' : 'title'; }
+else showTitle();
+requestAnimationFrame(frame);
+window.__kiln = { S, Storage, fire, retry, startLevel, startDaily, showSelect, LEVELS };
+})();
+
+</script>

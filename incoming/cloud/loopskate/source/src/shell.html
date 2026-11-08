@@ -1,0 +1,90 @@
+<title>Loopskate</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@600;700;800&display=swap">
+<style>
+/* Layout: one full-screen canvas (a frozen pond at dusk), DOM cards float over it for results, pause and badges.
+   Look: blue-hour winter pond, pale ice, glowing cyan blade trail, ink-navy open water. One dark look by choice. */
+:root{
+  color-scheme:dark;
+  --night:#0d1a2b; --night2:#15283f; --ice:#dff2f8; --ink:#eaf6fb; --muted:#a9c3d3;
+  --trail:#3fe0f5; --hot:#ffb347; --good:#7ef0b0; --bad:#ff7b72; --card:#132438; --line:#29445f;
+  --display:"Baloo 2","Trebuchet MS",ui-rounded,system-ui,sans-serif;
+  --body:"Nunito",ui-rounded,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--night);color:var(--ink);overflow:hidden;overscroll-behavior:none}
+body{font-family:var(--body);-webkit-tap-highlight-color:transparent}
+#app{position:fixed;inset:0;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;background:var(--night)}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
+button:focus-visible{outline:3px solid var(--hot);outline-offset:2px}
+#bPause{position:absolute;top:calc(env(safe-area-inset-top,0px) + 6px);right:max(8px,env(safe-area-inset-right,0px));z-index:4;width:44px;height:44px;border-radius:14px;background:rgba(13,26,43,.6);display:grid;place-items:center}
+#bPause i{display:block;width:14px;height:16px;border-left:5px solid var(--ink);border-right:5px solid var(--ink);box-sizing:border-box}
+.scr{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(8,16,28,.72);
+  padding:calc(env(safe-area-inset-top,0px) + 16px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 16px) max(16px,env(safe-area-inset-left,0px));box-sizing:border-box;overflow-y:auto;touch-action:pan-y}
+.card{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:22px;padding:20px 18px;display:flex;flex-direction:column;gap:12px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.why{margin:0;font:800 15px var(--body);color:var(--muted);text-align:center;letter-spacing:.02em}
+.big{margin:0;font:800 64px/1 var(--display);text-align:center;font-variant-numeric:tabular-nums;color:#fff}
+.best{margin:0;text-align:center;font-size:15px;color:var(--muted)}
+.best b{color:var(--hot)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.stats div{background:rgba(127,180,220,.08);border-radius:12px;padding:8px 4px;text-align:center}
+.stats b{display:block;font:800 20px var(--display);font-variant-numeric:tabular-nums}
+.stats span{font-size:12px;color:var(--muted)}
+#bAgain{width:100%;min-height:72px;border-radius:20px;background:var(--trail);color:#06202a;font:800 30px var(--display);letter-spacing:.02em;box-shadow:0 6px 0 #1a9fb3}
+#bAgain:active{transform:translateY(3px);box-shadow:0 3px 0 #1a9fb3}
+.row{display:flex;gap:8px}
+.row button,.btn{flex:1;min-height:48px;border-radius:14px;background:rgba(127,180,220,.12);font:800 15px var(--body);padding:0 10px}
+.btn.wide{width:100%}
+.note{margin:0;font-size:13px;color:var(--muted);text-align:center}
+h2{margin:0;font:800 26px var(--display);text-align:center}
+.how{margin:0;padding-left:20px;font-size:15px;line-height:1.45;color:var(--ink)}
+.how li{margin:3px 0}
+#badgeList{max-height:52vh;overflow-y:auto}
+#toastSlot{position:absolute}
+.newbest{color:var(--hot)}
+</style>
+<div id="app">
+  <canvas id="cv" aria-label="Loopskate. Drag anywhere to skate. Close a loop with your trail to drop the critters inside."></canvas>
+  <button id="bPause" aria-label="Pause"><i></i></button>
+
+  <div class="scr" id="over" hidden>
+    <div class="card" role="dialog" aria-labelledby="oScore">
+      <p class="why" id="oWhy">The ice thawed</p>
+      <p class="big" id="oScore">0</p>
+      <p class="best" id="oBest">Best 0</p>
+      <div class="stats">
+        <div><b id="oWave">1</b><span>waves</span></div>
+        <div><b id="oLoop">0</b><span>best loop</span></div>
+        <div><b id="oCombo">0</b><span>best combo</span></div>
+      </div>
+      <button id="bAgain">Again</button>
+      <div class="row"><button id="bMode">Daily pond</button><button id="bShare">Share</button><button id="bBadges">Badges</button></div>
+      <p class="note" id="oNote"></p>
+    </div>
+  </div>
+
+  <div class="scr" id="pause" hidden>
+    <div class="card" role="dialog" aria-labelledby="pTitle">
+      <h2 id="pTitle">Paused</h2>
+      <button id="bResume" class="btn wide" style="min-height:64px;font-size:22px;background:var(--trail);color:#06202a">Resume</button>
+      <ul class="how">
+        <li>Drag anywhere to steer. You always keep moving.</li>
+        <li>Cross your own trail to close a loop. Everything inside drops through the ice.</li>
+        <li>More critters in one loop, and loops close together, score much more.</li>
+        <li>Don't skate into open water, don't touch burrbugs, and clear the pond before it thaws.</li>
+      </ul>
+      <div class="row"><button id="bSound">Sound on</button><button id="bRestart">Restart</button></div>
+      <div class="row"><button id="bExport">Export save</button><button id="bImport">Import save</button></div>
+    </div>
+  </div>
+
+  <div class="scr" id="badges" hidden>
+    <div class="card" role="dialog" aria-labelledby="bTitle">
+      <h2 id="bTitle">Badges</h2>
+      <div id="badgeList"></div>
+      <button id="bBadgesClose" class="btn wide">Close</button>
+    </div>
+  </div>
+</div>

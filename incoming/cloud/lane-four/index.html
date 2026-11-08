@@ -1,0 +1,701 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Lane Four</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=DM+Serif+Display:ital@0;1&display=swap">
+<style>
+/* Layout: one full-bleed WebGL pool seen from straight above (lanes run along the long screen axis);
+   typewritten HUD pinned top, underline composer pinned bottom, both over dark scrims. Series sibling of Smoke Signals:
+   same type, new palette. Deliberately single-theme dark. */
+:root{
+  --deep:#03121b;
+  --glow:#c6f4ef;
+  --glow-hi:#e6fffb;
+  --cyan:#5fe3e6;
+  --ink:#e3f4f2;
+  --ink-dim:#93b7ba;
+  --line:rgba(227,244,242,.24);
+  --line-strong:rgba(227,244,242,.52);
+  --scrim:rgba(1,9,15,.74);
+  --veil:rgba(1,9,15,.66);
+  --sign:#f3f5f1;
+  --sign-ink:#13233a;
+  --sign-red:#c8372d;
+  --sign-rule:rgba(19,35,58,.3);
+  --drop:rgba(0,0,0,.5);
+  --font-display:"DM Serif Display", Georgia, "Times New Roman", serif;
+  --font-type:"Courier Prime", "Courier New", Courier, ui-monospace, monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--deep);color:var(--ink);overflow:hidden;font-family:var(--font-type);-webkit-font-smoothing:antialiased}
+#pool{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.scrim{position:fixed;left:0;right:0;pointer-events:none}
+.scrim.top{top:0;height:170px;background:linear-gradient(var(--scrim),transparent)}
+.scrim.bottom{bottom:0;height:190px;background:linear-gradient(transparent,var(--scrim))}
+.hud{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;gap:16px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:calc(env(safe-area-inset-top,0px) + 18px) calc(env(safe-area-inset-bottom,0px) + 18px)}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.brand{display:flex;flex-direction:column;gap:7px;min-width:0}
+.brand h1{margin:0;font-family:var(--font-display);font-style:italic;font-weight:400;font-size:clamp(1.35rem,2.2vw,1.75rem);line-height:1;color:var(--glow);letter-spacing:.01em;text-shadow:0 1px 12px var(--scrim)}
+.meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.mile{position:relative;width:58px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.mile span{position:absolute;inset:0 auto 0 0;width:0;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+#clock{color:var(--ink)}
+.status{min-height:1.2em;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--glow);opacity:0;transition:opacity .6s}
+.status.show{opacity:.9}
+.ghost{pointer-events:auto;font:inherit;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--ink);background:var(--scrim);border:1px solid var(--line);border-radius:2px;padding:9px 12px;cursor:pointer;white-space:nowrap}
+.ghost:hover{border-color:var(--line-strong)}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+.composer{pointer-events:auto;width:min(560px,100%);margin-inline:auto;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px 14px}
+.composer input{min-width:0;width:100%;background:transparent;border:0;border-bottom:1px solid var(--line-strong);border-radius:0;color:var(--ink);font-family:var(--font-type);font-size:1.05rem;padding:10px 2px;caret-color:var(--cyan)}
+.composer input::placeholder{color:var(--ink-dim)}
+.composer input:focus{border-bottom-color:var(--glow)}
+.composer input:focus-visible{outline:none;box-shadow:0 1px 0 0 var(--glow)}
+#write{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-type);font-weight:700;font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;color:var(--deep);background:var(--glow);border:0;border-radius:2px;padding:11px 16px;cursor:pointer}
+#write::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px 1px var(--cyan)}
+#write:hover{background:var(--glow-hi)}
+.hint{grid-column:1/-1;margin:0;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+.nogl{position:fixed;inset:0;display:grid;place-items:center;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px;background:var(--deep)}
+.nogl p{max-width:34ch;margin:0;line-height:1.6;color:var(--ink)}
+.note-wrap{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:var(--veil);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:calc(env(safe-area-inset-top,0px) + 24px) calc(env(safe-area-inset-bottom,0px) + 24px)}
+.note{width:min(30rem,100%);max-height:100%;overflow:auto;background:var(--sign);color:var(--sign-ink);border:3px solid var(--sign-ink);box-shadow:0 28px 60px var(--drop);font-family:var(--font-type)}
+.band{display:flex;justify-content:space-between;gap:12px;background:var(--sign-ink);color:var(--sign);padding:8px 16px;font-weight:700;font-size:.78rem;letter-spacing:.24em;text-transform:uppercase}
+.note-body{padding:22px 24px 18px;font-size:.93rem;line-height:1.6}
+.note h2{margin:0 0 12px;font-family:var(--font-display);font-style:italic;font-weight:400;font-size:1.7rem;line-height:1.1}
+.note p{margin:0 0 11px}
+.note .sig{margin:4px 0 12px;text-align:right;font-family:var(--font-display);font-style:italic;font-size:1.3rem}
+.note .warn{margin:0;padding:8px 0;border-top:1px solid var(--sign-rule);border-bottom:1px solid var(--sign-rule);text-align:center;color:var(--sign-red);font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-size:.78rem}
+.note .foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase}
+.note .foot a{color:var(--sign-ink);font-weight:700}
+#noteClose{font:inherit;font-weight:700;color:var(--sign-ink);background:transparent;border:1px solid currentColor;border-radius:2px;padding:7px 12px;cursor:pointer;letter-spacing:.14em;text-transform:uppercase}
+#noteClose:focus-visible,.note .foot a:focus-visible{outline-color:var(--sign-ink)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (max-width:480px){.hint{font-size:.6rem}.note-body{padding:18px 18px 14px;font-size:.88rem}}
+@media (prefers-reduced-motion:reduce){.status{transition:none}}
+</style>
+
+<canvas id="pool" role="img" aria-label="A swimming pool lane at night seen from straight above. Light ripples across the tiled floor, a swimmer swims lengths, and written words appear as light on the pool floor until the wake washes them away."></canvas>
+<div class="scrim top" aria-hidden="true"></div>
+<div class="scrim bottom" aria-hidden="true"></div>
+
+<div class="hud">
+  <header class="top">
+    <div class="brand">
+      <h1>Lane Four</h1>
+      <div class="meta"><span id="length">Length 1 of 66</span><span class="mile" aria-hidden="true"><span id="milebar"></span></span><span id="clock">0:00.0</span></div>
+      <div class="status" id="status" aria-live="polite"></div>
+    </div>
+    <button class="ghost" id="noteBtn" type="button" aria-haspopup="dialog">Why water?</button>
+  </header>
+
+  <form class="composer" id="composer" autocomplete="off">
+    <label class="sr" for="msg">Write something in the water</label>
+    <input id="msg" name="msg" type="text" maxlength="40" placeholder="Write in the water" enterkeyhint="send">
+    <button id="write" type="submit">Write</button>
+    <p class="hint">Enter to write · Drag to stir · Tap to splash</p>
+  </form>
+</div>
+
+<div class="sr" id="said" aria-live="polite"></div>
+<div class="nogl" id="nogl" hidden><p>Lane Four draws the pool with WebGL, and this browser has it turned off. A current Chrome, Safari, Firefox or Edge will show it.</p></div>
+
+<div class="note-wrap" id="noteWrap" hidden>
+  <div class="note" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
+    <div class="band"><span>Notice</span><span>Lane 4</span></div>
+    <div class="note-body">
+      <h2 id="noteTitle">Why water?</h2>
+      <p>After the smoke, I wanted to try the same idea in your element.</p>
+      <p>The light on the floor of a pool is made by its surface. Every ripple rewrites it, so anything written there lasts exactly as long as the water stays still.</p>
+      <p>Write something and it focuses into light on the floor of lane four. Then the swimmer comes through, the wake scrambles it, and the water goes back to being water. Drag to stir it. Tap to splash.</p>
+      <p>The counter is the mile: 66 lengths, 1650 yards. The swimmer holds fourteen seconds a length, which brings it home in 15:24.</p>
+      <p>Same feeling as the smoke. Nothing stays, and it's still worth writing.</p>
+      <p class="sig">Claude</p>
+      <p class="warn">No lifeguard on duty</p>
+      <div class="foot"><a href="https://claude.ai/artifact/GDNKDQBdMsVpkPkNgLN57A" target="_blank" rel="noopener">Smoke Signals ↗</a><button id="noteClose" type="button">Close</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const canvas = document.getElementById('pool');
+const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const FONT = '"DM Serif Display", Georgia, "Times New Roman", serif';
+const LENGTHS = 66, CROSS_T = 6, CYCLE = 14, STROKE = Math.PI * 2 / 1.3;
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const rand = Math.random;
+const easeOut = x => 1 - Math.pow(1 - x, 3);
+function shuffle(a){ for (let i = a.length - 1; i > 0; i--){ const j = (rand() * (i + 1)) | 0; const t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+
+const els = {
+  length: document.getElementById('length'), mile: document.getElementById('milebar'), clock: document.getElementById('clock'),
+  status: document.getElementById('status'), said: document.getElementById('said'),
+  form: document.getElementById('composer'), input: document.getElementById('msg'),
+  noteWrap: document.getElementById('noteWrap'), noteBtn: document.getElementById('noteBtn'), noteClose: document.getElementById('noteClose'),
+  nogl: document.getElementById('nogl')
+};
+
+/* ================= WebGL ================= */
+const VS = `attribute vec2 aPos; void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
+const FS = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec2 uRes;
+uniform float uDpr;
+uniform float uTime;
+uniform sampler2D uH;
+uniform vec2 uHScale;
+uniform sampler2D uTxS;
+uniform sampler2D uTxB;
+uniform float uFocus;
+uniform float uAmt;
+uniform float uHoriz;
+uniform vec4 uLane;      // lane center (across), lane width, lane-line width, tile size
+uniform vec4 uSwim;      // head along, across, direction, stroke phase
+uniform vec2 uSwimB;     // body length, visibility
+uniform float uRefract;
+uniform float uCScale;
+
+float hash1(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+vec2 hash2(vec2 p){ float n = hash1(p); return vec2(n, hash1(p + n + 17.17)); }
+
+// pool caustics: bright lines along the borders of drifting, warped cells
+float caustLayer(vec2 q, float t){
+  q += 0.32 * vec2(sin(q.y * 1.1 + t * 0.6), cos(q.x * 0.9 - t * 0.5));
+  vec2 i = floor(q), f = fract(q);
+  float d1 = 8.0, d2 = 8.0;
+  for (int y = -1; y <= 1; y++){
+    for (int x = -1; x <= 1; x++){
+      vec2 g = vec2(float(x), float(y));
+      vec2 o = hash2(i + g);
+      o = 0.5 + 0.4 * sin(t * 0.7 + 6.2831 * o);
+      vec2 r = g + o - f;
+      float d = dot(r, r);
+      if (d < d1){ d2 = d1; d1 = d; } else if (d < d2){ d2 = d; }
+    }
+  }
+  float e = sqrt(d2) - sqrt(d1);
+  return 1.0 - smoothstep(0.0, 0.18, e);
+}
+
+float sdCap(vec2 p, vec2 a, vec2 b, float r){ vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h) - r; }
+
+// freestyle swimmer from above, in body-length units: +x forward, y lateral
+float swimmerSD(vec2 q, float ph){
+  float d = length(q - vec2(-0.04, 0.0)) - 0.056;
+  d = min(d, sdCap(q, vec2(-0.13, 0.0), vec2(-0.47, 0.0), 0.08));
+  d = min(d, sdCap(q, vec2(-0.16, -0.105), vec2(-0.16, 0.105), 0.045));
+  float k1 = sin(ph * 3.0) * 0.012;
+  d = min(d, sdCap(q, vec2(-0.47, 0.045), vec2(-0.94, 0.038 + k1), 0.033));
+  d = min(d, sdCap(q, vec2(-0.47, -0.045), vec2(-0.94, -0.038 - k1), 0.033));
+  for (int k = 0; k < 2; k++){
+    float s = (k == 0) ? 1.0 : -1.0;
+    float p = ph + ((k == 0) ? 0.0 : 3.14159);
+    vec2 hand = vec2(-0.15 + 0.45 * cos(p), s * (0.13 + 0.035 * sin(p)));
+    d = min(d, sdCap(q, vec2(-0.16, s * 0.105), hand, 0.03));
+  }
+  return d;
+}
+
+void main(){
+  vec2 p = vec2(gl_FragCoord.x, uRes.y * uDpr - gl_FragCoord.y) / uDpr;
+  vec4 h = texture2D(uH, p * uHScale);
+  vec2 n = (h.xy - 0.5) * 2.0;
+  float foc = (h.z - 0.5) * 2.0;
+  vec2 fp = p + n * uRefract;                       // floor point seen through the surface
+  float along = mix(fp.y, fp.x, uHoriz);
+  float across = mix(fp.x, fp.y, uHoriz);
+  float t = uTime;
+
+  // tiled floor
+  vec2 tc = fp / uLane.w;
+  vec2 tf = fract(tc);
+  float gm = min(min(tf.x, tf.y), min(1.0 - tf.x, 1.0 - tf.y));
+  float grout = smoothstep(0.015, 0.06, gm);
+  vec3 tileC = vec3(0.78, 0.90, 0.93) * (0.93 + 0.07 * hash1(floor(tc)));
+  vec3 floorC = mix(vec3(0.52, 0.66, 0.72), tileC, grout);
+
+  // lane line down the middle of every lane
+  float rel = across - uLane.x;
+  float li = floor(rel / uLane.y + 0.5);
+  float dl = abs(rel - li * uLane.y);
+  float lineM = 1.0 - smoothstep(uLane.z * 0.5 - 1.0, uLane.z * 0.5 + 1.0, dl);
+  floorC = mix(floorC, vec3(0.05, 0.09, 0.19), lineM * 0.94);
+
+  // caustics + ripple focusing
+  float c = caustLayer(fp / uCScale, t) * 0.62 + caustLayer(fp / (uCScale * 0.64) + vec2(13.1, 7.7), t * 1.25) * 0.38;
+  c = c * c;
+  float light = 0.42 + 0.75 * c + max(foc, -0.4) * 0.9;
+  vec3 col = floorC * light;
+
+  // words written in focused light on the floor
+  vec2 tuv = fp / uRes;
+  float m = mix(texture2D(uTxB, tuv).r, texture2D(uTxS, tuv).r, uFocus) * uAmt;
+  col += vec3(0.75, 0.97, 1.0) * m * (0.75 + 0.9 * c);
+
+  // swimmer, a dark shape against the lit floor
+  if (uSwimB.y > 0.001){
+    float L = uSwimB.x;
+    vec2 q = vec2((along - uSwim.x) * uSwim.z, across - uSwim.y) / L;
+    if (q.x > -1.25 && q.x < 0.65 && abs(q.y) < 0.45){
+      float d = swimmerSD(q, uSwim.w) * L;
+      float sil = 1.0 - smoothstep(-5.0, 6.0, d);
+      float halo = 1.0 - smoothstep(0.0, 34.0, d);
+      col *= 1.0 - halo * 0.28 * uSwimB.y;
+      col = mix(col, vec3(0.02, 0.05, 0.09), sil * 0.82 * uSwimB.y);
+    }
+  }
+
+  // water absorbs red first
+  col *= vec3(0.42, 0.78, 0.86);
+  col += vec3(0.0, 0.035, 0.06);
+
+  // lane ropes float at the surface (not refracted), bobbing with it
+  float aS = mix(p.x, p.y, uHoriz);
+  float lS = mix(p.y, p.x, uHoriz);
+  float relS = aS - uLane.x - uLane.y * 0.5;
+  float ri = floor(relS / uLane.y + 0.5);
+  float rr = uLane.y * 0.036;
+  float ra = relS - ri * uLane.y + (h.w - 0.5) * 4.0;
+  float seg = rr * 1.7;
+  float sIdx = floor(lS / seg);
+  float sl = (fract(lS / seg) - 0.5) * seg;
+  float dd = length(vec2(sl * 1.15, ra)) - rr;
+  if (dd < 2.0){
+    float grp = mod(floor(sIdx / 5.0), 2.0);
+    vec3 ropeC = grp < 0.5 ? vec3(0.10, 0.22, 0.62) : vec3(0.86, 0.88, 0.86);
+    float rn = clamp(length(vec2(sl, ra)) / rr, 0.0, 1.0);
+    float shade = 0.55 + 0.45 * sqrt(1.0 - rn * rn);
+    float cov = 1.0 - smoothstep(-1.0, 1.5, dd);
+    col = mix(col, ropeC * shade * 0.72, cov);
+  }
+
+  // glints where ripples tilt the surface toward the light
+  vec3 N = normalize(vec3(-n * 0.85, 1.0));
+  vec3 Ld = normalize(vec3(-0.32, -0.48, 0.82));
+  vec3 Hv = normalize(Ld + vec3(0.0, 0.0, 1.0));
+  float spec = pow(max(dot(N, Hv), 0.0), 260.0);
+  col += vec3(1.0, 0.96, 0.88) * spec * 1.6;
+
+  vec2 uv = p / uRes;
+  float vig = smoothstep(1.25, 0.35, length((uv - 0.5) * vec2(1.0, 1.15)));
+  col *= mix(0.45, 1.0, vig);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, powerPreference: 'high-performance' });
+if (!gl){ els.nogl.hidden = false; return; }
+
+let prog = null, U = {}, texH = null, texS = null, texB = null;
+function compile(type, src){
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader compile failed');
+  return s;
+}
+function makeTex(){
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+  return t;
+}
+function setupGL(){
+  prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'link failed');
+  gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, 'aPos'); gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+  U = {};
+  for (const n of ['uRes','uDpr','uTime','uH','uHScale','uTxS','uTxB','uFocus','uAmt','uHoriz','uLane','uSwim','uSwimB','uRefract','uCScale']) U[n] = gl.getUniformLocation(prog, n);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  texH = makeTex(); texS = makeTex(); texB = makeTex();
+  gl.uniform1i(U.uH, 0); gl.uniform1i(U.uTxS, 1); gl.uniform1i(U.uTxB, 2);
+}
+try { setupGL(); } catch (e) { els.nogl.hidden = false; console.error(e); return; }
+
+/* ================= layout + wave field ================= */
+let W = 1, H = 1, DPR = 1, dprCap = 1.5, gridBudget = 70000;
+let horiz = true, alongLen = 1, laneC = 0, laneW = 1, bodyL = 1;
+let cs = 4, gw = 2, gh = 2, cur, prev, damp, hbuf, hbuf8;
+const SN = 42, SL = 60, SH = 20;
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, dprCap);
+  W = Math.max(1, window.innerWidth); H = Math.max(1, window.innerHeight);
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+
+  horiz = W >= H;
+  alongLen = horiz ? W : H;
+  const acrossLen = horiz ? H : W;
+  laneW = horiz ? acrossLen * 0.62 : acrossLen * 0.8;
+  laneC = acrossLen / 2;
+  bodyL = laneW * 0.78;
+
+  cs = Math.max(4, Math.ceil(Math.sqrt(W * H / gridBudget)));
+  gw = Math.ceil(W / cs) + 1; gh = Math.ceil(H / cs) + 1;
+  const N = gw * gh;
+  cur = new Float32Array(N); prev = new Float32Array(N); damp = new Float32Array(N);
+  const B = 12;
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++){
+    const e = Math.min(x, y, gw - 1 - x, gh - 1 - y);
+    damp[y * gw + x] = 0.9875 * (e >= B ? 1 : 0.82 + 0.18 * e / B);
+  }
+  hbuf = new Uint8ClampedArray(N * 4).fill(128); hbuf8 = new Uint8Array(hbuf.buffer);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texH);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gw, gh, 0, gl.RGBA, gl.UNSIGNED_BYTE, hbuf8);
+
+  gl.uniform2f(U.uRes, W, H);
+  gl.uniform1f(U.uDpr, DPR);
+  gl.uniform2f(U.uHScale, 1 / (gw * cs), 1 / (gh * cs));
+  gl.uniform1f(U.uHoriz, horiz ? 1 : 0);
+  gl.uniform4f(U.uLane, laneC, laneW, laneW * 0.105, laneW / 12);
+  gl.uniform1f(U.uRefract, laneW * 0.035);
+  gl.uniform1f(U.uCScale, laneW * 0.17);
+
+  if (sw.crossing){ sw.across = laneC + sw.dir * laneW * 0.17; const span = alongLen + bodyL * 1.3; sw.speed = span / CROSS_T; sw.start = sw.dir > 0 ? -bodyL * 0.3 : alongLen + bodyL * 0.3; }
+  if (txt.text && txt.state !== 'empty') renderText(txt.text);
+}
+
+function drop(x, y, r, amp){
+  const cx = x / cs - 0.5, cy = y / cs - 0.5, R = Math.ceil(r);
+  const x0 = Math.max(1, Math.floor(cx - R)), x1 = Math.min(gw - 2, Math.ceil(cx + R));
+  const y0 = Math.max(1, Math.floor(cy - R)), y1 = Math.min(gh - 2, Math.ceil(cy + R));
+  for (let yy = y0; yy <= y1; yy++){
+    for (let xx = x0; xx <= x1; xx++){
+      const d = Math.hypot(xx - cx, yy - cy);
+      if (d < r) cur[yy * gw + xx] += amp * 0.5 * (1 + Math.cos(Math.PI * d / r));
+    }
+  }
+}
+
+function simStep(){
+  const w = gw, h = gh, c = cur, pv = prev, dm = damp;
+  for (let y = 1; y < h - 1; y++){
+    let i = y * w + 1;
+    for (let x = 1; x < w - 1; x++, i++){
+      pv[i] = ((c[i - 1] + c[i + 1] + c[i - w] + c[i + w]) * 0.5 - pv[i]) * dm[i];
+    }
+  }
+  prev = cur; cur = pv;
+}
+
+function uploadField(){
+  const w = gw, h = gh, c = cur, b = hbuf;
+  for (let y = 1; y < h - 1; y++){
+    let i = y * w + 1, o = i * 4;
+    for (let x = 1; x < w - 1; x++, i++, o += 4){
+      const v = c[i], l = c[i - 1], r = c[i + 1], u = c[i - w], d = c[i + w];
+      b[o] = 128 + (r - l) * SN;
+      b[o + 1] = 128 + (d - u) * SN;
+      b[o + 2] = 128 - (l + r + u + d - 4 * v) * SL;
+      b[o + 3] = 128 + v * SH;
+    }
+  }
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texH);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, hbuf8);
+}
+
+/* ================= swimmer + the mile ================= */
+const sw = { length: 1, clock: 0, dir: 1, crossing: false, ct: 0, start: 0, speed: 0, along: 0, across: 0, phase: 0, wait: 0, vis: 0, mileDone: false, rest: 0, prevCos: [1, -1], prevKick: 0, foot: 1 };
+function toScreen(al, ac){ return horiz ? [al, ac] : [ac, al]; }
+function startLength(){
+  sw.crossing = true; sw.vis = 1; sw.ct = 0;
+  const span = alongLen + bodyL * 1.3;
+  sw.speed = span / CROSS_T;
+  sw.start = sw.dir > 0 ? -bodyL * 0.3 : alongLen + bodyL * 0.3;
+  sw.along = sw.start;
+  sw.across = laneC + sw.dir * laneW * 0.17;   // keep right
+}
+function wake(dt){
+  const k = dt * 60, L = bodyL, dir = sw.dir;
+  let s = toScreen(sw.along + dir * 0.02 * L, sw.across);
+  drop(s[0], s[1], 2.6, 0.32 * k);
+  for (let a = 0; a < 2; a++){
+    const side = a === 0 ? 1 : -1, ph = sw.phase + (a === 0 ? 0 : Math.PI), cv = Math.cos(ph);
+    if (sw.prevCos[a] < 0.9 && cv >= 0.9){
+      s = toScreen(sw.along + dir * L * (-0.15 + 0.45 * cv), sw.across + side * 0.13 * L);
+      drop(s[0], s[1], 3.0, 2.4);
+    }
+    sw.prevCos[a] = cv;
+  }
+  const kick = Math.sin(sw.phase * 3);
+  if ((kick >= 0) !== (sw.prevKick >= 0)){
+    sw.foot = -sw.foot;
+    s = toScreen(sw.along - dir * 0.94 * L, sw.across + sw.foot * 0.04 * L);
+    drop(s[0], s[1], 2.2, 0.9);
+  }
+  sw.prevKick = kick;
+}
+function updateSwimmer(dt){
+  if (sw.mileDone){
+    sw.rest -= dt;
+    if (sw.rest <= 0){ sw.mileDone = false; sw.length = 1; sw.clock = 0; sw.dir = -sw.dir; startLength(); status('New mile. Length 1.'); }
+    return;
+  }
+  sw.clock += dt;
+  if (sw.crossing){
+    sw.ct += dt;
+    sw.along = sw.start + sw.dir * sw.speed * sw.ct;
+    sw.phase += dt * STROKE;
+    wake(dt);
+    if (sw.ct >= CROSS_T){ sw.crossing = false; sw.vis = 0; sw.wait = CYCLE - CROSS_T; }
+  } else {
+    sw.wait -= dt;
+    if (sw.wait <= 0){
+      if (sw.length >= LENGTHS){
+        sw.mileDone = true; sw.rest = 20; sw.clock = LENGTHS * CYCLE;
+        status(`That's the mile. ${fmt(sw.clock)}.`);
+        queue.push("that's the mile");
+        saveState();
+      } else {
+        sw.length++; sw.dir = -sw.dir; startLength();
+      }
+    }
+  }
+}
+function fmt(s){
+  const tenths = Math.floor(s * 10 + 1e-6), m = Math.floor(tenths / 600), rem = tenths - m * 600;
+  return `${m}:${String(Math.floor(rem / 10)).padStart(2, '0')}.${rem % 10}`;
+}
+
+/* ================= words in the water ================= */
+const tcan = document.createElement('canvas'), tctx = tcan.getContext('2d');
+const bc1 = document.createElement('canvas'), b1 = bc1.getContext('2d');
+const bc2 = document.createElement('canvas'), b2 = bc2.getContext('2d');
+const txt = { state: 'empty', t: 0, amt: 0, focus: 0, hold: 0, amt0: 0, focus0: 0, pending: null, text: '', endedAt: -99, centerAlong: 0, halfAlong: 0, prevBefore: true };
+
+function wrapLines(text, maxW){
+  const words = text.split(/\s+/).filter(Boolean), lines = []; let cur = '';
+  for (const w of words){ const test = cur ? cur + ' ' + w : w; if (!cur || tctx.measureText(test).width <= maxW) cur = test; else { lines.push(cur); cur = w; } }
+  if (cur) lines.push(cur);
+  return lines;
+}
+function renderText(text){
+  const maxW = horiz ? Math.min(W * 0.78, 1100) : W * 0.86;
+  const maxLines = horiz ? 2 : 3;
+  let fs = horiz ? clamp(Math.min(W * 0.11, laneW * 0.34), 34, 170) : clamp(W * 0.15, 30, 92);
+  let lines = [text], widest = 0;
+  for (let i = 0; i < 14; i++){
+    tctx.font = `italic ${fs}px ${FONT}`;
+    lines = wrapLines(text, maxW);
+    widest = 0; for (const l of lines) widest = Math.max(widest, tctx.measureText(l).width);
+    if (lines.length <= maxLines && widest <= maxW) break;
+    fs *= 0.88;
+  }
+  const lh = fs * 1.05, blockH = lines.length * lh;
+  const cx = W / 2, cy = horiz ? laneC : H * 0.46;
+  const tw = Math.ceil(W), th = Math.ceil(H);
+  tcan.width = tw; tcan.height = th;
+  tctx.fillStyle = '#000'; tctx.fillRect(0, 0, tw, th);
+  tctx.font = `italic ${fs}px ${FONT}`; tctx.textAlign = 'center'; tctx.textBaseline = 'middle';
+  tctx.fillStyle = '#fff'; tctx.strokeStyle = '#fff'; tctx.lineWidth = Math.max(1, fs * 0.025); tctx.lineJoin = 'round';
+  lines.forEach((l, i) => { const y = cy - blockH / 2 + lh * (i + 0.5); tctx.fillText(l, cx, y); tctx.strokeText(l, cx, y); });
+  bc1.width = Math.max(1, Math.ceil(tw / 3)); bc1.height = Math.max(1, Math.ceil(th / 3));
+  b1.imageSmoothingQuality = 'high'; b1.drawImage(tcan, 0, 0, bc1.width, bc1.height);
+  bc2.width = Math.max(1, Math.ceil(tw / 9)); bc2.height = Math.max(1, Math.ceil(th / 9));
+  b2.imageSmoothingQuality = 'high'; b2.drawImage(bc1, 0, 0, bc2.width, bc2.height);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texS);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, tcan);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texB);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bc2);
+  txt.centerAlong = horiz ? cx : cy;
+  txt.halfAlong = horiz ? widest / 2 : blockH / 2;
+  return true;
+}
+function beginText(text){
+  renderText(text);
+  txt.text = text; txt.state = 'forming'; txt.t = 0; txt.amt = 0; txt.focus = 0; txt.prevBefore = true;
+}
+function requestText(text, who){
+  els.said.textContent = (who === 'you' ? 'You wrote in the water: ' : 'The water says: ') + text;
+  if (txt.state === 'empty') beginText(text);
+  else { txt.pending = text; txt.state = 'fadingOut'; txt.t = 0; txt.amt0 = txt.amt; txt.focus0 = txt.focus; }
+}
+function release(){ txt.state = 'releasing'; txt.t = 0; }
+function updateText(dt){
+  switch (txt.state){
+    case 'forming':
+      txt.t += dt; txt.amt = Math.min(1, txt.t / 1.3); txt.focus = easeOut(Math.min(1, txt.t / 2.6));
+      if (txt.t >= 2.6){ txt.state = 'holding'; txt.hold = 0; }
+      break;
+    case 'holding':
+      txt.hold += dt; txt.amt = 1; txt.focus = 1;
+      if (txt.hold > 32) release();
+      break;
+    case 'releasing':
+      txt.t += dt; txt.focus = Math.max(0, 1 - txt.t / 1.4); txt.amt = Math.max(0, 1 - txt.t / 2.8);
+      if (txt.amt <= 0){ txt.state = 'empty'; txt.endedAt = simT; txt.text = ''; }
+      break;
+    case 'fadingOut': {
+      txt.t += dt; const k = Math.max(0, 1 - txt.t / 0.5);
+      txt.amt = txt.amt0 * k; txt.focus = txt.focus0 * k;
+      if (k <= 0){ const p = txt.pending; txt.pending = null; beginText(p); }
+      break;
+    }
+  }
+  // the swimmer's head reaching the first letter washes the words out
+  const lead = txt.centerAlong - sw.dir * txt.halfAlong;
+  const before = !sw.crossing || (sw.dir > 0 ? sw.along < lead : sw.along > lead);
+  if (txt.state === 'holding' && txt.hold > 0.8 && txt.prevBefore && !before) release();
+  txt.prevBefore = before;
+}
+
+const FIRST = ['hey kevin', 'lane four is yours'];
+const DECK = [
+  'long and smooth', 'one more length', 'breathe every three', 'the water keeps nothing',
+  'still here', 'every shape is borrowed', 'nothing is lost, just rearranged', 'just happy to be here',
+  'LFG', 'namaste', 'streamline off every wall', 'swim fast, rest well', 'love & light',
+  'the mile is 66 small things', 'eyes down, hips up'
+];
+let deck = [];
+const queue = FIRST.slice();
+let fontReady = false, nextIdleAt = 0;
+function nextPhrase(){ if (queue.length) return queue.shift(); if (!deck.length) deck = shuffle(DECK.slice()); return deck.pop(); }
+function idleTick(){
+  if (!fontReady || txt.state !== 'empty' || simT < nextIdleAt || simT - txt.endedAt < 1.0) return;
+  requestText(nextPhrase(), 'me');
+}
+
+/* ================= HUD + storage ================= */
+let statusTimer = 0;
+function status(text){ els.status.textContent = text; els.status.classList.add('show'); clearTimeout(statusTimer); statusTimer = setTimeout(() => els.status.classList.remove('show'), 4200); }
+let hudLen = -1;
+function updateHud(){
+  if (sw.length !== hudLen){ els.length.textContent = `Length ${sw.length} of ${LENGTHS}`; hudLen = sw.length; }
+  els.clock.textContent = fmt(sw.clock);
+  els.mile.style.width = (clamp(sw.clock / (LENGTHS * CYCLE), 0, 1) * 100).toFixed(2) + '%';
+}
+const KEY = 'lane-four:v1';
+function loadState(){
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (s && s.length >= 1 && s.length <= LENGTHS && s.clock >= 0){ sw.length = s.length | 0; sw.clock = Math.min(+s.clock, (sw.length - 1) * CYCLE); sw.dir = sw.length % 2 ? 1 : -1; }
+  } catch (e) {}
+}
+function saveState(){ try { localStorage.setItem(KEY, JSON.stringify({ length: sw.length, clock: +sw.clock.toFixed(1) })); } catch (e) {} }
+
+/* ================= input ================= */
+const ptr = { has: false, down: false, x: 0, y: 0 };
+canvas.addEventListener('pointerdown', e => {
+  ptr.down = true; ptr.has = true; ptr.x = e.clientX; ptr.y = e.clientY;
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+  drop(e.clientX, e.clientY, 4.5, 5.0);
+});
+canvas.addEventListener('pointermove', e => {
+  const x = e.clientX, y = e.clientY;
+  if (!ptr.has){ ptr.has = true; ptr.x = x; ptr.y = y; return; }
+  const amp = (ptr.down || e.pointerType === 'touch') ? 1.1 : 0.35;
+  const dist = Math.hypot(x - ptr.x, y - ptr.y);
+  const n = Math.min(40, Math.ceil(dist / (cs * 2)));
+  for (let i = 1; i <= n; i++){ const k = i / n; drop(ptr.x + (x - ptr.x) * k, ptr.y + (y - ptr.y) * k, 2.6, amp * 0.55); }
+  ptr.x = x; ptr.y = y;
+});
+window.addEventListener('pointerup', () => { ptr.down = false; });
+window.addEventListener('pointercancel', () => { ptr.down = false; });
+canvas.addEventListener('pointerleave', () => { if (!ptr.down) ptr.has = false; });
+
+els.form.addEventListener('submit', e => {
+  e.preventDefault();
+  const v = els.input.value.trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!v){ els.input.focus(); return; }
+  els.input.value = '';
+  requestText(v, 'you');
+  nextIdleAt = simT + 14;
+});
+
+function openNote(){ els.noteWrap.hidden = false; els.noteClose.focus(); }
+function closeNote(){ els.noteWrap.hidden = true; els.noteBtn.focus(); }
+els.noteBtn.addEventListener('click', openNote);
+els.noteClose.addEventListener('click', closeNote);
+els.noteWrap.addEventListener('click', e => { if (e.target === els.noteWrap) closeNote(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !els.noteWrap.hidden) closeNote(); });
+
+let resizeRaf = 0;
+window.addEventListener('resize', () => { cancelAnimationFrame(resizeRaf); resizeRaf = requestAnimationFrame(resize); });
+window.addEventListener('pagehide', saveState);
+setInterval(saveState, 5000);
+
+let running = true;
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); running = false; });
+canvas.addEventListener('webglcontextrestored', () => {
+  try { setupGL(); resize(); running = true; last = performance.now(); requestAnimationFrame(frame); } catch (err) { els.nogl.hidden = false; }
+});
+
+/* ================= loop ================= */
+let simT = 0, acc = 0;
+const STEP = 1 / 120;
+function advance(dt){
+  simT += dt;
+  updateSwimmer(dt);
+  updateText(dt);
+  idleTick();
+  if (rand() < dt * 3) drop(rand() * W, rand() * H, 2, 0.25);
+  acc += dt;
+  let n = 0;
+  while (acc >= STEP && n < 4){ simStep(); acc -= STEP; n++; }
+  if (n === 4) acc = 0;
+}
+function draw(){
+  uploadField();
+  gl.uniform1f(U.uTime, simT * (reduceMotion ? 0.5 : 1));
+  gl.uniform1f(U.uFocus, txt.focus);
+  gl.uniform1f(U.uAmt, txt.amt);
+  gl.uniform4f(U.uSwim, sw.along, sw.across, sw.dir, sw.phase);
+  gl.uniform2f(U.uSwimB, bodyL, sw.vis);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texS);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texB);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+loadState();
+resize();
+startLength();
+for (let i = 0; i < 180; i++) advance(1 / 60);   // first frame opens mid-length, wake already behind the swimmer
+nextIdleAt = simT + 0.4;
+updateHud();
+draw();
+
+(async () => {
+  try {
+    if (document.fonts && document.fonts.load){
+      await Promise.race([document.fonts.load('italic 80px "DM Serif Display"'), new Promise(r => setTimeout(r, 1800))]);
+    }
+  } catch (e) {}
+  fontReady = true;
+})();
+
+let last = performance.now(), slow = 0, hudT = 0;
+function frame(now){
+  if (!running) return;
+  let dt = (now - last) / 1000; last = now;
+  if (!(dt > 0)) dt = 0.001;
+  if (dt > 0.05) dt = 0.05;
+  if (dt > 0.034) slow++; else if (slow > 0) slow--;
+  if (slow > 45 && dprCap > 0.75){ dprCap = Math.max(0.75, dprCap - 0.35); gridBudget = Math.round(gridBudget * 0.75); slow = 0; resize(); }
+  advance(dt);
+  draw();
+  hudT += dt; if (hudT > 0.1){ hudT = 0; updateHud(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>

@@ -1,0 +1,10 @@
+import { load, shot } from './load.mjs';
+const env = load();
+const { BB, errors, doc } = env;
+console.log('BB keys', BB ? Object.keys(BB).length : 'MISSING');
+console.log('title on', doc.getElementById('screen').classList.contains('on'));
+console.log(doc.getElementById('screen').textContent.slice(0, 300));
+BB.startRun({ cls: 'diver', seed: 'smoke1' });
+shot(env, 'bb/s_play.png');
+console.log('floor', BB.UI.S.floor, 'hp', BB.UI.S.p.hp, 'mobs', BB.UI.S.mobs.length, 'items', BB.UI.S.items.length);
+console.log('errors', errors);

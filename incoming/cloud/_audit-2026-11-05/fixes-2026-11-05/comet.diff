@@ -1,0 +1,123 @@
+--- orig.html	2026-11-05 19:17:08.156079180 +0000
++++ index.html	2026-11-05 19:25:00.348502330 +0000
+@@ -215,7 +215,7 @@
+       <div class="pane" data-pane="nova">
+         <div class="novaCard">
+           <div class="novaTitle">Go Supernova</div>
+-          <p>Collapse this orchard into pure light. Stardrops, growers and upgrades reset, but you keep <b>Seeds of Light</b>. Every Seed permanently adds <b id="nvPer">+10%</b> to all growth, and can be planted in the Starseed Tree below.</p>
++          <p>Collapse this orchard into pure light. Stardrops, growers and upgrades reset, but you keep <b>Seeds of Light</b>. Seeds permanently boost all growth (your next Seed adds <b id="nvPer">+25%</b>; each one adds a little less than the last), and can be planted in the Starseed Tree below.</p>
+           <div class="nstats">
+             <div><span id="nvGain">0</span><small>Seeds on reset</small></div>
+             <div><span id="nvHave">0</span><small>Seeds to plant</small></div>
+@@ -270,6 +270,10 @@
+ ];
+ const MILESTONES=[25,50,100,150,200,300,400,500];
+ const SEED_K=6e7;
++// Seeds of Light (save v2): the bonus is 1+0.25*sqrt(Seeds), so each Seed adds a bit less than the last, and a
++// Supernova pays (1+log10(runEarned/SEED_K))^1.5 Seeds, so Seeds follow orders of magnitude grown, not raw totals.
++// v1 was 1+0.1*Seeds and sqrt(runEarned/SEED_K), which compounded into a runaway economy within two hours.
++const SEED_A=0.25,SEED_P=0.5,SAVE_V=2;
+ const UPG=[];
+ (function(){
+   const words=['Tuned','Gilded','Resonant','Luminous','Celestial','Eternal'];
+@@ -292,7 +296,7 @@
+   {id:'kindle', name:'Kindled Soil',   cost:1, req:null,      lv:0, desc:'Every Supernova starts you with 10 Sprout Drones'},
+   {id:'deep',   name:'Deep Roots',     cost:2, req:'kindle',  lv:1, desc:'Offline growth 50% to 100%, cap 8h to 12h'},
+   {id:'gravity',name:'Gentle Gravity', cost:4, req:'kindle',  lv:1, desc:'Grower prices rise 1.14x instead of 1.15x'},
+-  {id:'memory', name:'Constellation Memory',cost:6,req:'gravity',lv:2,desc:'Each Seed of Light gives +15% instead of +10%'},
++  {id:'memory', name:'Constellation Memory',cost:6,req:'gravity',lv:2,desc:'Seeds of Light give 50% more growth'},
+   {id:'heart',  name:'Heartwood',      cost:12,req:'memory',  lv:3, desc:'Milestones give x3 instead of x2'},
+   {id:'palms',  name:'Warm Hands',     cost:1, req:null,      lv:0, desc:'Tap power x3'},
+   {id:'wind',   name:'Moth Wind',      cost:3, req:'palms',   lv:1, desc:'Auto-harvest 3 taps every second'},
+@@ -341,7 +345,7 @@
+ ];
+ const ACH_PCT=0.02;
+ function newState(){
+-  return {v:1,drops:0,runEarned:0,totalEarned:0,owned:[0,0,0,0,0,0,0,0],upg:{},seeds:0,seedsSpent:0,tree:{},ach:{},
++  return {v:SAVE_V,drops:0,runEarned:0,totalEarned:0,owned:[0,0,0,0,0,0,0,0],upg:{},seeds:0,seedsSpent:0,tree:{},ach:{},
+     taps:0,comets:0,novas:0,play:0,bestCombo:0,lastSave:Date.now(),muted:false,noShake:false,buyMode:1,tab:'grove',
+     frenzy:{prod:0,prodMax:0,tap:0,tapMax:0},cometTimer:30};
+ }
+@@ -361,10 +365,11 @@
+ function msMult(S,t){let m=1;const f=S.tree.heart?3:2;for(const h of MILESTONES)if(S.owned[t]>=h)m*=f;return m}
+ function nextMilestone(S,t){for(const h of MILESTONES)if(S.owned[t]<h)return h;return 0}
+ function tierMult(S,t){let m=1;for(const u of UPG)if(u.kind==='tier'&&u.t===t&&S.upg[u.id])m*=u.mult;return m*msMult(S,t)}
+-function seedPct(S){return S.tree.memory?0.15:0.10}
++function seedBonusOf(n,memory){return 1+SEED_A*(memory?1.5:1)*Math.pow(Math.max(0,n),SEED_P)}
++function seedBonus(S){return seedBonusOf(S.seeds,S.tree.memory)}
+ function globalMult(S){
+   let m=1;for(const u of UPG)if(u.kind==='all'&&S.upg[u.id])m*=u.mult;
+-  return m*(1+S.seeds*seedPct(S))*(1+achCount(S)*ACH_PCT);
++  return m*seedBonus(S)*(1+achCount(S)*ACH_PCT);
+ }
+ function tierRate(S,t){return TIERS[t].rate*tierMult(S,t)*globalMult(S)}
+ function sps(S){const g=globalMult(S);let s=0;for(let t=0;t<8;t++)if(S.owned[t])s+=TIERS[t].rate*S.owned[t]*tierMult(S,t);return s*g}
+@@ -374,10 +379,10 @@
+ function echoPct(S){let p=0;for(const u of UPG)if(u.kind==='echo'&&S.upg[u.id])p+=u.pct;return p}
+ function tapPower(S,liveSps,combo){
+   const comboM=1+Math.min(combo||0,50)*0.02, fr=S.frenzy.tap>0?15:1;
+-  return (tapMult(S)*(1+S.seeds*seedPct(S))*(1+achCount(S)*ACH_PCT)+echoPct(S)*liveSps)*comboM*fr;
++  return (tapMult(S)*seedBonus(S)*(1+achCount(S)*ACH_PCT)+echoPct(S)*liveSps)*comboM*fr;
+ }
+-function seedGain(S){return Math.floor(Math.sqrt(Math.max(0,S.runEarned)/SEED_K))}
+-function earnedForSeeds(n){return SEED_K*n*n}
++function seedGain(S){const x=Math.max(0,S.runEarned)/SEED_K;return x<1?0:Math.floor(Math.pow(1+Math.log10(x),1.5)+1e-9)}
++function earnedForSeeds(n){return n<1?0:SEED_K*Math.pow(10,Math.pow(n,2/3)-1)}
+ function cometLump(S){const s=sps(S);return (Math.max(s*120,Math.min(S.drops*0.2,s*900))+tapPower(S,s,0)*40)*((S.upg.rich?2:1)*(S.tree.twin?2:1))}
+ function cometInterval(S,rnd){return (60+rnd*60)*(S.upg.lure?0.75:1)*(S.tree.whistle?0.7:1)}
+ function frenzyLen(S,base){return (base+(S.upg.tail?10:0))*(S.tree.longlight?1.5:1)}
+@@ -435,9 +440,16 @@
+   if(o.upg&&typeof o.upg==='object')for(const u of UPG)if(o.upg[u.id]===true)d.upg[u.id]=true;
+   if(o.tree&&typeof o.tree==='object')for(const p of PTREE)if(o.tree[p.id]===true)d.tree[p.id]=true;
+   if(o.ach&&typeof o.ach==='object')for(const a of ACH)if(o.ach[a[0]]===true)d.ach[a[0]]=true;
+-  d.seeds=Math.floor(num(o.seeds,0,1e12));
++  d.seeds=Math.floor(num(o.seeds,0,1e30));
+   let spent=0;for(const p of PTREE)if(d.tree[p.id])spent+=p.cost;
+   d.seedsSpent=spent;if(d.seeds<spent)d.seeds=spent;
++  // v1 saves: Seeds were worth 1+0.1*Seeds (0.15 with Constellation Memory). Re-mint them once so the new curve
++  // gives the same boost they already had, so no orchard loses production on load. Tree and other fields are kept.
++  if(!(o.v>=SAVE_V)&&d.seeds>0){
++    const oldBonus=1+d.seeds*(d.tree.memory?0.15:0.10);
++    const need=Math.min(1e30,Math.ceil(Math.pow((oldBonus-1)/(SEED_A*(d.tree.memory?1.5:1)),1/SEED_P)-1e-6));
++    if(need>d.seeds){d.reminted=need-d.seeds;d.seeds=need}
++  }
+   d.taps=Math.floor(num(o.taps,0));d.comets=Math.floor(num(o.comets,0));d.novas=Math.floor(num(o.novas,0,1e9));
+   d.play=num(o.play,0);d.bestCombo=Math.floor(num(o.bestCombo,0,1e9));
+   d.lastSave=Math.min(num(o.lastSave,Date.now()),Date.now());
+@@ -758,7 +770,7 @@
+   R.combo=0;R.comet=null;S.cometTimer=25;R.treeLv=-1;R.upgSig='';R.ptSig='';
+   sfxNovaBoom();addFlash(0.85,'255,244,220');addShake(12);R.hitstop=0.12;
+   const geo=R.geo;if(geo){spark(geo.cx,geo.by-geo.L,120,520,SPR.white);spark(geo.cx,geo.by-geo.L,80,320,SPR.amber)}
+-  toast('<b>Supernova!</b> +'+fmt(g)+' Seeds of Light. All growth now +'+Math.round(S.seeds*seedPct(S)*100)+'%',true);
++  toast('<b>Supernova!</b> +'+fmt(g)+' Seeds of Light. All growth now +'+fmt(Math.round((seedBonus(S)-1)*100))+'%',true);
+   buildGrove();save();
+ }
+ let resetTimer=0;
+@@ -1002,14 +1014,14 @@
+ }
+ function updNova(force){
+   const g=seedGain(S),have=S.seeds-S.seedsSpent;
+-  $('#nvGain').textContent=fmt(g);$('#nvHave').textContent=fmt(have);$('#nvBonus').textContent='+'+fmt(Math.round(S.seeds*seedPct(S)*100))+'%';
+-  $('#nvPer').textContent='+'+Math.round(seedPct(S)*100)+'%';
++  $('#nvGain').textContent=fmt(g);$('#nvHave').textContent=fmt(have);$('#nvBonus').textContent='+'+fmt(Math.round((seedBonus(S)-1)*100))+'%';
++  const per=(seedBonusOf(S.seeds+1,S.tree.memory)-seedBonus(S))*100;$('#nvPer').textContent='+'+(per>=1?fmt(Math.round(per)):per.toFixed(2))+'%';
+   const nx=earnedForSeeds(g+1),pv=earnedForSeeds(g);
+   $('#nvBar').style.width=Math.min(100,(S.runEarned-pv)/(nx-pv)*100)+'%';
+   $('#nvNext').textContent=g<1?('Grow '+fmt(nx)+' stardrops in one run to earn your first Seed ('+fmt(S.runEarned)+' so far)'):('Next Seed at '+fmt(nx)+' grown this run');
+   const b=$('#novaBtn');b.disabled=g<1||R.novaAnim>0;
+   if(!R.novaArm)b.textContent=g<1?'Not enough light yet':'Go Supernova (+'+fmt(g)+' Seeds)';
+-  $('#novaDot').classList.toggle('on',g>=1&&(S.novas===0||g>=Math.max(2,S.seeds*0.5)));$('#novaDot').textContent=g>=1?'!':'';
++  $('#novaDot').classList.toggle('on',g>=1&&(S.novas===0||g>=Math.max(2,Math.min(S.seeds*0.5,2*Math.sqrt(S.seeds)))));$('#novaDot').textContent=g>=1?'!':'';
+   // tree
+   const sig=PTREE.map(p=>(S.tree[p.id]?1:0)+''+((S.seeds-S.seedsSpent)>=p.cost?1:0)).join('')+have;
+   if(sig!==R.ptSig||force){R.ptSig=sig;const box=$('#ptree');box.innerHTML='';
+@@ -1164,6 +1176,9 @@
+   if(had){const away=(Date.now()-S.lastSave)/1000;if(away>5)applyOffline(away,true)}
+   R.lastWall=Date.now();R.last=performance.now();
+   checkAch();R.seenAch=0;R.featSig='';
++  if(S.reminted){const n=S.reminted;delete S.reminted;
++    const note=()=>toast('<b>Seeds of Light re-minted.</b> Seeds now follow a gentler curve, so you got +'+fmt(n)+' Seeds and your growth boost is unchanged.',true);
++    if($('#modal').hidden)note();else{const cb=R.modalCb;R.modalCb=()=>{if(cb)cb();note()}}}
+   ui();save();
+   try{if(window.claude&&window.claude.hot&&window.claude.hot.snapshot)window.claude.hot.snapshot(()=>S)}catch(e){}
+   requestAnimationFrame(frame);

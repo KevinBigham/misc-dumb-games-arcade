@@ -1,0 +1,46 @@
+--- orig.html	2026-11-05 19:17:07.760089479 +0000
++++ index.html	2026-11-05 19:23:32.733915150 +0000
+@@ -215,20 +215,27 @@
+   try{
+     const raw=localStorage.getItem(SAVE_KEY);
+     if(raw){
+-      const o=JSON.parse(raw)||{};
++      const o=JSON.parse(raw);
+       const d=defSave();
+-      save=Object.assign(d,o);
+-      save.meta=Object.assign(defSave().meta,o.meta||{});
+-      save.heroes=Object.assign({cap:true},o.heroes||{});
+-      if(!save.heroes[save.hero]) save.hero='cap';
+-      // evolutions is new: old saves lack it, so default safely and keep only clean string ids
+-      save.evolutions=Array.isArray(o.evolutions)?o.evolutions.filter(x=>typeof x==='string'):[];
++      if(o&&typeof o==='object'&&!Array.isArray(o)){
++        // check each field on its own: a wrong type or range falls back to its default, the rest are kept
++        const isObj=v=>v&&typeof v==='object'&&!Array.isArray(v);
++        const num=v=>typeof v==='number'&&isFinite(v);
++        for(const k of ['glow','bestTime','bestScore','wins','runs','kills']) if(num(o[k])) d[k]=clamp(o[k],0,1e12);
++        if(isObj(o.meta)) for(const m of META){ const v=o.meta[m.id]; if(num(v)) d.meta[m.id]=clamp(Math.floor(v),0,m.max); }
++        if(isObj(o.heroes)) for(const k of Object.keys(HEROES)) if(o.heroes[k]===true) d.heroes[k]=true;
++        d.heroes.cap=true;
++        if(typeof o.hero==='string'&&Object.prototype.hasOwnProperty.call(HEROES,o.hero)&&d.heroes[o.hero]===true) d.hero=o.hero;
++        if(typeof o.muted==='boolean') d.muted=o.muted;
++        // evolutions is new: old saves lack it, so default safely and keep only known ids, once each
++        if(Array.isArray(o.evolutions)) for(const x of o.evolutions) if(typeof x==='string'&&evoById(x)&&d.evolutions.indexOf(x)<0) d.evolutions.push(x);
++      }
++      save=d;
+     }
+   }catch(e){ save=defSave(); }
+   if(!Array.isArray(save.evolutions)) save.evolutions=[];
+ }
+ function persist(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(save)); }catch(e){} }
+-loadSave();
+ 
+ // ====================== audio ======================
+ const AU={
+@@ -434,6 +441,7 @@
+ const EVO_GLOW=60; // glow bonus for each first-time discovery
+ const upgById=id=>{ for(let i=0;i<UPG.length;i++) if(UPG[i].id===id) return UPG[i]; return null; };
+ const evoById=id=>{ for(let i=0;i<EVOS.length;i++) if(EVOS[i].id===id) return EVOS[i]; return null; };
++loadSave(); // after HEROES, META and EVOS, which the save checks use
+ const isMaxed=id=>{ const u=upgById(id); return !!u&&(G.upgrades[id]||0)>=u.max; };
+ function evoReady(ev){ return !G.evolved[ev.id]&&isMaxed(ev.a)&&isMaxed(ev.b); }
+ // If u is one half of an untaken recipe whose other half is already maxed, return {ev,partner}
