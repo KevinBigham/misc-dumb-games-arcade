@@ -1,0 +1,533 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Negative Split</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<style>
+/* Layout: one-screen arcade cabinet. A fixed 16:9 canvas scaled to fit, letterboxed on natatorium-dark. */
+:root{
+  --bg:#07111d;         /* natatorium at night */
+  --deck:#2b3a4a;       /* wet pool deck */
+  --water:#0f6fb5;      /* lane water */
+  --water-deep:#0a4f86;
+  --rope:#f2c230;       /* lane rope yellow */
+  --rope-alt:#1b5fa8;
+  --red:#e8402f;        /* 15m rope + burn */
+  --gold:#ffd23f;       /* scoreboard digits */
+  --fg:#e9eef5;
+  --muted:#8aa0b8;
+  --green:#38d27a;
+  --font:'Press Start 2P',ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);overflow:hidden;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:8px;box-sizing:border-box}
+#wrap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+canvas{display:block;max-width:100%;max-height:100%;image-rendering:pixelated;background:#000;border:2px solid #1d2e42;box-shadow:0 0 0 6px #04090f,0 0 40px rgba(15,111,181,.35);touch-action:none;user-select:none;-webkit-user-select:none;outline:none}
+canvas:focus-visible{border-color:var(--gold)}
+#foot{font-size:9px;color:var(--muted);text-align:center;line-height:1.8;max-width:900px}
+#foot b{color:var(--fg)}
+@media (prefers-reduced-motion:reduce){canvas{box-shadow:none}}
+</style>
+<div id="wrap">
+  <canvas id="c" width="960" height="540" tabindex="0" aria-label="Negative Split swim racing game"></canvas>
+  <div id="foot"><b>←/→</b> (or A/D) alternate strokes &nbsp;·&nbsp; <b>SPACE</b> start, flip turn, hold for dolphin kicks &nbsp;·&nbsp; <b>M</b> sound &nbsp;·&nbsp; Touch: tap left/right halves to stroke, tap the pool for SPACE</div>
+</div>
+<script>
+//@SIM-BEGIN
+// ===== Race model (pure; also run headless for tuning) =====
+const TS = 2.2;          // scoreboard seconds per sim second
+const POOL = 25;         // yards, short course
+const FIFTEEN_M = 16.4;  // 15 meters in yards
+const EVENTS = [
+  {key:'50', name:'50 FREE',  yds:50,  par:21.4,  cad:3.4, thr:0.86, blurb:'Pure speed. No pacing. Just go.'},
+  {key:'100',name:'100 FREE', yds:100, par:47.2,  cad:3.0, thr:0.88, blurb:'Build the first 50. Hold the third 25.'},
+  {key:'200',name:'200 FREE', yds:200, par:103.5, cad:2.7, thr:0.91, blurb:'The honest event. The third 50 tells the truth.'},
+  {key:'500',name:'500 FREE', yds:500, par:278.0, cad:2.4, thr:0.95, blurb:'Twenty lengths. Settle in. Close like a freight train.'},
+];
+function mkPlayer(ev){
+  const lengths = ev.yds/POOL;
+  // vmax in yards per sim second such that ~0.95 cruise + turn/underwater gains lands near par
+  const vmax = (ev.yds/(ev.par/TS))*0.965;
+  return {name:'YOU', team:'PWR', isPlayer:true, lane:3, ev, lengths, vmax,
+    x:0, dir:1, len:0, v:0, cad:0, flow:0, burn:0, o2:100, bonk:false,
+    state:'blocks', // blocks|under|surface|coast|stall|done|dq
+    lastKey:null, lastPress:-9, lastInt:0, under:0, stallT:0, gasp:0,
+    turnQ:null, turnMsg:'', msgT:0, splits:[], lapT:0, time:null, reaction:null, dq:null, lunge:0, wallDist:25};
+}
+function cadFactor(p){ return Math.min(p.cad/p.ev.cad, 1.25); }
+function stroke(p, key, t){
+  if(p.state!=='surface'&&p.state!=='coast') return false;
+  if(key===p.lastKey){ p.flow=Math.max(0,p.flow-0.2); p.sloppy=t; return false; } // same arm twice = sloppy
+  const dt=t-p.lastPress;
+  if(dt<0.08) return false;
+  const inst=1/Math.min(dt,1.2);
+  p.cad = p.lastPress<0 ? inst : p.cad*0.55+inst*0.45;
+  if(p.lastInt>0){ const dev=Math.abs(dt-p.lastInt)/p.lastInt; p.flow = dev<0.18 ? Math.min(1,p.flow+0.07) : Math.max(0,p.flow-0.12); }
+  p.lastInt=dt; p.lastPress=t; p.lastKey=key; p.phase=(p.phase||0)+1;
+  return true;
+}
+function action(p, down, t, race){
+  if(down){
+    if(p.state==='blocks'){
+      if(race.phase!=='gun'){ p.state='dq'; p.dq='FALSE START'; return; }
+      p.reaction=(t-race.gunAt)*TS; p.state='under'; p.under=0; p.v=p.vmax*1.55; p.o2=100; p.holding=true; return;
+    }
+    if(p.state==='surface'||p.state==='coast'){
+      const d=p.wallDist, lastLen = p.len===p.lengths-1;
+      if(lastLen){ if(d<2.0&&p.lunge<=0){ p.lunge=0.5; } return; }
+      if(d<3.2){ doTurn(p,d,t); p.holding=true; }
+      return;
+    }
+  } else { p.holding=false; }
+}
+function doTurn(p,d,t){
+  let push,q;
+  if(Math.abs(d-0.9)<0.4){ push=1.42; q='PERFECT'; }
+  else if(d<1.9){ push=1.18; q='GOOD'; }
+  else { p.state='coast'; p.coastPush=1.0; p.turnQ='EARLY'; p.turnMsg='EARLY'; p.msgT=1.2; return; }
+  turnNow(p,push,q,t);
+}
+function turnNow(p,push,q,t){
+  p.len++; p.dir*=-1; p.x = p.dir>0?0:POOL; p.state='under'; p.under=0; p.v=p.vmax*push; p.o2=Math.min(100,p.o2+10);
+  p.turnQ=q; p.turnMsg=q; p.msgT=1.2; p.cad=0; p.lastPress=-9; p.lastKey=null;
+  p.turns=(p.turns||[]); p.turns.push(q==='PERFECT'?1:q==='GOOD'?0.6:0);
+  if(p.len%2===0){ p.splits.push((t-p.lapT)*TS); p.lapT=t; }
+}
+function stepPlayer(p, dt, t){
+  if(p.state==='done'||p.state==='dq'||p.state==='blocks') return;
+  const vm = p.vmax*(p.bonk?0.62:1);
+  if(p.msgT>0) p.msgT-=dt;
+  if(p.lunge>0) p.lunge-=dt;
+  if(p.gasp>0) p.gasp-=dt;
+  if(p.state==='under'){
+    p.under+=dt; p.o2-=30*dt;
+    // dolphin kicks: fast, decaying toward surface speed
+    const target = vm*(1.0+0.3*Math.exp(-p.under*0.9));
+    p.v += (target-p.v)*Math.min(1,dt*2.5);
+    const fromWall = p.dir>0 ? p.x : POOL-p.x;
+    if(fromWall>FIFTEEN_M){ p.state='dq'; p.dq='15 METER RULE'; return; }
+    if(!p.holding || p.o2<=0){ p.state='surface'; if(p.o2<=0){p.gasp=1.6;} p.cad=p.ev.cad*0.75; p.lastPress=t; p.lastInt=0; }
+  } else if(p.state==='stall'){
+    p.stallT-=dt; p.v=0;
+    if(p.stallT<=0){ turnNow(p,0.85,'LATE',t); }
+    return;
+  } else {
+    // surface / coast
+    if(p.lastPress>0 && t-p.lastPress>0.5) p.cad*=Math.exp(-dt*3.5);
+    const cf=cadFactor(p);
+    let target = vm*(0.3+0.7*Math.pow(cf,0.9))*(1+0.05*p.flow);
+    if(p.state==='coast') target = vm*0.55;
+    if(p.gasp>0) target*=0.78;
+    if(p.lunge>0) target*=1.12;
+    p.v += (target-p.v)*Math.min(1,dt*2.2);
+    p.o2=Math.min(100,p.o2+28*dt);
+  }
+  // burn
+  const rel=p.v/p.vmax, thr=p.ev.thr;
+  let rate=0;
+  if(p.state!=='under'){
+    rate = 16*Math.max(0,rel-thr)*(1-0.3*p.flow) + 7*Math.max(0, p.cad/p.ev.cad-1.1);
+    if(rel<thr-0.05) rate -= 3;
+  }
+  p.burn=Math.max(0,Math.min(100,p.burn+rate*dt));
+  if(p.burn>=100&&!p.bonk){ p.bonk=true; p.turnMsg='PIANO'; p.msgT=2; }
+  if(p.bonk&&p.burn<45) p.bonk=false;
+  // move
+  p.x += p.v*p.dir*dt;
+  p.wallDist = p.dir>0 ? POOL-p.x : p.x;
+  const lastLen = p.len===p.lengths-1;
+  if(p.wallDist<=0){
+    if(lastLen){ p.state='done'; p.time=t*TS; p.splits.push((t-p.lapT)*TS); p.x=p.dir>0?POOL:0; }
+    else if(p.state==='coast'){ turnNow(p,p.coastPush,'EARLY',t); }
+    else if(p.state==='under'){ /* can't happen */ }
+    else { p.state='stall'; p.stallT=0.45; p.x=p.dir>0?POOL:0; p.turnMsg='LATE'; p.msgT=1.2; }
+  }
+}
+// ---- AI ----
+const PROFILES = {
+  sprinter:(i,n)=> i<n/2 ? 1.05 : 0.95,
+  even:    (i,n)=> 1.0,
+  closer:  (i,n)=> i<n*0.6 ? 0.975 : 1.04,
+  fader:   (i,n)=> 1.08 - 0.14*(i/(n-1||1)),
+};
+function mkAI(ev, def){
+  const lengths=ev.yds/POOL;
+  const time = ev.par*def.factor;                   // scoreboard seconds
+  const avg = ev.yds/(time/TS)/1.03;                // yards per sim sec, minus wall boost share
+  const prof = PROFILES[def.type];
+  const noise=[]; for(let i=0;i<lengths;i++) noise.push(1+(Math.random()-0.5)*0.03);
+  return {name:def.name, team:def.team, isPlayer:false, lane:def.lane, ev, lengths, x:0, dir:1, len:0, v:0,
+    state:'blocks', reaction:(0.62+Math.random()*0.18), avg, prof, noise, wallT:0, splits:[], lapT:0, time:null, phase:0, dq:null,
+    under:0, holding:true};
+}
+function stepAI(a, dt, t, race){
+  if(a.state==='done'||a.state==='blocks'&&race.phase!=='gun') return;
+  if(a.state==='blocks'){ if((t-race.gunAt)*TS>=a.reaction){ a.state='under'; a.wallT=0; a.v=a.avg*1.5; } else return; }
+  a.wallT+=dt; a.phase+=dt*3;
+  const i=a.len, n=a.lengths;
+  const base = a.avg*a.prof(i,n)*a.noise[i];
+  const boost = 1+0.32*Math.exp(-a.wallT*1.3);
+  a.v += (base*boost - a.v)*Math.min(1,dt*3);
+  if(a.state==='under' && a.wallT>1.0) a.state='surface';
+  a.x += a.v*a.dir*dt;
+  const wd = a.dir>0?POOL-a.x:a.x;
+  if(wd<=0){
+    if(a.len===n-1){ a.state='done'; a.time=t*TS; a.splits.push((t-a.lapT)*TS); a.x=a.dir>0?POOL:0; }
+    else { a.len++; a.dir*=-1; a.x=a.dir>0?0:POOL; a.state='under'; a.wallT=0; if(a.len%2===0){a.splits.push((t-a.lapT)*TS); a.lapT=t;} }
+  }
+}
+//@SIM-END
+
+// ===== Game shell =====
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const W=960,H=540;
+const FONT=(s)=>`${s}px 'Press Start 2P',monospace`;
+let scene='title', tPrev=performance.now(), menuIdx=0, diffIdx=1, blink=0;
+const DIFFS=[{name:'JV',mul:1.07},{name:'VARSITY',mul:1.025},{name:'STATE',mul:0.985}];
+const FIELD=[
+  {name:'MARCO BELL',   team:'LKS', type:'sprinter'},
+  {name:'TYE OKONKWO',  team:'RVH', type:'even'},
+  {name:'DAX HOLLOWELL',team:'NRT', type:'closer', rival:true},
+  {name:'JUN PARK',     team:'OSG', type:'fader'},
+  {name:'LEO VANCE',    team:'LKS', type:'even'},
+];
+const TEAMCOL={PWR:'#ffd23f',LKS:'#9b59ff',RVH:'#e8402f',NRT:'#38d27a',OSG:'#ff8c2b'};
+let save={best:{},rival:1.035,wins:0,races:0};
+try{ const s=localStorage.getItem('negsplit-v1'); if(s) save=Object.assign(save,JSON.parse(s)); }catch(e){}
+function persist(){ try{ localStorage.setItem('negsplit-v1',JSON.stringify(save)); }catch(e){} }
+
+let race=null, player=null, results=null;
+function startRace(ev){
+  player=mkPlayer(ev);
+  const lanes=[1,2,4,5,6]; // player is lane 3 (index 3 → drawn as lane 4 of 6)
+  const ais=FIELD.map((d,i)=>{
+    const base = d.rival ? save.rival : 1.03+Math.random()*0.07;
+    return mkAI(ev,{...d,lane:lanes[i],factor:base*DIFFS[diffIdx].mul});
+  });
+  race={ev,t:0,phase:'mark',gunAt:0.9+1.4+Math.random()*1.8, swimmers:[player,...ais], cue:'', cueT:0, done:false, doneT:0, finishOrder:[]};
+  // lane numbering: lanes 1..6 top→bottom; player lane 4 (index 3)
+  player.lane=3; ais.forEach((a,i)=>a.lane=[0,1,2,4,5][i]);
+  scene='race'; music(false);
+}
+function fmt(s){ if(s==null) return '--.--'; const m=Math.floor(s/60), r=s-m*60; return (m>0?m+':':'')+(m>0&&r<10?'0':'')+r.toFixed(2); }
+
+// ---- Coaching cues (constraint-style, shoutable) ----
+function cue(txt,dur=2.2){ race.cue=txt; race.cueT=dur; }
+let cueTimer=0;
+function updateCues(dt){
+  cueTimer-=dt; if(cueTimer>0||player.state==='done'||player.state==='dq') return;
+  cueTimer=3.5;
+  const p=player, half=p.len/p.lengths;
+  if(p.bonk) return cue('SURVIVE. SMOOTH.');
+  if(p.ev.yds>=200 && half<0.5 && p.burn>60) return cue('TOO HOT. SETTLE.');
+  if(half>=0.75 && p.burn<75) return cue('CLOSE. GO NOW.');
+  if(p.cad/p.ev.cad>1.12) return cue('LONG ARMS. STOP SPINNING.');
+  if(p.flow>0.8) return cue('THAT RHYTHM. HOLD IT.');
+  if(p.cad/p.ev.cad<0.8 && p.state==='surface') return cue('PICK IT UP.');
+  if(half>=0.5 && half<0.75) return cue('BACK HALF. YOUR HALF.');
+}
+
+// ---- Update ----
+function update(dt){
+  blink+=dt;
+  if(scene!=='race') return;
+  const r=race; r.t+=dt;
+  if(r.phase==='mark'&&r.t>0.9){ r.phase='set'; sfx('set'); }
+  if(r.phase==='set'&&r.t>=r.gunAt){ r.phase='gun'; sfx('gun'); }
+  if(r.phase==='gun'&&player.state==='blocks'&&(r.t-r.gunAt)>1.1){ action(player,true,r.t,r); player.holding=false; }
+  for(const s of r.swimmers){
+    const was=s.state;
+    if(s.isPlayer) stepPlayer(s,dt,r.t); else stepAI(s,dt,r.t,r);
+    if(was!=='done'&&s.state==='done'){ r.finishOrder.push(s); if(s.isPlayer) sfx('finish'); }
+    if(s.isPlayer&&was!=='dq'&&s.state==='dq'){ sfx('dq'); cue(s.dq+' - DQ',4); }
+  }
+  if(player.msgT>0&&player.msgT>1.15&&player.turnQ&&player.state==='under'&&!player._sfxd){ player._sfxd=true; sfx(player.turnQ==='PERFECT'?'perfect':player.turnQ==='GOOD'?'good':'bad'); }
+  if(player.state!=='under') player._sfxd=false;
+  if(r.cueT>0) r.cueT-=dt;
+  if(r.phase==='gun') updateCues(dt);
+  const allDone = r.swimmers.every(s=>s.state==='done'||s.state==='dq');
+  const playerOut = player.state==='done'||player.state==='dq';
+  if(playerOut){ r.doneT+=dt; }
+  if(allDone || (playerOut && r.doneT>4.5) || r.t*TS>r.ev.par*1.6){ finishRace(); }
+}
+function finishRace(){
+  const r=race; const times=r.swimmers.filter(s=>s.time!=null).sort((a,b)=>a.time-b.time);
+  const place = player.time!=null ? times.indexOf(player)+1 : null;
+  const dax = r.swimmers.find(s=>s.name==='DAX HOLLOWELL');
+  const beatDax = player.time!=null && (dax.time==null||player.time<dax.time);
+  let record=false;
+  if(player.time!=null){ const b=save.best[r.ev.key]; if(b==null||player.time<b){ save.best[r.ev.key]=player.time; record=true; } }
+  save.races++; if(place===1) save.wins++;
+  if(beatDax) save.rival=Math.max(0.965,save.rival-0.012); else if(player.time!=null) save.rival=Math.min(1.06,save.rival+0.004);
+  persist();
+  const sp=player.splits, hN=Math.floor(sp.length/2);
+  const first=sp.slice(0,hN).reduce((a,b)=>a+b,0), second=sp.slice(sp.length-hN).reduce((a,b)=>a+b,0);
+  const negSplit = sp.length>=2 && second<first;
+  let note;
+  if(player.dq==='FALSE START') note='Twitchy. Wait for the beep. Reaction time is won in stillness.';
+  else if(player.dq==='15 METER RULE') note='Great kicks. Illegal kicks. Break out before the red rope.';
+  else if(player.bonk) note='You went out too hot and the pool collected on the back half. Pay it forward next time: 90% out, 100% home.';
+  else if(negSplit&&place===1) note='Negative split and the win. That is a distance swimmer\'s race.';
+  else if(negSplit) note='Faster on the back half. The result follows the pattern; keep the pattern.';
+  else if(player.turns&&player.turns.length&&player.turns.reduce((a,b)=>a+b,0)/player.turns.length<0.5) note='Your walls cost you more than your stroke did. Hit the T, flip, kick out.';
+  else if(place===1) note='W. Now do it again with a cleaner back half.';
+  else note='Even swim. Find one more gear with 75 to go, not 25.';
+  results={place,times,record,beatDax,negSplit,first,second,note,dax};
+  scene='results'; sfx(place===1?'win':'end');
+}
+
+// ---- Drawing ----
+const PX={x0:70,x1:910,y0:116,laneH:56,lanes:6};
+PX.scale=(PX.x1-PX.x0)/POOL; PX.y1=PX.y0+PX.laneH*PX.lanes;
+function xPx(yd){ return PX.x0+yd*PX.scale; }
+function laneY(l){ return PX.y0+PX.laneH*l+PX.laneH/2; }
+function txt(s,x,y,size,col,align='left',alpha=1){ ctx.globalAlpha=alpha; ctx.font=FONT(size); ctx.fillStyle=col; ctx.textAlign=align; ctx.textBaseline='top'; ctx.fillText(s,x,y); ctx.globalAlpha=1; }
+function rect(x,y,w,h,col){ ctx.fillStyle=col; ctx.fillRect(x|0,y|0,w|0,h|0); }
+
+function drawPool(t){
+  rect(0,0,W,H,'#07111d');
+  // deck
+  rect(PX.x0-70,PX.y0-16,PX.x1-PX.x0+140,PX.y1-PX.y0+32,'#2b3a4a');
+  rect(PX.x0-70,PX.y0-16,PX.x1-PX.x0+140,3,'#3b4c5e');
+  // water with shimmer bands
+  rect(PX.x0,PX.y0,PX.x1-PX.x0,PX.y1-PX.y0,'#0f6fb5');
+  for(let i=0;i<26;i++){ const y=PX.y0+((i*23+t*18)%(PX.y1-PX.y0)); rect(PX.x0,y,PX.x1-PX.x0,2,'rgba(255,255,255,.05)'); }
+  // bottom lane lines (black T)
+  for(let l=0;l<PX.lanes;l++){ const y=laneY(l); rect(PX.x0,y-2,PX.x1-PX.x0,4,'#0a4f86'); rect(PX.x0,y-6,14,12,'#06243d'); rect(PX.x1-14,y-6,14,12,'#06243d'); }
+  // lane ropes: red first 15m from each wall, then yellow/blue alternating
+  for(let l=0;l<=PX.lanes;l++){
+    const y=PX.y0+PX.laneH*l; const seg=PX.scale*0.5;
+    for(let x=PX.x0;x<PX.x1;x+=seg){
+      const yd=(x-PX.x0)/PX.scale; const nearWall=yd<FIFTEEN_M-0.2||yd>POOL-FIFTEEN_M+0.2;
+      const yellow=Math.floor(x/seg)%2===0;
+      rect(x,y-3,seg-1,6, nearWall&&!(l===0||l===PX.lanes)? (yellow?'#e8402f':'#f2c230') : (yellow?'#f2c230':'#1b5fa8'));
+    }
+  }
+  // 15 m markers on deck
+  for(const yd of [FIFTEEN_M, POOL-FIFTEEN_M]){ const x=xPx(yd); rect(x-1,PX.y0-14,2,10,'#e8402f'); rect(x-1,PX.y1+4,2,10,'#e8402f'); }
+  txt('15M',xPx(FIFTEEN_M)-14,PX.y1+16,7,'#e8402f'); txt('15M',xPx(POOL-FIFTEEN_M)-14,PX.y1+16,7,'#e8402f');
+  // blocks
+  for(let l=0;l<PX.lanes;l++){ const y=laneY(l); rect(PX.x0-24,y-12,22,24,'#c9d2dc'); rect(PX.x0-24,y-12,22,3,'#ffffff'); txt(String(l+1),PX.x0-17,y-5,9,'#07111d'); }
+}
+function drawSwimmer(s,t){
+  const y=laneY(s.lane), x=xPx(Math.max(0,Math.min(POOL,s.x)));
+  const col=TEAMCOL[s.team]||'#fff', under=s.state==='under', dir=s.dir;
+  if(s.state==='blocks'){ rect(x-18,y-4,14,8,col); rect(x-6,y-3,6,6,'#f1c27d'); return; }
+  if(s.state==='dq'){ ctx.globalAlpha=.5; }
+  // wake
+  if(!under&&s.v>0.5){ for(let i=1;i<=5;i++){ const wx=x-dir*(i*7+((t*40)%7)); rect(wx,y-1+Math.sin(t*10+i)*2,4,2,'rgba(255,255,255,'+(0.5-i*0.08)+')'); } }
+  ctx.globalAlpha = under ? 0.55 : (s.state==='dq'?0.5:1);
+  // body
+  rect(x-9,y-3,18,6,under?'#0b2e4a':'#1d3b5a');
+  // suit/cap color
+  rect(x-6,y-3,8,6,col);
+  // head
+  rect(x+dir*6,y-3,6,6,col); rect(x+dir*6+(dir>0?1:-1),y-1,4,3,'#f1c27d');
+  // arms (alternate on stroke phase)
+  const ph=Math.floor(s.isPlayer?(s.phase||0):(s.phase||0))%2;
+  if(under){ rect(x+dir*10,y-2,6,4,'#f1c27d'); for(let i=0;i<3;i++) rect(x-dir*(12+i*6),y-6+i*4,3,2,'rgba(255,255,255,.35)'); }
+  else { rect(x+dir*(ph?10:-4), y-8, 4, 6, '#f1c27d'); rect(x+dir*(ph?-4:10), y+2, 4, 6, '#f1c27d'); }
+  ctx.globalAlpha=1;
+  // splash on strokes (player only)
+  if(s.isPlayer&&!under&&s.lastPress>0&&(race.t-s.lastPress)<0.12){ for(let i=0;i<4;i++) rect(x+dir*12+Math.random()*10-5,y-10+Math.random()*20,2,2,'#fff'); }
+}
+function gauge(x,y,w,h,val,col,label,zone){
+  rect(x,y,w,h,'#0b1726'); rect(x,y,w,1,'#1d2e42'); rect(x,y+h-1,w,1,'#1d2e42');
+  if(zone){ rect(x+w*zone[0],y,w*(zone[1]-zone[0]),h,'rgba(56,210,122,.28)'); }
+  rect(x+1,y+1,(w-2)*Math.max(0,Math.min(1,val)),h-2,col);
+  txt(label,x,y-11,7,'#8aa0b8');
+}
+function drawHUD(){
+  const r=race,p=player;
+  // top band
+  rect(0,0,W,96,'#04090f'); rect(0,96,W,2,'#1d2e42');
+  txt(r.ev.name,24,14,12,'#e9eef5'); txt(DIFFS[diffIdx].name+' MEET',24,34,7,'#8aa0b8');
+  const clock=r.phase==='gun'?(p.time!=null?p.time:(r.t-r.gunAt)*TS):0;
+  txt(fmt(clock),W/2,14,28,'#ffd23f','center');
+  txt(`LENGTH ${Math.min(p.len+1,p.lengths)}/${p.lengths}`,W-24,14,10,'#e9eef5','right');
+  const b=save.best[r.ev.key]; txt('BEST '+(b?fmt(b):'--'),W-24,34,7,'#8aa0b8','right');
+  // last split
+  if(p.splits.length){ txt('SPLIT '+fmt(p.splits[p.splits.length-1]),W/2,52,10,'#e9eef5','center'); }
+  // live positions
+  const order=[...r.swimmers].sort((a,b)=>{ const da=a.time!=null?-1e6+a.time:-(a.len*POOL+(a.dir>0?a.x:POOL-a.x)); const db=b.time!=null?-1e6+b.time:-(b.len*POOL+(b.dir>0?b.x:POOL-b.x)); return da-db; });
+  order.slice(0,6).forEach((s,i)=>{ const x=24+i*152; rect(x,74,8,8,TEAMCOL[s.team]); txt((i+1)+' '+s.name.split(' ')[1].slice(0,7),x+12,74,7,s.isPlayer?'#ffd23f':'#8aa0b8'); });
+  // start lights
+  if(r.phase!=='gun'||((r.t-r.gunAt)<1.2)){
+    const msg=r.phase==='mark'?'SWIMMERS...':r.phase==='set'?'TAKE YOUR MARK':'GO!';
+    const col=r.phase==='gun'?'#38d27a':r.phase==='set'?'#e8402f':'#e9eef5';
+    rect(W/2-170,PX.y0+140,340,46,'rgba(4,9,15,.85)'); txt(msg,W/2,PX.y0+156,14,col,'center');
+  }
+  // bottom band
+  rect(0,PX.y1+30,W,H-PX.y1-30,'#04090f'); rect(0,PX.y1+30,W,2,'#1d2e42');
+  const gy=PX.y1+62;
+  gauge(24,gy,220,14,p.cad/p.ev.cad/1.4,p.cad/p.ev.cad>1.12?'#ff8c2b':'#38d27a','TEMPO',[0.93/1.4,1.1/1.4]);
+  gauge(270,gy,220,14,p.burn/100,p.bonk?'#ff2a2a':p.burn>75?'#ff8c2b':'#e8402f','BURN'+(p.bonk?'  PIANO!':''));
+  gauge(516,gy,160,14,p.o2/100,p.state==='under'?'#5fd3ff':'#2f6f8f','O2');
+  gauge(700,gy,120,14,p.flow,'#ffd23f','FLOW');
+  if(p.reaction!=null) txt('RT '+p.reaction.toFixed(2),848,gy-11,7,'#8aa0b8');
+  if(p.state==='under') txt('BREAK OUT BEFORE 15M',848,gy+3,7,'#5fd3ff');
+  else if(p.state==='blocks') txt('SPACE ON GO',848,gy+3,7,'#8aa0b8');
+  else if(p.wallDist<4&&p.len<p.lengths-1) txt('FLIP!',848,gy+3,10,'#ffd23f');
+  else if(p.len===p.lengths-1&&p.wallDist<3) txt('LUNGE!',848,gy+3,10,'#ffd23f');
+  // cue
+  if(r.cueT>0) txt(r.cue,W/2,PX.y1+40,9,'#38d27a','center',Math.min(1,r.cueT));
+  // turn message over the player
+  if(p.msgT>0){ const col=p.turnMsg==='PERFECT'?'#38d27a':p.turnMsg==='GOOD'?'#ffd23f':'#e8402f'; txt(p.turnMsg,xPx(p.x),laneY(p.lane)-30,10,col,'center',Math.min(1,p.msgT)); }
+  if(p.state==='dq'){ rect(W/2-200,PX.y0+100,400,60,'rgba(232,64,47,.9)'); txt('DQ',W/2,PX.y0+108,18,'#fff','center'); txt(p.dq,W/2,PX.y0+134,10,'#fff','center'); }
+}
+function drawRace(t){ drawPool(t); for(const s of race.swimmers) drawSwimmer(s,t); drawHUD(); }
+
+function drawTitle(t){
+  drawPool(t); rect(0,0,W,H,'rgba(4,9,15,.78)');
+  const bob=Math.sin(t*2)*3;
+  txt('NEGATIVE',W/2,110+bob,44,'#ffd23f','center'); txt('SPLIT',W/2,166+bob,44,'#e9eef5','center');
+  rect(W/2-250,222,500,2,'#e8402f');
+  txt('A 16-BIT DISTANCE SWIMMING GAME',W/2,236,9,'#8aa0b8','center');
+  txt('THE BACK HALF IS WHERE RACES ARE WON.',W/2,256,9,'#38d27a','center');
+  const items=['RACE','DIFFICULTY: '+DIFFS[diffIdx].name,'HOW TO SWIM'];
+  items.forEach((s,i)=>{ const sel=i===menuIdx; txt((sel?'> ':'  ')+s,W/2,320+i*30,12,sel?'#ffd23f':'#e9eef5','center'); });
+  txt(`RACES ${save.races}   WINS ${save.wins}   RIVAL FORM ${Math.round((1.07-save.rival)*1000)}`,W/2,440,7,'#8aa0b8','center');
+  if(Math.floor(blink*2)%2===0) txt('PRESS SPACE',W/2,480,9,'#e9eef5','center');
+  txt(audioOn?'SOUND ON (M)':'SOUND OFF (M)',W-20,H-20,7,'#8aa0b8','right');
+}
+function drawSelect(t){
+  drawPool(t); rect(0,0,W,H,'rgba(4,9,15,.82)');
+  txt('CHOOSE YOUR EVENT',W/2,56,16,'#ffd23f','center');
+  EVENTS.forEach((e,i)=>{ const y=120+i*78, sel=i===menuIdx;
+    rect(W/2-330,y-10,660,64,sel?'rgba(255,210,63,.12)':'rgba(255,255,255,.04)'); if(sel) rect(W/2-330,y-10,4,64,'#ffd23f');
+    txt(e.name,W/2-300,y,14,sel?'#ffd23f':'#e9eef5'); txt(e.blurb,W/2-300,y+24,7,'#8aa0b8');
+    txt('PAR '+fmt(e.par),W/2+300,y,9,'#8aa0b8','right'); const b=save.best[e.key]; txt('BEST '+(b?fmt(b):'--.--'),W/2+300,y+24,9,b?'#38d27a':'#8aa0b8','right'); });
+  txt('LANE 4. DAX HOLLOWELL IN LANE 3. HE CLOSES HARD.',W/2,452,8,'#e8402f','center');
+  txt('SPACE TO RACE   ESC BACK',W/2,480,8,'#e9eef5','center');
+}
+function drawHow(t){
+  drawPool(t); rect(0,0,W,H,'rgba(4,9,15,.86)');
+  txt('HOW TO SWIM',W/2,40,16,'#ffd23f','center');
+  const L=[
+    ['START','On GO, hit SPACE. Early = false start = DQ.'],
+    ['STROKE','Alternate LEFT / RIGHT. Same arm twice is a sloppy stroke.'],
+    ['TEMPO','Keep the TEMPO bar in the green. Above it you spin and BURN.'],
+    ['BURN','Over 100 you hit the PIANO and lose 40% speed until it clears.'],
+    ['FLOW','Even stroke timing builds FLOW: less burn, more speed.'],
+    ['TURN','SPACE near the wall. Closer = bigger push. Touch first = stall.'],
+    ['KICK','Hold SPACE after the wall for dolphin kicks. Release to break out.'],
+    ['15M','Still under at the red rope? DQ. Real rule. No mercy.'],
+    ['CLOSE','Ride 90% out, go 100% home. Faster back half = NEGATIVE SPLIT.'],
+  ];
+  L.forEach((r,i)=>{ const y=80+i*40; txt(r[0],120,y,10,'#38d27a'); txt(r[1],230,y+1,8,'#e9eef5'); });
+  txt('SPACE / ESC BACK',W/2,470,8,'#8aa0b8','center');
+}
+function drawResults(t){
+  drawPool(t); rect(0,0,W,H,'rgba(4,9,15,.86)');
+  const R=results,p=player;
+  const head = p.dq ? 'DQ  '+p.dq : (R.place===1?'1ST PLACE':R.place===2?'2ND PLACE':R.place===3?'3RD PLACE':R.place+'TH PLACE');
+  txt(head,W/2,30,22,p.dq?'#e8402f':R.place===1?'#ffd23f':'#e9eef5','center');
+  txt(race.ev.name+'   '+(p.time!=null?fmt(p.time):'NO TIME'),W/2,62,12,'#e9eef5','center');
+  let badgeX=W/2-((R.record?1:0)+(R.negSplit?1:0)+(R.beatDax?1:0))*105+105;
+  const badge=(s,c)=>{ rect(badgeX-100,86,200,20,c); txt(s,badgeX,92,8,'#07111d','center'); badgeX+=210; };
+  if(R.record) badge('NEW BEST TIME','#ffd23f'); if(R.negSplit) badge('NEGATIVE SPLIT','#38d27a'); if(R.beatDax&&p.time!=null) badge('BEAT HOLLOWELL','#5fd3ff');
+  // results table
+  txt('PL  SWIMMER          TEAM   TIME',110,124,8,'#8aa0b8');
+  R.times.forEach((s,i)=>{ const y=142+i*18; txt(String(i+1).padStart(2),110,y,8,s.isPlayer?'#ffd23f':'#e9eef5'); txt(s.name.padEnd(16),150,y,8,s.isPlayer?'#ffd23f':'#e9eef5'); rect(300,y,8,8,TEAMCOL[s.team]); txt(s.team,314,y,8,'#8aa0b8'); txt(fmt(s.time),370,y,8,s.isPlayer?'#ffd23f':'#e9eef5'); });
+  race.swimmers.filter(s=>s.time==null).forEach((s,j)=>{ const y=142+(R.times.length+j)*18; txt('--',110,y,8,'#e8402f'); txt(s.name.padEnd(16),150,y,8,'#e8402f'); txt(s.dq||'DNF',370,y,8,'#e8402f'); });
+  // splits
+  txt('YOUR 50 SPLITS',560,124,8,'#8aa0b8');
+  const sp=p.splits; const cols=Math.min(5,Math.max(1,sp.length));
+  sp.forEach((s,i)=>{ const x=560+(i%cols)*72, y=142+Math.floor(i/cols)*18; const hot=i>=sp.length/2&&R.negSplit; txt(fmt(s),x,y,8,hot?'#38d27a':'#e9eef5'); });
+  if(sp.length>=2){ const y=142+Math.ceil(sp.length/cols)*18+8; txt('1ST HALF '+fmt(R.first),560,y,8,'#8aa0b8'); txt('2ND HALF '+fmt(R.second),560,y+16,8,R.negSplit?'#38d27a':'#e8402f'); }
+  if(p.reaction!=null) txt('REACTION '+p.reaction.toFixed(2),560,290,8,'#8aa0b8');
+  if(R.dax.time!=null) txt('HOLLOWELL '+fmt(R.dax.time)+(R.beatDax?'  (he will be back)':'  (he closed on you)'),560,308,7,'#8aa0b8');
+  // coach note
+  rect(80,352,800,74,'rgba(255,255,255,.05)'); rect(80,352,4,74,'#38d27a');
+  txt('COACH',100,364,8,'#38d27a'); wrapTxt(R.note,100,382,8,'#e9eef5',760);
+  txt('SPACE  RACE AGAIN     ESC  EVENTS',W/2,470,8,'#e9eef5','center');
+}
+function wrapTxt(s,x,y,size,col,maxW){ ctx.font=FONT(size); const words=s.split(' '); let line='',ly=y; for(const w of words){ const test=line?line+' '+w:w; if(ctx.measureText(test).width>maxW){ txt(line,x,ly,size,col); line=w; ly+=size+6; } else line=test; } if(line) txt(line,x,ly,size,col); }
+
+// ---- Loop ----
+function frame(now){
+  let dt=(now-tPrev)/1000; tPrev=now; dt=Math.min(dt,0.05);
+  update(dt);
+  const t=now/1000;
+  if(scene==='title') drawTitle(t); else if(scene==='select') drawSelect(t); else if(scene==='how') drawHow(t); else if(scene==='race') drawRace(t); else drawResults(t);
+  requestAnimationFrame(frame);
+}
+
+// ---- Input ----
+function press(key){ // 'L' | 'R' | 'A'(ction) | 'ESC' | 'UP' | 'DOWN'
+  initAudio();
+  if(scene==='title'){
+    if(key==='UP') menuIdx=(menuIdx+2)%3; if(key==='DOWN') menuIdx=(menuIdx+1)%3;
+    if(key==='L'||key==='R'){ if(menuIdx===1) diffIdx=(diffIdx+(key==='R'?1:2))%3; }
+    if(key==='A'){ sfx('select'); if(menuIdx===0){ scene='select'; menuIdx=0; } else if(menuIdx===1){ diffIdx=(diffIdx+1)%3; } else scene='how'; }
+    return;
+  }
+  if(scene==='how'){ if(key==='A'||key==='ESC') scene='title'; return; }
+  if(scene==='select'){
+    if(key==='UP') menuIdx=(menuIdx+EVENTS.length-1)%EVENTS.length; if(key==='DOWN') menuIdx=(menuIdx+1)%EVENTS.length;
+    if(key==='ESC'){ scene='title'; menuIdx=0; } if(key==='A'){ sfx('select'); startRace(EVENTS[menuIdx]); }
+    return;
+  }
+  if(scene==='results'){ if(key==='A') startRace(race.ev); if(key==='ESC'){ scene='select'; menuIdx=EVENTS.indexOf(race.ev); music(true); } return; }
+  if(scene==='race'){
+    if(key==='ESC'){ scene='select'; music(true); return; }
+    if(key==='L'||key==='R'){ if(stroke(player,key,race.t)) sfx('stroke'); }
+    if(key==='A') action(player,true,race.t,race);
+  }
+}
+function release(key){ if(scene==='race'&&key==='A') action(player,false,race.t,race); }
+const KEYMAP={ArrowLeft:'L',a:'L',A:'L',ArrowRight:'R',d:'R',D:'R',' ':'A',ArrowUp:'UP',w:'UP',W:'UP',ArrowDown:'DOWN',s:'DOWN',S:'DOWN',Escape:'ESC',Enter:'A'};
+const held=new Set();
+addEventListener('keydown',e=>{ if(e.key==='m'||e.key==='M'){ toggleAudio(); return; } const k=KEYMAP[e.key]; if(!k) return; e.preventDefault(); if(k==='A'&&held.has('A')) return; held.add(k); if(scene==='title'&&k==='UP'){ /* also allow */ } press(k); });
+addEventListener('keyup',e=>{ const k=KEYMAP[e.key]; if(!k) return; held.delete(k); release(k); });
+// touch / pointer
+const ptr={};
+cv.addEventListener('pointerdown',e=>{ cv.focus(); const r=cv.getBoundingClientRect(); const x=(e.clientX-r.left)/r.width*W, y=(e.clientY-r.top)/r.height*H;
+  let k;
+  if(scene==='race'){ k = y>PX.y1+30 ? (x<W/2?'L':'R') : 'A'; }
+  else if(scene==='select'){ const i=Math.floor((y-110)/78); if(i>=0&&i<EVENTS.length){ if(menuIdx===i) k='A'; else { menuIdx=i; return; } } else if(y>440) k='ESC'; else return; }
+  else if(scene==='title'){ const i=Math.floor((y-312)/30); if(i>=0&&i<3){ if(menuIdx===i) k='A'; else { menuIdx=i; return; } } else k='A'; }
+  else k = (scene==='results'&&x<W/2&&y>455) ? 'A' : (scene==='results'&&y>455 ? 'ESC' : 'A');
+  ptr[e.pointerId]=k; press(k); });
+cv.addEventListener('pointerup',e=>{ const k=ptr[e.pointerId]; delete ptr[e.pointerId]; if(k) release(k); });
+cv.addEventListener('pointercancel',e=>{ const k=ptr[e.pointerId]; delete ptr[e.pointerId]; if(k) release(k); });
+
+// ---- Audio (chiptune, WebAudio) ----
+let actx=null, audioOn=true, musicTimer=null, master=null;
+function initAudio(){ if(actx) return; try{ actx=new (window.AudioContext||window.webkitAudioContext)(); master=actx.createGain(); master.gain.value=audioOn?0.5:0; master.connect(actx.destination); music(true); }catch(e){} }
+function toggleAudio(){ audioOn=!audioOn; if(master) master.gain.value=audioOn?0.5:0; }
+function tone(f,dur,type='square',vol=0.25,when=0,slide=0){ if(!actx) return; const o=actx.createOscillator(), g=actx.createGain(); o.type=type; const t0=actx.currentTime+when; o.frequency.setValueAtTime(f,t0); if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(20,f+slide),t0+dur); g.gain.setValueAtTime(vol,t0); g.gain.exponentialRampToValueAtTime(0.001,t0+dur); o.connect(g); g.connect(master); o.start(t0); o.stop(t0+dur+0.02); }
+function noise(dur,vol=0.3,when=0,hp=800){ if(!actx) return; const n=actx.sampleRate*dur|0, b=actx.createBuffer(1,n,actx.sampleRate), d=b.getChannelData(0); for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n); const s=actx.createBufferSource(); s.buffer=b; const f=actx.createBiquadFilter(); f.type='highpass'; f.frequency.value=hp; const g=actx.createGain(); g.gain.value=vol; s.connect(f); f.connect(g); g.connect(master); s.start(actx.currentTime+when); }
+function sfx(n){
+  if(!actx) return;
+  switch(n){
+    case 'stroke': noise(0.06,0.08,0,1500); break;
+    case 'set': tone(440,0.25,'square',0.2); break;
+    case 'gun': tone(880,0.5,'square',0.35); noise(0.15,0.4,0,300); break;
+    case 'perfect': [523,659,784,1046].forEach((f,i)=>tone(f,0.09,'square',0.22,i*0.06)); break;
+    case 'good': tone(523,0.08,'square',0.2); tone(659,0.1,'square',0.2,0.08); break;
+    case 'bad': tone(220,0.2,'sawtooth',0.2,0,-120); break;
+    case 'finish': tone(660,0.12,'square',0.3); tone(880,0.25,'square',0.3,0.12); break;
+    case 'dq': tone(200,0.4,'sawtooth',0.3,0,-150); tone(150,0.5,'sawtooth',0.3,0.3,-100); break;
+    case 'select': tone(784,0.07,'square',0.2); break;
+    case 'win': [523,659,784,1046,784,1046,1318].forEach((f,i)=>tone(f,0.14,'square',0.25,i*0.11)); break;
+    case 'end': [392,330,262].forEach((f,i)=>tone(f,0.2,'triangle',0.25,i*0.18)); break;
+  }
+}
+// title loop: a driving minor arpeggio, 150 bpm
+const SEQ=[[110,220,262,330],[110,220,262,330],[98,196,233,294],[87,175,208,262]];
+let seqStep=0;
+function music(on){
+  if(musicTimer){ clearInterval(musicTimer); musicTimer=null; }
+  if(!on||!actx) return;
+  musicTimer=setInterval(()=>{ if(scene==='race') return; const bar=SEQ[Math.floor(seqStep/8)%SEQ.length]; const i=seqStep%8; tone(bar[0],0.18,'triangle',0.18); tone(bar[1+(i%3)],0.1,'square',0.08); if(i%4===0) noise(0.05,0.12,0,2000); seqStep++; },0.1*1000);
+}
+
+// ---- Boot ----
+document.fonts && document.fonts.load("12px 'Press Start 2P'").catch(()=>{});
+cv.focus();
+requestAnimationFrame(frame);
+</script>
+
+</body></html>
