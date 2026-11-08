@@ -1,0 +1,3448 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game 06: Roommate Republic — Incentive Prediction &amp; Policy Lab</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #faf7f2;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="game-root"></main>
+    <script type="module">
+// games/06-roommate-republic/src/config.ts
+var GAME_CONFIG = {
+  GAME_ID: "06-roommate-republic",
+  GAME_NUMBER: 6,
+  TITLE: "Roommate Republic",
+  SUBTITLE: "Incentive Prediction, Experiment & Policy Simulation Lab",
+  ACCENT_COLOR: "#d97706",
+  STORAGE_KEY: "argon_game06_roommate_republic_v1",
+  SCHEMA_VERSION: 1,
+  DEFAULT_SEED: 202606,
+  WEEKS_PER_RUN: 4,
+  SURPRISE_EXPENSE_WEEK: 3,
+  INITIAL_ROOMMATE_CASH: 120,
+  LIQUIDITY_STRESS_THRESHOLD: 40,
+  OVERDRAFT_THRESHOLD: 0,
+  POLICY_2_RESERVE_RATE: 0.1,
+  // 10% buffer contribution on weekly bill
+  POLICY_4_WEEKLY_ADMIN_FEE: 16,
+  // $16/week fixed metering & admin fee
+  POLICY_4_CHORE_CREDIT_RATE: 15,
+  // $15 per extra/shirked chore unit
+  BASE_CHORES_PER_ROOMMATE_PER_WEEK: 2,
+  TOTAL_WEEKLY_CHORES: 8
+};
+var ROOMMATE_ORDER = [
+  "maya",
+  "devon",
+  "priya",
+  "leo"
+];
+
+// games/06-roommate-republic/src/content.ts
+var ROOMMATE_PROFILES = {
+  maya: {
+    id: "maya",
+    name: "Maya",
+    archetype: "Steady Cooperator \u2014 Mid Income, Low Free-Ride",
+    shortLabel: "Steady Cooperator",
+    color: "#d97706",
+    badgeText: "Civic Planner",
+    bio: "Mid-income urban planner ($280/wk). Keeps steady utility habits, reports honestly on honor systems, and completes her 2 weekly kitchen chores reliably unless household trust collapses.",
+    defaultParams: {
+      weeklyIncome: 280,
+      usageAppetite: 1,
+      freeRideTemptation: 0.1,
+      auditSensitivity: 0.75,
+      fairnessThreshold: 0.7,
+      initialCash: GAME_CONFIG.INITIAL_ROOMMATE_CASH
+    }
+  },
+  devon: {
+    id: "devon",
+    name: "Devon",
+    archetype: "Cash-Strapped Grad Student \u2014 Low Income, High Price Sensitivity",
+    shortLabel: "Grad Student",
+    color: "#059669",
+    badgeText: "Tight Stipend",
+    bio: "Lives on a $145/wk teaching stipend. Uses minimal heat and pantry goods (0.75x appetite) and gladly picks up extra cleaning chores when Policy 4 pays a $15/chore rebate\u2014but faces acute liquidity risk under Equal Split.",
+    defaultParams: {
+      weeklyIncome: 145,
+      usageAppetite: 0.75,
+      freeRideTemptation: 0.15,
+      auditSensitivity: 0.9,
+      fairnessThreshold: 0.55,
+      initialCash: GAME_CONFIG.INITIAL_ROOMMATE_CASH
+    }
+  },
+  priya: {
+    id: "priya",
+    name: "Priya",
+    archetype: "Power-User Remote Worker \u2014 High Income, High Utility Usage",
+    shortLabel: "Power User",
+    color: "#7c3aed",
+    badgeText: "24/7 Home Office",
+    bio: "Senior software contractor ($445/wk) running dual GPU rigs, studio lighting, and a space heater (1.65x appetite). Under Equal Split she only pays 25 cents on the marginal dollar; under Metered Billing she trims excess draw.",
+    defaultParams: {
+      weeklyIncome: 445,
+      usageAppetite: 1.65,
+      freeRideTemptation: 0.35,
+      auditSensitivity: 0.65,
+      fairnessThreshold: 0.75,
+      initialCash: GAME_CONFIG.INITIAL_ROOMMATE_CASH
+    }
+  },
+  leo: {
+    id: "leo",
+    name: "Leo",
+    archetype: "Opportunistic Optimizer \u2014 Mid-High Income, Underreports When Unverified",
+    shortLabel: "Opportunist",
+    color: "#e11d48",
+    badgeText: "Incentive Hacker",
+    bio: "Freelance growth analyst ($330/wk) who treats household rules strictly as an optimization game (0.85 free-ride temptation). Under Self-Reported Billing he understates his share, shifting a shortfall surcharge onto the house\u2014until sub-meters verify usage.",
+    defaultParams: {
+      weeklyIncome: 330,
+      usageAppetite: 1.25,
+      freeRideTemptation: 0.85,
+      auditSensitivity: 0.85,
+      fairnessThreshold: 0.6,
+      initialCash: GAME_CONFIG.INITIAL_ROOMMATE_CASH
+    }
+  }
+};
+var SCENARIOS = {
+  "scenario-1-thermostat": {
+    id: "scenario-1-thermostat",
+    number: 1,
+    title: "Scenario 1: The Winter Thermostat Spike",
+    subtitle: "Unequal Usage + Equal-Split Friction",
+    premise: "January cold snaps hit Apartment 4B. Priya works from home with a space heater while Devon wears two sweaters in a cold bedroom. In Week 3, a Polar Vortex spike plus a drafty window repair hits the winter heating bill.",
+    utilityLabel: "Winter Heating & Electric Grid",
+    baseWeeklyBillDollars: 520,
+    initialReserveDollars: 0,
+    commonsElasticity: 0.24,
+    surpriseExpenseTemplate: {
+      title: "Week 3 Polar Vortex Surge & Window Seal Emergency",
+      category: "HEATING_SPIKE",
+      baseAmountDollars: 240,
+      description: "Sub-zero wind chills trigger peak kilowatt pricing and an urgent weatherstripping service call in Week 3."
+    },
+    defaultPolicyId: "policy-1-equal-split",
+    recommendedComparisonPolicyId: "policy-2-income-reserve",
+    hypothesisPrompt: "Compare how Policy 1 (Equal Split) pools Priya\u2019s high heating draw onto low-income Devon versus how Policy 2 (Income-Proportional + Reserve) or Policy 4 (Metered Usage) redistributes cash flow on the exact same weather schedule."
+  },
+  "scenario-2-grocery-jar": {
+    id: "scenario-2-grocery-jar",
+    number: 2,
+    title: "Scenario 2: The Honor-System Grocery Jar",
+    subtitle: "Self-Reported Usage & Underreporting Incentives",
+    premise: "The apartment stocks a shared kitchen pantry, espresso beans, and high-speed fiber bundle. Under the honor jar (Policy 3), each roommate logs their own weekly consumption\u2014and any unpaid gap at the end of the week is split equally as an Unexplained Shortfall Surcharge.",
+    utilityLabel: "Shared Pantry, Espresso & Household Supplies",
+    baseWeeklyBillDollars: 480,
+    initialReserveDollars: 20,
+    commonsElasticity: 0.22,
+    surpriseExpenseTemplate: {
+      title: "Week 3 Bulk Pantry & Espresso Machine Descaling Bill",
+      category: "PANTRY_SHORTFALL",
+      baseAmountDollars: 200,
+      description: "A quarterly bulk delivery of cold-pressed olive oil, oat milk cases, and espresso grinder replacement burrs arrives in Week 3."
+    },
+    defaultPolicyId: "policy-3-self-reported",
+    recommendedComparisonPolicyId: "policy-4-metered-rebate",
+    hypothesisPrompt: "Test whether Leo\u2019s high Free-Ride Temptation (0.85) under Policy 3 (Self-Reported Billing) costs honest roommates more in Shortfall Surcharges than the fixed $16/wk sub-metering fee under Policy 4."
+  },
+  "scenario-3-boiler-emergency": {
+    id: "scenario-3-boiler-emergency",
+    number: 3,
+    title: "Scenario 3: The Week-3 Boiler Emergency",
+    subtitle: "Liquidity Shock vs. Shared Reserve Buffer",
+    premise: "Everything looks manageable in Weeks 1 and 2, tempting the household to keep 100% of their cash in personal pockets with zero shared reserve buffer. Then in Week 3, the basement hot-water boiler valve ruptures, demanding immediate cash settlement.",
+    utilityLabel: "Water, Gas & Basement Boiler Maintenance",
+    baseWeeklyBillDollars: 500,
+    initialReserveDollars: 40,
+    commonsElasticity: 0.2,
+    surpriseExpenseTemplate: {
+      title: "Week 3 Burst Hot-Water Boiler Emergency Valve Replacement",
+      category: "BOILER_REPAIR",
+      baseAmountDollars: 340,
+      description: "An after-hours plumbing crew replaces a ruptured pressure valve in Week 3, requiring immediate settlement from the Household Reserve or direct roommate cash."
+    },
+    defaultPolicyId: "policy-1-equal-split",
+    recommendedComparisonPolicyId: "policy-2-income-reserve",
+    hypothesisPrompt: "Compare an unbuffered policy (Policy 1 or Policy 3) against Policy 2 (Income-Proportional Split + 10% Shared Reserve) when the $340 boiler repair hits in Week 3."
+  }
+};
+var SCENARIO_LIST = [
+  SCENARIOS["scenario-1-thermostat"],
+  SCENARIOS["scenario-2-grocery-jar"],
+  SCENARIOS["scenario-3-boiler-emergency"]
+];
+var POLICIES = {
+  "policy-1-equal-split": {
+    id: "policy-1-equal-split",
+    number: 1,
+    shortTitle: "Policy 1: Equal Split (25%)",
+    title: "Policy 1: Equal Split (25% Each)",
+    tagline: "Zero admin overhead, but pools overconsumption and strains low-income roommates.",
+    mechanismSummary: "Every weekly utility bill and Week 3 surprise shock is divided 25% / 25% / 25% / 25% regardless of income or actual usage. No shared reserve is collected and no metering fee is charged.",
+    tradeoffWarning: 'Because each roommate only pays $0.25 per $1.00 of marginal consumption, high-appetite and high-temptation agents inflate total consumption ("tragedy of the commons"), while low-income Devon bears a regressive cash burden.',
+    marginalPriceSignal: 0.25,
+    collectsReserveBuffer: false,
+    allowsUnverifiedUnderreporting: false,
+    chargesMeteringAdminFee: false,
+    enablesChoreRebate: false
+  },
+  "policy-2-income-reserve": {
+    id: "policy-2-income-reserve",
+    number: 2,
+    shortTitle: "Policy 2: Income Split + 10% Reserve",
+    title: "Policy 2: Income-Proportional Split + Shared Reserve (10% Buffer)",
+    tagline: "Protects low-income cash flow and buffers Week 3 shocks, at the cost of locking up cash.",
+    mechanismSummary: "Weekly bills are split in proportion to weekly income (Devon ~13.8%, Maya ~23.3%, Leo ~27.1%, Priya ~35.8%). Each week, roommates also contribute an extra 10% buffer into the Shared Household Reserve, which automatically absorbs the Week 3 Surprise Expense first.",
+    tradeoffWarning: "Reduces discretionary cash in Weeks 1\u20132 by locking funds into the Shared Reserve, and higher-income Priya pays a larger share even if she moderates usage.",
+    marginalPriceSignal: 0.35,
+    collectsReserveBuffer: true,
+    allowsUnverifiedUnderreporting: false,
+    chargesMeteringAdminFee: false,
+    enablesChoreRebate: false
+  },
+  "policy-3-self-reported": {
+    id: "policy-3-self-reported",
+    number: 3,
+    shortTitle: "Policy 3: Self-Reported Billing",
+    title: "Policy 3: Self-Reported Usage Billing (Honor Jar)",
+    tagline: "Rewards frugal honest users, but invites opportunists to underreport usage.",
+    mechanismSummary: 'Roommates pay in proportion to their self-reported usage log. However, each roommate discounts their reported usage by (freeRideTemptation * 52%). The resulting unpaid gap between the vendor bill and self-reported payments is split equally (25% each) as an "Unexplained Shortfall Surcharge".',
+    tradeoffWarning: "When freeRideTemptation is high (e.g. Leo at 0.85), underreporting shifts a heavy Shortfall Surcharge onto honest roommates and rapidly erodes household trust.",
+    marginalPriceSignal: 0.65,
+    collectsReserveBuffer: false,
+    allowsUnverifiedUnderreporting: true,
+    chargesMeteringAdminFee: false,
+    enablesChoreRebate: false
+  },
+  "policy-4-metered-rebate": {
+    id: "policy-4-metered-rebate",
+    number: 4,
+    shortTitle: "Policy 4: Metered + Chore Rebate",
+    title: "Policy 4: Metered Usage + Chore-Credit Rebate",
+    tagline: "Aligns marginal usage and rewards extra chores, but costs a fixed $16/wk metering fee.",
+    mechanismSummary: "Smart sub-meters verify 100% of each roommate\u2019s true consumption (eliminating underreporting and curbing excess draw via auditSensitivity), plus a $16/week fixed metering/admin fee paid to the external metering vendor. Roommates who do extra chores earn a $15/chore rebate funded by a $15/chore surcharge on shirkers.",
+    tradeoffWarning: "Extracts $16/week ($64 over 4 weeks) in deadweight administrative overhead paid to an external vendor, and does not automatically build a Shared Reserve buffer for Week 3 shocks.",
+    marginalPriceSignal: 1,
+    collectsReserveBuffer: false,
+    allowsUnverifiedUnderreporting: false,
+    chargesMeteringAdminFee: true,
+    enablesChoreRebate: true
+  }
+};
+var POLICY_LIST = [
+  POLICIES["policy-1-equal-split"],
+  POLICIES["policy-2-income-reserve"],
+  POLICIES["policy-3-self-reported"],
+  POLICIES["policy-4-metered-rebate"]
+];
+function createDefaultAssumptions() {
+  const roommates = {};
+  for (const id of ROOMMATE_ORDER) {
+    roommates[id] = { ...ROOMMATE_PROFILES[id].defaultParams };
+  }
+  return {
+    roommates,
+    reserveContributionRate: GAME_CONFIG.POLICY_2_RESERVE_RATE,
+    weeklyMeteringAdminFee: GAME_CONFIG.POLICY_4_WEEKLY_ADMIN_FEE,
+    choreCreditDollarValue: GAME_CONFIG.POLICY_4_CHORE_CREDIT_RATE
+  };
+}
+function cloneAssumptions(source) {
+  const roommates = {};
+  for (const id of ROOMMATE_ORDER) {
+    roommates[id] = { ...source.roommates[id] };
+  }
+  return {
+    roommates,
+    reserveContributionRate: source.reserveContributionRate,
+    weeklyMeteringAdminFee: source.weeklyMeteringAdminFee,
+    choreCreditDollarValue: source.choreCreditDollarValue
+  };
+}
+var DEBRIEF_PROMPTS = [
+  {
+    id: "debrief-1-commons-vs-reserve",
+    number: 1,
+    category: "LEDGER_EVIDENCE",
+    question: "Ledger Audit #1: When comparing Policy 1 (Equal Split) against Policy 2 (Income-Proportional + 10% Reserve) on the exact same Event Schedule, why does Devon\u2019s ending cash improve under Policy 2 despite the extra 10% reserve contributions?",
+    contextHint: "Inspect Devon\u2019s UTILITY_BILL_CONTRIBUTION and SURPRISE_SHOCK_PAYMENT ledger entries across Weeks 1\u20134.",
+    options: [
+      {
+        id: "opt-1a",
+        label: "Devon\u2019s income share (~13.8% of $1,200 total household income) is much lower than 25%, and the Shared Reserve absorbs the Week 3 surprise shock before out-of-pocket surcharges hit.",
+        isCorrect: true,
+        explanation: "Correct! Under the model\u2019s income-proportional equation, Devon ($165/wk out of $1,200/wk) pays ~13.8% of bills + reserve buffer rather than a flat 25%, and the accumulated Shared Reserve absorbs the Week 3 Surprise Expense."
+      },
+      {
+        id: "opt-1b",
+        label: "Policy 2 cancels the Week 3 Surprise Expense in the external event schedule so the vendor never bills the household.",
+        isCorrect: false,
+        explanation: "Incorrect. The External Event Schedule is frozen and identical across policy runs; the Week 3 Surprise Expense still occurs and is paid to the external vendor, but the Household Reserve absorbs it first."
+      },
+      {
+        id: "opt-1c",
+        label: "Policy 2 increases Devon\u2019s weekly stipend from $165/wk to $300/wk in Weeks 3 and 4.",
+        isCorrect: false,
+        explanation: "Incorrect. Weekly employer inflows (`INCOME_INFLOW`) remain fixed at $165/wk unless you manually edit Devon\u2019s income slider in the Assumptions Panel."
+      }
+    ]
+  },
+  {
+    id: "debrief-2-self-report-vs-metering",
+    number: 2,
+    category: "COUNTERFACTUAL_CAUSALITY",
+    question: "Ledger Audit #2: Under Policy 3 (Self-Reported Usage Billing), which specific ledger mechanism transfers cost from an opportunistic agent (Leo) onto honest roommates, and what happens to that transfer under Policy 4 (Metered Usage)?",
+    contextHint: "Filter the Transaction Ledger by Week 1\u20134 for `SHORTFALL_SURCHARGE` vs `ADMIN_METERING_FEE`.",
+    options: [
+      {
+        id: "opt-2a",
+        label: "Leo\u2019s `freeRideTemptation` reduces his self-reported payment, creating an uncollected vendor gap that triggers `SHORTFALL_SURCHARGE` entries split 25% each; Policy 4 eliminates `SHORTFALL_SURCHARGE` but adds `$16/wk` in `ADMIN_METERING_FEE`.",
+        isCorrect: true,
+        explanation: "Spot on! In our simulation equations, Policy 3 lets `freeRideTemptation` discount reported usage, generating explicit `SHORTFALL_SURCHARGE` ledger rows for all 4 roommates. Policy 4 replaces unverified reporting with exact sub-metering at a fixed `$16/wk` (`$64` total) external fee."
+      },
+      {
+        id: "opt-2b",
+        label: "Policy 3 charges a $50/week fine only to Maya, while Policy 4 refunds all utility bills to $0.",
+        isCorrect: false,
+        explanation: "Incorrect. The shortfall is caused by the gap between total vendor billing and self-reported payments, which is split across all four roommates as `SHORTFALL_SURCHARGE`."
+      },
+      {
+        id: "opt-2c",
+        label: "Policy 4 generates fresh random weather numbers that happen to be warmer than Policy 3.",
+        isCorrect: false,
+        explanation: "Incorrect! Both policies read the exact same frozen `ExternalEventSchedule`; the consumption reduction comes strictly from `marginalPriceSignal = 1.0` interacting with each roommate\u2019s `auditSensitivity`."
+      }
+    ]
+  },
+  {
+    id: "debrief-3-model-limitations",
+    number: 3,
+    category: "MODEL_LIMITATION",
+    question: "Epistemic Humility #3: Which statement best describes an important limitation of this simulation\u2019s mathematical equations compared to a real-world apartment?",
+    contextHint: "Consider what the 5 numerical sliders per roommate capture\u2014and what real social norms or non-monetary dynamics they leave out.",
+    options: [
+      {
+        id: "opt-3a",
+        label: "The simulation assumes deterministic linear/multiplicative responses to price signals and fixed `freeRideTemptation` sliders, omitting real-world verbal negotiation, friendship bonds, intrinsic guilt, or social ostracism outside the ledger.",
+        isCorrect: true,
+        explanation: "Exactly right. Our agent equations isolate specific economic incentives (marginal cost sharing, reserve buffering, underreporting gaps, and admin overhead), but real roommates also negotiate face-to-face, care about friendship, and adapt norms in ways a 5-parameter equation cannot claim as universal law."
+      },
+      {
+        id: "opt-3b",
+        label: "The simulation equations prove as a universal scientific law that every real-world freelancer named Leo will always underreport 44% of their grocery consumption.",
+        isCorrect: false,
+        explanation: "Never! A stylized incentive model illustrates conditional *if-then* consequences of explicit assumptions (`freeRideTemptation = 0.85`), not universal truths about real people."
+      },
+      {
+        id: "opt-3c",
+        label: "Money is not conserved in the simulation because utilities disappear without being recorded.",
+        isCorrect: false,
+        explanation: "Incorrect. Money is strictly conserved to the exact cent in the double-entry ledger (`Initial Cash + Total Income - Total Expenses === Ending Roommate Cash + Ending Household Reserve`). The limitation is behavioral simplification, not accounting drift."
+      }
+    ]
+  }
+];
+
+// games/06-roommate-republic/src/rng.ts
+function hashString(input) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+var SeededRng = class _SeededRng {
+  state;
+  constructor(seed) {
+    const normalized = Math.floor(seed) >>> 0 || 1831565813;
+    this.state = normalized;
+  }
+  /**
+   * Returns a deterministic float in [0, 1) using Mulberry32.
+   */
+  nextFloat() {
+    let t = this.state += 1831565813;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+  /**
+   * Returns a deterministic float in [min, max).
+   */
+  nextRange(min, max) {
+    return min + this.nextFloat() * (max - min);
+  }
+  /**
+   * Returns a deterministic integer in [min, max] inclusive.
+   */
+  nextInt(min, max) {
+    return Math.floor(this.nextRange(min, max + 1));
+  }
+  /**
+   * Forks a new deterministic RNG derived from current state + salt string.
+   */
+  fork(salt) {
+    const combined = (this.state ^ hashString(salt)) >>> 0;
+    return new _SeededRng(combined || 1337);
+  }
+};
+
+// games/06-roommate-republic/src/simulation.ts
+function toCents(dollars) {
+  return Math.round(dollars * 100);
+}
+function toDollars(cents) {
+  return Number((cents / 100).toFixed(2));
+}
+function clamp(val, min, max) {
+  return Math.max(min, Math.min(max, val));
+}
+function allocateCentsByWeights(totalCents, weights) {
+  const safeTotal = Math.max(0, Math.round(totalCents));
+  let weightSum = 0;
+  for (const id of ROOMMATE_ORDER) {
+    weightSum += Math.max(0, weights[id]);
+  }
+  const normalizedWeights = {
+    maya: weightSum > 0 ? Math.max(0, weights.maya) / weightSum : 0.25,
+    devon: weightSum > 0 ? Math.max(0, weights.devon) / weightSum : 0.25,
+    priya: weightSum > 0 ? Math.max(0, weights.priya) / weightSum : 0.25,
+    leo: weightSum > 0 ? Math.max(0, weights.leo) / weightSum : 0.25
+  };
+  const floored = {};
+  const remainders = [];
+  let flooredSum = 0;
+  ROOMMATE_ORDER.forEach((id, idx) => {
+    const exact = safeTotal * normalizedWeights[id];
+    const fl = Math.floor(exact);
+    floored[id] = fl;
+    flooredSum += fl;
+    remainders.push({ id, rem: exact - fl, idx });
+  });
+  const leftover = safeTotal - flooredSum;
+  remainders.sort((a, b) => b.rem !== a.rem ? b.rem - a.rem : a.idx - b.idx);
+  for (let i = 0; i < leftover; i++) {
+    floored[remainders[i].id] += 1;
+  }
+  return floored;
+}
+var AMBIENT_WEEK_NOTES = {
+  "scenario-1-thermostat": [
+    "Week 1: Crisp early-January frost; radiator runs steady overnight.",
+    "Week 2: Freezing sleet keeps everyone indoors; workstation & heater draw rises.",
+    "Week 3: POLAR VORTEX ALERT \u2014 Sub-zero gusts + emergency window seal repair!",
+    "Week 4: Late-January thaw moderates baseline heating demand."
+  ],
+  "scenario-2-grocery-jar": [
+    "Week 1: Fresh bulk pantry restock of espresso beans, oat milk, and cooking oils.",
+    "Week 2: Busy deadline week; late-night kitchen snacking and coffee pulls accelerate.",
+    "Week 3: QUARTERLY RESTOCK SHOCK \u2014 Specialty coffee burrs & pantry invoice arrives!",
+    "Week 4: End-of-month pantry audit as roommates finish remaining staples."
+  ],
+  "scenario-3-boiler-emergency": [
+    "Week 1: Routine winter water & gas usage; basement boiler hums quietly.",
+    "Week 2: Cold rain increases hot shower draw; pressure gauge ticks slightly upward.",
+    "Week 3: BOILER VALVE RUPTURE \u2014 Emergency after-hours plumbing crew requires cash!",
+    "Week 4: New boiler valve operates efficiently as household settles final month balances."
+  ]
+};
+function generateExternalEventSchedule(scenarioId, seed = GAME_CONFIG.DEFAULT_SEED) {
+  const scenario = typeof scenarioId === "string" ? SCENARIOS[scenarioId] : scenarioId;
+  const normalizedSeed = Math.floor(seed) >>> 0;
+  const rng = new SeededRng(
+    (normalizedSeed ^ hashString(`schedule:${scenario.id}`)) >>> 0
+  );
+  const weeks = [];
+  const weekNumbers = [1, 2, 3, 4];
+  for (const w of weekNumbers) {
+    const baseWave = w === 3 ? 1.08 : w === 2 ? 1.03 : w === 1 ? 0.99 : 0.96;
+    const jitter = (rng.nextFloat() - 0.5) * 0.06;
+    const weatherOrDemandIndex = Number((baseWave + jitter).toFixed(3));
+    const roommateExogenousNoise = {};
+    for (const rId of ROOMMATE_ORDER) {
+      const rJitter = (rng.nextFloat() - 0.5) * 0.06;
+      roommateExogenousNoise[rId] = Number(rJitter.toFixed(3));
+    }
+    let surpriseExpense = null;
+    if (w === GAME_CONFIG.SURPRISE_EXPENSE_WEEK) {
+      const stepOffset = rng.nextInt(-2, 3) * 4;
+      const amountDollars = scenario.surpriseExpenseTemplate.baseAmountDollars + stepOffset;
+      surpriseExpense = {
+        id: `SHOCK-W3-${scenario.id.toUpperCase()}`,
+        week: 3,
+        title: scenario.surpriseExpenseTemplate.title,
+        category: scenario.surpriseExpenseTemplate.category,
+        amountDollars,
+        description: scenario.surpriseExpenseTemplate.description
+      };
+    }
+    weeks.push({
+      week: w,
+      weatherOrDemandIndex,
+      ambientNote: AMBIENT_WEEK_NOTES[scenario.id][w - 1],
+      roommateExogenousNoise,
+      surpriseExpense
+    });
+  }
+  const signaturePayload = JSON.stringify({
+    scenarioId: scenario.id,
+    seed: normalizedSeed,
+    weeks
+  });
+  const scheduleSignature = `SIG-${scenario.id}-${normalizedSeed}-${hashString(signaturePayload).toString(16)}`;
+  return Object.freeze({
+    scheduleId: `sched-${scenario.id}-${normalizedSeed}`,
+    scenarioId: scenario.id,
+    seed: normalizedSeed,
+    scheduleSignature,
+    weeks: Object.freeze(weeks)
+  });
+}
+function simulateHouseholdRun(scenarioInput, policyInput, assumptionsInput, eventSchedule) {
+  const scenario = typeof scenarioInput === "string" ? SCENARIOS[scenarioInput] : scenarioInput;
+  const policy = typeof policyInput === "string" ? POLICIES[policyInput] : policyInput;
+  const assumptions = cloneAssumptions(assumptionsInput);
+  const transactions = [];
+  const choreLedger = [];
+  const weeklySnapshots = [];
+  const cashCents = {
+    maya: toCents(assumptions.roommates.maya.initialCash),
+    devon: toCents(assumptions.roommates.devon.initialCash),
+    priya: toCents(assumptions.roommates.priya.initialCash),
+    leo: toCents(assumptions.roommates.leo.initialCash)
+  };
+  const initialRoommateCashCents = cashCents.maya + cashCents.devon + cashCents.priya + cashCents.leo;
+  let reserveCents = toCents(scenario.initialReserveDollars);
+  const initialHouseholdReserveCents = reserveCents;
+  const trustScore = {
+    maya: 82,
+    devon: 80,
+    priya: 82,
+    leo: 78
+  };
+  let txCounter = 0;
+  const nextTxId = (week) => {
+    txCounter += 1;
+    return `TX-W${week}-${String(txCounter).padStart(3, "0")}`;
+  };
+  const summaryAccum = {};
+  for (const id of ROOMMATE_ORDER) {
+    summaryAccum[id] = {
+      totalIncomeCents: 0,
+      totalTrueUtilityCents: 0,
+      totalReportedUtilityCents: 0,
+      totalUnderreportedCents: 0,
+      totalCommonsAddedCents: 0,
+      totalMeteredSavedCents: 0,
+      totalUtilityBillPaidCents: 0,
+      totalShortfallPaidCents: 0,
+      totalReservePaidCents: 0,
+      totalSurprisePaidCents: 0,
+      totalAdminFeePaidCents: 0,
+      totalChoreRebateNetCents: 0,
+      minWeeklyCashCents: cashCents[id],
+      experiencedLiquidityStress: toDollars(cashCents[id]) < GAME_CONFIG.LIQUIDITY_STRESS_THRESHOLD,
+      experiencedOverdraft: toDollars(cashCents[id]) < GAME_CONFIG.OVERDRAFT_THRESHOLD,
+      totalChoresCompleted: 0
+    };
+  }
+  const equalWeights = {
+    maya: 1,
+    devon: 1,
+    priya: 1,
+    leo: 1
+  };
+  const incomeWeights = {
+    maya: Math.max(1, assumptions.roommates.maya.weeklyIncome),
+    devon: Math.max(1, assumptions.roommates.devon.weeklyIncome),
+    priya: Math.max(1, assumptions.roommates.priya.weeklyIncome),
+    leo: Math.max(1, assumptions.roommates.leo.weeklyIncome)
+  };
+  for (const weekEvent of eventSchedule.weeks) {
+    const w = weekEvent.week;
+    const startingCashCents = { ...cashCents };
+    const weeklyIncomeCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    for (const id of ROOMMATE_ORDER) {
+      const incCents = toCents(assumptions.roommates[id].weeklyIncome);
+      weeklyIncomeCents[id] = incCents;
+      cashCents[id] += incCents;
+      summaryAccum[id].totalIncomeCents += incCents;
+      transactions.push({
+        id: nextTxId(w),
+        week: w,
+        type: "INCOME_INFLOW",
+        flowCategory: "EXTERNAL_INFLOW",
+        fromAccount: "EXTERNAL_EMPLOYER",
+        toAccount: `ROOMMATE:${id}`,
+        amount: toDollars(incCents),
+        amountCents: incCents,
+        roommateId: id,
+        description: `${ROOMMATE_PROFILES[id].name} receives Week ${w} income ($${toDollars(incCents).toFixed(2)}).`,
+        assumptionDrivers: [
+          `${id}.weeklyIncome=$${assumptions.roommates[id].weeklyIncome}/wk`
+        ]
+      });
+    }
+    const basePerPersonDollars = 0.25 * scenario.baseWeeklyBillDollars * weekEvent.weatherOrDemandIndex;
+    const trueUtilityCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    const commonsAddedCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    const meteredSavedCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    for (const id of ROOMMATE_ORDER) {
+      const params = assumptions.roommates[id];
+      const exoNoise = weekEvent.roommateExogenousNoise[id] ?? 0;
+      const neutralFactor = Math.max(0.35, params.usageAppetite + exoNoise);
+      const neutralDollars = basePerPersonDollars * neutralFactor;
+      const unpricedFraction = Math.max(0, 1 - policy.marginalPriceSignal);
+      const commonsInflationMultiplier = unpricedFraction * scenario.commonsElasticity * (0.55 * params.freeRideTemptation + 0.45 * Math.max(0, params.usageAppetite - 0.85)) * 2.1;
+      const commonsExtraDollars = neutralDollars * commonsInflationMultiplier;
+      const meteredConservationMultiplier = policy.chargesMeteringAdminFee || policy.marginalPriceSignal >= 0.95 ? 0.16 * params.auditSensitivity : 0;
+      const meteredSavedDollars = neutralDollars * meteredConservationMultiplier;
+      const actualDollars = Math.max(
+        20,
+        neutralDollars + commonsExtraDollars - meteredSavedDollars
+      );
+      trueUtilityCents[id] = toCents(actualDollars);
+      commonsAddedCents[id] = toCents(commonsExtraDollars);
+      meteredSavedCents[id] = toCents(meteredSavedDollars);
+      summaryAccum[id].totalTrueUtilityCents += trueUtilityCents[id];
+      summaryAccum[id].totalCommonsAddedCents += commonsAddedCents[id];
+      summaryAccum[id].totalMeteredSavedCents += meteredSavedCents[id];
+    }
+    const totalUtilityBillCents = trueUtilityCents.maya + trueUtilityCents.devon + trueUtilityCents.priya + trueUtilityCents.leo;
+    const utilityBillPaidCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    const reportedUtilityCents = {
+      maya: trueUtilityCents.maya,
+      devon: trueUtilityCents.devon,
+      priya: trueUtilityCents.priya,
+      leo: trueUtilityCents.leo
+    };
+    const underreportedGapCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    const shortfallSurchargeCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    if (policy.id === "policy-1-equal-split") {
+      const equalShares = allocateCentsByWeights(
+        totalUtilityBillCents,
+        equalWeights
+      );
+      for (const id of ROOMMATE_ORDER) {
+        utilityBillPaidCents[id] = equalShares[id];
+        cashCents[id] -= equalShares[id];
+        summaryAccum[id].totalUtilityBillPaidCents += equalShares[id];
+        summaryAccum[id].totalReportedUtilityCents += reportedUtilityCents[id];
+        transactions.push({
+          id: nextTxId(w),
+          week: w,
+          type: "UTILITY_BILL_CONTRIBUTION",
+          flowCategory: "INTERNAL_TRANSFER",
+          fromAccount: `ROOMMATE:${id}`,
+          toAccount: "HOUSEHOLD_POT",
+          amount: toDollars(equalShares[id]),
+          amountCents: equalShares[id],
+          roommateId: id,
+          description: `${ROOMMATE_PROFILES[id].name} pays 25% Equal Split of Week ${w} utility bill ($${toDollars(equalShares[id]).toFixed(2)}; true usage was $${toDollars(trueUtilityCents[id]).toFixed(2)}).`,
+          assumptionDrivers: [
+            `policy=Equal Split (25% share)`,
+            `${id}.usageAppetite=${assumptions.roommates[id].usageAppetite.toFixed(2)}`,
+            `marginalPriceSignal=${policy.marginalPriceSignal}`
+          ]
+        });
+      }
+    } else if (policy.id === "policy-2-income-reserve") {
+      const incomeShares = allocateCentsByWeights(
+        totalUtilityBillCents,
+        incomeWeights
+      );
+      const totalIncomeSum = incomeWeights.maya + incomeWeights.devon + incomeWeights.priya + incomeWeights.leo;
+      for (const id of ROOMMATE_ORDER) {
+        const sharePct = (incomeWeights[id] / totalIncomeSum * 100).toFixed(1);
+        utilityBillPaidCents[id] = incomeShares[id];
+        cashCents[id] -= incomeShares[id];
+        summaryAccum[id].totalUtilityBillPaidCents += incomeShares[id];
+        summaryAccum[id].totalReportedUtilityCents += reportedUtilityCents[id];
+        transactions.push({
+          id: nextTxId(w),
+          week: w,
+          type: "UTILITY_BILL_CONTRIBUTION",
+          flowCategory: "INTERNAL_TRANSFER",
+          fromAccount: `ROOMMATE:${id}`,
+          toAccount: "HOUSEHOLD_POT",
+          amount: toDollars(incomeShares[id]),
+          amountCents: incomeShares[id],
+          roommateId: id,
+          description: `${ROOMMATE_PROFILES[id].name} pays ${sharePct}% Income-Proportional share of Week ${w} utility bill ($${toDollars(incomeShares[id]).toFixed(2)}).`,
+          assumptionDrivers: [
+            `policy=Income-Proportional Split (${sharePct}%)`,
+            `${id}.weeklyIncome=$${assumptions.roommates[id].weeklyIncome}/wk`
+          ]
+        });
+      }
+    } else if (policy.id === "policy-3-self-reported") {
+      let totalReportedCents = 0;
+      for (const id of ROOMMATE_ORDER) {
+        const params = assumptions.roommates[id];
+        const underreportFraction = clamp(
+          params.freeRideTemptation * 0.52 * (1 - 0.3 * params.auditSensitivity),
+          0,
+          0.6
+        );
+        const gap = Math.round(trueUtilityCents[id] * underreportFraction);
+        const reported = Math.max(0, trueUtilityCents[id] - gap);
+        reportedUtilityCents[id] = reported;
+        underreportedGapCents[id] = gap;
+        utilityBillPaidCents[id] = reported;
+        totalReportedCents += reported;
+        cashCents[id] -= reported;
+        summaryAccum[id].totalUtilityBillPaidCents += reported;
+        summaryAccum[id].totalReportedUtilityCents += reported;
+        summaryAccum[id].totalUnderreportedCents += gap;
+        transactions.push({
+          id: nextTxId(w),
+          week: w,
+          type: "UTILITY_BILL_CONTRIBUTION",
+          flowCategory: "INTERNAL_TRANSFER",
+          fromAccount: `ROOMMATE:${id}`,
+          toAccount: "HOUSEHOLD_POT",
+          amount: toDollars(reported),
+          amountCents: reported,
+          roommateId: id,
+          description: `${ROOMMATE_PROFILES[id].name} self-reports $${toDollars(reported).toFixed(2)} of Week ${w} usage (true usage $${toDollars(trueUtilityCents[id]).toFixed(2)}, underreported gap $${toDollars(gap).toFixed(2)}).`,
+          assumptionDrivers: [
+            `policy=Self-Reported Usage Billing (unverified)`,
+            `${id}.freeRideTemptation=${params.freeRideTemptation.toFixed(2)}`,
+            `${id}.auditSensitivity=${params.auditSensitivity.toFixed(2)}`
+          ]
+        });
+      }
+      const totalShortfallCents = Math.max(
+        0,
+        totalUtilityBillCents - totalReportedCents
+      );
+      if (totalShortfallCents > 0) {
+        const shortfallShares = allocateCentsByWeights(
+          totalShortfallCents,
+          equalWeights
+        );
+        for (const id of ROOMMATE_ORDER) {
+          shortfallSurchargeCents[id] = shortfallShares[id];
+          cashCents[id] -= shortfallShares[id];
+          summaryAccum[id].totalShortfallPaidCents += shortfallShares[id];
+          transactions.push({
+            id: nextTxId(w),
+            week: w,
+            type: "SHORTFALL_SURCHARGE",
+            flowCategory: "INTERNAL_TRANSFER",
+            fromAccount: `ROOMMATE:${id}`,
+            toAccount: "HOUSEHOLD_POT",
+            amount: toDollars(shortfallShares[id]),
+            amountCents: shortfallShares[id],
+            roommateId: id,
+            description: `${ROOMMATE_PROFILES[id].name} pays 25% of Week ${w} Unexplained Shortfall Surcharge ($${toDollars(shortfallShares[id]).toFixed(2)} of $${toDollars(totalShortfallCents).toFixed(2)} uncollected gap).`,
+            assumptionDrivers: [
+              `policy=Self-Reported Shortfall Split (25% each)`,
+              `leo.freeRideTemptation=${assumptions.roommates.leo.freeRideTemptation.toFixed(2)}`
+            ]
+          });
+        }
+      }
+    } else {
+      for (const id of ROOMMATE_ORDER) {
+        const meteredCents = trueUtilityCents[id];
+        utilityBillPaidCents[id] = meteredCents;
+        reportedUtilityCents[id] = meteredCents;
+        cashCents[id] -= meteredCents;
+        summaryAccum[id].totalUtilityBillPaidCents += meteredCents;
+        summaryAccum[id].totalReportedUtilityCents += meteredCents;
+        transactions.push({
+          id: nextTxId(w),
+          week: w,
+          type: "UTILITY_BILL_CONTRIBUTION",
+          flowCategory: "INTERNAL_TRANSFER",
+          fromAccount: `ROOMMATE:${id}`,
+          toAccount: "HOUSEHOLD_POT",
+          amount: toDollars(meteredCents),
+          amountCents: meteredCents,
+          roommateId: id,
+          description: `${ROOMMATE_PROFILES[id].name} pays exact sub-metered Week ${w} usage ($${toDollars(meteredCents).toFixed(2)}; saved $${toDollars(meteredSavedCents[id]).toFixed(2)} via metered price response).`,
+          assumptionDrivers: [
+            `policy=Metered Usage (100% marginal price signal)`,
+            `${id}.usageAppetite=${assumptions.roommates[id].usageAppetite.toFixed(2)}`,
+            `${id}.auditSensitivity=${assumptions.roommates[id].auditSensitivity.toFixed(2)}`
+          ]
+        });
+      }
+    }
+    transactions.push({
+      id: nextTxId(w),
+      week: w,
+      type: "UTILITY_VENDOR_PAYMENT",
+      flowCategory: "EXTERNAL_OUTFLOW",
+      fromAccount: "HOUSEHOLD_POT",
+      toAccount: "EXTERNAL_UTILITY_VENDOR",
+      amount: toDollars(totalUtilityBillCents),
+      amountCents: totalUtilityBillCents,
+      description: `Household Pot settles Week ${w} ${scenario.utilityLabel} invoice ($${toDollars(totalUtilityBillCents).toFixed(2)}) with external utility vendor.`,
+      assumptionDrivers: [
+        `weatherOrDemandIndex=${weekEvent.weatherOrDemandIndex}`,
+        `baseWeeklyBill=$${scenario.baseWeeklyBillDollars}`
+      ]
+    });
+    const reserveContributionCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    if (policy.collectsReserveBuffer && assumptions.reserveContributionRate > 0) {
+      const totalReserveAddCents = Math.round(
+        totalUtilityBillCents * assumptions.reserveContributionRate
+      );
+      const reserveShares = allocateCentsByWeights(
+        totalReserveAddCents,
+        incomeWeights
+      );
+      for (const id of ROOMMATE_ORDER) {
+        const contrib = reserveShares[id];
+        reserveContributionCents[id] = contrib;
+        cashCents[id] -= contrib;
+        reserveCents += contrib;
+        summaryAccum[id].totalReservePaidCents += contrib;
+        transactions.push({
+          id: nextTxId(w),
+          week: w,
+          type: "RESERVE_CONTRIBUTION",
+          flowCategory: "INTERNAL_TRANSFER",
+          fromAccount: `ROOMMATE:${id}`,
+          toAccount: "HOUSEHOLD_RESERVE",
+          amount: toDollars(contrib),
+          amountCents: contrib,
+          roommateId: id,
+          description: `${ROOMMATE_PROFILES[id].name} contributes $${toDollars(contrib).toFixed(2)} into the Shared Household Reserve (${Math.round(assumptions.reserveContributionRate * 100)}% buffer).`,
+          assumptionDrivers: [
+            `policy=Shared Reserve Buffer (${Math.round(assumptions.reserveContributionRate * 100)}%)`,
+            `${id}.weeklyIncome=$${assumptions.roommates[id].weeklyIncome}/wk`
+          ]
+        });
+      }
+    }
+    const adminFeeCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    if (policy.chargesMeteringAdminFee && assumptions.weeklyMeteringAdminFee > 0) {
+      const totalAdminCents = toCents(assumptions.weeklyMeteringAdminFee);
+      const adminShares = allocateCentsByWeights(totalAdminCents, equalWeights);
+      for (const id of ROOMMATE_ORDER) {
+        const fee = adminShares[id];
+        adminFeeCents[id] = fee;
+        cashCents[id] -= fee;
+        summaryAccum[id].totalAdminFeePaidCents += fee;
+        transactions.push({
+          id: nextTxId(w),
+          week: w,
+          type: "ADMIN_METERING_FEE",
+          flowCategory: "EXTERNAL_OUTFLOW",
+          fromAccount: `ROOMMATE:${id}`,
+          toAccount: "EXTERNAL_ADMIN_VENDOR",
+          amount: toDollars(fee),
+          amountCents: fee,
+          roommateId: id,
+          description: `${ROOMMATE_PROFILES[id].name} pays $${toDollars(fee).toFixed(2)} share of Week ${w} smart sub-metering & chore-ledger admin fee.`,
+          assumptionDrivers: [
+            `policy=Metered Usage Admin Fee ($${assumptions.weeklyMeteringAdminFee}/wk)`
+          ]
+        });
+      }
+    }
+    const surpriseShockPaidCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    let surpriseExpenseCents = 0;
+    let reserveUsedForSurpriseCents = 0;
+    if (weekEvent.surpriseExpense) {
+      surpriseExpenseCents = toCents(weekEvent.surpriseExpense.amountDollars);
+      reserveUsedForSurpriseCents = Math.min(reserveCents, surpriseExpenseCents);
+      if (reserveUsedForSurpriseCents > 0) {
+        reserveCents -= reserveUsedForSurpriseCents;
+        transactions.push({
+          id: nextTxId(w),
+          week: w,
+          type: "RESERVE_WITHDRAWAL",
+          flowCategory: "INTERNAL_TRANSFER",
+          fromAccount: "HOUSEHOLD_RESERVE",
+          toAccount: "HOUSEHOLD_POT",
+          amount: toDollars(reserveUsedForSurpriseCents),
+          amountCents: reserveUsedForSurpriseCents,
+          description: `Shared Household Reserve absorbs $${toDollars(reserveUsedForSurpriseCents).toFixed(2)} of ${weekEvent.surpriseExpense.title}.`,
+          assumptionDrivers: [
+            `surpriseExpense=$${weekEvent.surpriseExpense.amountDollars}`,
+            `availableReserve=$${toDollars(reserveUsedForSurpriseCents + reserveCents).toFixed(2)}`
+          ]
+        });
+      }
+      const uncoveredSurpriseCents = surpriseExpenseCents - reserveUsedForSurpriseCents;
+      if (uncoveredSurpriseCents > 0) {
+        const shockWeights = policy.id === "policy-2-income-reserve" ? incomeWeights : equalWeights;
+        const shockShares = allocateCentsByWeights(
+          uncoveredSurpriseCents,
+          shockWeights
+        );
+        for (const id of ROOMMATE_ORDER) {
+          const share = shockShares[id];
+          surpriseShockPaidCents[id] = share;
+          cashCents[id] -= share;
+          summaryAccum[id].totalSurprisePaidCents += share;
+          transactions.push({
+            id: nextTxId(w),
+            week: w,
+            type: "SURPRISE_SHOCK_CONTRIBUTION",
+            flowCategory: "INTERNAL_TRANSFER",
+            fromAccount: `ROOMMATE:${id}`,
+            toAccount: "HOUSEHOLD_POT",
+            amount: toDollars(share),
+            amountCents: share,
+            roommateId: id,
+            description: `${ROOMMATE_PROFILES[id].name} pays $${toDollars(share).toFixed(2)} out-of-pocket toward uncovered Week 3 Surprise Expense (${weekEvent.surpriseExpense.title}).`,
+            assumptionDrivers: [
+              `surpriseExpense=${weekEvent.surpriseExpense.id}`,
+              `uncoveredAfterReserve=$${toDollars(uncoveredSurpriseCents).toFixed(2)}`,
+              `policy=${policy.shortTitle}`
+            ]
+          });
+        }
+      }
+      transactions.push({
+        id: nextTxId(w),
+        week: w,
+        type: "SURPRISE_VENDOR_PAYMENT",
+        flowCategory: "EXTERNAL_OUTFLOW",
+        fromAccount: "HOUSEHOLD_POT",
+        toAccount: "EXTERNAL_REPAIR_VENDOR",
+        amount: toDollars(surpriseExpenseCents),
+        amountCents: surpriseExpenseCents,
+        description: `Household Pot pays $${toDollars(surpriseExpenseCents).toFixed(2)} to external vendor for ${weekEvent.surpriseExpense.title}.`,
+        assumptionDrivers: [
+          `eventSchedule.surpriseExpense=$${weekEvent.surpriseExpense.amountDollars} (frozen seed=${eventSchedule.seed})`
+        ]
+      });
+    }
+    const choreRebateNetCents = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    const willingnessScores = ROOMMATE_ORDER.map((id) => {
+      const p = assumptions.roommates[id];
+      const score = p.auditSensitivity * 0.75 - p.freeRideTemptation * 0.7 + (320 - p.weeklyIncome) / 900;
+      return { id, score };
+    }).sort((a, b) => b.score - a.score);
+    const choreDeltas = {
+      maya: 0,
+      devon: 0,
+      priya: 0,
+      leo: 0
+    };
+    if (policy.enablesChoreRebate && assumptions.choreCreditDollarValue > 0) {
+      const creditCents = toCents(assumptions.choreCreditDollarValue);
+      const helper1 = willingnessScores[0].id;
+      const shirker1 = willingnessScores[3].id;
+      if (willingnessScores[0].score - willingnessScores[3].score >= 0.15) {
+        choreDeltas[helper1] = 1;
+        choreDeltas[shirker1] = -1;
+        cashCents[shirker1] -= creditCents;
+        cashCents[helper1] += creditCents;
+        choreRebateNetCents[helper1] += creditCents;
+        choreRebateNetCents[shirker1] -= creditCents;
+        summaryAccum[helper1].totalChoreRebateNetCents += creditCents;
+        summaryAccum[shirker1].totalChoreRebateNetCents -= creditCents;
+        transactions.push({
+          id: nextTxId(w),
+          week: w,
+          type: "CHORE_REBATE_TRANSFER",
+          flowCategory: "INTERNAL_TRANSFER",
+          fromAccount: `ROOMMATE:${shirker1}`,
+          toAccount: `ROOMMATE:${helper1}`,
+          amount: toDollars(creditCents),
+          amountCents: creditCents,
+          roommateId: helper1,
+          counterpartyRoommateId: shirker1,
+          description: `${ROOMMATE_PROFILES[shirker1].name} pays $${toDollars(creditCents).toFixed(2)} Chore-Credit Rebate to ${ROOMMATE_PROFILES[helper1].name} for covering 1 extra kitchen/cleaning chore in Week ${w}.`,
+          assumptionDrivers: [
+            `policy=Chore-Credit Rebate ($${assumptions.choreCreditDollarValue}/chore)`,
+            `${helper1}.auditSensitivity=${assumptions.roommates[helper1].auditSensitivity.toFixed(2)}`,
+            `${shirker1}.freeRideTemptation=${assumptions.roommates[shirker1].freeRideTemptation.toFixed(2)}`
+          ]
+        });
+      }
+      const helper2 = willingnessScores[1].id;
+      const shirker2 = willingnessScores[2].id;
+      if (willingnessScores[1].score - willingnessScores[2].score >= 0.25) {
+        choreDeltas[helper2] = 1;
+        choreDeltas[shirker2] = -1;
+        cashCents[shirker2] -= creditCents;
+        cashCents[helper2] += creditCents;
+        choreRebateNetCents[helper2] += creditCents;
+        choreRebateNetCents[shirker2] -= creditCents;
+        summaryAccum[helper2].totalChoreRebateNetCents += creditCents;
+        summaryAccum[shirker2].totalChoreRebateNetCents -= creditCents;
+        transactions.push({
+          id: nextTxId(w),
+          week: w,
+          type: "CHORE_REBATE_TRANSFER",
+          flowCategory: "INTERNAL_TRANSFER",
+          fromAccount: `ROOMMATE:${shirker2}`,
+          toAccount: `ROOMMATE:${helper2}`,
+          amount: toDollars(creditCents),
+          amountCents: creditCents,
+          roommateId: helper2,
+          counterpartyRoommateId: shirker2,
+          description: `${ROOMMATE_PROFILES[shirker2].name} pays $${toDollars(creditCents).toFixed(2)} Chore-Credit Rebate to ${ROOMMATE_PROFILES[helper2].name} for covering 1 extra kitchen/cleaning chore in Week ${w}.`,
+          assumptionDrivers: [
+            `policy=Chore-Credit Rebate ($${assumptions.choreCreditDollarValue}/chore)`,
+            `${helper2}.auditSensitivity=${assumptions.roommates[helper2].auditSensitivity.toFixed(2)}`,
+            `${shirker2}.freeRideTemptation=${assumptions.roommates[shirker2].freeRideTemptation.toFixed(2)}`
+          ]
+        });
+      }
+    } else {
+      const helper = willingnessScores[0].id;
+      const shirker = willingnessScores[3].id;
+      if (assumptions.roommates[shirker].freeRideTemptation >= 0.55) {
+        choreDeltas[helper] = 1;
+        choreDeltas[shirker] = -1;
+      }
+    }
+    const weeklyRoommateStates = {};
+    for (const id of ROOMMATE_ORDER) {
+      const targetChores = GAME_CONFIG.BASE_CHORES_PER_ROOMMATE_PER_WEEK;
+      const delta = choreDeltas[id];
+      const completedChores = targetChores + delta;
+      summaryAccum[id].totalChoresCompleted += completedChores;
+      const totalOutOfPocketCents = utilityBillPaidCents[id] + shortfallSurchargeCents[id] + reserveContributionCents[id] + surpriseShockPaidCents[id] + adminFeeCents[id] - choreRebateNetCents[id];
+      const overpaymentRatio = (utilityBillPaidCents[id] + shortfallSurchargeCents[id] - trueUtilityCents[id]) / Math.max(100, trueUtilityCents[id]);
+      const allowedOverpayment = (1 - assumptions.roommates[id].fairnessThreshold) * 0.35;
+      let trustDelta = 0;
+      if (overpaymentRatio > allowedOverpayment) {
+        trustDelta -= Math.round((overpaymentRatio - allowedOverpayment) * 28);
+      } else {
+        trustDelta += 2;
+      }
+      if (shortfallSurchargeCents[id] > 0 && underreportedGapCents[id] < shortfallSurchargeCents[id]) {
+        trustDelta -= 6;
+      }
+      if (delta > 0 && !policy.enablesChoreRebate) {
+        trustDelta -= 5;
+      } else if (delta > 0 && policy.enablesChoreRebate) {
+        trustDelta += 3;
+      }
+      if (toDollars(cashCents[id]) < GAME_CONFIG.LIQUIDITY_STRESS_THRESHOLD) {
+        trustDelta -= 8;
+      }
+      trustScore[id] = clamp(trustScore[id] + trustDelta, 15, 100);
+      choreLedger.push({
+        id: `CHORE-W${w}-${id.toUpperCase()}`,
+        week: w,
+        roommateId: id,
+        targetChores,
+        completedChores,
+        choreDelta: delta,
+        rebateOrPenaltyDollars: toDollars(choreRebateNetCents[id]),
+        trustDelta,
+        note: delta > 0 ? policy.enablesChoreRebate ? `Completed ${completedChores} chores (+1 extra) and earned +$${toDollars(choreRebateNetCents[id]).toFixed(2)} chore rebate.` : `Completed ${completedChores} chores (+1 extra unpaid cover for shirked chore).` : delta < 0 ? policy.enablesChoreRebate ? `Completed ${completedChores} chore (-1) and paid $${Math.abs(toDollars(choreRebateNetCents[id])).toFixed(2)} chore rebate to housemate.` : `Completed ${completedChores} chore (-1 shirked without financial penalty).` : `Completed standard ${completedChores} weekly chores.`
+      });
+      const endingCashDollars = toDollars(cashCents[id]);
+      const inStress = endingCashDollars < GAME_CONFIG.LIQUIDITY_STRESS_THRESHOLD;
+      const inOverdraft = endingCashDollars < GAME_CONFIG.OVERDRAFT_THRESHOLD;
+      if (cashCents[id] < summaryAccum[id].minWeeklyCashCents) {
+        summaryAccum[id].minWeeklyCashCents = cashCents[id];
+      }
+      if (inStress) summaryAccum[id].experiencedLiquidityStress = true;
+      if (inOverdraft) summaryAccum[id].experiencedOverdraft = true;
+      weeklyRoommateStates[id] = {
+        roommateId: id,
+        week: w,
+        startingCash: toDollars(startingCashCents[id]),
+        incomeReceived: toDollars(weeklyIncomeCents[id]),
+        trueUtilityConsumption: toDollars(trueUtilityCents[id]),
+        reportedUtilityConsumption: toDollars(reportedUtilityCents[id]),
+        underreportedGap: toDollars(underreportedGapCents[id]),
+        commonsOverconsumptionAdded: toDollars(commonsAddedCents[id]),
+        meteredConservationSaved: toDollars(meteredSavedCents[id]),
+        utilityBillPaid: toDollars(utilityBillPaidCents[id]),
+        shortfallSurchargePaid: toDollars(shortfallSurchargeCents[id]),
+        reserveContributionPaid: toDollars(reserveContributionCents[id]),
+        surpriseShockPaid: toDollars(surpriseShockPaidCents[id]),
+        adminFeePaid: toDollars(adminFeeCents[id]),
+        choreRebateNet: toDollars(choreRebateNetCents[id]),
+        totalOutOfPocketPaid: toDollars(totalOutOfPocketCents),
+        endingCash: endingCashDollars,
+        inLiquidityStress: inStress,
+        inOverdraft,
+        endingTrust: trustScore[id]
+      };
+    }
+    const totalUnderreportedCentsWeek = underreportedGapCents.maya + underreportedGapCents.devon + underreportedGapCents.priya + underreportedGapCents.leo;
+    const endingTotalRoommateCashCents = cashCents.maya + cashCents.devon + cashCents.priya + cashCents.leo;
+    const avgTrust = Number(
+      ((trustScore.maya + trustScore.devon + trustScore.priya + trustScore.leo) / 4).toFixed(1)
+    );
+    weeklySnapshots.push({
+      week: w,
+      weatherOrDemandIndex: weekEvent.weatherOrDemandIndex,
+      ambientNote: weekEvent.ambientNote,
+      totalUtilityBill: toDollars(totalUtilityBillCents),
+      totalUnderreportedGap: toDollars(totalUnderreportedCentsWeek),
+      surpriseExpenseAmount: toDollars(surpriseExpenseCents),
+      reserveUsedForSurprise: toDollars(reserveUsedForSurpriseCents),
+      endingHouseholdReserve: toDollars(reserveCents),
+      endingTotalRoommateCash: toDollars(endingTotalRoommateCashCents),
+      averageHouseholdTrust: avgTrust,
+      roommateStates: weeklyRoommateStates
+    });
+  }
+  const roommateSummaries = {};
+  let highestNetPayerId = "priya";
+  let highestNetPaidCents = -Infinity;
+  let largestBehavioralShiftId = "priya";
+  let largestBehavioralShiftCents = -Infinity;
+  for (const id of ROOMMATE_ORDER) {
+    const acc = summaryAccum[id];
+    const netOutOfPocketCents = acc.totalUtilityBillPaidCents + acc.totalShortfallPaidCents + acc.totalReservePaidCents + acc.totalSurprisePaidCents + acc.totalAdminFeePaidCents - acc.totalChoreRebateNetCents;
+    if (netOutOfPocketCents > highestNetPaidCents) {
+      highestNetPaidCents = netOutOfPocketCents;
+      highestNetPayerId = id;
+    }
+    const shiftMagnitudeCents = acc.totalCommonsAddedCents + acc.totalUnderreportedCents + acc.totalMeteredSavedCents + Math.abs(acc.totalChoreRebateNetCents);
+    if (shiftMagnitudeCents > largestBehavioralShiftCents) {
+      largestBehavioralShiftCents = shiftMagnitudeCents;
+      largestBehavioralShiftId = id;
+    }
+    let primaryDriver = "Steady baseline consumption";
+    if (acc.totalUnderreportedCents > 2500) {
+      primaryDriver = `Underreported $${toDollars(acc.totalUnderreportedCents).toFixed(2)} under unverified billing`;
+    } else if (acc.totalCommonsAddedCents > 3500) {
+      primaryDriver = `Added $${toDollars(acc.totalCommonsAddedCents).toFixed(2)} in unpriced commons draw`;
+    } else if (acc.totalChoreRebateNetCents > 0) {
+      primaryDriver = `Earned +$${toDollars(acc.totalChoreRebateNetCents).toFixed(2)} in extra chore rebates & saved $${toDollars(acc.totalMeteredSavedCents).toFixed(2)} via metering`;
+    } else if (acc.totalMeteredSavedCents > 2e3) {
+      primaryDriver = `Curbed usage by $${toDollars(acc.totalMeteredSavedCents).toFixed(2)} under 100% metered price signal`;
+    }
+    roommateSummaries[id] = {
+      roommateId: id,
+      name: ROOMMATE_PROFILES[id].name,
+      initialCash: assumptions.roommates[id].initialCash,
+      totalIncome: toDollars(acc.totalIncomeCents),
+      totalTrueUtilityConsumption: toDollars(acc.totalTrueUtilityCents),
+      totalReportedUtilityConsumption: toDollars(acc.totalReportedUtilityCents),
+      totalUnderreportedGap: toDollars(acc.totalUnderreportedCents),
+      totalCommonsOverconsumption: toDollars(acc.totalCommonsAddedCents),
+      totalMeteredConservationSaved: toDollars(acc.totalMeteredSavedCents),
+      totalUtilityBillPaid: toDollars(acc.totalUtilityBillPaidCents),
+      totalShortfallSurchargePaid: toDollars(acc.totalShortfallPaidCents),
+      totalReserveContributionPaid: toDollars(acc.totalReservePaidCents),
+      totalSurpriseShockPaid: toDollars(acc.totalSurprisePaidCents),
+      totalAdminFeePaid: toDollars(acc.totalAdminFeePaidCents),
+      totalChoreRebateNet: toDollars(acc.totalChoreRebateNetCents),
+      totalOutOfPocketPaid: toDollars(netOutOfPocketCents),
+      behavioralShiftMagnitude: toDollars(shiftMagnitudeCents),
+      primaryBehavioralDriver: primaryDriver,
+      endingCash: toDollars(cashCents[id]),
+      minWeeklyCash: toDollars(acc.minWeeklyCashCents),
+      experiencedLiquidityStress: acc.experiencedLiquidityStress,
+      experiencedOverdraft: acc.experiencedOverdraft,
+      endingTrust: trustScore[id],
+      totalChoresCompleted: acc.totalChoresCompleted
+    };
+  }
+  const totalExternalInflowsCents = transactions.filter((tx) => tx.flowCategory === "EXTERNAL_INFLOW").reduce((sum, tx) => sum + tx.amountCents, 0);
+  const totalExternalOutflowsCents = transactions.filter((tx) => tx.flowCategory === "EXTERNAL_OUTFLOW").reduce((sum, tx) => sum + tx.amountCents, 0);
+  const endingRoommateCashCents = cashCents.maya + cashCents.devon + cashCents.priya + cashCents.leo;
+  const endingHouseholdReserveCents = reserveCents;
+  const initialCashCents = initialRoommateCashCents + initialHouseholdReserveCents;
+  const totalInflowsCents = initialCashCents + totalExternalInflowsCents;
+  const totalOutflowsCents = totalExternalOutflowsCents;
+  const expectedEndingTotalCents = totalInflowsCents - totalOutflowsCents;
+  const actualEndingTotalCents = endingRoommateCashCents + endingHouseholdReserveCents;
+  const discrepancyCents = expectedEndingTotalCents - actualEndingTotalCents;
+  const conservation = {
+    initialRoommateCash: toDollars(initialRoommateCashCents),
+    initialHouseholdReserve: toDollars(initialHouseholdReserveCents),
+    initialCash: toDollars(initialCashCents),
+    totalIncome: toDollars(totalExternalInflowsCents),
+    totalExpenses: toDollars(totalExternalOutflowsCents),
+    totalInflows: toDollars(totalInflowsCents),
+    totalOutflows: toDollars(totalOutflowsCents),
+    endingRoommateCash: toDollars(endingRoommateCashCents),
+    endingHouseholdReserve: toDollars(endingHouseholdReserveCents),
+    finalRoommateCash: toDollars(endingRoommateCashCents),
+    finalHouseholdReserve: toDollars(endingHouseholdReserveCents),
+    expectedEndingTotal: toDollars(expectedEndingTotalCents),
+    actualEndingTotal: toDollars(actualEndingTotalCents),
+    discrepancyCents,
+    discrepancyDollars: toDollars(discrepancyCents),
+    isConserved: discrepancyCents === 0
+  };
+  const anyLiquidityStress = ROOMMATE_ORDER.some(
+    (id) => roommateSummaries[id].experiencedLiquidityStress
+  );
+  const anyOverdraft = ROOMMATE_ORDER.some(
+    (id) => roommateSummaries[id].experiencedOverdraft
+  );
+  const endingAverageTrust = weeklySnapshots[weeklySnapshots.length - 1].averageHouseholdTrust;
+  const partialResult = {
+    scenarioId: scenario.id,
+    policyId: policy.id,
+    seed: eventSchedule.seed,
+    scheduleSignature: eventSchedule.scheduleSignature,
+    eventSchedule,
+    assumptions,
+    transactions,
+    choreLedger,
+    weeklySnapshots,
+    roommateSummaries,
+    conservation,
+    explanations: [],
+    highestNetPayerId,
+    largestBehavioralShiftId,
+    anyLiquidityStress,
+    anyOverdraft,
+    endingAverageTrust
+  };
+  partialResult.explanations = buildLedgerExplanations(partialResult);
+  return partialResult;
+}
+function buildLedgerExplanations(runResult) {
+  const { policyId, roommateSummaries, transactions, assumptions } = runResult;
+  const policy = POLICIES[policyId];
+  const explanations = [];
+  const devonUtilityTxs = transactions.filter(
+    (tx) => tx.roommateId === "devon" && tx.type === "UTILITY_BILL_CONTRIBUTION"
+  ).map((tx) => tx.id);
+  const priyaUtilityTxs = transactions.filter(
+    (tx) => tx.roommateId === "priya" && tx.type === "UTILITY_BILL_CONTRIBUTION"
+  ).map((tx) => tx.id);
+  const highestPayer = roommateSummaries[runResult.highestNetPayerId];
+  const devonSummary = roommateSummaries.devon;
+  explanations.push({
+    id: "EXP-BILLING-BURDEN",
+    category: "BILLING_SPLIT",
+    headline: `Billing Distribution: ${highestPayer.name} paid the highest net total ($${highestPayer.totalOutOfPocketPaid.toFixed(2)}); Devon ended at $${devonSummary.endingCash.toFixed(2)} cash`,
+    statement: `In the recorded ledger (${[...devonUtilityTxs.slice(0, 2), ...priyaUtilityTxs.slice(0, 2)].join(", ")}), ${policy.shortTitle} resulted in ${highestPayer.name} paying $${highestPayer.totalOutOfPocketPaid.toFixed(2)} out-of-pocket over 4 weeks while Devon paid $${devonSummary.totalOutOfPocketPaid.toFixed(2)} on a $${assumptions.roommates.devon.weeklyIncome}/wk income. Under our model\u2019s billing equation (${policy.id}), Devon\u2019s minimum weekly cash reached $${devonSummary.minWeeklyCash.toFixed(2)} (${devonSummary.experiencedLiquidityStress ? "triggering Liquidity Stress < $40" : "remaining above the $40 stress threshold"}).`,
+    transactionIds: [...devonUtilityTxs, ...priyaUtilityTxs],
+    assumptionRefs: [
+      `devon.weeklyIncome=$${assumptions.roommates.devon.weeklyIncome}/wk`,
+      `priya.weeklyIncome=$${assumptions.roommates.priya.weeklyIncome}/wk`,
+      `priya.usageAppetite=${assumptions.roommates.priya.usageAppetite.toFixed(2)}`,
+      `policy=${policy.id}`
+    ],
+    modelLimitationNote: "Model Assumption Note: This cash trajectory follows deterministically from fixed weekly incomes and the selected billing formula; real roommates might renegotiate mid-month or lend cash informally outside the formal ledger."
+  });
+  if (policyId === "policy-3-self-reported") {
+    const shortfallTxs = transactions.filter((tx) => tx.type === "SHORTFALL_SURCHARGE").map((tx) => tx.id);
+    const leoReportTxs = transactions.filter(
+      (tx) => tx.roommateId === "leo" && tx.type === "UTILITY_BILL_CONTRIBUTION"
+    ).map((tx) => tx.id);
+    const cited = [...leoReportTxs.slice(0, 2), ...shortfallTxs.slice(0, 2)];
+    explanations.push({
+      id: "EXP-INCENTIVE-UNDERREPORT",
+      category: "BEHAVIORAL_INCENTIVE",
+      headline: `Unverified Reporting Gap: $${(roommateSummaries.maya.totalUnderreportedGap + roommateSummaries.devon.totalUnderreportedGap + roommateSummaries.priya.totalUnderreportedGap + roommateSummaries.leo.totalUnderreportedGap).toFixed(2)} shifted via Shortfall Surcharges`,
+      statement: `Because Policy 3 uses unverified self-reporting, our agent equation discounts reported usage by (freeRideTemptation * 0.52 * (1 - 0.30 * auditSensitivity)). Leo (freeRideTemptation=${assumptions.roommates.leo.freeRideTemptation.toFixed(2)}) underreported $${roommateSummaries.leo.totalUnderreportedGap.toFixed(2)} across ${leoReportTxs.join(", ")}, forcing the household to cover an Unexplained Shortfall Surcharge across ${shortfallTxs.slice(0, 4).join(", ")}.`,
+      transactionIds: cited.length > 0 ? cited : leoReportTxs,
+      assumptionRefs: [
+        `leo.freeRideTemptation=${assumptions.roommates.leo.freeRideTemptation.toFixed(2)}`,
+        `leo.auditSensitivity=${assumptions.roommates.leo.auditSensitivity.toFixed(2)}`,
+        `policy.allowsUnverifiedUnderreporting=true`
+      ],
+      modelLimitationNote: "Model Assumption Note: The underreporting gap is a conditional consequence of setting Leo\u2019s `freeRideTemptation` slider to a high value in an unverified equation\u2014not a claim that all real roommates cheat on honor jars."
+    });
+  } else if (policyId === "policy-4-metered-rebate") {
+    const adminTxs = transactions.filter((tx) => tx.type === "ADMIN_METERING_FEE").map((tx) => tx.id);
+    const totalSaved = roommateSummaries.maya.totalMeteredConservationSaved + roommateSummaries.devon.totalMeteredConservationSaved + roommateSummaries.priya.totalMeteredConservationSaved + roommateSummaries.leo.totalMeteredConservationSaved;
+    const totalAdmin = roommateSummaries.maya.totalAdminFeePaid + roommateSummaries.devon.totalAdminFeePaid + roommateSummaries.priya.totalAdminFeePaid + roommateSummaries.leo.totalAdminFeePaid;
+    explanations.push({
+      id: "EXP-INCENTIVE-METERED",
+      category: "BEHAVIORAL_INCENTIVE",
+      headline: `Metered Verification vs. Admin Overhead: Saved $${totalSaved.toFixed(2)} in usage at a $${totalAdmin.toFixed(2)} metering fee`,
+      statement: `Under Policy 4, setting marginalPriceSignal=1.0 caused roommates to curb consumption by $${totalSaved.toFixed(2)} via their auditSensitivity parameters while eliminating underreporting. However, ledger entries ${adminTxs.slice(0, 4).join(", ")} record $${totalAdmin.toFixed(2)} paid to EXTERNAL_ADMIN_VENDOR ($${assumptions.weeklyMeteringAdminFee}/wk fixed fee).`,
+      transactionIds: adminTxs,
+      assumptionRefs: [
+        `policy.marginalPriceSignal=1.0`,
+        `weeklyMeteringAdminFee=$${assumptions.weeklyMeteringAdminFee}/wk`,
+        `priya.auditSensitivity=${assumptions.roommates.priya.auditSensitivity.toFixed(2)}`
+      ],
+      modelLimitationNote: "Model Assumption Note: In this stylized equation, sub-metering has zero measurement error and a flat weekly fee; real smart-home sub-meters cannot easily separate shared refrigerator or hallway heat draw."
+    });
+  } else {
+    const vendorUtilityTxs = transactions.filter((tx) => tx.type === "UTILITY_VENDOR_PAYMENT").map((tx) => tx.id);
+    const totalCommons = roommateSummaries.maya.totalCommonsOverconsumption + roommateSummaries.devon.totalCommonsOverconsumption + roommateSummaries.priya.totalCommonsOverconsumption + roommateSummaries.leo.totalCommonsOverconsumption;
+    explanations.push({
+      id: "EXP-INCENTIVE-COMMONS",
+      category: "BEHAVIORAL_INCENTIVE",
+      headline: `Pooled Marginal Cost Effect: +$${totalCommons.toFixed(2)} in unpriced commons consumption`,
+      statement: `Because ${policy.shortTitle} sets marginalPriceSignal=${policy.marginalPriceSignal.toFixed(2)} (each roommate pays only ${Math.round(policy.marginalPriceSignal * 100)} cents on an extra dollar of consumption), our model\u2019s commons-elasticity term added $${totalCommons.toFixed(2)} to vendor utility invoices (${vendorUtilityTxs.join(", ")}), led by Priya ($${roommateSummaries.priya.totalCommonsOverconsumption.toFixed(2)}) and Leo ($${roommateSummaries.leo.totalCommonsOverconsumption.toFixed(2)}).`,
+      transactionIds: vendorUtilityTxs,
+      assumptionRefs: [
+        `policy.marginalPriceSignal=${policy.marginalPriceSignal}`,
+        `priya.usageAppetite=${assumptions.roommates.priya.usageAppetite.toFixed(2)}`,
+        `leo.freeRideTemptation=${assumptions.roommates.leo.freeRideTemptation.toFixed(2)}`
+      ],
+      modelLimitationNote: 'Model Assumption Note: This "tragedy of the commons" inflation is driven by our multiplicative price-elasticity equation; real roommates may conserve energy out of environmental values even when bills are split equally.'
+    });
+  }
+  const shockTxs = transactions.filter(
+    (tx) => tx.type === "RESERVE_WITHDRAWAL" || tx.type === "SURPRISE_SHOCK_CONTRIBUTION" || tx.type === "SURPRISE_VENDOR_PAYMENT"
+  ).map((tx) => tx.id);
+  const w3Snap = runResult.weeklySnapshots[2];
+  explanations.push({
+    id: "EXP-WEEK3-SHOCK",
+    category: "SURPRISE_SHOCK",
+    headline: `Week 3 Surprise Expense ($${w3Snap.surpriseExpenseAmount.toFixed(2)}): $${w3Snap.reserveUsedForSurprise.toFixed(2)} buffered by Reserve`,
+    statement: `When the frozen Week 3 Surprise Expense hit (${shockTxs.join(", ")}), the Shared Household Reserve absorbed $${w3Snap.reserveUsedForSurprise.toFixed(2)} first, leaving $${(w3Snap.surpriseExpenseAmount - w3Snap.reserveUsedForSurprise).toFixed(2)} to be paid out-of-pocket by roommates during Week 3.`,
+    transactionIds: shockTxs,
+    assumptionRefs: [
+      `policy.collectsReserveBuffer=${policy.collectsReserveBuffer}`,
+      `reserveContributionRate=${Math.round(assumptions.reserveContributionRate * 100)}%`,
+      `eventSchedule.week3Surprise=$${w3Snap.surpriseExpenseAmount.toFixed(2)}`
+    ],
+    modelLimitationNote: "Model Assumption Note: The model treats the Week 3 repair as requiring immediate full settlement in Week 3; real landlords or utilities sometimes allow multi-month payment plans."
+  });
+  const choreRebateTxs = transactions.filter((tx) => tx.type === "CHORE_REBATE_TRANSFER").map((tx) => tx.id);
+  const fallbackWeek4Txs = transactions.filter((tx) => tx.week === 4).slice(0, 2).map((tx) => tx.id);
+  explanations.push({
+    id: "EXP-CHORE-TRUST",
+    category: "CHORE_EQUITY",
+    headline: choreRebateTxs.length > 0 ? `Chore-Credit Rebates transferred $${(assumptions.choreCreditDollarValue * choreRebateTxs.length).toFixed(2)} to extra-chore helpers` : `Uncompensated Chore Imbalance & Billing Friction left Household Trust at ${runResult.endingAverageTrust.toFixed(1)}%`,
+    statement: choreRebateTxs.length > 0 ? `Under Policy 4, explicit Chore-Credit Rebate transfers (${choreRebateTxs.slice(0, 4).join(", ")}) compensated roommates who completed 3 weekly chores (+1 extra) via a $${assumptions.choreCreditDollarValue.toFixed(2)} transfer from roommates who completed 1 chore (-1), maintaining average household trust at ${runResult.endingAverageTrust.toFixed(1)}%.` : `Without a financial chore rebate (${fallbackWeek4Txs.join(", ")}), high freeRideTemptation caused chore shirking that cooperative roommates covered unpaid, combining with billing friction to leave Week 4 household trust at ${runResult.endingAverageTrust.toFixed(1)}%.`,
+    transactionIds: choreRebateTxs.length > 0 ? choreRebateTxs : fallbackWeek4Txs,
+    assumptionRefs: [
+      `policy.enablesChoreRebate=${policy.enablesChoreRebate}`,
+      `choreCreditDollarValue=$${assumptions.choreCreditDollarValue}`,
+      `devon.fairnessThreshold=${assumptions.roommates.devon.fairnessThreshold.toFixed(2)}`
+    ],
+    modelLimitationNote: "Model Assumption Note: Paying cash rebates for chores can align budget incentives in our ledger equation, though behavioral economics research shows monetizing household favors can sometimes crowd out intrinsic goodwill."
+  });
+  return explanations;
+}
+function gradePrediction(prediction, runResult) {
+  const { roommateSummaries, transactions } = runResult;
+  const actualHighestPayer = runResult.highestNetPayerId;
+  const isPayerCorrect = prediction.highestNetPayer === actualHighestPayer;
+  const highestPayerTxs = transactions.filter(
+    (tx) => tx.roommateId === actualHighestPayer && (tx.type === "UTILITY_BILL_CONTRIBUTION" || tx.type === "SURPRISE_SHOCK_CONTRIBUTION" || tx.type === "RESERVE_CONTRIBUTION")
+  ).slice(0, 4).map((tx) => tx.id);
+  const item1 = {
+    field: "highestNetPayer",
+    title: "1. Highest 4-Week Net Household Payer",
+    predictedLabel: `${ROOMMATE_PROFILES[prediction.highestNetPayer].name} ($${roommateSummaries[prediction.highestNetPayer].totalOutOfPocketPaid.toFixed(2)})`,
+    actualLabel: `${ROOMMATE_PROFILES[actualHighestPayer].name} ($${roommateSummaries[actualHighestPayer].totalOutOfPocketPaid.toFixed(2)})`,
+    isCorrect: isPayerCorrect,
+    explanation: `${ROOMMATE_PROFILES[actualHighestPayer].name} paid the highest 4-week net out-of-pocket total ($${roommateSummaries[actualHighestPayer].totalOutOfPocketPaid.toFixed(2)}) across ledger entries ${highestPayerTxs.join(", ")}, while you predicted ${ROOMMATE_PROFILES[prediction.highestNetPayer].name} ($${roommateSummaries[prediction.highestNetPayer].totalOutOfPocketPaid.toFixed(2)}).`,
+    evidenceTransactionIds: highestPayerTxs,
+    assumptionNote: `Driven by ${POLICIES[runResult.policyId].shortTitle}, ${actualHighestPayer}.weeklyIncome=$${runResult.assumptions.roommates[actualHighestPayer].weeklyIncome}, and ${actualHighestPayer}.usageAppetite=${runResult.assumptions.roommates[actualHighestPayer].usageAppetite.toFixed(2)}.`
+  };
+  const actualShockOutcome = runResult.anyLiquidityStress ? "liquidity_crunch" : "all_solvent_buffered";
+  const isShockCorrect = prediction.week3ShockOutcome === actualShockOutcome;
+  const shockTxs = transactions.filter((tx) => tx.week === 3 && tx.type !== "INCOME_INFLOW").slice(0, 4).map((tx) => tx.id);
+  const stressedNames = ROOMMATE_ORDER.filter(
+    (id) => roommateSummaries[id].experiencedLiquidityStress
+  ).map(
+    (id) => `${ROOMMATE_PROFILES[id].name} (min cash $${roommateSummaries[id].minWeeklyCash.toFixed(2)})`
+  );
+  const item2 = {
+    field: "week3ShockOutcome",
+    title: "2. Week 3 Surprise Expense & Liquidity Survival",
+    predictedLabel: prediction.week3ShockOutcome === "all_solvent_buffered" ? "All Roommates Stay Above $40 Stress Threshold" : "Liquidity Crunch (< $40 Cash for >= 1 Roommate)",
+    actualLabel: actualShockOutcome === "all_solvent_buffered" ? "All Roommates Stayed >= $40 (Buffered/Solvent)" : `Liquidity Crunch Triggered (${stressedNames.join(", ")})`,
+    isCorrect: isShockCorrect,
+    explanation: actualShockOutcome === "liquidity_crunch" ? `During the Week 3 shock settlement (${shockTxs.join(", ")}), ${stressedNames.join(" and ")} dropped below the $40 Liquidity Stress threshold.` : `Every roommate remained above the $40 Liquidity Stress threshold across all 4 weeks (${shockTxs.join(", ")}); Devon\u2019s minimum cash was $${roommateSummaries.devon.minWeeklyCash.toFixed(2)}.`,
+    evidenceTransactionIds: shockTxs,
+    assumptionNote: `Driven by devon.initialCash=$${runResult.assumptions.roommates.devon.initialCash}, devon.weeklyIncome=$${runResult.assumptions.roommates.devon.weeklyIncome}/wk, and Week 3 reserve absorption ($${runResult.weeklySnapshots[2].reserveUsedForSurprise.toFixed(2)}).`
+  };
+  const actualShiftId = runResult.largestBehavioralShiftId;
+  const isShiftCorrect = prediction.behavioralShift === actualShiftId;
+  const shiftTxs = transactions.filter(
+    (tx) => tx.roommateId === actualShiftId && tx.type !== "INCOME_INFLOW"
+  ).slice(0, 4).map((tx) => tx.id);
+  const item3 = {
+    field: "behavioralShift",
+    title: "3. Largest Incentive-Driven Behavioral Shift",
+    predictedLabel: `${ROOMMATE_PROFILES[prediction.behavioralShift].name} ($${roommateSummaries[prediction.behavioralShift].behavioralShiftMagnitude.toFixed(2)} shift)`,
+    actualLabel: `${ROOMMATE_PROFILES[actualShiftId].name} ($${roommateSummaries[actualShiftId].behavioralShiftMagnitude.toFixed(2)} shift \u2014 ${roommateSummaries[actualShiftId].primaryBehavioralDriver})`,
+    isCorrect: isShiftCorrect,
+    explanation: `${ROOMMATE_PROFILES[actualShiftId].name} exhibited the largest modeled behavioral shift ($${roommateSummaries[actualShiftId].behavioralShiftMagnitude.toFixed(2)}: ${roommateSummaries[actualShiftId].primaryBehavioralDriver}) in transactions ${shiftTxs.join(", ")}.`,
+    evidenceTransactionIds: shiftTxs,
+    assumptionNote: `Driven by ${actualShiftId}.freeRideTemptation=${runResult.assumptions.roommates[actualShiftId].freeRideTemptation.toFixed(2)}, ${actualShiftId}.auditSensitivity=${runResult.assumptions.roommates[actualShiftId].auditSensitivity.toFixed(2)}, and ${POLICIES[runResult.policyId].shortTitle}.`
+  };
+  const items = [item1, item2, item3];
+  const totalCorrect = items.filter((i) => i.isCorrect).length;
+  const summaryHeadline = totalCorrect === 3 ? "3/3 Predictions Confirmed by the Double-Entry Ledger!" : totalCorrect === 2 ? "2/3 Predictions Matched \u2014 Inspect the 1 Counterintuitive Ledger Outcome!" : totalCorrect === 1 ? "1/3 Predictions Matched \u2014 The Incentive Equations Revealed 2 Surprises!" : "0/3 Predictions Matched \u2014 A Classic Game-Theory Surprise! Audit the Ledger Below.";
+  return {
+    totalCorrect,
+    maxScore: 3,
+    summaryHeadline,
+    items
+  };
+}
+function comparePoliciesOnSameEvents(scenarioInput, policyAInput, policyBInput, assumptionsA, eventSchedule, assumptionsB) {
+  const runA = simulateHouseholdRun(
+    scenarioInput,
+    policyAInput,
+    assumptionsA,
+    eventSchedule
+  );
+  const runB = simulateHouseholdRun(
+    scenarioInput,
+    policyBInput,
+    assumptionsB ?? assumptionsA,
+    eventSchedule
+  );
+  const sameScheduleVerified = runA.scheduleSignature === runB.scheduleSignature && runA.eventSchedule === runB.eventSchedule;
+  const roommateDeltas = {};
+  for (const id of ROOMMATE_ORDER) {
+    const sumA = runA.roommateSummaries[id];
+    const sumB = runB.roommateSummaries[id];
+    roommateDeltas[id] = {
+      roommateId: id,
+      name: sumA.name,
+      endingCashA: sumA.endingCash,
+      endingCashB: sumB.endingCash,
+      cashDeltaBMinusA: Number((sumB.endingCash - sumA.endingCash).toFixed(2)),
+      outOfPocketA: sumA.totalOutOfPocketPaid,
+      outOfPocketB: sumB.totalOutOfPocketPaid,
+      outOfPocketDeltaBMinusA: Number(
+        (sumB.totalOutOfPocketPaid - sumA.totalOutOfPocketPaid).toFixed(2)
+      ),
+      trueConsumptionA: sumA.totalTrueUtilityConsumption,
+      trueConsumptionB: sumB.totalTrueUtilityConsumption,
+      consumptionDeltaBMinusA: Number(
+        (sumB.totalTrueUtilityConsumption - sumA.totalTrueUtilityConsumption).toFixed(2)
+      ),
+      underreportedA: sumA.totalUnderreportedGap,
+      underreportedB: sumB.totalUnderreportedGap,
+      trustA: sumA.endingTrust,
+      trustB: sumB.endingTrust
+    };
+  }
+  const totalUtilityA = runA.weeklySnapshots.reduce(
+    (s, w) => s + w.totalUtilityBill,
+    0
+  );
+  const totalUtilityB = runB.weeklySnapshots.reduce(
+    (s, w) => s + w.totalUtilityBill,
+    0
+  );
+  const totalUtilityBillDeltaBMinusA = Number(
+    (totalUtilityB - totalUtilityA).toFixed(2)
+  );
+  const endingReserveDeltaBMinusA = Number(
+    (runB.conservation.endingHouseholdReserve - runA.conservation.endingHouseholdReserve).toFixed(2)
+  );
+  const totalShortfallA = ROOMMATE_ORDER.reduce(
+    (s, id) => s + runA.roommateSummaries[id].totalShortfallSurchargePaid,
+    0
+  );
+  const totalShortfallB = ROOMMATE_ORDER.reduce(
+    (s, id) => s + runB.roommateSummaries[id].totalShortfallSurchargePaid,
+    0
+  );
+  const totalShortfallDeltaBMinusA = Number(
+    (totalShortfallB - totalShortfallA).toFixed(2)
+  );
+  const totalAdminA = ROOMMATE_ORDER.reduce(
+    (s, id) => s + runA.roommateSummaries[id].totalAdminFeePaid,
+    0
+  );
+  const totalAdminB = ROOMMATE_ORDER.reduce(
+    (s, id) => s + runB.roommateSummaries[id].totalAdminFeePaid,
+    0
+  );
+  const totalAdminFeeDeltaBMinusA = Number(
+    (totalAdminB - totalAdminA).toFixed(2)
+  );
+  const devonDelta = roommateDeltas.devon;
+  const leoDelta = roommateDeltas.leo;
+  const comparisonInsights = [
+    {
+      id: "CMP-DEVON-LIQUIDITY",
+      title: `Low-Income Liquidity Impact (Devon): ${devonDelta.cashDeltaBMinusA >= 0 ? "+" : ""}$${devonDelta.cashDeltaBMinusA.toFixed(2)} Ending Cash`,
+      body: `On the identical 4-week external schedule (${runA.scheduleSignature}), Devon\u2019s ending cash moved from $${devonDelta.endingCashA.toFixed(2)} under ${POLICIES[runA.policyId].shortTitle} to $${devonDelta.endingCashB.toFixed(2)} under ${POLICIES[runB.policyId].shortTitle}. Week 3 Reserve absorption changed from $${runA.weeklySnapshots[2].reserveUsedForSurprise.toFixed(2)} to $${runB.weeklySnapshots[2].reserveUsedForSurprise.toFixed(2)}.`,
+      runATransactionIds: runA.transactions.filter((tx) => tx.roommateId === "devon" && tx.week === 3).map((tx) => tx.id),
+      runBTransactionIds: runB.transactions.filter((tx) => tx.roommateId === "devon" && tx.week === 3).map((tx) => tx.id),
+      assumptionAttribution: `Isolated strictly by policy change (${runA.policyId} -> ${runB.policyId}) with identical weather multipliers and Week 3 shock ($${runA.weeklySnapshots[2].surpriseExpenseAmount.toFixed(2)}).`
+    },
+    {
+      id: "CMP-TOTAL-EFFICIENCY",
+      title: `Household Consumption & Overhead Delta: ${totalUtilityBillDeltaBMinusA >= 0 ? "+" : ""}$${totalUtilityBillDeltaBMinusA.toFixed(2)} Utility Bill, ${totalAdminFeeDeltaBMinusA >= 0 ? "+" : ""}$${totalAdminFeeDeltaBMinusA.toFixed(2)} Admin Fee`,
+      body: `Total 4-week utility consumption changed from $${totalUtilityA.toFixed(2)} to $${totalUtilityB.toFixed(2)} (${totalUtilityBillDeltaBMinusA >= 0 ? "+" : ""}$${totalUtilityBillDeltaBMinusA.toFixed(2)}), while Leo\u2019s cumulative underreported gap shifted from $${leoDelta.underreportedA.toFixed(2)} to $${leoDelta.underreportedB.toFixed(2)} and external metering fees shifted by ${totalAdminFeeDeltaBMinusA >= 0 ? "+" : ""}$${totalAdminFeeDeltaBMinusA.toFixed(2)}.`,
+      runATransactionIds: runA.transactions.filter((tx) => tx.type === "UTILITY_VENDOR_PAYMENT").map((tx) => tx.id),
+      runBTransactionIds: runB.transactions.filter((tx) => tx.type === "UTILITY_VENDOR_PAYMENT").map((tx) => tx.id),
+      assumptionAttribution: `Driven by marginalPriceSignal (${POLICIES[runA.policyId].marginalPriceSignal} vs ${POLICIES[runB.policyId].marginalPriceSignal}) and chargesMeteringAdminFee (${POLICIES[runA.policyId].chargesMeteringAdminFee} vs ${POLICIES[runB.policyId].chargesMeteringAdminFee}).`
+    }
+  ];
+  return {
+    scenarioId: runA.scenarioId,
+    sameScheduleVerified,
+    scheduleSignature: runA.scheduleSignature,
+    runA,
+    runB,
+    totalUtilityBillDeltaBMinusA,
+    endingReserveDeltaBMinusA,
+    totalShortfallDeltaBMinusA,
+    totalAdminFeeDeltaBMinusA,
+    roommateDeltas,
+    comparisonInsights
+  };
+}
+
+// games/06-roommate-republic/src/persistence.ts
+var DEFAULT_PREDICTIONS = {
+  "scenario-1-thermostat": {
+    highestNetPayer: "priya",
+    week3ShockOutcome: "liquidity_crunch",
+    behavioralShift: "priya"
+  },
+  "scenario-2-grocery-jar": {
+    highestNetPayer: "priya",
+    week3ShockOutcome: "all_solvent_buffered",
+    behavioralShift: "leo"
+  },
+  "scenario-3-boiler-emergency": {
+    highestNetPayer: "priya",
+    week3ShockOutcome: "liquidity_crunch",
+    behavioralShift: "priya"
+  }
+};
+function createDefaultPersistedState(seed = GAME_CONFIG.DEFAULT_SEED) {
+  const normalizedSeed = Math.floor(seed) >>> 0;
+  const defaultScenario = "scenario-1-thermostat";
+  return {
+    schemaVersion: GAME_CONFIG.SCHEMA_VERSION,
+    seed: normalizedSeed,
+    activeScenarioId: defaultScenario,
+    activePolicyId: SCENARIOS[defaultScenario].defaultPolicyId,
+    comparisonPolicyId: SCENARIOS[defaultScenario].recommendedComparisonPolicyId,
+    predictionsByScenario: {
+      "scenario-1-thermostat": { ...DEFAULT_PREDICTIONS["scenario-1-thermostat"] },
+      "scenario-2-grocery-jar": { ...DEFAULT_PREDICTIONS["scenario-2-grocery-jar"] },
+      "scenario-3-boiler-emergency": {
+        ...DEFAULT_PREDICTIONS["scenario-3-boiler-emergency"]
+      }
+    },
+    committedPredictionsByScenario: {
+      "scenario-1-thermostat": false,
+      "scenario-2-grocery-jar": false,
+      "scenario-3-boiler-emergency": false
+    },
+    frozenSchedulesByScenario: {
+      "scenario-1-thermostat": generateExternalEventSchedule(
+        "scenario-1-thermostat",
+        normalizedSeed
+      ),
+      "scenario-2-grocery-jar": generateExternalEventSchedule(
+        "scenario-2-grocery-jar",
+        normalizedSeed
+      ),
+      "scenario-3-boiler-emergency": generateExternalEventSchedule(
+        "scenario-3-boiler-emergency",
+        normalizedSeed
+      )
+    },
+    assumptionsByScenario: {
+      "scenario-1-thermostat": createDefaultAssumptions(),
+      "scenario-2-grocery-jar": createDefaultAssumptions(),
+      "scenario-3-boiler-emergency": createDefaultAssumptions()
+    },
+    completedScenarios: [],
+    completedComparisons: [],
+    debriefAnswers: {}
+  };
+}
+function isValidScenarioId(val) {
+  return typeof val === "string" && val in SCENARIOS;
+}
+function isValidPolicyId(val) {
+  return typeof val === "string" && val in POLICIES;
+}
+function sanitizeAssumptions(raw) {
+  const fallback = createDefaultAssumptions();
+  if (!raw || typeof raw !== "object") return fallback;
+  const obj = raw;
+  const rawRoommates = obj.roommates && typeof obj.roommates === "object" ? obj.roommates : {};
+  for (const id of ROOMMATE_ORDER) {
+    const r = rawRoommates[id];
+    if (r && typeof r === "object") {
+      const ro = r;
+      if (typeof ro.weeklyIncome === "number" && Number.isFinite(ro.weeklyIncome)) {
+        fallback.roommates[id].weeklyIncome = ro.weeklyIncome;
+      }
+      if (typeof ro.usageAppetite === "number" && Number.isFinite(ro.usageAppetite)) {
+        fallback.roommates[id].usageAppetite = ro.usageAppetite;
+      }
+      if (typeof ro.freeRideTemptation === "number" && Number.isFinite(ro.freeRideTemptation)) {
+        fallback.roommates[id].freeRideTemptation = ro.freeRideTemptation;
+      }
+      if (typeof ro.auditSensitivity === "number" && Number.isFinite(ro.auditSensitivity)) {
+        fallback.roommates[id].auditSensitivity = ro.auditSensitivity;
+      }
+      if (typeof ro.fairnessThreshold === "number" && Number.isFinite(ro.fairnessThreshold)) {
+        fallback.roommates[id].fairnessThreshold = ro.fairnessThreshold;
+      }
+      if (typeof ro.initialCash === "number" && Number.isFinite(ro.initialCash)) {
+        fallback.roommates[id].initialCash = ro.initialCash;
+      }
+    }
+  }
+  if (typeof obj.reserveContributionRate === "number" && Number.isFinite(obj.reserveContributionRate)) {
+    fallback.reserveContributionRate = obj.reserveContributionRate;
+  }
+  if (typeof obj.weeklyMeteringAdminFee === "number" && Number.isFinite(obj.weeklyMeteringAdminFee)) {
+    fallback.weeklyMeteringAdminFee = obj.weeklyMeteringAdminFee;
+  }
+  if (typeof obj.choreCreditDollarValue === "number" && Number.isFinite(obj.choreCreditDollarValue)) {
+    fallback.choreCreditDollarValue = obj.choreCreditDollarValue;
+  }
+  return cloneAssumptions(fallback);
+}
+function validateAndNormalizeState(raw, fallbackSeed = GAME_CONFIG.DEFAULT_SEED) {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw;
+  if (obj.schemaVersion !== GAME_CONFIG.SCHEMA_VERSION) return null;
+  const seed = typeof obj.seed === "number" && Number.isFinite(obj.seed) ? Math.floor(obj.seed) >>> 0 : fallbackSeed;
+  const base = createDefaultPersistedState(seed);
+  if (isValidScenarioId(obj.activeScenarioId)) {
+    base.activeScenarioId = obj.activeScenarioId;
+  }
+  if (isValidPolicyId(obj.activePolicyId)) {
+    base.activePolicyId = obj.activePolicyId;
+  }
+  if (isValidPolicyId(obj.comparisonPolicyId)) {
+    base.comparisonPolicyId = obj.comparisonPolicyId;
+  }
+  if (obj.predictionsByScenario && typeof obj.predictionsByScenario === "object") {
+    const preds = obj.predictionsByScenario;
+    for (const sId of Object.keys(SCENARIOS)) {
+      const p = preds[sId];
+      if (p && typeof p === "object") {
+        if (typeof p.highestNetPayer === "string" && ROOMMATE_ORDER.includes(p.highestNetPayer)) {
+          base.predictionsByScenario[sId].highestNetPayer = p.highestNetPayer;
+        }
+        if (p.week3ShockOutcome === "all_solvent_buffered" || p.week3ShockOutcome === "liquidity_crunch") {
+          base.predictionsByScenario[sId].week3ShockOutcome = p.week3ShockOutcome;
+        }
+        if (typeof p.behavioralShift === "string" && ROOMMATE_ORDER.includes(p.behavioralShift)) {
+          base.predictionsByScenario[sId].behavioralShift = p.behavioralShift;
+        }
+      }
+    }
+  }
+  if (obj.committedPredictionsByScenario && typeof obj.committedPredictionsByScenario === "object") {
+    const comm = obj.committedPredictionsByScenario;
+    for (const sId of Object.keys(SCENARIOS)) {
+      if (typeof comm[sId] === "boolean") {
+        base.committedPredictionsByScenario[sId] = comm[sId];
+      }
+    }
+  }
+  if (obj.frozenSchedulesByScenario && typeof obj.frozenSchedulesByScenario === "object") {
+    const scheds = obj.frozenSchedulesByScenario;
+    for (const sId of Object.keys(SCENARIOS)) {
+      const sc = scheds[sId];
+      if (sc && typeof sc === "object" && sc.scenarioId === sId && Array.isArray(sc.weeks) && sc.weeks.length === 4) {
+        base.frozenSchedulesByScenario[sId] = sc;
+      }
+    }
+  }
+  if (obj.assumptionsByScenario && typeof obj.assumptionsByScenario === "object") {
+    const assumps = obj.assumptionsByScenario;
+    for (const sId of Object.keys(SCENARIOS)) {
+      if (assumps[sId]) {
+        base.assumptionsByScenario[sId] = sanitizeAssumptions(assumps[sId]);
+      }
+    }
+  }
+  if (Array.isArray(obj.completedScenarios)) {
+    base.completedScenarios = obj.completedScenarios.filter(isValidScenarioId);
+  }
+  if (Array.isArray(obj.completedComparisons)) {
+    base.completedComparisons = obj.completedComparisons.filter(isValidScenarioId);
+  }
+  if (obj.debriefAnswers && typeof obj.debriefAnswers === "object") {
+    const ans = obj.debriefAnswers;
+    for (const [k, v] of Object.entries(ans)) {
+      if (typeof v === "string") {
+        base.debriefAnswers[k] = v;
+      }
+    }
+  }
+  return base;
+}
+function savePersistedState(state, storage) {
+  try {
+    const targetStorage = storage ?? (typeof window !== "undefined" ? window.localStorage : void 0);
+    if (!targetStorage) return false;
+    targetStorage.setItem(GAME_CONFIG.STORAGE_KEY, JSON.stringify(state));
+    return true;
+  } catch {
+    return false;
+  }
+}
+function loadPersistedState(fallbackSeed = GAME_CONFIG.DEFAULT_SEED, storage) {
+  try {
+    const targetStorage = storage ?? (typeof window !== "undefined" ? window.localStorage : void 0);
+    if (!targetStorage) return createDefaultPersistedState(fallbackSeed);
+    const rawStr = targetStorage.getItem(GAME_CONFIG.STORAGE_KEY);
+    if (!rawStr) return createDefaultPersistedState(fallbackSeed);
+    const parsed = JSON.parse(rawStr);
+    const validated = validateAndNormalizeState(parsed, fallbackSeed);
+    return validated ?? createDefaultPersistedState(fallbackSeed);
+  } catch {
+    return createDefaultPersistedState(fallbackSeed);
+  }
+}
+function exportStateToJson(state) {
+  return JSON.stringify(state, null, 2);
+}
+
+// games/06-roommate-republic/src/audio.ts
+var RoommateAudio = class {
+  ctx = null;
+  muted = false;
+  getContext() {
+    if (this.muted) return null;
+    if (typeof window === "undefined") return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!this.ctx) {
+      try {
+        this.ctx = new AudioCtx();
+      } catch {
+        return null;
+      }
+    }
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  setMuted(muted) {
+    this.muted = muted;
+  }
+  isMuted() {
+    return this.muted;
+  }
+  /**
+   * Tactile ballpoint pen & clipboard click for UI controls and prediction toggles.
+   */
+  playPenClick() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(1150, now);
+      osc.frequency.exponentialRampToValueAtTime(340, now + 0.035);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.035);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.04);
+    } catch {
+    }
+  }
+  /**
+   * Crisp cash register ledger chime for weekly settlement steps.
+   */
+  playCashChime(week = 1) {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const baseFreq = 587.33 + (week - 1) * 55;
+      const freqs = [baseFreq, baseFreq * 1.25];
+      freqs.forEach((f, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        const start = now + idx * 0.055;
+        osc.frequency.setValueAtTime(f, start);
+        gain.gain.setValueAtTime(0.07, start);
+        gain.gain.exponentialRampToValueAtTime(1e-3, start + 0.16);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.17);
+      });
+    } catch {
+    }
+  }
+  /**
+   * Dual-tone brass warning bell when the Week 3 Surprise Expense hits.
+   */
+  playShockBell() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const notes = [440, 392];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        const start = now + idx * 0.09;
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.06, start);
+        gain.gain.exponentialRampToValueAtTime(1e-3, start + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.23);
+      });
+    } catch {
+    }
+  }
+  /**
+   * Warm triad arpeggio when prediction grading and counterfactual comparison complete.
+   */
+  playRevealFanfare(score = 2) {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const chord = score >= 2 ? [523.25, 659.25, 783.99, 1046.5] : [440, 523.25, 659.25];
+      chord.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        const start = now + idx * 0.065;
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.075, start);
+        gain.gain.exponentialRampToValueAtTime(1e-3, start + 0.25);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.26);
+      });
+    } catch {
+    }
+  }
+  destroy() {
+    if (this.ctx) {
+      this.ctx.close().catch(() => {
+      });
+      this.ctx = null;
+    }
+  }
+};
+
+// games/06-roommate-republic/src/ui.ts
+var ROOMMATE_SVGS = {
+  maya: `<svg viewBox="0 0 64 64" width="48" height="48" role="img" aria-label="Maya avatar">
+    <circle cx="32" cy="32" r="30" fill="#fef3c7" stroke="#d97706" stroke-width="2.5"/>
+    <path d="M16 54 C16 42 48 42 48 54" fill="#d97706"/>
+    <circle cx="32" cy="26" r="11" fill="#fde68a" stroke="#92400e" stroke-width="1.8"/>
+    <path d="M20 24 C20 14 44 14 44 24 C41 19 23 19 20 24 Z" fill="#78350f"/>
+    <rect x="23" y="23" width="7" height="5" rx="1.5" fill="none" stroke="#451a03" stroke-width="1.6"/>
+    <rect x="34" y="23" width="7" height="5" rx="1.5" fill="none" stroke="#451a03" stroke-width="1.6"/>
+    <line x1="30" y1="25" x2="34" y2="25" stroke="#451a03" stroke-width="1.6"/>
+    <path d="M28 32 Q32 35 36 32" fill="none" stroke="#78350f" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>`,
+  devon: `<svg viewBox="0 0 64 64" width="48" height="48" role="img" aria-label="Devon avatar">
+    <circle cx="32" cy="32" r="30" fill="#d1fae5" stroke="#059669" stroke-width="2.5"/>
+    <path d="M15 54 C15 41 49 41 49 54" fill="#059669"/>
+    <circle cx="32" cy="26" r="11" fill="#a7f3d0" stroke="#065f46" stroke-width="1.8"/>
+    <path d="M21 21 C22 13 42 13 43 21 Z" fill="#064e3b"/>
+    <circle cx="28" cy="26" r="1.7" fill="#064e3b"/>
+    <circle cx="36" cy="26" r="1.7" fill="#064e3b"/>
+    <path d="M28 32 Q32 34 36 32" fill="none" stroke="#064e3b" stroke-width="1.8" stroke-linecap="round"/>
+    <rect x="42" y="42" width="9" height="10" rx="2" fill="#ffffff" stroke="#065f46" stroke-width="1.5"/>
+  </svg>`,
+  priya: `<svg viewBox="0 0 64 64" width="48" height="48" role="img" aria-label="Priya avatar">
+    <circle cx="32" cy="32" r="30" fill="#ede9fe" stroke="#7c3aed" stroke-width="2.5"/>
+    <path d="M16 54 C16 42 48 42 48 54" fill="#7c3aed"/>
+    <circle cx="32" cy="26" r="11" fill="#ddd6fe" stroke="#4c1d95" stroke-width="1.8"/>
+    <path d="M19 26 A13 13 0 0 1 45 26" fill="none" stroke="#5b21b6" stroke-width="3"/>
+    <rect x="17" y="23" width="4" height="7" rx="2" fill="#5b21b6"/>
+    <rect x="43" y="23" width="4" height="7" rx="2" fill="#5b21b6"/>
+    <circle cx="28" cy="26" r="1.8" fill="#4c1d95"/>
+    <circle cx="36" cy="26" r="1.8" fill="#4c1d95"/>
+    <path d="M28 32 Q32 36 36 32" fill="none" stroke="#4c1d95" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>`,
+  leo: `<svg viewBox="0 0 64 64" width="48" height="48" role="img" aria-label="Leo avatar">
+    <circle cx="32" cy="32" r="30" fill="#ffe4e6" stroke="#e11d48" stroke-width="2.5"/>
+    <path d="M16 54 C16 42 48 42 48 54" fill="#e11d48"/>
+    <circle cx="32" cy="26" r="11" fill="#fecdd3" stroke="#881337" stroke-width="1.8"/>
+    <path d="M22 19 L32 14 L42 19 Z" fill="#881337"/>
+    <circle cx="28" cy="25" r="1.8" fill="#881337"/>
+    <circle cx="36" cy="25" r="1.8" fill="#881337"/>
+    <path d="M27 32 Q33 35 38 30" fill="none" stroke="#881337" stroke-width="1.8" stroke-linecap="round"/>
+  </svg>`
+};
+var STYLES = `
+:root {
+  --rr-brand-color: #b45309;
+  --rr-bg: #faf7f2;
+  --rr-surface: #ffffff;
+  --rr-surface-alt: #f4efe6;
+  --rr-border: #d6cbb9;
+  --rr-text: #1c1917;
+  --rr-text-muted: #57534e;
+  --rr-success: #047857;
+  --rr-success-bg: #ecfdf5;
+  --rr-danger: #be123c;
+  --rr-danger-bg: #fff1f2;
+  --rr-warn: #b45309;
+  --rr-warn-bg: #fffbeb;
+  --rr-accent-purple: #6d28d9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --rr-brand-color: #f59e0b;
+  }
+}
+
+.rr-root {
+  color-scheme: light dark;
+  accent-color: var(--rr-brand-color);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--rr-bg);
+  color: var(--rr-text);
+  min-block-size: 100vh;
+  padding: 1rem;
+  box-sizing: border-box;
+  line-height: 1.45;
+}
+
+.rr-container {
+  max-inline-size: 1280px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.rr-header {
+  background: var(--rr-surface);
+  border: 2px solid var(--rr-border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 2px 6px rgba(28, 25, 23, 0.05);
+}
+
+.rr-title-block h1 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.5vw, 1.85rem);
+  letter-spacing: -0.02em;
+  color: #1c1917;
+}
+
+.rr-title-block p {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+  color: var(--rr-text-muted);
+}
+
+.rr-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.rr-btn {
+  appearance: none;
+  border: 1.5px solid var(--rr-border);
+  background: var(--rr-surface-alt);
+  color: var(--rr-text);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
+}
+
+.rr-btn:hover {
+  background: #e7dfd1;
+  border-color: #a89984;
+}
+
+.rr-btn:focus-visible {
+  outline: 2px solid var(--rr-brand-color);
+  outline-offset: 2px;
+}
+
+.rr-btn-primary {
+  background: #b45309;
+  color: #ffffff;
+  border-color: #92400e;
+}
+
+.rr-btn-primary:hover {
+  background: #92400e;
+  color: #ffffff;
+}
+
+.rr-btn-active {
+  background: #1c1917;
+  color: #ffffff;
+  border-color: #1c1917;
+}
+
+.rr-scenario-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+
+.rr-scenario-tab {
+  text-align: left;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 2px solid var(--rr-border);
+  background: var(--rr-surface);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rr-scenario-tab[aria-selected="true"] {
+  border-color: #b45309;
+  background: #fffbeb;
+  box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.15);
+}
+
+.rr-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--rr-surface-alt);
+  color: var(--rr-text);
+}
+
+.rr-badge-shock {
+  background: var(--rr-danger-bg);
+  color: var(--rr-danger);
+  border: 1px solid #fecdd3;
+}
+
+.rr-badge-ok {
+  background: var(--rr-success-bg);
+  color: var(--rr-success);
+  border: 1px solid #a7f3d0;
+}
+
+.rr-section {
+  background: var(--rr-surface);
+  border: 1.5px solid var(--rr-border);
+  border-radius: 12px;
+  padding: 1.15rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.rr-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-block-end: 0.85rem;
+  border-block-end: 1px solid var(--rr-surface-alt);
+  padding-block-end: 0.5rem;
+}
+
+.rr-section-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.rr-roommate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+  gap: 0.85rem;
+}
+
+.rr-roommate-card {
+  border: 1.5px solid var(--rr-border);
+  border-radius: 10px;
+  padding: 0.85rem;
+  background: #fdfcfa;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rr-roommate-top {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.rr-stat-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  background: var(--rr-surface-alt);
+  padding: 0.55rem;
+  border-radius: 8px;
+}
+
+.rr-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.rr-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.75rem;
+}
+
+.rr-policy-card {
+  text-align: left;
+  border: 2px solid var(--rr-border);
+  border-radius: 10px;
+  padding: 0.8rem;
+  background: var(--rr-surface);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.rr-policy-card[aria-checked="true"] {
+  border-color: #b45309;
+  background: #fffbeb;
+}
+
+.rr-conservation-banner {
+  background: var(--rr-success-bg);
+  border: 1.5px solid #6ee7b7;
+  color: #065f46;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.rr-tx-chip {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.12rem 0.45rem;
+  border-radius: 5px;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+  cursor: pointer;
+  margin-inline: 0.15rem;
+}
+
+.rr-tx-chip:hover {
+  background: #fde68a;
+}
+
+/* Responsive Data Table per modern-web-guidance (responsive-table) */
+.rr-table-wrapper {
+  overflow: auto;
+  max-inline-size: 100%;
+  max-block-size: min(500px, 80vh);
+  container-type: inline-size;
+  border: 1px solid var(--rr-border);
+  border-radius: 8px;
+}
+
+.rr-table-wrapper table {
+  inline-size: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.83rem;
+}
+
+.rr-table-wrapper caption {
+  text-align: left;
+  padding: 0.6rem 0.85rem;
+  font-weight: 700;
+  background: var(--rr-surface-alt);
+  border-block-end: 1px solid var(--rr-border);
+}
+
+.rr-table-wrapper thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  background: #eae2d3;
+}
+
+.rr-table-wrapper th,
+.rr-table-wrapper td {
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  border-block-end: 1px solid #e7e0d3;
+  vertical-align: top;
+}
+
+.rr-table-wrapper tbody th {
+  position: sticky;
+  inset-inline-start: 0;
+  background: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+}
+
+.rr-table-wrapper tr.rr-tx-highlighted th,
+.rr-table-wrapper tr.rr-tx-highlighted td {
+  background: #fef3c7 !important;
+  transition: background 0.25s ease;
+}
+
+@container (width < 600px) {
+  .rr-table-wrapper table,
+  .rr-table-wrapper thead,
+  .rr-table-wrapper tbody,
+  .rr-table-wrapper tr,
+  .rr-table-wrapper th,
+  .rr-table-wrapper td {
+    display: block;
+  }
+
+  .rr-table-wrapper thead {
+    display: none;
+  }
+
+  .rr-table-wrapper tr {
+    margin-block-end: 1rem;
+    border: 1px solid var(--rr-border);
+  }
+
+  .rr-table-wrapper tbody th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    background: #f4efe6;
+  }
+
+  .rr-table-wrapper table {
+    --label-2: "Week";
+    --label-3: "Type";
+    --label-4: "From -> To";
+    --label-5: "Amount";
+    --label-6: "Explanation & Model Drivers";
+  }
+
+  .rr-table-wrapper td:nth-child(2)::before {
+    content: var(--label-2) ": ";
+    font-weight: 700;
+  }
+  .rr-table-wrapper td:nth-child(3)::before {
+    content: var(--label-3) ": ";
+    font-weight: 700;
+  }
+  .rr-table-wrapper td:nth-child(4)::before {
+    content: var(--label-4) ": ";
+    font-weight: 700;
+  }
+  .rr-table-wrapper td:nth-child(5)::before {
+    content: var(--label-5) ": ";
+    font-weight: 700;
+  }
+  .rr-table-wrapper td:nth-child(6)::before {
+    content: var(--label-6) ": ";
+    font-weight: 700;
+  }
+}
+
+/* Native Range Slider per modern-web-guidance (slider + brand-consistent-forms) */
+input[type="range"].rr-slider {
+  --slider-track-size: 0.45rem;
+  --slider-thumb-size: 1.15rem;
+  --slider-track-radius: 999px;
+  --slider-thumb-radius: 50%;
+  --slider-track-color: #d6cbb9;
+  --slider-fill-color: var(--rr-brand-color);
+  --slider-thumb-color: var(--slider-fill-color);
+  --slider-direction: to right;
+
+  --attr-min: attr(min type(<number>), 0);
+  --attr-max: attr(max type(<number>), 100);
+  --control-value: attr(value type(<number>), 50);
+  --slider-progress: calc(
+    progress(var(--control-value), var(--attr-min), var(--attr-max)) * 100%
+  );
+
+  appearance: none;
+  inline-size: 100%;
+  block-size: 2rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"].rr-slider:dir(rtl) {
+  --slider-direction: to left;
+}
+
+@supports not (opacity: progress(1, 0, 100)) {
+  input[type="range"].rr-slider {
+    --slider-progress: calc(
+      (var(--control-value) - var(--attr-min)) /
+      (var(--attr-max) - var(--attr-min)) * 100%
+    );
+  }
+}
+
+input[type="range"].rr-slider::-webkit-slider-runnable-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: linear-gradient(
+    var(--slider-direction),
+    var(--slider-fill-color) var(--slider-progress),
+    var(--slider-track-color) var(--slider-progress)
+  );
+}
+
+input[type="range"].rr-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  margin-block-start: calc(
+    (var(--slider-track-size) - var(--slider-thumb-size)) / 2
+  );
+  border: 0;
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+}
+
+input[type="range"].rr-slider::-moz-range-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-track-color);
+}
+
+input[type="range"].rr-slider::-moz-range-progress {
+  block-size: var(--slider-track-size);
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-fill-color);
+}
+
+input[type="range"].rr-slider::-moz-range-thumb {
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  border: 0;
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+}
+
+input[type="range"].rr-slider:focus-visible {
+  outline: 2px solid var(--slider-fill-color);
+  outline-offset: 4px;
+}
+
+/* Fallback for older browsers without accent-color per brand-consistent-forms */
+@supports not (accent-color: var(--rr-brand-color)) {
+  input[type="radio"].rr-visually-hidden {
+    position: absolute !important;
+    clip-path: inset(50%) !important;
+    overflow: hidden !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    white-space: nowrap !important;
+  }
+}
+
+.rr-explanation-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.85rem;
+}
+
+.rr-explanation-card {
+  border: 1px solid var(--rr-border);
+  border-left: 4px solid var(--rr-brand-color);
+  border-radius: 8px;
+  padding: 0.8rem;
+  background: #fdfcfa;
+  font-size: 0.85rem;
+}
+
+.rr-limitation-box {
+  margin-block-start: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  background: var(--rr-surface-alt);
+  color: var(--rr-text-muted);
+  font-size: 0.78rem;
+}
+
+.rr-debug-drawer {
+  background: #1c1917;
+  color: #f5f5f4;
+  padding: 1rem;
+  border-radius: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  overflow-x: auto;
+}
+`;
+function createRoommateRepublicUI(container, options) {
+  const initialSeed = options?.initialSeed ?? GAME_CONFIG.DEFAULT_SEED;
+  let state = loadPersistedState(initialSeed);
+  if (options?.initialSeed !== void 0 && state.seed !== options.initialSeed) {
+    state.seed = Math.floor(options.initialSeed) >>> 0;
+    for (const sId of Object.keys(SCENARIOS)) {
+      state.frozenSchedulesByScenario[sId] = generateExternalEventSchedule(
+        sId,
+        state.seed
+      );
+    }
+    savePersistedState(state);
+  }
+  let debugEnabled = Boolean(options?.debug);
+  let selectedTimelineWeek = "ALL";
+  let ledgerRoommateFilter = "ALL";
+  let ledgerFlowFilter = "ALL";
+  let ledgerTab = "TRANSACTIONS";
+  let highlightedTxId = null;
+  let showAssumptionsEditor = false;
+  const audio = new RoommateAudio();
+  let activeRun = computeActiveRun();
+  let predictionGrade = gradePrediction(
+    state.predictionsByScenario[state.activeScenarioId],
+    activeRun
+  );
+  let comparisonResult = computeComparison();
+  function computeActiveRun() {
+    const sId = state.activeScenarioId;
+    const sched = state.frozenSchedulesByScenario[sId] ?? generateExternalEventSchedule(sId, state.seed);
+    state.frozenSchedulesByScenario[sId] = sched;
+    return simulateHouseholdRun(
+      sId,
+      state.activePolicyId,
+      state.assumptionsByScenario[sId],
+      sched
+    );
+  }
+  function computeComparison() {
+    const sId = state.activeScenarioId;
+    const sched = state.frozenSchedulesByScenario[sId];
+    return comparePoliciesOnSameEvents(
+      sId,
+      state.activePolicyId,
+      state.comparisonPolicyId,
+      state.assumptionsByScenario[sId],
+      sched
+    );
+  }
+  function recomputeAll() {
+    activeRun = computeActiveRun();
+    predictionGrade = gradePrediction(
+      state.predictionsByScenario[state.activeScenarioId],
+      activeRun
+    );
+    comparisonResult = computeComparison();
+    savePersistedState(state);
+  }
+  function syncRangeSliders(rootEl) {
+    const sliders = rootEl.querySelectorAll(
+      'input[type="range"].rr-slider'
+    );
+    sliders.forEach((slider) => {
+      slider.style.setProperty("--attr-min", slider.min || "0");
+      slider.style.setProperty("--attr-max", slider.max || "100");
+      slider.style.setProperty("--control-value", slider.value);
+    });
+  }
+  function renderTransactionChips(txIds) {
+    return txIds.slice(0, 4).map(
+      (id) => `<button type="button" class="rr-tx-chip" data-action="focus-tx" data-tx-id="${id}" title="Jump to transaction ${id} in ledger">${id}</button>`
+    ).join(" ");
+  }
+  function renderWeeklyCashChart(run) {
+    const width = 680;
+    const height = 210;
+    const padLeft = 48;
+    const padRight = 20;
+    const padTop = 24;
+    const padBottom = 34;
+    const plotW = width - padLeft - padRight;
+    const plotH = height - padTop - padBottom;
+    let maxVal = 400;
+    let minVal = 0;
+    for (const snap of run.weeklySnapshots) {
+      if (snap.endingHouseholdReserve > maxVal) {
+        maxVal = snap.endingHouseholdReserve;
+      }
+      for (const rId of ROOMMATE_ORDER) {
+        const c = snap.roommateStates[rId].endingCash;
+        if (c > maxVal) maxVal = c;
+        if (c < minVal) minVal = c;
+      }
+    }
+    maxVal = Math.ceil((maxVal + 30) / 50) * 50;
+    minVal = Math.min(0, Math.floor((minVal - 20) / 50) * 50);
+    const span = Math.max(100, maxVal - minVal);
+    const yFor = (val) => padTop + plotH - (val - minVal) / span * plotH;
+    const zeroY = yFor(0);
+    const stressY = yFor(GAME_CONFIG.LIQUIDITY_STRESS_THRESHOLD);
+    const groupW = plotW / 4;
+    const barsSvg = [];
+    run.weeklySnapshots.forEach((snap, wIdx) => {
+      const gx = padLeft + wIdx * groupW;
+      const barW = 22;
+      ROOMMATE_ORDER.forEach((rId, rIdx) => {
+        const cash = snap.roommateStates[rId].endingCash;
+        const bx = gx + 14 + rIdx * (barW + 4);
+        const topY = cash >= 0 ? yFor(cash) : zeroY;
+        const barH = Math.max(3, Math.abs(yFor(cash) - zeroY));
+        const fill = ROOMMATE_PROFILES[rId].color;
+        barsSvg.push(
+          `<rect x="${bx}" y="${topY.toFixed(1)}" width="${barW}" height="${barH.toFixed(1)}" rx="3" fill="${fill}">
+            <title>Week ${snap.week} ${ROOMMATE_PROFILES[rId].name}: $${cash.toFixed(2)}</title>
+          </rect>
+          <text x="${bx + barW / 2}" y="${(topY - 4).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="#1c1917">$${Math.round(cash)}</text>`
+        );
+      });
+      const res = snap.endingHouseholdReserve;
+      const rx = gx + 14 + 4 * (barW + 4) + 3;
+      const rTop = yFor(res);
+      const rH = Math.max(2, Math.abs(zeroY - rTop));
+      barsSvg.push(
+        `<rect x="${rx}" y="${rTop.toFixed(1)}" width="16" height="${rH.toFixed(1)}" rx="2" fill="#f59e0b" stroke="#78350f" stroke-width="1">
+          <title>Week ${snap.week} Shared Household Reserve: $${res.toFixed(2)}</title>
+        </rect>`
+      );
+      barsSvg.push(
+        `<text x="${gx + groupW / 2}" y="${height - 10}" text-anchor="middle" font-size="11" font-weight="700" fill="#1c1917">Week ${snap.week}${snap.week === 3 ? " \u26A1" : ""}</text>`
+      );
+    });
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="210" role="img" aria-label="4-Week Roommate Cash and Shared Reserve Trajectory Chart">
+      <rect x="0" y="0" width="${width}" height="${height}" rx="8" fill="#fdfcfa" stroke="#e7dfd1"/>
+      <line x1="${padLeft}" y1="${zeroY.toFixed(1)}" x2="${width - padRight}" y2="${zeroY.toFixed(1)}" stroke="#57534e" stroke-width="1.2"/>
+      <line x1="${padLeft}" y1="${stressY.toFixed(1)}" x2="${width - padRight}" y2="${stressY.toFixed(1)}" stroke="#e11d48" stroke-dasharray="4 3" stroke-width="1.2"/>
+      <text x="${padLeft + 4}" y="${(stressY - 4).toFixed(1)}" font-size="9" font-weight="700" fill="#be123c">$40 Liquidity Stress Threshold</text>
+      <text x="${padLeft - 6}" y="${(padTop + 8).toFixed(1)}" text-anchor="end" font-size="9" fill="#57534e">$${maxVal}</text>
+      <text x="${padLeft - 6}" y="${(zeroY + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="#57534e">$0</text>
+      ${barsSvg.join("\n")}
+    </svg>`;
+  }
+  function render() {
+    const scenario = SCENARIOS[state.activeScenarioId];
+    const activePolicy = POLICIES[state.activePolicyId];
+    const compPolicy = POLICIES[state.comparisonPolicyId];
+    const currentPred = state.predictionsByScenario[state.activeScenarioId];
+    const isCommitted = state.committedPredictionsByScenario[state.activeScenarioId];
+    const sched = state.frozenSchedulesByScenario[state.activeScenarioId];
+    const week3Shock = sched.weeks[2].surpriseExpense;
+    const cons = activeRun.conservation;
+    const filteredTransactions = activeRun.transactions.filter((tx) => {
+      if (selectedTimelineWeek !== "ALL" && tx.week !== selectedTimelineWeek) {
+        return false;
+      }
+      if (ledgerRoommateFilter !== "ALL" && tx.roommateId !== ledgerRoommateFilter && tx.counterpartyRoommateId !== ledgerRoommateFilter) {
+        return false;
+      }
+      if (ledgerFlowFilter !== "ALL" && tx.flowCategory !== ledgerFlowFilter) {
+        return false;
+      }
+      return true;
+    });
+    const filteredChores = activeRun.choreLedger.filter((ch) => {
+      if (selectedTimelineWeek !== "ALL" && ch.week !== selectedTimelineWeek) {
+        return false;
+      }
+      if (ledgerRoommateFilter !== "ALL" && ch.roommateId !== ledgerRoommateFilter) {
+        return false;
+      }
+      return true;
+    });
+    container.innerHTML = `
+      <style>${STYLES}</style>
+      <div class="rr-root" data-game-id="${GAME_CONFIG.GAME_ID}">
+        <div class="rr-container">
+          <!-- Header -->
+          <header class="rr-header">
+            <div class="rr-title-block">
+              <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                <span class="rr-badge" style="background:#fef3c7;color:#92400e;">GAME 06 \xB7 BRIEF F</span>
+                <span class="rr-badge">Seed #${state.seed}</span>
+                <span class="rr-badge" title="External event schedule is frozen so policy comparisons have zero RNG drift">${sched.scheduleSignature}</span>
+              </div>
+              <h1>${GAME_CONFIG.TITLE}: ${GAME_CONFIG.SUBTITLE}</h1>
+              <p>Inspect household incentives, commit to a testable prediction, enact a billing policy, and audit the double-entry ledger on a frozen 4-week event schedule.</p>
+            </div>
+            <div class="rr-toolbar">
+              <button type="button" class="rr-btn" data-action="toggle-assumptions" aria-expanded="${showAssumptionsEditor}">
+                ${showAssumptionsEditor ? "Hide Assumptions Sliders" : "Edit Assumptions Sliders"}
+              </button>
+              <button type="button" class="rr-btn" data-action="new-seed">
+                New Event Seed
+              </button>
+              <button type="button" class="rr-btn" data-action="toggle-mute">
+                ${audio.isMuted() ? "Audio: Muted" : "Audio: On"}
+              </button>
+              <button type="button" class="rr-btn" data-action="export-json">
+                Export Save
+              </button>
+              <button type="button" class="rr-btn ${debugEnabled ? "rr-btn-active" : ""}" data-action="toggle-debug">
+                Debug [D]
+              </button>
+            </div>
+          </header>
+
+          <!-- Scenario Selector Bar -->
+          <nav class="rr-scenario-bar" aria-label="Household Scenarios">
+            ${SCENARIO_LIST.map((sc) => {
+      const selected = sc.id === state.activeScenarioId;
+      const done = state.completedScenarios.includes(sc.id);
+      return `
+                <button type="button" class="rr-scenario-tab" role="tab" aria-selected="${selected}" data-action="select-scenario" data-scenario-id="${sc.id}">
+                  <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+                    <span style="font-weight:700;font-size:0.95rem;">${sc.title}</span>
+                    ${done ? '<span class="rr-badge rr-badge-ok">Audited \u2713</span>' : '<span class="rr-badge">4 Weeks</span>'}
+                  </div>
+                  <span style="font-size:0.8rem;color:var(--rr-text-muted);">${sc.subtitle}</span>
+                </button>
+              `;
+    }).join("")}
+          </nav>
+
+          <!-- Scenario Premise & Frozen Week 3 Shock Banner -->
+          <section class="rr-section" aria-label="Scenario Briefing">
+            <div class="rr-section-header">
+              <h2>${scenario.title} \u2014 ${scenario.utilityLabel}</h2>
+              <span class="rr-badge rr-badge-shock">Frozen Week 3 Shock: ${week3Shock.title} ($${week3Shock.amountDollars.toFixed(2)})</span>
+            </div>
+            <p style="margin:0 0 0.6rem;font-size:0.92rem;">${scenario.premise}</p>
+            <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.82rem;color:var(--rr-text-muted);">
+              <span><strong>Base Weekly Bill:</strong> $${scenario.baseWeeklyBillDollars}/wk</span>
+              <span>\xB7</span>
+              <span><strong>Initial Shared Reserve:</strong> $${scenario.initialReserveDollars.toFixed(2)}</span>
+              <span>\xB7</span>
+              <span><strong>Week 1\u20134 Weather/Demand Multipliers:</strong> ${sched.weeks.map((w) => `W${w.week}: ${w.weatherOrDemandIndex}x`).join(", ")}</span>
+            </div>
+          </section>
+
+          <!-- 4 Roommate Agent Cards -->
+          <section class="rr-section" aria-label="Roommate Behavioral Profiles">
+            <div class="rr-section-header">
+              <h2>Step 1: Inspect the 4 Roommate Behavioral Models</h2>
+              <span style="font-size:0.82rem;color:var(--rr-text-muted);">All agent parameters are transparent and editable in the Assumptions Panel.</span>
+            </div>
+            <div class="rr-roommate-grid">
+              ${ROOMMATE_ORDER.map((rId) => {
+      const prof = ROOMMATE_PROFILES[rId];
+      const params = state.assumptionsByScenario[state.activeScenarioId].roommates[rId];
+      const summary = activeRun.roommateSummaries[rId];
+      return `
+                  <article class="rr-roommate-card" data-roommate-card="${rId}">
+                    <div class="rr-roommate-top">
+                      ${ROOMMATE_SVGS[rId]}
+                      <div>
+                        <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+                          <strong style="font-size:1rem;">${prof.name}</strong>
+                          <span class="rr-badge" style="border-left:3px solid ${prof.color};">${prof.badgeText}</span>
+                        </div>
+                        <div style="font-size:0.77rem;color:var(--rr-text-muted);">${prof.shortLabel}</div>
+                      </div>
+                    </div>
+                    <p style="margin:0;font-size:0.8rem;color:var(--rr-text-muted);">${prof.bio}</p>
+                    <div class="rr-stat-list">
+                      <div><strong>Income:</strong> $${params.weeklyIncome}/wk</div>
+                      <div><strong>Start Cash:</strong> $${params.initialCash}</div>
+                      <div><strong>Usage Appetite:</strong> ${params.usageAppetite.toFixed(2)}x</div>
+                      <div><strong>Free-Ride Tempt:</strong> ${Math.round(params.freeRideTemptation * 100)}%</div>
+                      <div><strong>Audit Sensitivity:</strong> ${Math.round(params.auditSensitivity * 100)}%</div>
+                      <div><strong>Fairness Floor:</strong> ${Math.round(params.fairnessThreshold * 100)}%</div>
+                    </div>
+                    <div style="border-top:1px dashed var(--rr-border);padding-top:0.45rem;display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;">
+                      <span><strong>4-Wk Out-of-Pocket:</strong> $${summary.totalOutOfPocketPaid.toFixed(2)}</span>
+                      <span class="rr-badge ${summary.experiencedLiquidityStress ? "rr-badge-shock" : "rr-badge-ok"}">
+                        End Cash: $${summary.endingCash.toFixed(2)}
+                      </span>
+                    </div>
+                  </article>
+                `;
+    }).join("")}
+            </div>
+          </section>
+
+          <!-- Editable Assumptions Sliders Panel (Collapsible) -->
+          ${showAssumptionsEditor ? `
+          <section class="rr-section" aria-label="Editable Behavioral Assumptions Panel" id="rr-assumptions-panel">
+            <div class="rr-section-header">
+              <h2>Editable Assumptions Panel (Test Sensitivity on Same Event Schedule)</h2>
+              <button type="button" class="rr-btn" data-action="reset-assumptions">Reset Default Assumptions</button>
+            </div>
+            <p style="margin:0 0 0.85rem;font-size:0.85rem;color:var(--rr-text-muted);">
+              Adjusting these sliders changes the agent parameters while keeping the frozen External Event Schedule (${sched.scheduleSignature}) untouched.
+            </p>
+            <div class="rr-roommate-grid">
+              ${ROOMMATE_ORDER.map((rId) => {
+      const prof = ROOMMATE_PROFILES[rId];
+      const p = state.assumptionsByScenario[state.activeScenarioId].roommates[rId];
+      return `
+                  <div class="rr-roommate-card">
+                    <strong>${prof.name} Parameters</strong>
+                    <div>
+                      <label for="slider-income-${rId}" style="display:flex;justify-content:space-between;font-size:0.8rem;font-weight:600;">
+                        <span>Weekly Income ($/wk)</span>
+                        <span>$${p.weeklyIncome}</span>
+                      </label>
+                      <input type="range" id="slider-income-${rId}" class="rr-slider" min="110" max="550" step="5" value="${p.weeklyIncome}" aria-valuetext="$${p.weeklyIncome} per week" data-action="assumption-slider" data-roommate="${rId}" data-field="weeklyIncome"/>
+                    </div>
+                    <div>
+                      <label for="slider-appetite-${rId}" style="display:flex;justify-content:space-between;font-size:0.8rem;font-weight:600;">
+                        <span>Usage Appetite</span>
+                        <span>${p.usageAppetite.toFixed(2)}x</span>
+                      </label>
+                      <input type="range" id="slider-appetite-${rId}" class="rr-slider" min="0.5" max="2.0" step="0.05" value="${p.usageAppetite}" aria-valuetext="${p.usageAppetite.toFixed(2)}x baseline usage" data-action="assumption-slider" data-roommate="${rId}" data-field="usageAppetite"/>
+                    </div>
+                    <div>
+                      <label for="slider-freeride-${rId}" style="display:flex;justify-content:space-between;font-size:0.8rem;font-weight:600;">
+                        <span>Free-Ride Temptation</span>
+                        <span>${p.freeRideTemptation.toFixed(2)}</span>
+                      </label>
+                      <input type="range" id="slider-freeride-${rId}" class="rr-slider" min="0" max="1" step="0.05" value="${p.freeRideTemptation}" aria-valuetext="${Math.round(p.freeRideTemptation * 100)} percent free ride temptation" data-action="assumption-slider" data-roommate="${rId}" data-field="freeRideTemptation"/>
+                    </div>
+                    <div>
+                      <label for="slider-audit-${rId}" style="display:flex;justify-content:space-between;font-size:0.8rem;font-weight:600;">
+                        <span>Audit / Price Sensitivity</span>
+                        <span>${p.auditSensitivity.toFixed(2)}</span>
+                      </label>
+                      <input type="range" id="slider-audit-${rId}" class="rr-slider" min="0" max="1" step="0.05" value="${p.auditSensitivity}" aria-valuetext="${Math.round(p.auditSensitivity * 100)} percent audit sensitivity" data-action="assumption-slider" data-roommate="${rId}" data-field="auditSensitivity"/>
+                    </div>
+                  </div>
+                `;
+    }).join("")}
+            </div>
+          </section>
+          ` : ""}
+
+          <!-- Step 2 & 3: Commit Prediction & Select Policy -->
+          <div class="rr-grid-2col">
+            <section class="rr-section" aria-label="Commit to a Prediction">
+              <div class="rr-section-header">
+                <h2>Step 2: Commit to a Prediction Before Running</h2>
+                <span class="rr-badge ${isCommitted ? "rr-badge-ok" : "rr-badge-shock"}">
+                  ${isCommitted ? `Graded: ${predictionGrade.totalCorrect}/3 Correct` : "Awaiting Commit"}
+                </span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:0.75rem;font-size:0.86rem;">
+                <div>
+                  <label for="pred-highest-payer" style="font-weight:700;display:block;margin-bottom:0.25rem;">
+                    1. Who will pay the highest 4-week total out-of-pocket household contribution?
+                  </label>
+                  <select id="pred-highest-payer" class="rr-btn" style="width:100%;" data-action="update-prediction" data-pred-field="highestNetPayer">
+                    ${ROOMMATE_ORDER.map(
+      (rId) => `<option value="${rId}" ${currentPred.highestNetPayer === rId ? "selected" : ""}>${ROOMMATE_PROFILES[rId].name} (${ROOMMATE_PROFILES[rId].shortLabel})</option>`
+    ).join("")}
+                  </select>
+                </div>
+
+                <div>
+                  <label for="pred-shock-outcome" style="font-weight:700;display:block;margin-bottom:0.25rem;">
+                    2. Will everyone stay solvent (&gt;= $40 cash) through the Week 3 Surprise Expense?
+                  </label>
+                  <select id="pred-shock-outcome" class="rr-btn" style="width:100%;" data-action="update-prediction" data-pred-field="week3ShockOutcome">
+                    <option value="liquidity_crunch" ${currentPred.week3ShockOutcome === "liquidity_crunch" ? "selected" : ""}>Liquidity Crunch (&lt; $40 cash for at least one roommate)</option>
+                    <option value="all_solvent_buffered" ${currentPred.week3ShockOutcome === "all_solvent_buffered" ? "selected" : ""}>All Roommates Stay Above $40 Stress Threshold</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label for="pred-behavioral-shift" style="font-weight:700;display:block;margin-bottom:0.25rem;">
+                    3. Who will show the largest incentive-driven behavioral shift (overconsumption, underreporting, or conservation/chore rebate)?
+                  </label>
+                  <select id="pred-behavioral-shift" class="rr-btn" style="width:100%;" data-action="update-prediction" data-pred-field="behavioralShift">
+                    ${ROOMMATE_ORDER.map(
+      (rId) => `<option value="${rId}" ${currentPred.behavioralShift === rId ? "selected" : ""}>${ROOMMATE_PROFILES[rId].name} (${ROOMMATE_PROFILES[rId].shortLabel})</option>`
+    ).join("")}
+                  </select>
+                </div>
+
+                <button type="button" class="rr-btn rr-btn-primary" style="padding:0.7rem 1rem;font-size:0.95rem;" data-action="commit-and-run">
+                  Commit Prediction &amp; Run 4-Week Simulation
+                </button>
+              </div>
+            </section>
+
+            <section class="rr-section" aria-label="Choose Household Policy">
+              <div class="rr-section-header">
+                <h2>Step 3: Choose Active Household Policy (Policy A)</h2>
+                <span class="rr-badge">${activePolicy.shortTitle}</span>
+              </div>
+              <div class="rr-policy-grid" role="radiogroup" aria-label="Household Billing Policies">
+                ${POLICY_LIST.map((pol) => {
+      const checked = pol.id === state.activePolicyId;
+      return `
+                    <button type="button" class="rr-policy-card" role="radio" aria-checked="${checked}" data-action="select-policy" data-policy-id="${pol.id}">
+                      <strong style="font-size:0.9rem;">${pol.shortTitle}</strong>
+                      <span style="font-size:0.78rem;color:var(--rr-text-muted);">${pol.tagline}</span>
+                      <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-top:auto;">
+                        <span class="rr-badge">Marginal Price: ${Math.round(pol.marginalPriceSignal * 100)}%</span>
+                        ${pol.collectsReserveBuffer ? '<span class="rr-badge rr-badge-ok">+10% Reserve</span>' : ""}
+                        ${pol.chargesMeteringAdminFee ? '<span class="rr-badge rr-badge-shock">$16/wk Fee</span>' : ""}
+                      </div>
+                    </button>
+                  `;
+    }).join("")}
+              </div>
+            </section>
+          </div>
+
+          <!-- Strict Money Conservation Banner -->
+          <div class="rr-conservation-banner" role="status" aria-label="Strict Double-Entry Money Conservation Check">
+            <div>
+              <span>DOUBLE-ENTRY CONSERVATION AUDIT:</span>
+              <span>Initial Cash ($${cons.initialCash.toFixed(2)}) + Total Income ($${cons.totalIncome.toFixed(2)}) - External Vendor Expenses ($${cons.totalExpenses.toFixed(2)}) = Ending Roommate Cash ($${cons.endingRoommateCash.toFixed(2)}) + Ending Household Reserve ($${cons.endingHouseholdReserve.toFixed(2)})</span>
+            </div>
+            <span class="rr-badge rr-badge-ok">
+              Discrepancy: $${cons.discrepancyDollars.toFixed(2)} (${cons.isConserved ? "100% CONSERVED \u2713" : "ERROR"})
+            </span>
+          </div>
+
+          <!-- 4-Week Animated Timeline & SVG Cash Bar Chart -->
+          <section class="rr-section" aria-label="4-Week Simulation Timeline and Cash Trajectory">
+            <div class="rr-section-header">
+              <h2>Step 4: 4-Week Simulation Trajectory (${activePolicy.title})</h2>
+              <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+                <button type="button" class="rr-btn ${selectedTimelineWeek === "ALL" ? "rr-btn-active" : ""}" data-action="filter-week" data-week="ALL">All 4 Weeks</button>
+                ${[1, 2, 3, 4].map(
+      (w) => `<button type="button" class="rr-btn ${selectedTimelineWeek === w ? "rr-btn-active" : ""}" data-action="filter-week" data-week="${w}">Week ${w}${w === 3 ? " \u26A1" : ""}</button>`
+    ).join("")}
+              </div>
+            </div>
+
+            <div class="rr-grid-2col" style="align-items:center;">
+              <div>
+                ${renderWeeklyCashChart(activeRun)}
+                <div style="display:flex;gap:0.75rem;flex-wrap:wrap;justify-content:center;font-size:0.78rem;margin-top:0.35rem;">
+                  ${ROOMMATE_ORDER.map(
+      (rId) => `<span style="display:inline-flex;align-items:center;gap:0.3rem;"><span style="width:10px;height:10px;border-radius:2px;background:${ROOMMATE_PROFILES[rId].color};display:inline-block;"></span>${ROOMMATE_PROFILES[rId].name}</span>`
+    ).join("")}
+                  <span style="display:inline-flex;align-items:center;gap:0.3rem;"><span style="width:10px;height:10px;border-radius:2px;background:#f59e0b;border:1px solid #78350f;display:inline-block;"></span>Shared Reserve ($${cons.endingHouseholdReserve.toFixed(2)})</span>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:0.55rem;">
+                ${activeRun.weeklySnapshots.map(
+      (snap) => `
+                  <div style="border:1px solid var(--rr-border);border-radius:8px;padding:0.6rem 0.8rem;background:${snap.week === 3 ? "#fff1f2" : "#fdfcfa"};font-size:0.82rem;">
+                    <div style="display:flex;justify-content:space-between;font-weight:700;">
+                      <span>${snap.ambientNote}</span>
+                      <span>Utility Bill: $${snap.totalUtilityBill.toFixed(2)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;color:var(--rr-text-muted);margin-top:0.2rem;flex-wrap:wrap;gap:0.4rem;">
+                      <span>End Cash: Maya $${snap.roommateStates.maya.endingCash.toFixed(0)} \xB7 Devon $${snap.roommateStates.devon.endingCash.toFixed(0)} \xB7 Priya $${snap.roommateStates.priya.endingCash.toFixed(0)} \xB7 Leo $${snap.roommateStates.leo.endingCash.toFixed(0)}</span>
+                      <span>Reserve: $${snap.endingHouseholdReserve.toFixed(2)} \xB7 Trust: ${snap.averageHouseholdTrust}%</span>
+                    </div>
+                  </div>
+                `
+    ).join("")}
+              </div>
+            </div>
+          </section>
+
+          <!-- Step 5: Prediction Outcome & Trace-Backed Explanations -->
+          <section class="rr-section" aria-label="Prediction Grading and Trace-Backed Ledger Explanations">
+            <div class="rr-section-header">
+              <h2>Step 5: Prediction Audit &amp; Trace-Backed Ledger Explanations</h2>
+              <span class="rr-badge ${predictionGrade.totalCorrect >= 2 ? "rr-badge-ok" : "rr-badge-shock"}">
+                ${predictionGrade.summaryHeadline}
+              </span>
+            </div>
+
+            <div class="rr-explanation-list" style="margin-bottom:1rem;">
+              ${predictionGrade.items.map(
+      (item) => `
+                <div class="rr-explanation-card" style="border-left-color:${item.isCorrect ? "#059669" : "#e11d48"};">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
+                    <strong>${item.title}</strong>
+                    <span class="rr-badge ${item.isCorrect ? "rr-badge-ok" : "rr-badge-shock"}">${item.isCorrect ? "Predicted \u2713" : "Surprise!"}</span>
+                  </div>
+                  <div style="font-size:0.8rem;margin-bottom:0.3rem;">
+                    <strong>Your Prediction:</strong> ${item.predictedLabel}<br/>
+                    <strong>Ledger Outcome:</strong> ${item.actualLabel}
+                  </div>
+                  <p style="margin:0 0 0.35rem;">${item.explanation}</p>
+                  <div><strong>Ledger Evidence:</strong> ${renderTransactionChips(item.evidenceTransactionIds)}</div>
+                  <div class="rr-limitation-box">${item.assumptionNote}</div>
+                </div>
+              `
+    ).join("")}
+            </div>
+
+            <h3 style="font-size:0.98rem;margin:0 0 0.5rem;">Causal Ledger Trace &amp; Explicit Model Assumptions</h3>
+            <div class="rr-explanation-list">
+              ${activeRun.explanations.map(
+      (exp) => `
+                <article class="rr-explanation-card">
+                  <strong style="display:block;margin-bottom:0.25rem;">${exp.headline}</strong>
+                  <p style="margin:0 0 0.4rem;">${exp.statement}</p>
+                  <div style="margin-bottom:0.35rem;">
+                    <strong>Cited Transactions:</strong> ${renderTransactionChips(exp.transactionIds)}
+                  </div>
+                  <div style="font-size:0.76rem;color:var(--rr-text-muted);">
+                    <strong>Active Model Parameters:</strong> ${exp.assumptionRefs.join(" \xB7 ")}
+                  </div>
+                  <div class="rr-limitation-box">${exp.modelLimitationNote}</div>
+                </article>
+              `
+    ).join("")}
+            </div>
+          </section>
+
+          <!-- Auditable Double-Entry Transaction & Chore Ledger Table -->
+          <section class="rr-section" aria-label="Double-Entry Transaction and Chore Ledger">
+            <div class="rr-section-header">
+              <h2>Auditable Double-Entry Transaction &amp; Chore Ledger</h2>
+              <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
+                <button type="button" class="rr-btn ${ledgerTab === "TRANSACTIONS" ? "rr-btn-active" : ""}" data-action="set-ledger-tab" data-tab="TRANSACTIONS">
+                  Financial Ledger (${filteredTransactions.length})
+                </button>
+                <button type="button" class="rr-btn ${ledgerTab === "CHORES" ? "rr-btn-active" : ""}" data-action="set-ledger-tab" data-tab="CHORES">
+                  Chore &amp; Morale Ledger (${filteredChores.length})
+                </button>
+                <select class="rr-btn" aria-label="Filter ledger by roommate" data-action="filter-roommate">
+                  <option value="ALL" ${ledgerRoommateFilter === "ALL" ? "selected" : ""}>All Roommates</option>
+                  ${ROOMMATE_ORDER.map(
+      (rId) => `<option value="${rId}" ${ledgerRoommateFilter === rId ? "selected" : ""}>${ROOMMATE_PROFILES[rId].name}</option>`
+    ).join("")}
+                </select>
+                <select class="rr-btn" aria-label="Filter ledger by flow type" data-action="filter-flow">
+                  <option value="ALL" ${ledgerFlowFilter === "ALL" ? "selected" : ""}>All Flow Categories</option>
+                  <option value="EXTERNAL_INFLOW" ${ledgerFlowFilter === "EXTERNAL_INFLOW" ? "selected" : ""}>External Inflows (Income)</option>
+                  <option value="INTERNAL_TRANSFER" ${ledgerFlowFilter === "INTERNAL_TRANSFER" ? "selected" : ""}>Internal Household Transfers</option>
+                  <option value="EXTERNAL_OUTFLOW" ${ledgerFlowFilter === "EXTERNAL_OUTFLOW" ? "selected" : ""}>External Vendor Outflows</option>
+                </select>
+              </div>
+            </div>
+
+            ${ledgerTab === "TRANSACTIONS" ? `
+              <div tabindex="0" role="region" aria-labelledby="rr-ledger-caption" class="rr-table-wrapper">
+                <table>
+                  <caption id="rr-ledger-caption">
+                    Double-Entry Household Financial Ledger (${activePolicy.shortTitle} \xB7 ${filteredTransactions.length} entries shown)
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Tx ID</th>
+                      <th scope="col">Week</th>
+                      <th scope="col">Type</th>
+                      <th scope="col">From &rarr; To Account</th>
+                      <th scope="col">Amount</th>
+                      <th scope="col">Explanation &amp; Model Parameter Drivers</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${filteredTransactions.map((tx) => {
+      const isHi = tx.id === highlightedTxId;
+      return `
+                          <tr id="row-${tx.id}" class="${isHi ? "rr-tx-highlighted" : ""}">
+                            <th scope="row">${tx.id}</th>
+                            <td>W${tx.week}</td>
+                            <td><span class="rr-badge">${tx.type}</span></td>
+                            <td style="font-family:ui-monospace,monospace;font-size:0.77rem;">${tx.fromAccount} &rarr; ${tx.toAccount}</td>
+                            <td style="font-weight:700;">$${tx.amount.toFixed(2)}</td>
+                            <td>
+                              <div>${tx.description}</div>
+                              <div style="font-size:0.74rem;color:var(--rr-text-muted);margin-top:0.15rem;">
+                                Drivers: ${tx.assumptionDrivers.join(" | ")}
+                              </div>
+                            </td>
+                          </tr>
+                        `;
+    }).join("")}
+                  </tbody>
+                </table>
+              </div>
+            ` : `
+              <div tabindex="0" role="region" aria-labelledby="rr-chore-caption" class="rr-table-wrapper">
+                <table>
+                  <caption id="rr-chore-caption">
+                    Weekly Kitchen &amp; Cleaning Chore Ledger (${activePolicy.shortTitle})
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Chore ID</th>
+                      <th scope="col">Week</th>
+                      <th scope="col">Roommate</th>
+                      <th scope="col">Completed / Target</th>
+                      <th scope="col">Rebate / Surcharge</th>
+                      <th scope="col">Explanation &amp; Trust Impact</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${filteredChores.map(
+      (ch) => `
+                        <tr>
+                          <th scope="row">${ch.id}</th>
+                          <td>W${ch.week}</td>
+                          <td><strong>${ROOMMATE_PROFILES[ch.roommateId].name}</strong></td>
+                          <td>${ch.completedChores} / ${ch.targetChores} (${ch.choreDelta >= 0 ? "+" : ""}${ch.choreDelta})</td>
+                          <td style="font-weight:700;">${ch.rebateOrPenaltyDollars >= 0 ? "+" : ""}$${ch.rebateOrPenaltyDollars.toFixed(2)}</td>
+                          <td>${ch.note} (Trust delta: ${ch.trustDelta >= 0 ? "+" : ""}${ch.trustDelta})</td>
+                        </tr>
+                      `
+    ).join("")}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </section>
+
+          <!-- Step 6: Side-by-Side Same-Events Counterfactual Policy Comparison View -->
+          <section class="rr-section" aria-label="Same-Events Policy Comparison View">
+            <div class="rr-section-header">
+              <h2>Step 6: Same-Events Counterfactual Policy Comparison View</h2>
+              <span class="rr-badge rr-badge-ok">
+                Same Frozen Event Schedule Verified: ${comparisonResult.sameScheduleVerified ? "YES \u2713" : "NO"} (${comparisonResult.scheduleSignature})
+              </span>
+            </div>
+            <p style="margin:0 0 0.75rem;font-size:0.86rem;color:var(--rr-text-muted);">
+              <strong>Hypothesis Prompt:</strong> ${scenario.hypothesisPrompt}
+            </p>
+
+            <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:0.9rem;">
+              <span style="font-weight:700;font-size:0.88rem;">Compare Policy A (${activePolicy.shortTitle}) against Counterfactual Policy B:</span>
+              ${POLICY_LIST.map(
+      (pol) => `
+                  <button type="button" class="rr-btn ${pol.id === state.comparisonPolicyId ? "rr-btn-active" : ""}" data-action="select-comparison-policy" data-policy-id="${pol.id}">
+                    ${pol.shortTitle}
+                  </button>
+                `
+    ).join("")}
+            </div>
+
+            <div tabindex="0" role="region" aria-labelledby="rr-comp-caption" class="rr-table-wrapper" style="margin-bottom:0.9rem;">
+              <table>
+                <caption id="rr-comp-caption">
+                  Side-by-Side Counterfactual Outcome Table on Identical Schedule (${activePolicy.shortTitle} vs. ${compPolicy.shortTitle})
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Roommate</th>
+                    <th scope="col">End Cash (Policy A)</th>
+                    <th scope="col">End Cash (Policy B)</th>
+                    <th scope="col">Net Cash Delta (B - A)</th>
+                    <th scope="col">True Usage (A &rarr; B)</th>
+                    <th scope="col">Underreported (A &rarr; B)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${ROOMMATE_ORDER.map((rId) => {
+      const d = comparisonResult.roommateDeltas[rId];
+      const pos = d.cashDeltaBMinusA >= 0;
+      return `
+                      <tr>
+                        <th scope="row">${d.name}</th>
+                        <td>$${d.endingCashA.toFixed(2)}</td>
+                        <td>$${d.endingCashB.toFixed(2)}</td>
+                        <td style="font-weight:700;color:${pos ? "var(--rr-success)" : "var(--rr-danger)"};">
+                          ${pos ? "+" : ""}$${d.cashDeltaBMinusA.toFixed(2)}
+                        </td>
+                        <td>$${d.trueConsumptionA.toFixed(2)} &rarr; $${d.trueConsumptionB.toFixed(2)} (${d.consumptionDeltaBMinusA >= 0 ? "+" : ""}$${d.consumptionDeltaBMinusA.toFixed(2)})</td>
+                        <td>$${d.underreportedA.toFixed(2)} &rarr; $${d.underreportedB.toFixed(2)}</td>
+                      </tr>
+                    `;
+    }).join("")}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="rr-explanation-list">
+              ${comparisonResult.comparisonInsights.map(
+      (ins) => `
+                <div class="rr-explanation-card">
+                  <strong style="display:block;margin-bottom:0.25rem;">${ins.title}</strong>
+                  <p style="margin:0 0 0.35rem;">${ins.body}</p>
+                  <div style="font-size:0.78rem;margin-bottom:0.25rem;">
+                    <strong>Policy A Ledger Refs:</strong> ${renderTransactionChips(ins.runATransactionIds)}
+                  </div>
+                  <div class="rr-limitation-box">${ins.assumptionAttribution}</div>
+                </div>
+              `
+    ).join("")}
+            </div>
+          </section>
+
+          <!-- Step 7: 3 Short Interactive Debrief Prompts -->
+          <section class="rr-section" aria-label="Experimental Debrief Prompts">
+            <div class="rr-section-header">
+              <h2>Step 7: Experimental Debrief \u2014 Ledger Evidence &amp; Model Limitations</h2>
+              <span class="rr-badge">
+                ${Object.keys(state.debriefAnswers).length} / ${DEBRIEF_PROMPTS.length} Answered
+              </span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.9rem;">
+              ${DEBRIEF_PROMPTS.map((prompt) => {
+      const selectedOptId = state.debriefAnswers[prompt.id];
+      const selectedOpt = prompt.options.find(
+        (o) => o.id === selectedOptId
+      );
+      return `
+                  <div class="rr-explanation-card" style="border-left-color:#6d28d9;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                      <strong>Prompt #${prompt.number} (${prompt.category}): ${prompt.question}</strong>
+                    </div>
+                    <p style="margin:0.25rem 0 0.5rem;font-size:0.79rem;color:var(--rr-text-muted);">${prompt.contextHint}</p>
+                    <div style="display:flex;flex-direction:column;gap:0.4rem;">
+                      ${prompt.options.map((opt) => {
+        const isChosen = selectedOptId === opt.id;
+        return `
+                            <label style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.45rem 0.6rem;border-radius:6px;border:1px solid ${isChosen ? "#b45309" : "var(--rr-border)"};background:${isChosen ? "#fffbeb" : "#ffffff"};cursor:pointer;font-size:0.82rem;">
+                              <input type="radio" name="debrief-${prompt.id}" value="${opt.id}" ${isChosen ? "checked" : ""} data-action="answer-debrief" data-prompt-id="${prompt.id}" data-option-id="${opt.id}"/>
+                              <span>${opt.label}</span>
+                            </label>
+                          `;
+      }).join("")}
+                    </div>
+                    ${selectedOpt ? `
+                      <div style="margin-top:0.5rem;padding:0.5rem 0.7rem;border-radius:6px;background:${selectedOpt.isCorrect ? "var(--rr-success-bg)" : "var(--rr-danger-bg)"};color:${selectedOpt.isCorrect ? "var(--rr-success)" : "var(--rr-danger)"};font-size:0.81rem;font-weight:600;">
+                        ${selectedOpt.explanation}
+                      </div>
+                    ` : ""}
+                  </div>
+                `;
+    }).join("")}
+            </div>
+          </section>
+
+          ${debugEnabled ? `
+            <section class="rr-debug-drawer" aria-label="Debug Telemetry Inspector">
+              <h3 style="margin-top:0;color:#fbbf24;">DEBUG INSPECTOR [D] \u2014 Frozen Schedule &amp; Conservation Telemetry</h3>
+              <pre style="margin:0;white-space:pre-wrap;">${JSON.stringify(
+      {
+        seed: state.seed,
+        scenarioId: state.activeScenarioId,
+        activePolicyId: state.activePolicyId,
+        comparisonPolicyId: state.comparisonPolicyId,
+        scheduleSignature: activeRun.scheduleSignature,
+        conservation: activeRun.conservation,
+        week3SurpriseExpense: week3Shock
+      },
+      null,
+      2
+    )}</pre>
+            </section>
+          ` : ""}
+        </div>
+      </div>
+    `;
+    syncRangeSliders(container);
+  }
+  function handleContainerClick(e) {
+    const target = e.target?.closest(
+      "[data-action]"
+    );
+    if (!target) return;
+    const action = target.dataset.action;
+    if (action === "select-scenario") {
+      const sId = target.dataset.scenarioId;
+      if (sId && sId in SCENARIOS) {
+        audio.playPenClick();
+        state.activeScenarioId = sId;
+        state.activePolicyId = SCENARIOS[sId].defaultPolicyId;
+        state.comparisonPolicyId = SCENARIOS[sId].recommendedComparisonPolicyId;
+        selectedTimelineWeek = "ALL";
+        highlightedTxId = null;
+        recomputeAll();
+        render();
+      }
+    } else if (action === "select-policy") {
+      const pId = target.dataset.policyId;
+      if (pId && pId in POLICIES) {
+        audio.playPenClick();
+        state.activePolicyId = pId;
+        recomputeAll();
+        render();
+      }
+    } else if (action === "select-comparison-policy") {
+      const pId = target.dataset.policyId;
+      if (pId && pId in POLICIES) {
+        audio.playPenClick();
+        state.comparisonPolicyId = pId;
+        if (!state.completedComparisons.includes(state.activeScenarioId)) {
+          state.completedComparisons.push(state.activeScenarioId);
+        }
+        recomputeAll();
+        render();
+      }
+    } else if (action === "commit-and-run") {
+      state.committedPredictionsByScenario[state.activeScenarioId] = true;
+      if (!state.completedScenarios.includes(state.activeScenarioId)) {
+        state.completedScenarios.push(state.activeScenarioId);
+      }
+      recomputeAll();
+      audio.playCashChime(1);
+      audio.playShockBell();
+      audio.playRevealFanfare(predictionGrade.totalCorrect);
+      render();
+    } else if (action === "filter-week") {
+      const wRaw = target.dataset.week;
+      audio.playPenClick();
+      selectedTimelineWeek = wRaw === "ALL" ? "ALL" : Number(wRaw);
+      render();
+    } else if (action === "set-ledger-tab") {
+      const tab = target.dataset.tab;
+      audio.playPenClick();
+      ledgerTab = tab;
+      render();
+    } else if (action === "focus-tx") {
+      const txId = target.dataset.txId;
+      if (txId) {
+        audio.playPenClick();
+        ledgerTab = "TRANSACTIONS";
+        selectedTimelineWeek = "ALL";
+        ledgerRoommateFilter = "ALL";
+        ledgerFlowFilter = "ALL";
+        highlightedTxId = txId;
+        render();
+        const rowEl = container.querySelector(`#row-${txId}`);
+        if (rowEl && typeof rowEl.scrollIntoView === "function") {
+          rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+    } else if (action === "toggle-assumptions") {
+      audio.playPenClick();
+      showAssumptionsEditor = !showAssumptionsEditor;
+      render();
+    } else if (action === "reset-assumptions") {
+      audio.playPenClick();
+      state.assumptionsByScenario[state.activeScenarioId] = createDefaultAssumptions();
+      recomputeAll();
+      render();
+    } else if (action === "new-seed") {
+      const nextSeed = state.seed + 1013 >>> 0;
+      audio.playCashChime(2);
+      restartWithSeed(nextSeed);
+    } else if (action === "toggle-mute") {
+      audio.setMuted(!audio.isMuted());
+      render();
+    } else if (action === "export-json") {
+      audio.playPenClick();
+      const json = exportStateToJson(state);
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        navigator.clipboard.writeText(json).catch(() => {
+        });
+      }
+    } else if (action === "toggle-debug") {
+      toggleDebug();
+    }
+  }
+  function handleContainerChange(e) {
+    const target = e.target;
+    if (!target) return;
+    const action = target.dataset.action;
+    if (action === "update-prediction") {
+      const field = target.dataset.predField;
+      if (field) {
+        audio.playPenClick();
+        state.predictionsByScenario[state.activeScenarioId][field] = target.value;
+        recomputeAll();
+        render();
+      }
+    } else if (action === "filter-roommate") {
+      ledgerRoommateFilter = target.value;
+      render();
+    } else if (action === "filter-flow") {
+      ledgerFlowFilter = target.value;
+      render();
+    } else if (action === "answer-debrief") {
+      const promptId = target.dataset.promptId;
+      const optionId = target.dataset.optionId;
+      if (promptId && optionId) {
+        audio.playPenClick();
+        state.debriefAnswers[promptId] = optionId;
+        savePersistedState(state);
+        render();
+      }
+    } else if (action === "assumption-slider") {
+      const rId = target.dataset.roommate;
+      const field = target.dataset.field;
+      const val = Number(target.value);
+      if (rId && field && Number.isFinite(val)) {
+        state.assumptionsByScenario[state.activeScenarioId].roommates[rId][field] = val;
+        recomputeAll();
+        render();
+      }
+    }
+  }
+  function handleContainerInput(e) {
+    const target = e.target;
+    if (target && target.matches('input[type="range"].rr-slider')) {
+      target.style.setProperty("--attr-min", target.min || "0");
+      target.style.setProperty("--attr-max", target.max || "100");
+      target.style.setProperty("--control-value", target.value);
+    }
+  }
+  function handleKeyDown(e) {
+    if (e.key === "d" || e.key === "D") {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag !== "input" && activeTag !== "select" && activeTag !== "textarea") {
+        toggleDebug();
+      }
+    }
+  }
+  function restartWithSeed(seed) {
+    const normalized = Math.floor(seed) >>> 0;
+    state.seed = normalized;
+    for (const sId of Object.keys(SCENARIOS)) {
+      state.frozenSchedulesByScenario[sId] = generateExternalEventSchedule(
+        sId,
+        normalized
+      );
+    }
+    recomputeAll();
+    render();
+  }
+  function toggleDebug(force) {
+    debugEnabled = force !== void 0 ? force : !debugEnabled;
+    render();
+  }
+  container.addEventListener("click", handleContainerClick);
+  container.addEventListener("change", handleContainerChange);
+  container.addEventListener("input", handleContainerInput);
+  if (typeof window !== "undefined") {
+    window.addEventListener("keydown", handleKeyDown);
+  }
+  render();
+  return {
+    destroy() {
+      container.removeEventListener("click", handleContainerClick);
+      container.removeEventListener("change", handleContainerChange);
+      container.removeEventListener("input", handleContainerInput);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("keydown", handleKeyDown);
+      }
+      audio.destroy();
+      container.innerHTML = "";
+    },
+    getStateSnapshot() {
+      return {
+        persisted: state,
+        activeRun,
+        predictionGrade,
+        comparisonResult,
+        debugEnabled
+      };
+    },
+    restartWithSeed,
+    toggleDebug
+  };
+}
+
+// games/06-roommate-republic/src/index.ts
+var metadata = {
+  id: GAME_CONFIG.GAME_ID,
+  number: GAME_CONFIG.GAME_NUMBER,
+  title: GAME_CONFIG.TITLE,
+  subtitle: GAME_CONFIG.SUBTITLE,
+  genre: "Incentive Prediction, Experiment & Policy Simulation Lab",
+  primaryReference: "",
+  supportingReference: "",
+  oneSentenceLoop: "Inspect roommate incentive parameters, commit to a testable prediction, enact a household billing policy across 4 simulated weeks, and audit the double-entry ledger side-by-side on the exact same frozen external event schedule.",
+  shortGoal: "Predict who pays the most and whether everyone survives the Week 3 Surprise Expense without liquidity stress.",
+  longGoal: "Compare all 4 household policies across all 3 scenarios on frozen event schedules, test parameter sensitivity via the Assumptions Sliders, and complete the 3 Debrief Prompts.",
+  controlsSummary: "Mouse / Touch / Keyboard: Select scenario & prediction, choose policy, click transaction ID chips to highlight ledger rows, adjust native range sliders, press [D] for Debug telemetry.",
+  accentColor: GAME_CONFIG.ACCENT_COLOR
+};
+function mountGame(container, options) {
+  return createRoommateRepublicUI(container, options);
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_06-roommate-republic.ts
+var root = document.getElementById("game-root");
+if (root) {
+  mountGame(root);
+}
+
+</script>
+  </body>
+</html>

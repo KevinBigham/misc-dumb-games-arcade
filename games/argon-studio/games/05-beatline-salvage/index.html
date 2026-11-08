@@ -1,0 +1,2397 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game 05 · Beatline Salvage (Split-Second Lanes)</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #050811;
+        color: #f8fafc;
+        min-height: 100vh;
+      }
+      #app {
+        min-height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+// games/05-beatline-salvage/src/config.ts
+var TRACK_DURATION_MS = 9e4;
+var JUDGMENT_WINDOWS_MS = {
+  PERFECT: 32,
+  GOOD: 75,
+  EARLY_LATE: 120
+};
+var CALIBRATION_LIMITS_MS = {
+  MIN: -150,
+  MAX: 150,
+  STEP: 5
+};
+var SCORE_VALUES = {
+  PERFECT: 300,
+  GOOD: 180,
+  EARLY: 70,
+  LATE: 70,
+  MISS: 0,
+  SHUNT_SWITCH_BONUS: 250,
+  OVERDRIVE_MULTIPLIER: 1.5
+};
+var STABILITY_CONFIG = {
+  INITIAL: 100,
+  MAX: 100,
+  MIN: 0,
+  GAIN_PERFECT: 2.5,
+  GAIN_GOOD: 1,
+  LOSS_EARLY_LATE: 2,
+  LOSS_MISS_STANDARD: 8.5,
+  LOSS_MISS_OVERDRIVE: 12.5
+};
+var HISTOGRAM_BINS = [
+  { minMs: -120, maxMs: -100, label: "-120..-100" },
+  { minMs: -100, maxMs: -80, label: "-100..-80" },
+  { minMs: -80, maxMs: -60, label: "-80..-60" },
+  { minMs: -60, maxMs: -40, label: "-60..-40" },
+  { minMs: -40, maxMs: -20, label: "-40..-20" },
+  { minMs: -20, maxMs: 0, label: "-20..0" },
+  { minMs: 0, maxMs: 20, label: "0..+20" },
+  { minMs: 20, maxMs: 40, label: "+20..+40" },
+  { minMs: 40, maxMs: 60, label: "+40..+60" },
+  { minMs: 60, maxMs: 80, label: "+60..+80" },
+  { minMs: 80, maxMs: 100, label: "+80..+100" },
+  { minMs: 100, maxMs: 120, label: "+100..+120" }
+];
+var SONG_SECTIONS = [
+  {
+    id: "intro-induction",
+    index: 0,
+    title: "01 \xB7 Intro Induction",
+    subtitle: "Magnetic baseline alignment & first shunt gate test",
+    startTimeMs: 0,
+    endTimeMs: 22500,
+    shuntGateTimeMs: 9e3,
+    overdriveEndTimeMs: 21e3
+  },
+  {
+    id: "conveyor-surge",
+    index: 1,
+    title: "02 \xB7 Conveyor Surge",
+    subtitle: "Alternating cross-rail salvage bursts & off-beat induction",
+    startTimeMs: 22500,
+    endTimeMs: 45e3,
+    shuntGateTimeMs: 3e4,
+    overdriveEndTimeMs: 43500
+  },
+  {
+    id: "high-voltage-shunt",
+    index: 2,
+    title: "03 \xB7 High-Voltage Shunt",
+    subtitle: "Syncopated dual-rail plasma cores & high-yield shunt window",
+    startTimeMs: 45e3,
+    endTimeMs: 67500,
+    shuntGateTimeMs: 51e3,
+    overdriveEndTimeMs: 66e3
+  },
+  {
+    id: "furnace-finale",
+    index: 3,
+    title: "04 \xB7 Furnace Finale",
+    subtitle: "Full-foundry overdrive sprint to final lock",
+    startTimeMs: 67500,
+    endTimeMs: 9e4,
+    shuntGateTimeMs: 73500,
+    overdriveEndTimeMs: 88500
+  }
+];
+function getComboMultiplier(combo) {
+  if (combo >= 50) return 4;
+  if (combo >= 25) return 3;
+  if (combo >= 10) return 2;
+  return 1;
+}
+function getSectionForTimeMs(timeMs) {
+  for (const section of SONG_SECTIONS) {
+    if (timeMs >= section.startTimeMs && timeMs < section.endTimeMs) {
+      return section;
+    }
+  }
+  return SONG_SECTIONS[SONG_SECTIONS.length - 1];
+}
+
+// games/05-beatline-salvage/src/audio.ts
+var BeatlineAudioEngine = class {
+  ctx = null;
+  masterGain = null;
+  muted = false;
+  lastScheduledSubdivisionIdx = -1;
+  constructor(muted = false) {
+    this.muted = muted;
+  }
+  ensureContext() {
+    if (typeof window === "undefined") return null;
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        try {
+          this.ctx = new AudioCtx();
+          this.masterGain = this.ctx.createGain();
+          this.masterGain.gain.value = this.muted ? 0 : 0.28;
+          this.masterGain.connect(this.ctx.destination);
+        } catch {
+          this.ctx = null;
+        }
+      }
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  /**
+   * Returns current hardware audio timestamp in milliseconds.
+   * Falls back to performance.now() only if WebAudio is unavailable.
+   */
+  getNowAudioMs() {
+    if (this.ctx && this.ctx.state === "running") {
+      return this.ctx.currentTime * 1e3;
+    }
+    return typeof performance !== "undefined" ? performance.now() : Date.now();
+  }
+  setMuted(muted) {
+    this.muted = muted;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(muted ? 0 : 0.28, this.ctx.currentTime);
+    }
+  }
+  isMuted() {
+    return this.muted;
+  }
+  resetScheduler() {
+    this.lastScheduledSubdivisionIdx = -1;
+  }
+  /**
+   * Drives the 120 BPM (250ms eighth-note subdivision) procedural industrial-synthwave stems
+   * directly from current track time.
+   */
+  updateTrackMusic(trackTimeMs, route) {
+    if (this.muted) return;
+    const ctx = this.ctx;
+    const out = this.masterGain;
+    if (!ctx || !out || ctx.state !== "running") return;
+    const subdivisionIdx = Math.floor(trackTimeMs / 250);
+    if (subdivisionIdx <= this.lastScheduledSubdivisionIdx) return;
+    this.lastScheduledSubdivisionIdx = subdivisionIdx;
+    const now = ctx.currentTime;
+    const stepInBar = (subdivisionIdx % 8 + 8) % 8;
+    const section = getSectionForTimeMs(trackTimeMs);
+    if (stepInBar % 2 === 0) {
+      this.triggerKick(ctx, out, now, route === "overdrive" ? 0.55 : 0.42);
+    }
+    if (stepInBar === 2 || stepInBar === 6) {
+      this.triggerSnare(ctx, out, now, section.index >= 1 ? 0.26 : 0.16);
+    }
+    const rootMidiBySection = [38, 41, 43, 45];
+    const rootMidi = rootMidiBySection[section.index] ?? 38;
+    const arpOffsets = route === "overdrive" ? [0, 12, 7, 15, 0, 12, 10, 19] : [0, 0, 7, 12, 0, 0, 10, 7];
+    const midiNote = rootMidi + arpOffsets[stepInBar];
+    const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
+    this.triggerBassPulse(
+      ctx,
+      out,
+      now,
+      freq,
+      route === "overdrive" ? "sawtooth" : "triangle",
+      route === "overdrive" ? 0.22 : 0.15
+    );
+  }
+  playHitSfx(grade, lane, route) {
+    if (this.muted) return;
+    const ctx = this.ensureContext();
+    const out = this.masterGain;
+    if (!ctx || !out) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    if (grade === "MISS") {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(135, now);
+      osc.frequency.exponentialRampToValueAtTime(68, now + 0.14);
+      gain.gain.setValueAtTime(0.24, now);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.15);
+    } else {
+      const baseFreq = lane === "left" ? 523.25 : 659.25;
+      const mult = grade === "PERFECT" ? route === "overdrive" ? 1.5 : 1.25 : grade === "GOOD" ? 1 : 0.82;
+      osc.type = route === "overdrive" ? "square" : "sine";
+      osc.frequency.setValueAtTime(baseFreq * mult, now);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * mult * 1.18, now + 0.075);
+      gain.gain.setValueAtTime(grade === "PERFECT" ? 0.26 : 0.18, now);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.085);
+    }
+    osc.connect(gain);
+    gain.connect(out);
+    osc.start(now);
+    osc.stop(now + 0.16);
+  }
+  playShuntGateSfx() {
+    if (this.muted) return;
+    const ctx = this.ensureContext();
+    const out = this.masterGain;
+    if (!ctx || !out) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(260, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.22);
+    gain.gain.setValueAtTime(0.28, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.24);
+    osc.connect(gain);
+    gain.connect(out);
+    osc.start(now);
+    osc.stop(now + 0.25);
+  }
+  playCalibrationPulse(accent = false) {
+    if (this.muted) return;
+    const ctx = this.ensureContext();
+    const out = this.masterGain;
+    if (!ctx || !out) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(accent ? 987.77 : 659.25, now);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.07);
+    osc.connect(gain);
+    gain.connect(out);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+  triggerKick(ctx, out, now, peakGain) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(118, now);
+    osc.frequency.exponentialRampToValueAtTime(38, now + 0.11);
+    gain.gain.setValueAtTime(peakGain, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.12);
+    osc.connect(gain);
+    gain.connect(out);
+    osc.start(now);
+    osc.stop(now + 0.13);
+  }
+  triggerSnare(ctx, out, now, peakGain) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.08);
+    gain.gain.setValueAtTime(peakGain, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.09);
+    osc.connect(gain);
+    gain.connect(out);
+    osc.start(now);
+    osc.stop(now + 0.095);
+  }
+  triggerBassPulse(ctx, out, now, freq, type, peakGain) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    gain.gain.setValueAtTime(peakGain, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.19);
+    osc.connect(gain);
+    gain.connect(out);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  }
+  destroy() {
+    if (this.ctx) {
+      this.ctx.close().catch(() => {
+      });
+      this.ctx = null;
+      this.masterGain = null;
+    }
+  }
+};
+
+// games/05-beatline-salvage/src/rng.ts
+var SeededRng = class {
+  state;
+  constructor(seed) {
+    this.state = seed >>> 0 || 1831565813;
+  }
+  next() {
+    let t = this.state += 1831565813;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+  nextInt(minInclusive, maxInclusive) {
+    return Math.floor(this.next() * (maxInclusive - minInclusive + 1)) + minInclusive;
+  }
+  pick(items) {
+    return items[this.nextInt(0, items.length - 1)];
+  }
+};
+function getTodayDailySeed(now = /* @__PURE__ */ new Date()) {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth() + 1;
+  const d = now.getUTCDate();
+  return y * 1e4 + m * 100 + d;
+}
+
+// games/05-beatline-salvage/src/content.ts
+var AUTHORED_SPECS = {
+  easy: {
+    id: "easy",
+    title: "Cadet Sorter",
+    badge: "EASY \xB7 120 BPM",
+    subtitle: "Steady quarter-beat magnetic induction with forgiving shunt patterns",
+    seed: 10501,
+    description: "Designed for first-shift calibration. Clean single-beat spacing on Standard rails; Overdrive introduces rhythmic eighth-note pairs.",
+    standardBeatStepMs: 1e3,
+    includeEighthSyncopationInStandard: false,
+    overdriveSubdivisionMs: 500
+  },
+  standard: {
+    id: "standard",
+    title: "Shift Lead",
+    badge: "STANDARD \xB7 120 BPM",
+    subtitle: "Balanced industrial groove with syncopated Overdrive cross-routing",
+    seed: 20502,
+    description: "Full-speed orbital salvage shift. Standard route runs 120 BPM quarter pulses; Overdrive Shunt injects off-beat 250ms plasma crossovers.",
+    standardBeatStepMs: 500,
+    includeEighthSyncopationInStandard: false,
+    overdriveSubdivisionMs: 250
+  },
+  expert: {
+    id: "expert",
+    title: "Overclocked Foundry",
+    badge: "EXPERT \xB7 120 BPM",
+    subtitle: "High-density dual-rail salvage with rapid Overdrive plasma bursts",
+    seed: 30503,
+    description: "Maximum throughput. Syncopated Standard conveyor plus aggressive Overdrive eighth-and-sixteenth triplet bursts for top leaderboard scores.",
+    standardBeatStepMs: 500,
+    includeEighthSyncopationInStandard: true,
+    overdriveSubdivisionMs: 250
+  }
+};
+function buildShuntGates() {
+  return SONG_SECTIONS.map((section, idx) => ({
+    id: `gate-${idx + 1}-${section.id}`,
+    sectionId: section.id,
+    timeMs: section.shuntGateTimeMs,
+    overdriveEndTimeMs: section.overdriveEndTimeMs,
+    activationLeadMs: 1200,
+    activationTailMs: 400
+  }));
+}
+function buildChartFromSpec(spec) {
+  const rng = new SeededRng(spec.seed);
+  const shuntGates = buildShuntGates();
+  const notes = [];
+  let noteCounter = 1;
+  const pushNote = (timeMs, lane, sectionId, routeBranch, coreType) => {
+    notes.push({
+      id: `${spec.id}-n${noteCounter++}`,
+      timeMs,
+      lane,
+      sectionId,
+      routeBranch,
+      coreType
+    });
+  };
+  for (const section of SONG_SECTIONS) {
+    const secIndex = section.index;
+    const firstNoteMs = section.startTimeMs === 0 ? 1500 : section.startTimeMs + 500;
+    const preGateEndMs = section.shuntGateTimeMs - 250;
+    let laneToggle = secIndex % 2 === 0 ? "left" : "right";
+    for (let t = firstNoteMs; t <= preGateEndMs; t += spec.standardBeatStepMs) {
+      if (secIndex >= 1 && t % 1500 === 0) {
+        laneToggle = laneToggle === "left" ? "right" : "left";
+      } else {
+        laneToggle = rng.next() > 0.35 ? laneToggle === "left" ? "right" : "left" : laneToggle;
+      }
+      pushNote(t, laneToggle, section.id, "both", "ferrous");
+      if (spec.includeEighthSyncopationInStandard && secIndex >= 2 && t + 250 <= preGateEndMs && rng.next() > 0.55) {
+        const offLane = laneToggle === "left" ? "right" : "left";
+        pushNote(t + 250, offLane, section.id, "both", "cobalt");
+      }
+    }
+    const branchStartMs = section.shuntGateTimeMs + 500;
+    const branchEndMs = section.overdriveEndTimeMs;
+    let stdLane = "left";
+    for (let t = branchStartMs; t <= branchEndMs; t += spec.standardBeatStepMs) {
+      if ((t - branchStartMs) % 4e3 === 3500) continue;
+      stdLane = (t / spec.standardBeatStepMs + secIndex) % 2 === 0 ? "left" : "right";
+      pushNote(t, stdLane, section.id, "standard", "cobalt");
+      if (spec.includeEighthSyncopationInStandard && secIndex >= 1 && (t - branchStartMs) % 2e3 === 1e3) {
+        const altLane = stdLane === "left" ? "right" : "left";
+        if (t + 250 <= branchEndMs) {
+          pushNote(t + 250, altLane, section.id, "standard", "cobalt");
+        }
+      }
+    }
+    const odStepMs = spec.id === "easy" ? 500 : 500;
+    let odLane = "right";
+    for (let t = branchStartMs; t <= branchEndMs; t += odStepMs) {
+      odLane = odLane === "left" ? "right" : "left";
+      pushNote(t, odLane, section.id, "overdrive", "plasma");
+      const shouldAddSyncopation = spec.id === "easy" ? (t - branchStartMs) % 1500 === 500 : spec.id === "standard" ? (t - branchStartMs) % 1e3 === 500 : (t - branchStartMs) % 1e3 !== 0 || secIndex >= 2;
+      if (shouldAddSyncopation && t + spec.overdriveSubdivisionMs <= branchEndMs) {
+        const crossLane = odLane === "left" ? "right" : "left";
+        pushNote(t + spec.overdriveSubdivisionMs, crossLane, section.id, "overdrive", "plasma");
+      }
+    }
+    const postStartMs = section.overdriveEndTimeMs + 500;
+    const postEndMs = section.endTimeMs - 500;
+    for (let t = postStartMs; t <= postEndMs; t += 500) {
+      const l = t / 500 % 2 === 0 ? "left" : "right";
+      pushNote(t, l, section.id, "both", "ferrous");
+    }
+  }
+  notes.sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id));
+  return {
+    id: spec.id,
+    title: spec.title,
+    badge: spec.badge,
+    subtitle: spec.subtitle,
+    bpm: 120,
+    durationMs: TRACK_DURATION_MS,
+    seed: spec.seed,
+    description: spec.description,
+    sections: SONG_SECTIONS,
+    shuntGates,
+    notes
+  };
+}
+var AUTHORED_CHARTS = {
+  easy: buildChartFromSpec(AUTHORED_SPECS.easy),
+  standard: buildChartFromSpec(AUTHORED_SPECS.standard),
+  expert: buildChartFromSpec(AUTHORED_SPECS.expert)
+};
+function createSeededDailyChart(seed = getTodayDailySeed()) {
+  const dailySpec = {
+    id: "daily",
+    title: `Daily Foundry #${seed}`,
+    badge: `DAILY SEED \xB7 ${seed}`,
+    subtitle: "Deterministic seeded 90s salvage track for head-to-head shift comparison",
+    seed,
+    description: "Every operator running this Daily Seed faces the exact same note timestamps and Shunt Gate overdrive patterns.",
+    standardBeatStepMs: 500,
+    includeEighthSyncopationInStandard: seed % 2 === 0,
+    overdriveSubdivisionMs: 250
+  };
+  return buildChartFromSpec(dailySpec);
+}
+function getChartById(id, customSeed) {
+  if (id === "daily") {
+    return createSeededDailyChart(customSeed ?? getTodayDailySeed());
+  }
+  return AUTHORED_CHARTS[id];
+}
+function createSectionPracticeChart(baseChart, sectionId) {
+  const section = SONG_SECTIONS.find((s) => s.id === sectionId) ?? getSectionForTimeMs(0);
+  const filteredNotes = baseChart.notes.filter((n) => n.sectionId === section.id);
+  const filteredGates = baseChart.shuntGates.filter((g) => g.sectionId === section.id);
+  return {
+    ...baseChart,
+    title: `${baseChart.title} \xB7 [${section.title}]`,
+    subtitle: `Section Practice Loop (${(section.startTimeMs / 1e3).toFixed(1)}s \u2013 ${(section.endTimeMs / 1e3).toFixed(1)}s)`,
+    sections: [section],
+    shuntGates: filteredGates,
+    notes: filteredNotes,
+    practiceSectionId: section.id,
+    practiceStartTimeMs: section.startTimeMs,
+    practiceEndTimeMs: section.endTimeMs
+  };
+}
+
+// games/05-beatline-salvage/src/persistence.ts
+var STORAGE_KEY = "argon_game05_beatline_salvage_v1";
+var RANK_PRIORITY = {
+  S: 5,
+  A: 4,
+  B: 3,
+  C: 2,
+  D: 1
+};
+function createDefaultSaveData() {
+  const sectionMastery = {};
+  for (const sec of SONG_SECTIONS) {
+    sectionMastery[sec.id] = {
+      sectionId: sec.id,
+      bestAccuracyPct: 0,
+      overdriveMastered: false,
+      practiceRuns: 0
+    };
+  }
+  return {
+    version: 1,
+    calibrationOffsetMs: 0,
+    noFailMode: false,
+    muted: false,
+    chartRecords: {},
+    sectionMastery
+  };
+}
+function loadSaveData() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return createDefaultSaveData();
+    const parsed = JSON.parse(raw);
+    return sanitizeSaveData(parsed);
+  } catch {
+    return createDefaultSaveData();
+  }
+}
+function sanitizeSaveData(input) {
+  const defaults = createDefaultSaveData();
+  if (!input || typeof input !== "object") return defaults;
+  const cal = typeof input.calibrationOffsetMs === "number" && Number.isFinite(input.calibrationOffsetMs) ? Math.max(
+    CALIBRATION_LIMITS_MS.MIN,
+    Math.min(CALIBRATION_LIMITS_MS.MAX, Math.round(input.calibrationOffsetMs))
+  ) : 0;
+  const chartRecords = {};
+  if (input.chartRecords && typeof input.chartRecords === "object") {
+    for (const [k, rec] of Object.entries(input.chartRecords)) {
+      if (rec && typeof rec === "object") {
+        chartRecords[k] = {
+          chartId: k,
+          bestScore: Number(rec.bestScore) || 0,
+          bestRank: rec.bestRank && rec.bestRank in RANK_PRIORITY ? rec.bestRank : "D",
+          bestAccuracyPct: Number(rec.bestAccuracyPct) || 0,
+          maxCombo: Number(rec.maxCombo) || 0,
+          plays: Number(rec.plays) || 0,
+          overdriveClears: Number(rec.overdriveClears) || 0
+        };
+      }
+    }
+  }
+  const sectionMastery = { ...defaults.sectionMastery };
+  if (input.sectionMastery && typeof input.sectionMastery === "object") {
+    for (const sec of SONG_SECTIONS) {
+      const m = input.sectionMastery[sec.id];
+      if (m && typeof m === "object") {
+        sectionMastery[sec.id] = {
+          sectionId: sec.id,
+          bestAccuracyPct: Number(m.bestAccuracyPct) || 0,
+          overdriveMastered: Boolean(m.overdriveMastered),
+          practiceRuns: Number(m.practiceRuns) || 0
+        };
+      }
+    }
+  }
+  return {
+    version: 1,
+    calibrationOffsetMs: cal,
+    noFailMode: Boolean(input.noFailMode),
+    muted: Boolean(input.muted),
+    chartRecords,
+    sectionMastery
+  };
+}
+function saveSaveData(data) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch {
+  }
+}
+function recordRunResult(current, summary) {
+  const next = sanitizeSaveData(current);
+  if (summary.practiceSectionId) {
+    const secId = summary.practiceSectionId;
+    const prevSec = next.sectionMastery[secId];
+    const secBreakdown = summary.sectionBreakdowns[0];
+    next.sectionMastery[secId] = {
+      sectionId: secId,
+      bestAccuracyPct: Math.max(prevSec.bestAccuracyPct, summary.accuracyPct),
+      overdriveMastered: prevSec.overdriveMastered || summary.completed && secBreakdown?.routeChosen === "overdrive" && summary.accuracyPct >= 85,
+      practiceRuns: prevSec.practiceRuns + 1
+    };
+    saveSaveData(next);
+    return next;
+  }
+  const existing = next.chartRecords[summary.chartId] ?? {
+    chartId: summary.chartId,
+    bestScore: 0,
+    bestRank: "D",
+    bestAccuracyPct: 0,
+    maxCombo: 0,
+    plays: 0,
+    overdriveClears: 0
+  };
+  const bestRank = RANK_PRIORITY[summary.rank] >= RANK_PRIORITY[existing.bestRank] ? summary.rank : existing.bestRank;
+  next.chartRecords[summary.chartId] = {
+    chartId: summary.chartId,
+    bestScore: Math.max(existing.bestScore, summary.totalScore),
+    bestRank,
+    bestAccuracyPct: Math.max(existing.bestAccuracyPct, summary.accuracyPct),
+    maxCombo: Math.max(existing.maxCombo, summary.maxCombo),
+    plays: existing.plays + 1,
+    overdriveClears: existing.overdriveClears + (summary.completed && summary.shuntSwitchesActivated > 0 ? 1 : 0)
+  };
+  for (const sb of summary.sectionBreakdowns) {
+    const prevSec = next.sectionMastery[sb.sectionId];
+    if (prevSec) {
+      next.sectionMastery[sb.sectionId] = {
+        sectionId: sb.sectionId,
+        bestAccuracyPct: Math.max(prevSec.bestAccuracyPct, sb.accuracyPct),
+        overdriveMastered: prevSec.overdriveMastered || summary.completed && sb.routeChosen === "overdrive" && sb.accuracyPct >= 85,
+        practiceRuns: prevSec.practiceRuns
+      };
+    }
+  }
+  saveSaveData(next);
+  return next;
+}
+
+// games/05-beatline-salvage/src/simulation.ts
+function judgeHit(noteTimeMs, inputAudioTimeMs, calibrationOffsetMs = 0) {
+  const clampedOffset = Math.max(
+    CALIBRATION_LIMITS_MS.MIN,
+    Math.min(CALIBRATION_LIMITS_MS.MAX, calibrationOffsetMs)
+  );
+  const effectiveInputTimeMs = inputAudioTimeMs - clampedOffset;
+  const deltaMs = effectiveInputTimeMs - noteTimeMs;
+  const absDeltaMs = Math.abs(deltaMs);
+  if (absDeltaMs <= JUDGMENT_WINDOWS_MS.PERFECT) {
+    return { grade: "PERFECT", deltaMs, absDeltaMs, effectiveInputTimeMs };
+  }
+  if (absDeltaMs <= JUDGMENT_WINDOWS_MS.GOOD) {
+    return { grade: "GOOD", deltaMs, absDeltaMs, effectiveInputTimeMs };
+  }
+  if (absDeltaMs <= JUDGMENT_WINDOWS_MS.EARLY_LATE) {
+    return {
+      grade: deltaMs < 0 ? "EARLY" : "LATE",
+      deltaMs,
+      absDeltaMs,
+      effectiveInputTimeMs
+    };
+  }
+  return { grade: "MISS", deltaMs, absDeltaMs, effectiveInputTimeMs };
+}
+function computeRankGrade(accuracyPct, completed, misses) {
+  if (!completed) return "D";
+  if (accuracyPct >= 93 && misses <= 2) return "S";
+  if (accuracyPct >= 84) return "A";
+  if (accuracyPct >= 72) return "B";
+  if (accuracyPct >= 58) return "C";
+  return "D";
+}
+function computeTimingHistogram(deltasMs) {
+  const bins = HISTOGRAM_BINS.map((b) => ({
+    minMs: b.minMs,
+    maxMs: b.maxMs,
+    label: b.label,
+    count: 0
+  }));
+  if (deltasMs.length === 0) {
+    return { histogram: bins, meanErrorMs: 0 };
+  }
+  let sum = 0;
+  for (const rawDelta of deltasMs) {
+    sum += rawDelta;
+    const clamped = Math.max(-120, Math.min(119.999, rawDelta));
+    const binIdx = Math.min(
+      bins.length - 1,
+      Math.max(0, Math.floor((clamped + 120) / 20))
+    );
+    bins[binIdx].count += 1;
+  }
+  const meanErrorMs = Math.round(sum / deltasMs.length * 10) / 10;
+  return { histogram: bins, meanErrorMs };
+}
+var BeatlineSimulation = class {
+  chart;
+  settings;
+  status = "idle";
+  anchorAudioTimeMs = 0;
+  elapsedBeforeAnchorMs = 0;
+  currentTrackTimeMs = 0;
+  pauseCount = 0;
+  noteStates = [];
+  sectionRoutes = /* @__PURE__ */ new Map();
+  activatedGates = /* @__PURE__ */ new Set();
+  score = 0;
+  combo = 0;
+  maxCombo = 0;
+  stability = STABILITY_CONFIG.INITIAL;
+  recordedInputs = [];
+  hitDeltasMs = [];
+  lastFeedback = null;
+  constructor(chart, settings) {
+    this.chart = chart;
+    this.settings = {
+      calibrationOffsetMs: Math.max(
+        CALIBRATION_LIMITS_MS.MIN,
+        Math.min(CALIBRATION_LIMITS_MS.MAX, settings?.calibrationOffsetMs ?? 0)
+      ),
+      noFailMode: settings?.noFailMode ?? false
+    };
+    this.resetState();
+  }
+  resetState() {
+    const startMs = this.chart.practiceStartTimeMs ?? 0;
+    this.status = "idle";
+    this.anchorAudioTimeMs = 0;
+    this.elapsedBeforeAnchorMs = startMs;
+    this.currentTrackTimeMs = startMs;
+    this.pauseCount = 0;
+    this.score = 0;
+    this.combo = 0;
+    this.maxCombo = 0;
+    this.stability = STABILITY_CONFIG.INITIAL;
+    this.recordedInputs = [];
+    this.hitDeltasMs = [];
+    this.lastFeedback = null;
+    this.sectionRoutes.clear();
+    for (const sec of this.chart.sections) {
+      this.sectionRoutes.set(sec.id, "standard");
+    }
+    this.activatedGates.clear();
+    this.noteStates = this.chart.notes.map((note) => ({
+      note,
+      judged: false
+    }));
+  }
+  setChart(chart) {
+    this.chart = chart;
+    this.resetState();
+  }
+  getChart() {
+    return this.chart;
+  }
+  setCalibrationOffsetMs(offsetMs) {
+    this.settings.calibrationOffsetMs = Math.max(
+      CALIBRATION_LIMITS_MS.MIN,
+      Math.min(CALIBRATION_LIMITS_MS.MAX, Math.round(offsetMs))
+    );
+  }
+  getCalibrationOffsetMs() {
+    return this.settings.calibrationOffsetMs;
+  }
+  setNoFailMode(noFail) {
+    this.settings.noFailMode = noFail;
+  }
+  getNoFailMode() {
+    return Boolean(this.settings.noFailMode);
+  }
+  start(startAudioTimeMs = 0) {
+    this.resetState();
+    const startTrackMs = this.chart.practiceStartTimeMs ?? 0;
+    this.anchorAudioTimeMs = startAudioTimeMs;
+    this.elapsedBeforeAnchorMs = startTrackMs;
+    this.currentTrackTimeMs = startTrackMs;
+    this.status = "playing";
+  }
+  restart(startAudioTimeMs = 0) {
+    this.start(startAudioTimeMs);
+  }
+  /**
+   * Pauses the simulation at an exact audio timestamp.
+   * Freezes track progress so pausing or window blur NEVER manufactures misses.
+   */
+  pause(pauseAudioTimeMs) {
+    if (this.status !== "playing") return;
+    this.updateTrackClockOnly(pauseAudioTimeMs);
+    this.elapsedBeforeAnchorMs = this.currentTrackTimeMs;
+    this.anchorAudioTimeMs = pauseAudioTimeMs;
+    this.status = "paused";
+    this.pauseCount += 1;
+  }
+  /**
+   * Resumes from pause by re-anchoring the audio clock at resumeAudioTimeMs.
+   * Zero elapsed track time passes during the pause interval.
+   */
+  resume(resumeAudioTimeMs) {
+    if (this.status !== "paused") return;
+    this.anchorAudioTimeMs = resumeAudioTimeMs;
+    this.status = "playing";
+  }
+  updateTrackClockOnly(audioTimeMs) {
+    const delta = Math.max(0, audioTimeMs - this.anchorAudioTimeMs);
+    this.currentTrackTimeMs = this.elapsedBeforeAnchorMs + delta;
+  }
+  /**
+   * Returns current calibrated track time in milliseconds.
+   */
+  getCalibratedTrackTimeMs() {
+    return this.currentTrackTimeMs - this.settings.calibrationOffsetMs;
+  }
+  getRawTrackTimeMs() {
+    return this.currentTrackTimeMs;
+  }
+  getStatus() {
+    return this.status;
+  }
+  getPauseCount() {
+    return this.pauseCount;
+  }
+  getScore() {
+    return this.score;
+  }
+  getCombo() {
+    return this.combo;
+  }
+  getMaxCombo() {
+    return this.maxCombo;
+  }
+  getStability() {
+    return this.stability;
+  }
+  getLastFeedback() {
+    return this.lastFeedback;
+  }
+  getRecordedInputs() {
+    return this.recordedInputs;
+  }
+  /**
+   * Checks whether a note is part of the currently active route branch for its section.
+   */
+  isNoteActiveOnCurrentRoute(note) {
+    if (note.routeBranch === "both") return true;
+    const sectionRoute = this.sectionRoutes.get(note.sectionId) ?? "standard";
+    return note.routeBranch === sectionRoute;
+  }
+  getCurrentRouteForTimeMs(trackTimeMs = this.getCalibratedTrackTimeMs()) {
+    for (const gate of this.chart.shuntGates) {
+      if (this.activatedGates.has(gate.id) && trackTimeMs >= gate.timeMs - gate.activationLeadMs && trackTimeMs <= gate.overdriveEndTimeMs) {
+        return "overdrive";
+      }
+    }
+    return "standard";
+  }
+  getUpcomingOrActiveGate(trackTimeMs = this.getCalibratedTrackTimeMs()) {
+    for (const gate of this.chart.shuntGates) {
+      const isActivated = this.activatedGates.has(gate.id);
+      const canActivateNow = !isActivated && trackTimeMs >= gate.timeMs - gate.activationLeadMs && trackTimeMs <= gate.timeMs + gate.activationTailMs;
+      if (trackTimeMs <= gate.overdriveEndTimeMs) {
+        return { gate, canActivateNow, isActivated };
+      }
+    }
+    return null;
+  }
+  getActiveNoteStates() {
+    return this.noteStates.filter((ns) => this.isNoteActiveOnCurrentRoute(ns.note));
+  }
+  /**
+   * Advances simulation to the given audio clock timestamp (in milliseconds).
+   * Automatically marks unhit active notes past the +120ms late window as MISS.
+   */
+  stepToAudioTimeMs(audioTimeMs) {
+    if (this.status !== "playing") return;
+    this.updateTrackClockOnly(audioTimeMs);
+    const calibratedMs = this.getCalibratedTrackTimeMs();
+    for (const ns of this.noteStates) {
+      if (ns.judged) continue;
+      if (!this.isNoteActiveOnCurrentRoute(ns.note)) continue;
+      if (calibratedMs > ns.note.timeMs + JUDGMENT_WINDOWS_MS.EARLY_LATE) {
+        this.applyNoteJudgment(ns, "MISS", JUDGMENT_WINDOWS_MS.EARLY_LATE + 1, calibratedMs);
+        if (this.getStatus() === "failed") return;
+      }
+    }
+    const endMs = this.chart.practiceEndTimeMs ?? this.chart.durationMs;
+    if (this.currentTrackTimeMs >= endMs) {
+      for (const ns of this.noteStates) {
+        if (!ns.judged && this.isNoteActiveOnCurrentRoute(ns.note)) {
+          this.applyNoteJudgment(ns, "MISS", JUDGMENT_WINDOWS_MS.EARLY_LATE + 1, calibratedMs);
+          if (this.getStatus() === "failed") return;
+        }
+      }
+      this.status = "completed";
+    }
+  }
+  /**
+   * Handles a player Overdrive Shunt switch input (`[Space]`) at `inputAudioTimeMs`.
+   */
+  handleShuntSwitchInput(inputAudioTimeMs) {
+    if (this.status !== "playing") return false;
+    this.updateTrackClockOnly(inputAudioTimeMs);
+    const eventTrackAudioMs = this.currentTrackTimeMs;
+    this.recordedInputs.push({
+      type: "shunt",
+      inputAudioTimeMs: eventTrackAudioMs
+    });
+    const calibratedMs = this.getCalibratedTrackTimeMs();
+    for (const gate of this.chart.shuntGates) {
+      if (this.activatedGates.has(gate.id)) continue;
+      if (calibratedMs >= gate.timeMs - gate.activationLeadMs && calibratedMs <= gate.timeMs + gate.activationTailMs) {
+        this.activatedGates.add(gate.id);
+        this.sectionRoutes.set(gate.sectionId, "overdrive");
+        this.score += SCORE_VALUES.SHUNT_SWITCH_BONUS;
+        this.lastFeedback = {
+          text: "OVERDRIVE SHUNT ENGAGED (1.5x)",
+          grade: "OVERDRIVE",
+          trackTimeMs: calibratedMs
+        };
+        return true;
+      }
+    }
+    return false;
+  }
+  /**
+   * Handles a Left or Right lane strike at `inputAudioTimeMs`.
+   */
+  handleLaneInput(lane, inputAudioTimeMs) {
+    if (this.status !== "playing") return null;
+    this.stepToAudioTimeMs(inputAudioTimeMs);
+    if (this.status !== "playing") return null;
+    const eventTrackAudioMs = this.currentTrackTimeMs;
+    this.recordedInputs.push({
+      type: "lane",
+      lane,
+      inputAudioTimeMs: eventTrackAudioMs
+    });
+    const calibratedMs = this.getCalibratedTrackTimeMs();
+    let bestCandidate = null;
+    let bestAbsDelta = Infinity;
+    for (const ns of this.noteStates) {
+      if (ns.judged) continue;
+      if (ns.note.lane !== lane) continue;
+      if (!this.isNoteActiveOnCurrentRoute(ns.note)) continue;
+      const delta = calibratedMs - ns.note.timeMs;
+      const absDelta = Math.abs(delta);
+      if (absDelta <= JUDGMENT_WINDOWS_MS.EARLY_LATE && absDelta < bestAbsDelta) {
+        bestCandidate = ns;
+        bestAbsDelta = absDelta;
+      }
+    }
+    if (!bestCandidate) {
+      return null;
+    }
+    const judgment = judgeHit(
+      bestCandidate.note.timeMs,
+      eventTrackAudioMs,
+      this.settings.calibrationOffsetMs
+    );
+    this.applyNoteJudgment(bestCandidate, judgment.grade, judgment.deltaMs, calibratedMs);
+    return judgment;
+  }
+  applyNoteJudgment(ns, grade, deltaMs, calibratedTrackMs) {
+    ns.judged = true;
+    ns.grade = grade;
+    ns.deltaMs = Math.round(deltaMs);
+    ns.judgedAtTrackMs = calibratedTrackMs;
+    const sectionRoute = this.sectionRoutes.get(ns.note.sectionId) ?? "standard";
+    const isOverdriveNote = ns.note.routeBranch === "overdrive" || sectionRoute === "overdrive";
+    ns.routeAtJudgment = isOverdriveNote ? "overdrive" : "standard";
+    if (grade === "MISS") {
+      this.combo = 0;
+      ns.scoreAwarded = 0;
+      const loss = isOverdriveNote ? STABILITY_CONFIG.LOSS_MISS_OVERDRIVE : STABILITY_CONFIG.LOSS_MISS_STANDARD;
+      this.stability = Math.max(STABILITY_CONFIG.MIN, this.stability - loss);
+      this.lastFeedback = {
+        text: "MISS",
+        grade: "MISS",
+        lane: ns.note.lane,
+        trackTimeMs: calibratedTrackMs
+      };
+      if (this.stability <= 0 && !this.settings.noFailMode) {
+        this.status = "failed";
+      }
+      return;
+    }
+    this.hitDeltasMs.push(deltaMs);
+    if (grade === "PERFECT" || grade === "GOOD") {
+      this.combo += 1;
+      if (this.combo > this.maxCombo) {
+        this.maxCombo = this.combo;
+      }
+    } else {
+      this.combo = Math.floor(this.combo / 2);
+    }
+    const basePoints = SCORE_VALUES[grade];
+    const comboMult = getComboMultiplier(this.combo);
+    const routeMult = isOverdriveNote ? SCORE_VALUES.OVERDRIVE_MULTIPLIER : 1;
+    const points = Math.round(basePoints * comboMult * routeMult);
+    ns.scoreAwarded = points;
+    this.score += points;
+    if (grade === "PERFECT") {
+      this.stability = Math.min(
+        STABILITY_CONFIG.MAX,
+        this.stability + STABILITY_CONFIG.GAIN_PERFECT
+      );
+    } else if (grade === "GOOD") {
+      this.stability = Math.min(
+        STABILITY_CONFIG.MAX,
+        this.stability + STABILITY_CONFIG.GAIN_GOOD
+      );
+    } else {
+      this.stability = Math.max(
+        STABILITY_CONFIG.MIN,
+        this.stability - STABILITY_CONFIG.LOSS_EARLY_LATE
+      );
+    }
+    const signedStr = Math.round(deltaMs) >= 0 ? `+${Math.round(deltaMs)}ms` : `${Math.round(deltaMs)}ms`;
+    this.lastFeedback = {
+      text: `${grade} ${signedStr}`,
+      grade,
+      deltaMs: Math.round(deltaMs),
+      lane: ns.note.lane,
+      trackTimeMs: calibratedTrackMs
+    };
+  }
+  /**
+   * Builds the full post-shift diagnostic report including the Timing-Error Histogram,
+   * 4-Section Breakdown, suggested calibration offset, and weakest section ID.
+   */
+  getResultsSummary() {
+    const activeNotes = this.getActiveNoteStates();
+    const counts = {
+      PERFECT: 0,
+      GOOD: 0,
+      EARLY: 0,
+      LATE: 0,
+      MISS: 0
+    };
+    let weightedAccuracySum = 0;
+    let judgedCount = 0;
+    for (const ns of activeNotes) {
+      if (!ns.judged || !ns.grade) continue;
+      judgedCount += 1;
+      const g = ns.grade;
+      counts[g] += 1;
+      if (g === "PERFECT") weightedAccuracySum += 1;
+      else if (g === "GOOD") weightedAccuracySum += 0.78;
+      else if (g === "EARLY" || g === "LATE") weightedAccuracySum += 0.35;
+    }
+    const totalDenom = this.status === "completed" ? activeNotes.length || 1 : judgedCount || 1;
+    const accuracyPct = Math.round(weightedAccuracySum / totalDenom * 1e3) / 10;
+    const { histogram, meanErrorMs } = computeTimingHistogram(this.hitDeltasMs);
+    const sectionBreakdowns = this.chart.sections.map((sec) => {
+      const secNotes = activeNotes.filter((ns) => ns.note.sectionId === sec.id);
+      let perfectCount = 0;
+      let goodCount = 0;
+      let earlyCount = 0;
+      let lateCount = 0;
+      let missCount = 0;
+      let secWeighted = 0;
+      let secScore = 0;
+      const secDeltas = [];
+      for (const ns of secNotes) {
+        const g = ns.judged && ns.grade ? ns.grade : "MISS";
+        secScore += ns.scoreAwarded ?? 0;
+        if (g === "PERFECT") {
+          perfectCount += 1;
+          secWeighted += 1;
+          if (ns.deltaMs !== void 0) secDeltas.push(ns.deltaMs);
+        } else if (g === "GOOD") {
+          goodCount += 1;
+          secWeighted += 0.78;
+          if (ns.deltaMs !== void 0) secDeltas.push(ns.deltaMs);
+        } else if (g === "EARLY") {
+          earlyCount += 1;
+          secWeighted += 0.35;
+          if (ns.deltaMs !== void 0) secDeltas.push(ns.deltaMs);
+        } else if (g === "LATE") {
+          lateCount += 1;
+          secWeighted += 0.35;
+          if (ns.deltaMs !== void 0) secDeltas.push(ns.deltaMs);
+        } else {
+          missCount += 1;
+        }
+      }
+      const secTotal = secNotes.length || 1;
+      const secAcc = Math.round(secWeighted / secTotal * 1e3) / 10;
+      const secMean = secDeltas.length > 0 ? Math.round(secDeltas.reduce((a, b) => a + b, 0) / secDeltas.length * 10) / 10 : 0;
+      return {
+        sectionId: sec.id,
+        title: sec.title,
+        routeChosen: this.sectionRoutes.get(sec.id) ?? "standard",
+        totalNotes: secNotes.length,
+        perfectCount,
+        goodCount,
+        earlyCount,
+        lateCount,
+        missCount,
+        accuracyPct: secAcc,
+        meanErrorMs: secMean,
+        scoreEarned: secScore
+      };
+    });
+    let weakestSection = sectionBreakdowns[0];
+    for (const sb of sectionBreakdowns) {
+      if (!weakestSection) {
+        weakestSection = sb;
+        continue;
+      }
+      const sbErrors = sb.missCount * 2 + sb.earlyCount + sb.lateCount;
+      const weakErrors = weakestSection.missCount * 2 + weakestSection.earlyCount + weakestSection.lateCount;
+      if (sb.accuracyPct < weakestSection.accuracyPct || sb.accuracyPct === weakestSection.accuracyPct && sbErrors > weakErrors) {
+        weakestSection = sb;
+      }
+    }
+    const completed = this.status === "completed";
+    const rank = computeRankGrade(accuracyPct, completed, counts.MISS);
+    const suggestedCalibrationOffsetMs = Math.max(
+      CALIBRATION_LIMITS_MS.MIN,
+      Math.min(
+        CALIBRATION_LIMITS_MS.MAX,
+        Math.round((this.settings.calibrationOffsetMs + meanErrorMs) / 5) * 5
+      )
+    );
+    return {
+      chartId: this.chart.id,
+      chartTitle: this.chart.title,
+      completed,
+      practiceSectionId: this.chart.practiceSectionId,
+      totalScore: this.score,
+      rank,
+      accuracyPct,
+      maxCombo: this.maxCombo,
+      finalCombo: this.combo,
+      finalStability: Math.round(this.stability * 10) / 10,
+      counts,
+      shuntSwitchesActivated: this.activatedGates.size,
+      meanErrorMs,
+      suggestedCalibrationOffsetMs,
+      histogram,
+      sectionBreakdowns,
+      weakestSectionId: weakestSection ? weakestSection.sectionId : "intro-induction"
+    };
+  }
+};
+
+// games/05-beatline-salvage/src/ui.ts
+var BeatlineUI = class {
+  root;
+  canvas;
+  ctx;
+  callbacks;
+  hudScoreEl;
+  hudComboEl;
+  hudMultEl;
+  hudRouteEl;
+  hudStabilityBarEl;
+  hudStabilityValEl;
+  hudTimeEl;
+  hudSectionEl;
+  calibrationBadgeEl;
+  startBtnEl;
+  pauseBtnEl;
+  muteBtnEl;
+  noFailCheckEl;
+  diffButtons = /* @__PURE__ */ new Map();
+  sectionSelectEl;
+  overlayContainerEl;
+  calibrationModalEl;
+  calSliderEl;
+  calValueLabelEl;
+  calTapStatusEl;
+  debugPanelEl;
+  leftFlashUntilMs = 0;
+  rightFlashUntilMs = 0;
+  shuntFlashUntilMs = 0;
+  constructor(container2, callbacks) {
+    this.callbacks = callbacks;
+    this.root = document.createElement("div");
+    this.root.className = "bs-root";
+    this.injectStyles();
+    this.buildDOM();
+    container2.innerHTML = "";
+    container2.appendChild(this.root);
+    this.canvas = this.root.querySelector("#bs-canvas");
+    const context = this.canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Failed to initialize 2D canvas context for Beatline Salvage");
+    }
+    this.ctx = context;
+  }
+  injectStyles() {
+    const style = document.createElement("style");
+    style.textContent = `
+      .bs-root {
+        font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+        background: radial-gradient(circle at 50% 0%, #131c31 0%, #070b14 75%);
+        color: #e2e8f0;
+        min-height: 100%;
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        user-select: none;
+        position: relative;
+      }
+      .bs-topbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        background: rgba(15, 23, 42, 0.88);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+        border-radius: 10px;
+        padding: 10px 14px;
+      }
+      .bs-brand {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .bs-title {
+        font-size: 1.15rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        color: #f8fafc;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .bs-title-pill {
+        font-size: 0.7rem;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: rgba(0, 240, 255, 0.15);
+        border: 1px solid #00f0ff;
+        color: #00f0ff;
+        font-weight: 700;
+      }
+      .bs-subtitle {
+        font-size: 0.76rem;
+        color: #94a3b8;
+      }
+      .bs-controls-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+      }
+      .bs-btn {
+        background: #1e293b;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 6px 11px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.12s ease;
+      }
+      .bs-btn:hover {
+        border-color: #38bdf8;
+        color: #fff;
+      }
+      .bs-btn.active {
+        background: rgba(0, 240, 255, 0.18);
+        border-color: #00f0ff;
+        color: #00f0ff;
+      }
+      .bs-btn-primary {
+        background: linear-gradient(135deg, #0284c7, #00f0ff);
+        color: #041019;
+        border: none;
+        font-weight: 800;
+      }
+      .bs-btn-primary:hover {
+        filter: brightness(1.1);
+        color: #020617;
+      }
+      .bs-btn-amber {
+        background: rgba(245, 158, 11, 0.18);
+        border: 1px solid #f59e0b;
+        color: #fbbf24;
+      }
+      .bs-select {
+        background: #0f172a;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 0.78rem;
+      }
+      .bs-hud {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+        gap: 8px;
+      }
+      .bs-hud-card {
+        background: rgba(15, 23, 42, 0.82);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 8px;
+        padding: 8px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .bs-hud-label {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #94a3b8;
+      }
+      .bs-hud-value {
+        font-size: 1.15rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: #f8fafc;
+      }
+      .bs-stability-track {
+        width: 100%;
+        height: 8px;
+        background: #090d16;
+        border-radius: 999px;
+        overflow: hidden;
+        border: 1px solid #1e293b;
+        margin-top: 2px;
+      }
+      .bs-stability-fill {
+        height: 100%;
+        width: 100%;
+        background: linear-gradient(90deg, #22c55e, #00f0ff);
+        transition: width 0.08s linear;
+      }
+      .bs-stage-wrap {
+        position: relative;
+        width: 100%;
+        max-width: 920px;
+        margin: 0 auto;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        background: #050811;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+      }
+      #bs-canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16 / 9;
+      }
+      .bs-touch-deck {
+        display: grid;
+        grid-template-columns: 1fr 1.1fr 1fr;
+        gap: 10px;
+        max-width: 920px;
+        width: 100%;
+        margin: 0 auto;
+      }
+      .bs-pad {
+        padding: 14px 10px;
+        border-radius: 10px;
+        font-weight: 800;
+        font-size: 0.9rem;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        touch-action: manipulation;
+      }
+      .bs-pad-sub {
+        font-size: 0.7rem;
+        font-weight: 500;
+        opacity: 0.82;
+      }
+      .bs-pad-left {
+        background: rgba(0, 240, 255, 0.12);
+        border: 2px solid #00f0ff;
+        color: #67e8f9;
+      }
+      .bs-pad-left:active {
+        background: rgba(0, 240, 255, 0.32);
+      }
+      .bs-pad-shunt {
+        background: rgba(245, 158, 11, 0.14);
+        border: 2px solid #f59e0b;
+        color: #fcd34d;
+      }
+      .bs-pad-shunt:active {
+        background: rgba(245, 158, 11, 0.35);
+      }
+      .bs-pad-right {
+        background: rgba(255, 59, 139, 0.12);
+        border: 2px solid #ff3b8b;
+        color: #f472b6;
+      }
+      .bs-pad-right:active {
+        background: rgba(255, 59, 139, 0.32);
+      }
+      .bs-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(6, 10, 20, 0.91);
+        backdrop-filter: blur(6px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 18px;
+        overflow-y: auto;
+        z-index: 20;
+      }
+      .bs-overlay.hidden {
+        display: none;
+      }
+      .bs-results-card {
+        width: 100%;
+        max-width: 780px;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .bs-results-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        border-bottom: 1px solid #1e293b;
+        padding-bottom: 10px;
+      }
+      .bs-rank-badge {
+        font-size: 2.1rem;
+        font-weight: 900;
+        padding: 4px 16px;
+        border-radius: 10px;
+        background: rgba(0, 240, 255, 0.14);
+        border: 2px solid #00f0ff;
+        color: #00f0ff;
+      }
+      .bs-hist-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 4px;
+        align-items: end;
+        height: 82px;
+        padding: 8px 6px 4px;
+        background: #070b14;
+        border-radius: 8px;
+        border: 1px solid #1e293b;
+      }
+      .bs-hist-col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        height: 100%;
+        gap: 3px;
+      }
+      .bs-hist-bar {
+        width: 100%;
+        background: #38bdf8;
+        border-radius: 3px 3px 0 0;
+        min-height: 2px;
+      }
+      .bs-hist-lbl {
+        font-size: 0.56rem;
+        color: #64748b;
+        white-space: nowrap;
+      }
+      .bs-sec-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.78rem;
+      }
+      .bs-sec-table th, .bs-sec-table td {
+        padding: 6px 8px;
+        text-align: left;
+        border-bottom: 1px solid #1e293b;
+      }
+      .bs-sec-table th {
+        color: #94a3b8;
+        font-weight: 600;
+      }
+      .bs-debug {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.72rem;
+        background: rgba(2, 6, 23, 0.92);
+        border: 1px solid #38bdf8;
+        color: #7dd3fc;
+        padding: 8px 12px;
+        border-radius: 8px;
+      }
+      .bs-debug.hidden {
+        display: none;
+      }
+    `;
+    this.root.appendChild(style);
+  }
+  buildDOM() {
+    const topbar = document.createElement("div");
+    topbar.className = "bs-topbar";
+    topbar.innerHTML = `
+      <div class="bs-brand">
+        <div class="bs-title">
+          <span>BEATLINE SALVAGE</span>
+          <span class="bs-title-pill">SPLIT-SECOND LANES</span>
+        </div>
+        <div class="bs-subtitle">Two-Lane Magnetic Salvage Sorter \xB7 Audio-Clock Precision (\xB132ms PERFECT)</div>
+      </div>
+      <div class="bs-controls-row" id="bs-diff-row"></div>
+      <div class="bs-controls-row">
+        <select class="bs-select" id="bs-section-select" title="Full Shift or Section Practice Loop">
+          <option value="">Full 90s Shift (All 4 Sections)</option>
+          ${SONG_SECTIONS.map(
+      (s) => `<option value="${s.id}">Practice: ${s.title}</option>`
+    ).join("")}
+        </select>
+        <button class="bs-btn bs-btn-amber" id="bs-cal-btn" type="button">Calibrate (<span id="bs-cal-badge">0ms</span>)</button>
+        <label class="bs-btn" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+          <input type="checkbox" id="bs-nofail-check" /> No-Fail
+        </label>
+        <button class="bs-btn" id="bs-mute-btn" type="button">Audio: ON</button>
+        <button class="bs-btn" id="bs-pause-btn" type="button">Pause [P]</button>
+        <button class="bs-btn" id="bs-restart-btn" type="button">Restart [R]</button>
+        <button class="bs-btn bs-btn-primary" id="bs-start-btn" type="button">Start Shift</button>
+      </div>
+    `;
+    this.root.appendChild(topbar);
+    const diffRow = topbar.querySelector("#bs-diff-row");
+    const diffs = [
+      { id: "easy", label: "Cadet [Easy]" },
+      { id: "standard", label: "Shift Lead [Std]" },
+      { id: "expert", label: "Foundry [Expert]" },
+      { id: "daily", label: "Daily Seed" }
+    ];
+    for (const d of diffs) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "bs-btn";
+      btn.textContent = d.label;
+      btn.addEventListener("click", () => this.callbacks.onSelectDifficulty(d.id));
+      diffRow.appendChild(btn);
+      this.diffButtons.set(d.id, btn);
+    }
+    this.sectionSelectEl = topbar.querySelector("#bs-section-select");
+    this.sectionSelectEl.addEventListener("change", () => {
+      const val = this.sectionSelectEl.value;
+      this.callbacks.onSelectPracticeSection(val ? val : null);
+    });
+    this.calibrationBadgeEl = topbar.querySelector("#bs-cal-badge");
+    this.startBtnEl = topbar.querySelector("#bs-start-btn");
+    this.pauseBtnEl = topbar.querySelector("#bs-pause-btn");
+    this.muteBtnEl = topbar.querySelector("#bs-mute-btn");
+    this.noFailCheckEl = topbar.querySelector("#bs-nofail-check");
+    topbar.querySelector("#bs-cal-btn").addEventListener("click", () => this.callbacks.onOpenCalibrationModal(true));
+    this.startBtnEl.addEventListener("click", () => this.callbacks.onStartOrResume());
+    this.pauseBtnEl.addEventListener("click", () => this.callbacks.onPauseToggle());
+    topbar.querySelector("#bs-restart-btn").addEventListener("click", () => this.callbacks.onRestart());
+    this.muteBtnEl.addEventListener("click", () => this.callbacks.onToggleMute());
+    this.noFailCheckEl.addEventListener(
+      "change",
+      () => this.callbacks.onToggleNoFail(this.noFailCheckEl.checked)
+    );
+    const hud = document.createElement("div");
+    hud.className = "bs-hud";
+    hud.innerHTML = `
+      <div class="bs-hud-card">
+        <span class="bs-hud-label">Salvage Score</span>
+        <span class="bs-hud-value" id="bs-hud-score">0</span>
+      </div>
+      <div class="bs-hud-card">
+        <span class="bs-hud-label">Combo & Multiplier</span>
+        <span class="bs-hud-value"><span id="bs-hud-combo">0</span> <small id="bs-hud-mult" style="color:#00f0ff;">1x</small></span>
+      </div>
+      <div class="bs-hud-card">
+        <span class="bs-hud-label">Active Route Mode</span>
+        <span class="bs-hud-value" id="bs-hud-route" style="color:#38bdf8;">STANDARD 1.0x</span>
+      </div>
+      <div class="bs-hud-card">
+        <span class="bs-hud-label">Capacitor Stability (<span id="bs-hud-stab-val">100%</span>)</span>
+        <div class="bs-stability-track"><div class="bs-stability-fill" id="bs-hud-stab-bar"></div></div>
+      </div>
+      <div class="bs-hud-card">
+        <span class="bs-hud-label">Audio Clock / Section</span>
+        <span class="bs-hud-value" id="bs-hud-time" style="font-size:0.95rem;">0.0s / 90.0s</span>
+        <span id="bs-hud-sec" style="font-size:0.7rem;color:#94a3b8;">01 \xB7 Intro Induction</span>
+      </div>
+    `;
+    this.root.appendChild(hud);
+    this.hudScoreEl = hud.querySelector("#bs-hud-score");
+    this.hudComboEl = hud.querySelector("#bs-hud-combo");
+    this.hudMultEl = hud.querySelector("#bs-hud-mult");
+    this.hudRouteEl = hud.querySelector("#bs-hud-route");
+    this.hudStabilityBarEl = hud.querySelector("#bs-hud-stab-bar");
+    this.hudStabilityValEl = hud.querySelector("#bs-hud-stab-val");
+    this.hudTimeEl = hud.querySelector("#bs-hud-time");
+    this.hudSectionEl = hud.querySelector("#bs-hud-sec");
+    const stageWrap = document.createElement("div");
+    stageWrap.className = "bs-stage-wrap";
+    stageWrap.innerHTML = `
+      <canvas id="bs-canvas" width="920" height="518"></canvas>
+      <div class="bs-overlay hidden" id="bs-results-overlay"></div>
+      <div class="bs-overlay hidden" id="bs-cal-modal">
+        <div class="bs-results-card" style="max-width:520px;">
+          <div class="bs-results-header">
+            <div>
+              <div style="font-weight:800;font-size:1.1rem;">4-Beat Audio-Input Offset Calibration</div>
+              <div style="font-size:0.78rem;color:#94a3b8;">Compensate for Bluetooth / output latency (-150ms to +150ms)</div>
+            </div>
+            <button class="bs-btn" id="bs-cal-close" type="button">Done</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <label style="font-size:0.82rem;display:flex;justify-content:space-between;">
+              <span>Calibration Offset:</span>
+              <strong id="bs-cal-val-label" style="color:#00f0ff;">0 ms</strong>
+            </label>
+            <input type="range" id="bs-cal-slider" min="${CALIBRATION_LIMITS_MS.MIN}" max="${CALIBRATION_LIMITS_MS.MAX}" step="5" value="0" />
+            <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#64748b;">
+              <span>-150ms (Early Audio)</span>
+              <span>0ms (Direct)</span>
+              <span>+150ms (Late Audio / BT)</span>
+            </div>
+          </div>
+          <div style="background:#070b14;border:1px solid #1e293b;padding:12px;border-radius:8px;display:flex;flex-direction:column;gap:8px;">
+            <div style="font-size:0.8rem;color:#cbd5e1;" id="bs-cal-tap-status">
+              Tap the button below (or press F / J) in rhythm with the 120 BPM (500ms) pulse to auto-estimate your offset.
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="bs-btn bs-btn-primary" id="bs-cal-tap-btn" type="button">Tap Beat Pulse (120 BPM)</button>
+              <button class="bs-btn" id="bs-cal-reset-btn" type="button">Reset to 0ms</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    this.root.appendChild(stageWrap);
+    this.overlayContainerEl = stageWrap.querySelector("#bs-results-overlay");
+    this.calibrationModalEl = stageWrap.querySelector("#bs-cal-modal");
+    this.calSliderEl = stageWrap.querySelector("#bs-cal-slider");
+    this.calValueLabelEl = stageWrap.querySelector("#bs-cal-val-label");
+    this.calTapStatusEl = stageWrap.querySelector("#bs-cal-tap-status");
+    stageWrap.querySelector("#bs-cal-close").addEventListener("click", () => this.callbacks.onOpenCalibrationModal(false));
+    this.calSliderEl.addEventListener("input", () => {
+      this.callbacks.onCalibrationChange(Number(this.calSliderEl.value));
+    });
+    stageWrap.querySelector("#bs-cal-tap-btn").addEventListener("click", () => this.callbacks.onCalibrationTap());
+    stageWrap.querySelector("#bs-cal-reset-btn").addEventListener("click", () => this.callbacks.onCalibrationChange(0));
+    const touchDeck = document.createElement("div");
+    touchDeck.className = "bs-touch-deck";
+    touchDeck.innerHTML = `
+      <button class="bs-pad bs-pad-left" id="bs-pad-left" type="button">
+        <span>LEFT RAIL</span>
+        <span class="bs-pad-sub">[F] / [D] / [\u2190]</span>
+      </button>
+      <button class="bs-pad bs-pad-shunt" id="bs-pad-shunt" type="button">
+        <span>OVERDRIVE SHUNT (1.5x)</span>
+        <span class="bs-pad-sub">[SPACE] AT GATE</span>
+      </button>
+      <button class="bs-pad bs-pad-right" id="bs-pad-right" type="button">
+        <span>RIGHT RAIL</span>
+        <span class="bs-pad-sub">[J] / [K] / [\u2192]</span>
+      </button>
+    `;
+    this.root.appendChild(touchDeck);
+    const bindPad = (selector, fn) => {
+      const el = touchDeck.querySelector(selector);
+      el.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        fn();
+      });
+    };
+    bindPad("#bs-pad-left", () => this.callbacks.onLaneInput("left"));
+    bindPad("#bs-pad-shunt", () => this.callbacks.onShuntInput());
+    bindPad("#bs-pad-right", () => this.callbacks.onLaneInput("right"));
+    this.debugPanelEl = document.createElement("div");
+    this.debugPanelEl.className = "bs-debug hidden";
+    this.root.appendChild(this.debugPanelEl);
+  }
+  triggerLaneFlash(lane, nowMs) {
+    if (lane === "left") this.leftFlashUntilMs = nowMs + 110;
+    else this.rightFlashUntilMs = nowMs + 110;
+  }
+  triggerShuntFlash(nowMs) {
+    this.shuntFlashUntilMs = nowMs + 240;
+  }
+  setCalibrationModalOpen(open, offsetMs, tapMessage) {
+    this.calibrationModalEl.classList.toggle("hidden", !open);
+    this.calSliderEl.value = String(offsetMs);
+    const sign = offsetMs > 0 ? "+" : "";
+    this.calValueLabelEl.textContent = `${sign}${offsetMs} ms`;
+    this.calibrationBadgeEl.textContent = `${sign}${offsetMs}ms`;
+    if (tapMessage) {
+      this.calTapStatusEl.textContent = tapMessage;
+    }
+  }
+  hideResultsOverlay() {
+    this.overlayContainerEl.classList.add("hidden");
+    this.overlayContainerEl.innerHTML = "";
+  }
+  /**
+   * Renders the Post-Shift Diagnostic Screen including:
+   * - Timing-Error Distribution Histogram (-120ms .. +120ms)
+   * - Mean early/late bias & 1-click Calibration adjustment
+   * - 4-Section Breakdown table
+   * - "Practice Weakest Section" 1-click loop button
+   */
+  showResultsOverlay(summary, saveData, onPracticeSection, onApplySuggestedCal) {
+    const maxBin = Math.max(1, ...summary.histogram.map((b) => b.count));
+    const bestRec = saveData.chartRecords[summary.chartId];
+    const meanSign = summary.meanErrorMs > 0 ? "+" : "";
+    const biasDesc = Math.abs(summary.meanErrorMs) <= 8 ? "Locked-in Center Calibration" : summary.meanErrorMs > 0 ? `Mean Late Bias (${meanSign}${summary.meanErrorMs}ms)` : `Mean Early Bias (${summary.meanErrorMs}ms)`;
+    const weakestSecObj = SONG_SECTIONS.find((s) => s.id === summary.weakestSectionId) ?? SONG_SECTIONS[0];
+    this.overlayContainerEl.innerHTML = `
+      <div class="bs-results-card">
+        <div class="bs-results-header">
+          <div>
+            <div style="font-size:0.74rem;color:#38bdf8;text-transform:uppercase;font-weight:700;">
+              ${summary.completed ? "Shift Completed \xB7 Diagnostic Report" : "Capacitor Overload \xB7 Shift Halted"}
+            </div>
+            <div style="font-size:1.25rem;font-weight:800;color:#f8fafc;">${summary.chartTitle}</div>
+            <div style="font-size:0.78rem;color:#94a3b8;">
+              Score: <strong style="color:#fff;">${summary.totalScore.toLocaleString()}</strong> \xB7
+              Accuracy: <strong style="color:#00f0ff;">${summary.accuracyPct}%</strong> \xB7
+              Max Combo: <strong>${summary.maxCombo}x</strong> \xB7
+              Best Saved: <strong>${(bestRec?.bestScore ?? summary.totalScore).toLocaleString()} (${bestRec?.bestRank ?? summary.rank})</strong>
+            </div>
+          </div>
+          <div class="bs-rank-badge">${summary.rank}</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;text-align:center;font-size:0.76rem;">
+          <div style="background:#070b14;padding:6px;border-radius:6px;border:1px solid #00f0ff44;">
+            <div style="color:#00f0ff;font-weight:700;">PERFECT</div>
+            <div style="font-size:1rem;font-weight:800;">${summary.counts.PERFECT}</div>
+          </div>
+          <div style="background:#070b14;padding:6px;border-radius:6px;border:1px solid #22c55e44;">
+            <div style="color:#22c55e;font-weight:700;">GOOD</div>
+            <div style="font-size:1rem;font-weight:800;">${summary.counts.GOOD}</div>
+          </div>
+          <div style="background:#070b14;padding:6px;border-radius:6px;border:1px solid #f59e0b44;">
+            <div style="color:#fbbf24;font-weight:700;">EARLY</div>
+            <div style="font-size:1rem;font-weight:800;">${summary.counts.EARLY}</div>
+          </div>
+          <div style="background:#070b14;padding:6px;border-radius:6px;border:1px solid #f9731644;">
+            <div style="color:#fb923c;font-weight:700;">LATE</div>
+            <div style="font-size:1rem;font-weight:800;">${summary.counts.LATE}</div>
+          </div>
+          <div style="background:#070b14;padding:6px;border-radius:6px;border:1px solid #ef444444;">
+            <div style="color:#f87171;font-weight:700;">MISS</div>
+            <div style="font-size:1rem;font-weight:800;">${summary.counts.MISS}</div>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:0.78rem;">
+            <span style="font-weight:700;color:#cbd5e1;">Timing-Error Distribution Histogram (-120ms Early .. +120ms Late)</span>
+            <span style="color:#38bdf8;">${biasDesc}</span>
+          </div>
+          <div class="bs-hist-grid">
+            ${summary.histogram.map((b, i) => {
+      const heightPct = Math.max(4, Math.round(b.count / maxBin * 100));
+      const isCenter = i === 5 || i === 6;
+      const color = isCenter ? "#00f0ff" : i >= 4 && i <= 7 ? "#22c55e" : "#f59e0b";
+      return `
+                  <div class="bs-hist-col" title="${b.label}ms: ${b.count} hits">
+                    <span style="font-size:0.62rem;color:#cbd5e1;">${b.count || ""}</span>
+                    <div class="bs-hist-bar" style="height:${heightPct}%;background:${color};"></div>
+                    <span class="bs-hist-lbl">${b.minMs >= 0 ? "+" : ""}${b.minMs}</span>
+                  </div>
+                `;
+    }).join("")}
+          </div>
+        </div>
+
+        <div>
+          <div style="font-weight:700;font-size:0.78rem;color:#cbd5e1;margin-bottom:4px;">4-Section Breakdown & Overdrive Shunt Routing</div>
+          <table class="bs-sec-table">
+            <thead>
+              <tr>
+                <th>Section</th>
+                <th>Route</th>
+                <th>Accuracy</th>
+                <th>P / G / E+L / M</th>
+                <th>Mean Error</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${summary.sectionBreakdowns.map((sb) => {
+      const isWeakest = sb.sectionId === summary.weakestSectionId;
+      return `
+                    <tr style="${isWeakest ? "background:rgba(245,158,11,0.09);" : ""}">
+                      <td><strong>${sb.title}</strong> ${isWeakest ? '<span style="color:#fbbf24;font-size:0.68rem;">[WEAKEST]</span>' : ""}</td>
+                      <td style="color:${sb.routeChosen === "overdrive" ? "#fbbf24" : "#38bdf8"};font-weight:700;">
+                        ${sb.routeChosen === "overdrive" ? "OVERDRIVE 1.5x" : "STANDARD 1.0x"}
+                      </td>
+                      <td>${sb.accuracyPct}%</td>
+                      <td>${sb.perfectCount} / ${sb.goodCount} / ${sb.earlyCount + sb.lateCount} / ${sb.missCount}</td>
+                      <td>${sb.meanErrorMs > 0 ? "+" : ""}${sb.meanErrorMs}ms</td>
+                      <td>
+                        <button class="bs-btn bs-sec-drill-btn" data-sec="${sb.sectionId}" type="button" style="padding:3px 8px;font-size:0.7rem;">
+                          Drill Section
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+    }).join("")}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;padding-top:4px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="bs-btn bs-btn-amber" id="bs-res-practice-weakest" type="button">
+              Practice Weakest Section (${weakestSecObj.title})
+            </button>
+            ${Math.abs(summary.meanErrorMs) >= 10 ? `<button class="bs-btn" id="bs-res-apply-cal" type="button">
+                     Apply Suggested Offset (${summary.suggestedCalibrationOffsetMs >= 0 ? "+" : ""}${summary.suggestedCalibrationOffsetMs}ms)
+                   </button>` : ""}
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="bs-btn bs-btn-primary" id="bs-res-retry-btn" type="button">
+              Retry Shift [R]
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    this.overlayContainerEl.classList.remove("hidden");
+    this.overlayContainerEl.querySelector("#bs-res-practice-weakest")?.addEventListener("click", () => {
+      onPracticeSection(summary.weakestSectionId);
+    });
+    this.overlayContainerEl.querySelector("#bs-res-apply-cal")?.addEventListener("click", () => {
+      onApplySuggestedCal(summary.suggestedCalibrationOffsetMs);
+    });
+    this.overlayContainerEl.querySelector("#bs-res-retry-btn")?.addEventListener("click", () => {
+      this.callbacks.onRestart();
+    });
+    this.overlayContainerEl.querySelectorAll(".bs-sec-drill-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const secId = btn.getAttribute("data-sec");
+        if (secId) onPracticeSection(secId);
+      });
+    });
+  }
+  renderFrame(sim, chart, saveData, debugEnabled, nowPerfMs) {
+    for (const [id, btn] of this.diffButtons.entries()) {
+      btn.classList.toggle("active", chart.id === id);
+    }
+    this.sectionSelectEl.value = chart.practiceSectionId ?? "";
+    const calSign = saveData.calibrationOffsetMs > 0 ? "+" : "";
+    this.calibrationBadgeEl.textContent = `${calSign}${saveData.calibrationOffsetMs}ms`;
+    this.noFailCheckEl.checked = sim.getNoFailMode();
+    this.muteBtnEl.textContent = saveData.muted ? "Audio: MUTED" : "Audio: ON";
+    const status = sim.getStatus();
+    this.startBtnEl.textContent = status === "playing" ? "Shift Running" : status === "paused" ? "Resume Shift" : "Start Shift";
+    this.pauseBtnEl.textContent = status === "paused" ? "Resume [P]" : "Pause [P]";
+    const combo = sim.getCombo();
+    const mult = getComboMultiplier(combo);
+    const calTrackMs = sim.getCalibratedTrackTimeMs();
+    const route = sim.getCurrentRouteForTimeMs(calTrackMs);
+    const stab = Math.round(sim.getStability());
+    const curSec = getSectionForTimeMs(Math.max(0, calTrackMs));
+    const endMs = chart.practiceEndTimeMs ?? chart.durationMs;
+    this.hudScoreEl.textContent = sim.getScore().toLocaleString();
+    this.hudComboEl.textContent = `${combo}`;
+    this.hudMultEl.textContent = `${mult}x`;
+    this.hudRouteEl.textContent = route === "overdrive" ? "OVERDRIVE SHUNT 1.5x" : "STANDARD 1.0x";
+    this.hudRouteEl.style.color = route === "overdrive" ? "#fbbf24" : "#38bdf8";
+    this.hudStabilityValEl.textContent = `${stab}%`;
+    this.hudStabilityBarEl.style.width = `${stab}%`;
+    this.hudStabilityBarEl.style.background = stab > 50 ? "linear-gradient(90deg, #22c55e, #00f0ff)" : stab > 25 ? "#f59e0b" : "#ef4444";
+    this.hudTimeEl.textContent = `${(Math.max(0, calTrackMs) / 1e3).toFixed(1)}s / ${(endMs / 1e3).toFixed(1)}s`;
+    this.hudSectionEl.textContent = curSec.title;
+    this.drawCanvas(sim, chart, calTrackMs, route, nowPerfMs);
+    if (debugEnabled) {
+      this.debugPanelEl.classList.remove("hidden");
+      const gateInfo = sim.getUpcomingOrActiveGate(calTrackMs);
+      this.debugPanelEl.textContent = [
+        `STATUS=${status.toUpperCase()}`,
+        `RAW_MS=${Math.round(sim.getRawTrackTimeMs())}`,
+        `CAL_TRACK_MS=${Math.round(calTrackMs)}`,
+        `OFFSET_MS=${sim.getCalibrationOffsetMs()}`,
+        `ROUTE=${route.toUpperCase()}`,
+        `SECTION=${curSec.id}`,
+        `GATE=${gateInfo ? `${gateInfo.gate.timeMs}ms(canAct=${gateInfo.canActivateNow})` : "none"}`,
+        `PAUSES=${sim.getPauseCount()}`,
+        `INPUTS=${sim.getRecordedInputs().length}`
+      ].join(" | ");
+    } else {
+      this.debugPanelEl.classList.add("hidden");
+    }
+  }
+  drawCanvas(sim, chart, calTrackMs, route, nowPerfMs) {
+    const ctx = this.ctx;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    ctx.fillStyle = route === "overdrive" ? "#130d06" : "#050914";
+    ctx.fillRect(0, 0, W, H);
+    const beatPhase = (Math.max(0, calTrackMs) % 500 + 500) % 500;
+    const pulseAlpha = Math.max(0, 1 - beatPhase / 250) * 0.14;
+    ctx.fillStyle = route === "overdrive" ? `rgba(245, 158, 11, ${pulseAlpha})` : `rgba(0, 240, 255, ${pulseAlpha})`;
+    ctx.fillRect(0, 0, W, H);
+    const horizonY = 58;
+    const receptorY = H - 88;
+    const visibleAheadMs = 1800;
+    const visibleBehindMs = 180;
+    const leftLaneCenterTop = W * 0.41;
+    const rightLaneCenterTop = W * 0.59;
+    const leftLaneCenterBottom = W * 0.31;
+    const rightLaneCenterBottom = W * 0.69;
+    const projectY = (timeDeltaMs) => {
+      const t = 1 - timeDeltaMs / visibleAheadMs;
+      return horizonY + t * (receptorY - horizonY);
+    };
+    const projectLaneX = (lane, y) => {
+      const progress = (y - horizonY) / (receptorY - horizonY);
+      return lane === "left" ? leftLaneCenterTop + (leftLaneCenterBottom - leftLaneCenterTop) * progress : rightLaneCenterTop + (rightLaneCenterBottom - rightLaneCenterTop) * progress;
+    };
+    ctx.save();
+    ctx.strokeStyle = route === "overdrive" ? "rgba(251, 191, 36, 0.45)" : "rgba(56, 189, 248, 0.35)";
+    ctx.lineWidth = 2;
+    const drawRailLine = (topX, botX) => {
+      ctx.beginPath();
+      ctx.moveTo(topX, horizonY);
+      ctx.lineTo(botX, H - 30);
+      ctx.stroke();
+    };
+    drawRailLine(W * 0.33, W * 0.17);
+    drawRailLine(W * 0.5, W * 0.5);
+    drawRailLine(W * 0.67, W * 0.83);
+    ctx.restore();
+    const firstGridBeatMs = Math.floor(calTrackMs / 500) * 500;
+    ctx.save();
+    for (let bMs = firstGridBeatMs; bMs <= calTrackMs + visibleAheadMs; bMs += 500) {
+      const dt = bMs - calTrackMs;
+      if (dt < -120) continue;
+      const y = projectY(dt);
+      const progress = Math.max(0.15, (y - horizonY) / (receptorY - horizonY));
+      const leftEdge = W * 0.33 + (W * 0.17 - W * 0.33) * progress;
+      const rightEdge = W * 0.67 + (W * 0.83 - W * 0.67) * progress;
+      ctx.strokeStyle = bMs % 2e3 === 0 ? "rgba(148, 163, 184, 0.35)" : "rgba(148, 163, 184, 0.14)";
+      ctx.lineWidth = bMs % 2e3 === 0 ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(leftEdge, y);
+      ctx.lineTo(rightEdge, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+    for (const gate of chart.shuntGates) {
+      const dt = gate.timeMs - calTrackMs;
+      if (dt < -300 || dt > visibleAheadMs) continue;
+      const y = projectY(dt);
+      const progress = Math.max(0.2, (y - horizonY) / (receptorY - horizonY));
+      const leftEdge = W * 0.33 + (W * 0.17 - W * 0.33) * progress;
+      const rightEdge = W * 0.67 + (W * 0.83 - W * 0.67) * progress;
+      ctx.save();
+      ctx.strokeStyle = "#fbbf24";
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 6]);
+      ctx.beginPath();
+      ctx.moveTo(leftEdge, y);
+      ctx.lineTo(rightEdge, y);
+      ctx.stroke();
+      ctx.fillStyle = "#fbbf24";
+      ctx.font = "bold 12px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("\u26A1 SHUNT GATE \u2014 PRESS [SPACE] FOR 1.5x OVERDRIVE \u26A1", W * 0.5, y - 8);
+      ctx.restore();
+    }
+    const drawReceptor = (lane, flashActive) => {
+      const rx = projectLaneX(lane, receptorY);
+      const color = lane === "left" ? "#00f0ff" : "#ff3b8b";
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(rx, receptorY, 32, 0, Math.PI * 2);
+      ctx.fillStyle = flashActive ? `${color}55` : "rgba(15, 23, 42, 0.85)";
+      ctx.fill();
+      ctx.lineWidth = flashActive ? 4 : 2.5;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(rx, receptorY, 14, 0, Math.PI * 2);
+      ctx.strokeStyle = `${color}88`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "bold 11px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(lane === "left" ? "F / D / \u2190" : "J / K / \u2192", rx, receptorY + 48);
+      ctx.restore();
+    };
+    drawReceptor("left", nowPerfMs < this.leftFlashUntilMs);
+    drawReceptor("right", nowPerfMs < this.rightFlashUntilMs);
+    const activeNotes = sim.getActiveNoteStates();
+    for (const ns of activeNotes) {
+      if (ns.judged) continue;
+      const dt = ns.note.timeMs - calTrackMs;
+      if (dt < -visibleBehindMs || dt > visibleAheadMs) continue;
+      const y = projectY(dt);
+      const x = projectLaneX(ns.note.lane, y);
+      const scale = Math.max(0.42, Math.min(1.15, (y - horizonY) / (receptorY - horizonY)));
+      const radius = 26 * scale;
+      const isOverdriveCore = ns.note.coreType === "plasma" || ns.note.routeBranch === "overdrive";
+      const baseColor = isOverdriveCore ? "#fbbf24" : ns.note.lane === "left" ? "#00f0ff" : "#ff3b8b";
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = baseColor;
+      ctx.shadowColor = baseColor;
+      ctx.shadowBlur = 14;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      if (isOverdriveCore) {
+        ctx.fillStyle = "#090d16";
+        ctx.font = `bold ${Math.round(11 * scale)}px Inter, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("1.5x", x, y);
+      }
+      ctx.restore();
+    }
+    const gateStatus = sim.getUpcomingOrActiveGate(calTrackMs);
+    if (gateStatus && gateStatus.canActivateNow) {
+      ctx.save();
+      ctx.fillStyle = "rgba(245, 158, 11, 0.24)";
+      ctx.strokeStyle = "#fbbf24";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(W * 0.5 - 190, 14, 380, 32, 999);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#fde68a";
+      ctx.font = "bold 13px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("SHUNT GATE READY \u2014 PRESS [SPACE] FOR OVERDRIVE (1.5x)", W * 0.5, 35);
+      ctx.restore();
+    }
+    const meterW = 280;
+    const meterH = 12;
+    const meterX = (W - meterW) / 2;
+    const meterY = H - 28;
+    ctx.save();
+    ctx.fillStyle = "#0f172a";
+    ctx.strokeStyle = "#334155";
+    ctx.lineWidth = 1;
+    ctx.fillRect(meterX, meterY, meterW, meterH);
+    ctx.strokeRect(meterX, meterY, meterW, meterH);
+    const perfHalfW = JUDGMENT_WINDOWS_MS.PERFECT / JUDGMENT_WINDOWS_MS.EARLY_LATE * (meterW / 2);
+    ctx.fillStyle = "rgba(0, 240, 255, 0.28)";
+    ctx.fillRect(W / 2 - perfHalfW, meterY, perfHalfW * 2, meterH);
+    ctx.strokeStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(W / 2, meterY - 3);
+    ctx.lineTo(W / 2, meterY + meterH + 3);
+    ctx.stroke();
+    const fb = sim.getLastFeedback();
+    if (fb && Math.abs(calTrackMs - fb.trackTimeMs) < 950) {
+      if (fb.deltaMs !== void 0) {
+        const clamped = Math.max(-120, Math.min(120, fb.deltaMs));
+        const needleX = W / 2 + clamped / 120 * (meterW / 2);
+        ctx.fillStyle = fb.grade === "PERFECT" ? "#00f0ff" : fb.grade === "GOOD" ? "#22c55e" : "#fbbf24";
+        ctx.fillRect(needleX - 2, meterY - 4, 4, meterH + 8);
+      }
+      ctx.font = "bold 20px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = fb.grade === "PERFECT" ? "#00f0ff" : fb.grade === "GOOD" ? "#22c55e" : fb.grade === "OVERDRIVE" ? "#fbbf24" : fb.grade === "MISS" ? "#ef4444" : "#f59e0b";
+      ctx.fillText(fb.text, W * 0.5, receptorY - 52);
+    }
+    const status = sim.getStatus();
+    if (status === "idle" || status === "paused") {
+      ctx.fillStyle = "rgba(5, 9, 20, 0.72)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "bold 26px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        status === "paused" ? "SHIFT PAUSED \u2014 AUDIO CLOCK LOCKED" : `${chart.title} \xB7 READY ON CONVEYOR`,
+        W * 0.5,
+        H * 0.44
+      );
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "14px Inter, sans-serif";
+      ctx.fillText(
+        status === "paused" ? 'Press [P] or Click "Resume Shift" \u2014 Zero Phantom Misses Guaranteed' : 'Press [Space] or Click "Start Shift" \xB7 Left [F/D/\u2190] \xB7 Right [J/K/\u2192] \xB7 Shunt [Space]',
+        W * 0.5,
+        H * 0.52
+      );
+    }
+    ctx.restore();
+  }
+};
+
+// games/05-beatline-salvage/src/index.ts
+function mountGame(container2, options) {
+  let saveData = loadSaveData();
+  let dailySeed = options?.initialSeed ?? getTodayDailySeed();
+  let selectedDifficulty = "standard";
+  let selectedPracticeSection = null;
+  let debugEnabled = Boolean(options?.debug);
+  let calibrationModalOpen = false;
+  let calibrationTapsMs = [];
+  const audio = new BeatlineAudioEngine(saveData.muted);
+  const buildCurrentChart = () => {
+    const base = getChartById(selectedDifficulty, dailySeed);
+    if (selectedPracticeSection) {
+      return createSectionPracticeChart(base, selectedPracticeSection);
+    }
+    return base;
+  };
+  let activeChart = buildCurrentChart();
+  const sim = new BeatlineSimulation(activeChart, {
+    calibrationOffsetMs: saveData.calibrationOffsetMs,
+    noFailMode: saveData.noFailMode
+  });
+  let resultsShownForRun = false;
+  const startOrResumeShift = () => {
+    audio.ensureContext();
+    const nowAudioMs = audio.getNowAudioMs();
+    if (sim.getStatus() === "paused") {
+      sim.resume(nowAudioMs);
+      ui.hideResultsOverlay();
+      return;
+    }
+    audio.resetScheduler();
+    resultsShownForRun = false;
+    ui.hideResultsOverlay();
+    sim.start(nowAudioMs);
+  };
+  const restartShift = () => {
+    audio.ensureContext();
+    audio.resetScheduler();
+    resultsShownForRun = false;
+    ui.hideResultsOverlay();
+    sim.restart(audio.getNowAudioMs());
+  };
+  const togglePause = () => {
+    const st = sim.getStatus();
+    const nowAudioMs = audio.getNowAudioMs();
+    if (st === "playing") {
+      sim.pause(nowAudioMs);
+    } else if (st === "paused") {
+      sim.resume(nowAudioMs);
+    }
+  };
+  const handleLaneStrike = (lane) => {
+    audio.ensureContext();
+    const nowAudioMs = audio.getNowAudioMs();
+    const nowPerf = typeof performance !== "undefined" ? performance.now() : Date.now();
+    ui.triggerLaneFlash(lane, nowPerf);
+    if (calibrationModalOpen) {
+      handleCalibrationTap();
+      return;
+    }
+    if (sim.getStatus() !== "playing") return;
+    const res = sim.handleLaneInput(lane, nowAudioMs);
+    const route = sim.getCurrentRouteForTimeMs();
+    if (res) {
+      audio.playHitSfx(res.grade, lane, route);
+    }
+  };
+  const handleShuntTrigger = () => {
+    audio.ensureContext();
+    const nowAudioMs = audio.getNowAudioMs();
+    const nowPerf = typeof performance !== "undefined" ? performance.now() : Date.now();
+    ui.triggerShuntFlash(nowPerf);
+    if (sim.getStatus() === "idle") {
+      startOrResumeShift();
+      return;
+    }
+    if (sim.getStatus() !== "playing") return;
+    const switched = sim.handleShuntSwitchInput(nowAudioMs);
+    if (switched) {
+      audio.playShuntGateSfx();
+    }
+  };
+  const applyCalibrationOffset = (offsetMs, tapMsg) => {
+    const clamped = Math.max(
+      CALIBRATION_LIMITS_MS.MIN,
+      Math.min(CALIBRATION_LIMITS_MS.MAX, Math.round(offsetMs / 5) * 5)
+    );
+    saveData.calibrationOffsetMs = clamped;
+    saveSaveData(saveData);
+    sim.setCalibrationOffsetMs(clamped);
+    ui.setCalibrationModalOpen(calibrationModalOpen, clamped, tapMsg);
+  };
+  const handleCalibrationTap = () => {
+    audio.ensureContext();
+    audio.playCalibrationPulse(true);
+    const nowMs = audio.getNowAudioMs();
+    calibrationTapsMs.push(nowMs);
+    if (calibrationTapsMs.length > 5) {
+      calibrationTapsMs.shift();
+    }
+    const nearestBeat = Math.round(nowMs / 500) * 500;
+    const delta = Math.max(-150, Math.min(150, Math.round(nowMs - nearestBeat)));
+    applyCalibrationOffset(
+      delta,
+      `Measured tap offset: ${delta >= 0 ? "+" : ""}${delta}ms (Applied to Audio Clock)`
+    );
+  };
+  const ui = new BeatlineUI(container2, {
+    onSelectDifficulty: (id) => {
+      selectedDifficulty = id;
+      activeChart = buildCurrentChart();
+      sim.setChart(activeChart);
+      resultsShownForRun = false;
+      ui.hideResultsOverlay();
+    },
+    onSelectPracticeSection: (secId) => {
+      selectedPracticeSection = secId;
+      activeChart = buildCurrentChart();
+      sim.setChart(activeChart);
+      resultsShownForRun = false;
+      ui.hideResultsOverlay();
+    },
+    onStartOrResume: () => startOrResumeShift(),
+    onPauseToggle: () => togglePause(),
+    onRestart: () => restartShift(),
+    onLaneInput: (lane) => handleLaneStrike(lane),
+    onShuntInput: () => handleShuntTrigger(),
+    onCalibrationChange: (offsetMs) => applyCalibrationOffset(offsetMs),
+    onToggleNoFail: (enabled) => {
+      saveData.noFailMode = enabled;
+      saveSaveData(saveData);
+      sim.setNoFailMode(enabled);
+    },
+    onToggleMute: () => {
+      saveData.muted = !saveData.muted;
+      saveSaveData(saveData);
+      audio.setMuted(saveData.muted);
+    },
+    onOpenCalibrationModal: (open) => {
+      calibrationModalOpen = open;
+      calibrationTapsMs = [];
+      if (open && sim.getStatus() === "playing") {
+        sim.pause(audio.getNowAudioMs());
+      }
+      ui.setCalibrationModalOpen(open, saveData.calibrationOffsetMs);
+    },
+    onCalibrationTap: () => handleCalibrationTap()
+  });
+  const onKeyDown = (e) => {
+    if (e.repeat) return;
+    const key = e.key.toLowerCase();
+    if (key === "f" || key === "d" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      handleLaneStrike("left");
+    } else if (key === "j" || key === "k" || e.key === "ArrowRight") {
+      e.preventDefault();
+      handleLaneStrike("right");
+    } else if (e.code === "Space") {
+      e.preventDefault();
+      handleShuntTrigger();
+    } else if (key === "p" || e.key === "Escape") {
+      e.preventDefault();
+      if (calibrationModalOpen) {
+        calibrationModalOpen = false;
+        ui.setCalibrationModalOpen(false, saveData.calibrationOffsetMs);
+      } else {
+        togglePause();
+      }
+    } else if (key === "r") {
+      e.preventDefault();
+      restartShift();
+    } else if (key === "m") {
+      e.preventDefault();
+      saveData.muted = !saveData.muted;
+      saveSaveData(saveData);
+      audio.setMuted(saveData.muted);
+    } else if (e.key === "`" || e.key === "F3") {
+      debugEnabled = !debugEnabled;
+    }
+  };
+  const onWindowBlur = () => {
+    if (sim.getStatus() === "playing") {
+      sim.pause(audio.getNowAudioMs());
+    }
+  };
+  const onVisibilityChange = () => {
+    if (document.hidden && sim.getStatus() === "playing") {
+      sim.pause(audio.getNowAudioMs());
+    }
+  };
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("blur", onWindowBlur);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  let rafId = 0;
+  let destroyed = false;
+  const tick = () => {
+    if (destroyed) return;
+    const nowAudioMs = audio.getNowAudioMs();
+    const nowPerfMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (sim.getStatus() === "playing") {
+      sim.stepToAudioTimeMs(nowAudioMs);
+      const calTrackMs = sim.getCalibratedTrackTimeMs();
+      const route = sim.getCurrentRouteForTimeMs(calTrackMs);
+      audio.updateTrackMusic(calTrackMs, route);
+    }
+    const statusAfterStep = sim.getStatus();
+    if ((statusAfterStep === "completed" || statusAfterStep === "failed") && !resultsShownForRun) {
+      resultsShownForRun = true;
+      const summary = sim.getResultsSummary();
+      saveData = recordRunResult(saveData, summary);
+      ui.showResultsOverlay(
+        summary,
+        saveData,
+        (practiceSecId) => {
+          selectedPracticeSection = practiceSecId;
+          activeChart = buildCurrentChart();
+          sim.setChart(activeChart);
+          startOrResumeShift();
+        },
+        (suggestedOffsetMs) => {
+          applyCalibrationOffset(suggestedOffsetMs);
+          restartShift();
+        }
+      );
+    }
+    ui.renderFrame(sim, activeChart, saveData, debugEnabled, nowPerfMs);
+    rafId = window.requestAnimationFrame(tick);
+  };
+  rafId = window.requestAnimationFrame(tick);
+  return {
+    destroy() {
+      destroyed = true;
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("blur", onWindowBlur);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      audio.destroy();
+      container2.innerHTML = "";
+    },
+    getStateSnapshot() {
+      return {
+        status: sim.getStatus(),
+        chartId: activeChart.id,
+        practiceSectionId: activeChart.practiceSectionId ?? null,
+        rawTrackTimeMs: sim.getRawTrackTimeMs(),
+        calibratedTrackTimeMs: sim.getCalibratedTrackTimeMs(),
+        calibrationOffsetMs: sim.getCalibrationOffsetMs(),
+        score: sim.getScore(),
+        combo: sim.getCombo(),
+        maxCombo: sim.getMaxCombo(),
+        stability: sim.getStability(),
+        route: sim.getCurrentRouteForTimeMs()
+      };
+    },
+    restartWithSeed(seed) {
+      dailySeed = seed;
+      selectedDifficulty = "daily";
+      selectedPracticeSection = null;
+      activeChart = buildCurrentChart();
+      sim.setChart(activeChart);
+      restartShift();
+    },
+    toggleDebug(force) {
+      debugEnabled = typeof force === "boolean" ? force : !debugEnabled;
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_05-beatline-salvage.ts
+var container = document.getElementById("app");
+if (container) {
+  mountGame(container);
+}
+
+</script>
+  </body>
+</html>

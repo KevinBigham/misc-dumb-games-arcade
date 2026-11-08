@@ -1,0 +1,2858 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blackout Dispatch | Argon Game 02</title>
+  </head>
+  <body style="margin: 0; background: #09111e; color: #e2e8f0;">
+    <div id="app"></div>
+    <script type="module">
+// games/02-blackout-dispatch/src/config.ts
+var CONFIG = {
+  RULES_VERSION: "1.0.0",
+  STORAGE_KEY: "argon_game02_blackout_dispatch_v1",
+  GRID_SIZE: 8,
+  TOTAL_TURNS: 12,
+  MAX_ACTIONS_PER_TURN: 2,
+  BASE_MATERIAL_INCOME_PER_TURN: 15,
+  RELAY_MATERIAL_BONUS_PER_TURN: 2,
+  REROUTE_COST_MAT: 5,
+  DEFAULT_SEED: 20261106,
+  LINKS: {
+    standard: {
+      type: "standard",
+      name: "Standard Line",
+      shortLabel: "STD 4MW",
+      capacityMW: 4,
+      buildCostMat: 10,
+      repairCostMat: 5,
+      windImmune: false,
+      description: "4 MW capacity, 10 Mat. Economical feeder line; vulnerable to storm wind strikes."
+    },
+    heavy: {
+      type: "heavy",
+      name: "Heavy Trunk",
+      shortLabel: "HVY 8MW",
+      capacityMW: 8,
+      buildCostMat: 20,
+      repairCostMat: 8,
+      windImmune: false,
+      description: "8 MW capacity, 20 Mat. High-throughput arterial line; vulnerable to storm wind strikes."
+    },
+    shielded: {
+      type: "shielded",
+      name: "Storm-Shielded Conduit",
+      shortLabel: "SHD 5MW",
+      capacityMW: 5,
+      buildCostMat: 25,
+      repairCostMat: 10,
+      windImmune: true,
+      description: "5 MW capacity, 25 Mat. Armored underground/insulated conduit; IMMUNE to standard wind strikes."
+    }
+  }
+};
+function getUpgradeCostMat(fromType, toType, isDamaged) {
+  if (fromType === toType) {
+    return isDamaged ? CONFIG.LINKS[fromType].repairCostMat : 0;
+  }
+  const diff = Math.max(10, CONFIG.LINKS[toType].buildCostMat - CONFIG.LINKS[fromType].buildCostMat + (isDamaged ? 5 : 0));
+  return diff;
+}
+function coordKey(row, col) {
+  return `${row},${col}`;
+}
+function parseCoordKey(key) {
+  const [r, c] = key.split(",").map(Number);
+  return { row: r, col: c };
+}
+function makeEdgeId(a, b) {
+  const cA = typeof a === "string" ? parseCoordKey(a) : a;
+  const cB = typeof b === "string" ? parseCoordKey(b) : b;
+  const kA = coordKey(cA.row, cA.col);
+  const kB = coordKey(cB.row, cB.col);
+  if (cA.row < cB.row || cA.row === cB.row && cA.col <= cB.col) {
+    return `${kA}--${kB}`;
+  }
+  return `${kB}--${kA}`;
+}
+function parseEdgeId(edgeId) {
+  const [nodeA, nodeB] = edgeId.split("--");
+  return {
+    nodeA,
+    nodeB,
+    coordA: parseCoordKey(nodeA),
+    coordB: parseCoordKey(nodeB)
+  };
+}
+function isOrthogonallyAdjacent(a, b) {
+  return Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
+}
+function formatEdgeLabel(edgeId) {
+  const { nodeA, nodeB } = parseEdgeId(edgeId);
+  return `(${nodeA})\u2194(${nodeB})`;
+}
+
+// games/02-blackout-dispatch/src/rng.ts
+function createSeededRng(initialSeed) {
+  const normalizedSeed = Math.floor(initialSeed) >>> 0 || 1;
+  let state = normalizedSeed;
+  const next = () => {
+    state = state + 1831565813 >>> 0;
+    let t = Math.imul(state ^ state >>> 15, 1 | state);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  const nextInt = (minInclusive, maxInclusive) => {
+    if (maxInclusive <= minInclusive) return minInclusive;
+    return minInclusive + Math.floor(next() * (maxInclusive - minInclusive + 1));
+  };
+  const pick = (items) => {
+    if (items.length === 0) {
+      throw new Error("Cannot pick from empty array");
+    }
+    return items[nextInt(0, items.length - 1)];
+  };
+  const shuffle = (items) => {
+    const copy = [...items];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = nextInt(0, i);
+      const tmp = copy[i];
+      copy[i] = copy[j];
+      copy[j] = tmp;
+    }
+    return copy;
+  };
+  return {
+    seed: normalizedSeed,
+    next,
+    nextInt,
+    pick,
+    shuffle
+  };
+}
+
+// games/02-blackout-dispatch/src/content.ts
+var SCENARIO_1_HARBOR_SQUALL = {
+  id: "harbor-squall",
+  number: 1,
+  title: "Scenario 1: Harbor Squall",
+  subtitle: "Coastal Gale & Arterial Bottleneck",
+  briefing: "A coastal squall approaches Port Argon. On Turn 1, link St. Jude Hospital (D1) and Harbor Waterworks (D2) into Substation Alpha. On Turn 2, their combined 6 MW surge will exceed a single 4 MW Standard Line \u2014 forcing a choice between a Heavy Trunk upgrade or a Redundant Storm Loop.",
+  onboardingHintTurn1: "TURN 1 DISPATCH ORDER: Place a Standard Line on (3,2)\u2194(3,3) to power D1 (St. Jude Hospital) and a second Standard Line on (3,3)\u2194(3,4) to reach D2 (Harbor Waterworks), then click Commit Turn.",
+  onboardingHintTurn2: "TURN 2 BOTTLENECK ALERT: D1 (3 MW) + D2 (3 MW) = 6 MW, saturating (3,2)\u2194(3,3) at 4/4 MW! Either UPGRADE (3,2)\u2194(3,3) to a Heavy Trunk (8 MW) OR build a Redundant Loop at (3,4)\u2194(4,4) from the South corridor. Also connect D5 at (2,5)\u2194(2,6) before Turn 3!",
+  generator: {
+    row: 3,
+    col: 1,
+    outputMW: 26,
+    name: "Central Harbor Turbine"
+  },
+  startingMaterials: 65,
+  cityOutageThresholdMW: 12,
+  relays: [
+    { id: "R1", name: "Substation Alpha", row: 3, col: 2 },
+    { id: "R2", name: "Substation North", row: 1, col: 3 },
+    { id: "R3", name: "Substation South", row: 5, col: 3 }
+  ],
+  blockedCells: [
+    { row: 6, col: 6 },
+    { row: 6, col: 7 },
+    { row: 7, col: 6 },
+    { row: 7, col: 7 }
+  ],
+  districts: [
+    {
+      id: "D1",
+      name: "St. Jude Hospital",
+      shortCode: "HOSP",
+      priority: 1,
+      row: 3,
+      col: 3,
+      demandCurve: [2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4],
+      unmetLimitMW: 4
+    },
+    {
+      id: "D2",
+      name: "Harbor Waterworks",
+      shortCode: "WATR",
+      priority: 2,
+      row: 3,
+      col: 5,
+      demandCurve: [2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4],
+      unmetLimitMW: 5
+    },
+    {
+      id: "D3",
+      name: "Midtown Transit",
+      shortCode: "TRAN",
+      priority: 3,
+      row: 1,
+      col: 4,
+      demandCurve: [2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4],
+      unmetLimitMW: 6
+    },
+    {
+      id: "D4",
+      name: "Dockyard Cold Storage",
+      shortCode: "DOCK",
+      priority: 4,
+      row: 5,
+      col: 4,
+      demandCurve: [2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5],
+      unmetLimitMW: 6
+    },
+    {
+      id: "D5",
+      name: "Northside Residential",
+      shortCode: "NRTH",
+      priority: 5,
+      row: 2,
+      col: 6,
+      demandCurve: [0, 0, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4],
+      unmetLimitMW: 7
+    }
+  ],
+  initialLinks: [
+    // Central stub
+    { from: { row: 3, col: 1 }, to: { row: 3, col: 2 }, type: "heavy" },
+    { from: { row: 3, col: 4 }, to: { row: 3, col: 5 }, type: "standard" },
+    // North feeder
+    { from: { row: 3, col: 1 }, to: { row: 2, col: 1 }, type: "heavy" },
+    { from: { row: 2, col: 1 }, to: { row: 1, col: 1 }, type: "heavy" },
+    { from: { row: 1, col: 1 }, to: { row: 1, col: 2 }, type: "heavy" },
+    { from: { row: 1, col: 2 }, to: { row: 1, col: 3 }, type: "heavy" },
+    { from: { row: 1, col: 3 }, to: { row: 1, col: 4 }, type: "standard" },
+    { from: { row: 1, col: 4 }, to: { row: 2, col: 4 }, type: "standard" },
+    { from: { row: 2, col: 4 }, to: { row: 2, col: 5 }, type: "standard" },
+    // South feeder + Relay South junction stub
+    { from: { row: 3, col: 1 }, to: { row: 4, col: 1 }, type: "heavy" },
+    { from: { row: 4, col: 1 }, to: { row: 5, col: 1 }, type: "heavy" },
+    { from: { row: 5, col: 1 }, to: { row: 5, col: 2 }, type: "heavy" },
+    { from: { row: 5, col: 2 }, to: { row: 5, col: 3 }, type: "heavy" },
+    { from: { row: 5, col: 3 }, to: { row: 5, col: 4 }, type: "standard" },
+    { from: { row: 5, col: 3 }, to: { row: 4, col: 3 }, type: "heavy" },
+    { from: { row: 5, col: 4 }, to: { row: 4, col: 4 }, type: "standard" }
+  ],
+  stormStrikes: [
+    {
+      turn: 4,
+      edgeId: makeEdgeId({ row: 3, col: 3 }, { row: 3, col: 4 }),
+      severity: "wind",
+      label: "Squall Line Gust (Central Spine)"
+    },
+    {
+      turn: 6,
+      edgeId: makeEdgeId({ row: 2, col: 4 }, { row: 2, col: 5 }),
+      severity: "wind",
+      label: "Northbay Crosswind (East Spur)"
+    },
+    {
+      turn: 8,
+      edgeId: makeEdgeId({ row: 5, col: 3 }, { row: 5, col: 4 }),
+      severity: "wind",
+      label: "Breakwater Gale (South Dock Feeder)"
+    },
+    {
+      turn: 10,
+      edgeId: makeEdgeId({ row: 1, col: 4 }, { row: 2, col: 4 }),
+      severity: "wind",
+      label: "Midtown Shear Gust (North-East Tie)"
+    },
+    {
+      turn: 12,
+      edgeId: makeEdgeId({ row: 4, col: 4 }, { row: 5, col: 4 }),
+      severity: "wind",
+      label: "Eye-Wall Tail Gust (South Tie)"
+    }
+  ]
+};
+var SCENARIO_2_TWIN_RIDGE_GALE = {
+  id: "twin-ridge-gale",
+  number: 2,
+  title: "Scenario 2: Twin Ridge Gale",
+  subtitle: "Mountain Pass Choke Points & Dual-Front Winds",
+  briefing: "Basalt ridges split the grid down Column 3, leaving only three narrow mountain passes at (1,3), (4,3), and (6,3). Dual-front ridge gales batter exposed lines starting Turn 3. Balance pass upgrades with eastern valley tie-lines.",
+  onboardingHintTurn1: "TURN 1 DISPATCH ORDER: Link Central Pass (4,3)\u2194(4,4) to energize Metro Hospital (D1) and (4,4)\u2194(4,5) to reach Valley Foundry (D4).",
+  onboardingHintTurn2: "TURN 2 DISPATCH ORDER: Upgrade Central Pass or cross-tie the North Pass at (1,4)\u2194(2,4) before Turn 3 ridge gusts strike.",
+  generator: {
+    row: 4,
+    col: 0,
+    outputMW: 28,
+    name: "West Dam Hydro Plant"
+  },
+  startingMaterials: 75,
+  cityOutageThresholdMW: 14,
+  relays: [
+    { id: "R1", name: "North Pass Relay", row: 1, col: 3 },
+    { id: "R2", name: "Central Pass Relay", row: 4, col: 3 },
+    { id: "R3", name: "South Pass Relay", row: 6, col: 3 }
+  ],
+  blockedCells: [
+    { row: 0, col: 3 },
+    { row: 2, col: 3 },
+    { row: 3, col: 3 },
+    { row: 5, col: 3 },
+    { row: 7, col: 3 }
+  ],
+  districts: [
+    {
+      id: "D1",
+      name: "Metro General Hospital",
+      shortCode: "MHOS",
+      priority: 1,
+      row: 4,
+      col: 4,
+      demandCurve: [2, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5],
+      unmetLimitMW: 4
+    },
+    {
+      id: "D2",
+      name: "Ridge Telecom Hub",
+      shortCode: "TCOM",
+      priority: 2,
+      row: 1,
+      col: 5,
+      demandCurve: [2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5],
+      unmetLimitMW: 5
+    },
+    {
+      id: "D3",
+      name: "Eastport Flood Locks",
+      shortCode: "LOCK",
+      priority: 3,
+      row: 6,
+      col: 5,
+      demandCurve: [2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 5],
+      unmetLimitMW: 6
+    },
+    {
+      id: "D4",
+      name: "Valley Alloy Foundry",
+      shortCode: "FNDR",
+      priority: 4,
+      row: 4,
+      col: 6,
+      demandCurve: [2, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5],
+      unmetLimitMW: 6
+    },
+    {
+      id: "D5",
+      name: "Bayview Highrises",
+      shortCode: "BAYV",
+      priority: 5,
+      row: 2,
+      col: 6,
+      demandCurve: [0, 2, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4],
+      unmetLimitMW: 7
+    }
+  ],
+  initialLinks: [
+    // Central pass feeder
+    { from: { row: 4, col: 0 }, to: { row: 4, col: 1 }, type: "heavy" },
+    { from: { row: 4, col: 1 }, to: { row: 4, col: 2 }, type: "heavy" },
+    { from: { row: 4, col: 2 }, to: { row: 4, col: 3 }, type: "heavy" },
+    { from: { row: 4, col: 5 }, to: { row: 4, col: 6 }, type: "standard" },
+    // North pass feeder
+    { from: { row: 4, col: 1 }, to: { row: 3, col: 1 }, type: "heavy" },
+    { from: { row: 3, col: 1 }, to: { row: 2, col: 1 }, type: "heavy" },
+    { from: { row: 2, col: 1 }, to: { row: 1, col: 1 }, type: "heavy" },
+    { from: { row: 1, col: 1 }, to: { row: 1, col: 2 }, type: "heavy" },
+    { from: { row: 1, col: 2 }, to: { row: 1, col: 3 }, type: "heavy" },
+    { from: { row: 1, col: 3 }, to: { row: 1, col: 4 }, type: "standard" },
+    { from: { row: 1, col: 4 }, to: { row: 1, col: 5 }, type: "standard" },
+    { from: { row: 1, col: 5 }, to: { row: 2, col: 5 }, type: "standard" },
+    // South pass feeder
+    { from: { row: 4, col: 1 }, to: { row: 5, col: 1 }, type: "heavy" },
+    { from: { row: 5, col: 1 }, to: { row: 6, col: 1 }, type: "heavy" },
+    { from: { row: 6, col: 1 }, to: { row: 6, col: 2 }, type: "heavy" },
+    { from: { row: 6, col: 2 }, to: { row: 6, col: 3 }, type: "heavy" },
+    { from: { row: 6, col: 3 }, to: { row: 6, col: 4 }, type: "standard" },
+    { from: { row: 6, col: 4 }, to: { row: 6, col: 5 }, type: "standard" },
+    { from: { row: 6, col: 5 }, to: { row: 5, col: 5 }, type: "standard" }
+  ],
+  stormStrikes: [
+    {
+      turn: 3,
+      edgeId: makeEdgeId({ row: 1, col: 4 }, { row: 1, col: 5 }),
+      severity: "wind",
+      label: "North Ridge Downdraft"
+    },
+    {
+      turn: 5,
+      edgeId: makeEdgeId({ row: 4, col: 4 }, { row: 4, col: 5 }),
+      severity: "wind",
+      label: "Canyon Venturi Gust"
+    },
+    {
+      turn: 7,
+      edgeId: makeEdgeId({ row: 6, col: 4 }, { row: 6, col: 5 }),
+      severity: "wind",
+      label: "South Pass Gale"
+    },
+    {
+      turn: 9,
+      edgeId: makeEdgeId({ row: 1, col: 5 }, { row: 2, col: 5 }),
+      severity: "wind",
+      label: "Upper Valley Crosswind"
+    },
+    {
+      turn: 11,
+      edgeId: makeEdgeId({ row: 4, col: 5 }, { row: 4, col: 6 }),
+      severity: "wind",
+      label: "Foundry Basin Squall"
+    }
+  ]
+};
+var SCENARIO_3_CAT4_SUPERCELL = {
+  id: "cat4-supercell",
+  number: 3,
+  title: "Scenario 3: Category-4 Supercell",
+  subtitle: "Metropolitan Core & Lightning Arc Strikes",
+  briefing: "A Category-4 Supercell passes directly over the central metropolitan hub. Standard Wind gusts are joined by high-voltage Supercell Lightning strikes on Turns 6 and 10 that penetrate even Storm-Shielded Conduits \u2014 making redundant rings or rapid repair essential.",
+  onboardingHintTurn1: "TURN 1 DISPATCH ORDER: Connect Trauma Center (D1) at (3,4)\u2194(3,5) and Floodgate Array (D2) at (4,3)\u2194(5,3).",
+  onboardingHintTurn2: "TURN 2 DISPATCH ORDER: Expand ring ties toward Civic Shelter (D5) at (5,5) and reinforce radial trunks.",
+  generator: {
+    row: 3,
+    col: 3,
+    outputMW: 30,
+    name: "Metro Core Reactor"
+  },
+  startingMaterials: 80,
+  cityOutageThresholdMW: 14,
+  relays: [
+    { id: "R1", name: "East Ring Relay", row: 3, col: 4 },
+    { id: "R2", name: "South Ring Relay", row: 4, col: 3 },
+    { id: "R3", name: "North Ring Relay", row: 2, col: 3 },
+    { id: "R4", name: "West Ring Relay", row: 3, col: 2 }
+  ],
+  blockedCells: [
+    { row: 0, col: 0 },
+    { row: 0, col: 7 },
+    { row: 7, col: 0 },
+    { row: 7, col: 7 }
+  ],
+  districts: [
+    {
+      id: "D1",
+      name: "Central Trauma Center",
+      shortCode: "TRMA",
+      priority: 1,
+      row: 3,
+      col: 5,
+      demandCurve: [3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5],
+      unmetLimitMW: 4
+    },
+    {
+      id: "D2",
+      name: "Seawall Floodgates",
+      shortCode: "FLOD",
+      priority: 2,
+      row: 5,
+      col: 3,
+      demandCurve: [2, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 5],
+      unmetLimitMW: 5
+    },
+    {
+      id: "D3",
+      name: "North Rail Command",
+      shortCode: "RAIL",
+      priority: 3,
+      row: 1,
+      col: 3,
+      demandCurve: [2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5],
+      unmetLimitMW: 6
+    },
+    {
+      id: "D4",
+      name: "West Data Exchange",
+      shortCode: "DATA",
+      priority: 4,
+      row: 3,
+      col: 1,
+      demandCurve: [2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5],
+      unmetLimitMW: 6
+    },
+    {
+      id: "D5",
+      name: "Southeast Civic Shelter",
+      shortCode: "SHLT",
+      priority: 5,
+      row: 5,
+      col: 5,
+      demandCurve: [0, 2, 2, 3, 3, 3, 4, 4, 4, 4, 5, 5],
+      unmetLimitMW: 7
+    }
+  ],
+  initialLinks: [
+    // 4 inner ring relays around (3,3)
+    { from: { row: 3, col: 3 }, to: { row: 3, col: 4 }, type: "heavy" },
+    { from: { row: 3, col: 3 }, to: { row: 4, col: 3 }, type: "heavy" },
+    { from: { row: 3, col: 3 }, to: { row: 2, col: 3 }, type: "heavy" },
+    { from: { row: 3, col: 3 }, to: { row: 3, col: 2 }, type: "heavy" },
+    // North and West already linked with standard lines
+    { from: { row: 2, col: 3 }, to: { row: 1, col: 3 }, type: "standard" },
+    { from: { row: 3, col: 2 }, to: { row: 3, col: 1 }, type: "standard" },
+    // Southeast partial ring stubs
+    { from: { row: 3, col: 5 }, to: { row: 4, col: 5 }, type: "standard" },
+    { from: { row: 5, col: 3 }, to: { row: 5, col: 4 }, type: "standard" },
+    { from: { row: 4, col: 4 }, to: { row: 3, col: 4 }, type: "standard" },
+    { from: { row: 4, col: 4 }, to: { row: 4, col: 3 }, type: "standard" }
+  ],
+  stormStrikes: [
+    {
+      turn: 3,
+      edgeId: makeEdgeId({ row: 2, col: 3 }, { row: 1, col: 3 }),
+      severity: "wind",
+      label: "Outer Band Gust (North Feeder)"
+    },
+    {
+      turn: 5,
+      edgeId: makeEdgeId({ row: 3, col: 2 }, { row: 3, col: 1 }),
+      severity: "wind",
+      label: "Western Shear Gust (West Feeder)"
+    },
+    {
+      turn: 6,
+      edgeId: makeEdgeId({ row: 3, col: 4 }, { row: 3, col: 5 }),
+      severity: "lightning",
+      label: "Supercell Core Lightning (Bypasses Shielding)"
+    },
+    {
+      turn: 8,
+      edgeId: makeEdgeId({ row: 4, col: 3 }, { row: 5, col: 3 }),
+      severity: "wind",
+      label: "South Seawall Gale"
+    },
+    {
+      turn: 10,
+      edgeId: makeEdgeId({ row: 4, col: 5 }, { row: 5, col: 5 }),
+      severity: "lightning",
+      label: "Mesocyclone Arc Strike (Bypasses Shielding)"
+    },
+    {
+      turn: 12,
+      edgeId: makeEdgeId({ row: 5, col: 3 }, { row: 5, col: 4 }),
+      severity: "wind",
+      label: "Trailing Eyewall Gust"
+    }
+  ]
+};
+var HANDCRAFTED_SCENARIOS = [
+  SCENARIO_1_HARBOR_SQUALL,
+  SCENARIO_2_TWIN_RIDGE_GALE,
+  SCENARIO_3_CAT4_SUPERCELL
+];
+function generateSeededScenario(seed) {
+  const rng = createSeededRng(seed);
+  const base = SCENARIO_1_HARBOR_SQUALL;
+  const candidateTargetEdges = [
+    makeEdgeId({ row: 3, col: 3 }, { row: 3, col: 4 }),
+    makeEdgeId({ row: 2, col: 4 }, { row: 2, col: 5 }),
+    makeEdgeId({ row: 5, col: 3 }, { row: 5, col: 4 }),
+    makeEdgeId({ row: 1, col: 4 }, { row: 2, col: 4 }),
+    makeEdgeId({ row: 4, col: 4 }, { row: 5, col: 4 }),
+    makeEdgeId({ row: 3, col: 4 }, { row: 3, col: 5 }),
+    makeEdgeId({ row: 1, col: 3 }, { row: 1, col: 4 })
+  ];
+  const shuffledEdges = rng.shuffle(candidateTargetEdges);
+  const strikeTurns = [4, 6, 8, 10, 12];
+  const gustNames = [
+    "Seeded Squall Front",
+    "Barometric Shear Gust",
+    "Harbor Vortex Line",
+    "Coastal Microburst",
+    "Cyclonic Tail Gust"
+  ];
+  const stormStrikes = strikeTurns.map((turn, idx) => ({
+    turn,
+    edgeId: shuffledEdges[idx % shuffledEdges.length],
+    severity: "wind",
+    label: `${gustNames[idx]} (#${rng.nextInt(10, 99)})`
+  }));
+  const districts = base.districts.map((d) => {
+    const curve = d.demandCurve.map((val, turnIdx) => {
+      if (turnIdx < 3) return val;
+      const delta = rng.nextInt(-1, 1);
+      return Math.max(2, Math.min(4, val + delta));
+    });
+    return {
+      ...d,
+      demandCurve: curve
+    };
+  });
+  return {
+    ...base,
+    id: `seeded-${rng.seed}`,
+    number: 4,
+    title: `Seeded Storm #${rng.seed}`,
+    subtitle: "Deterministic Procedural Weather Pattern",
+    briefing: `Seeded Storm Dispatch (Seed: ${rng.seed}). All storm strikes and district demand fluctuations are 100% deterministic for this seed.`,
+    districts,
+    stormStrikes,
+    isSeeded: true,
+    seed: rng.seed
+  };
+}
+function getScenarioById(id, seed = CONFIG.DEFAULT_SEED) {
+  if (id === "seeded" || id.startsWith("seeded-")) {
+    const parsedSeed = id.startsWith("seeded-") ? Number(id.slice("seeded-".length)) || seed : seed;
+    return generateSeededScenario(parsedSeed);
+  }
+  return HANDCRAFTED_SCENARIOS.find((s) => s.id === id) ?? SCENARIO_1_HARBOR_SQUALL;
+}
+function isBlockedCoord(scenario, coord) {
+  const key = coordKey(coord.row, coord.col);
+  return scenario.blockedCells.some((b) => coordKey(b.row, b.col) === key);
+}
+
+// games/02-blackout-dispatch/src/simulation.ts
+function cloneBoard(board) {
+  const links = {};
+  for (const [id, link] of Object.entries(board.links)) {
+    links[id] = { ...link };
+  }
+  return { links };
+}
+function getAllGridNodes() {
+  const nodes = [];
+  for (let r = 0; r < CONFIG.GRID_SIZE; r++) {
+    for (let c = 0; c < CONFIG.GRID_SIZE; c++) {
+      nodes.push(coordKey(r, c));
+    }
+  }
+  return nodes;
+}
+function canTraverseDirected(link, u, v) {
+  const { nodeA, nodeB } = parseEdgeId(link.id);
+  if (link.directionConstraint === "forward") {
+    return u === nodeA && v === nodeB;
+  }
+  if (link.directionConstraint === "reverse") {
+    return u === nodeB && v === nodeA;
+  }
+  return u === nodeA && v === nodeB || u === nodeB && v === nodeA;
+}
+function resolvePowerFlow(board, scenario, demandOverrides, turnIndex = 0) {
+  const genNode = coordKey(scenario.generator.row, scenario.generator.col);
+  const clampedTurnIdx = Math.max(0, Math.min(CONFIG.TOTAL_TURNS - 1, turnIndex));
+  const sortedDistricts = [...scenario.districts].sort((a, b) => a.priority - b.priority);
+  const directedEdgeFlow = /* @__PURE__ */ new Map();
+  const edgeContributors = /* @__PURE__ */ new Map();
+  const edgeIdsByUndirected = /* @__PURE__ */ new Map();
+  for (const link of Object.values(board.links)) {
+    edgeIdsByUndirected.set(link.id, link);
+    edgeContributors.set(link.id, /* @__PURE__ */ new Map());
+  }
+  const getDirKey = (u, v) => `${u}->${v}`;
+  const getDirectedFlow = (u, v) => directedEdgeFlow.get(getDirKey(u, v)) ?? 0;
+  const setDirectedFlow = (u, v, val) => {
+    if (val <= 0) {
+      directedEdgeFlow.delete(getDirKey(u, v));
+    } else {
+      directedEdgeFlow.set(getDirKey(u, v), val);
+    }
+  };
+  const adj = /* @__PURE__ */ new Map();
+  for (const node of getAllGridNodes()) {
+    adj.set(node, []);
+  }
+  for (const link of Object.values(board.links)) {
+    const { nodeA, nodeB } = parseEdgeId(link.id);
+    adj.get(nodeA)?.push({ neighbor: nodeB, link });
+    adj.get(nodeB)?.push({ neighbor: nodeA, link });
+  }
+  for (const list of adj.values()) {
+    list.sort((a, b) => a.neighbor.localeCompare(b.neighbor));
+  }
+  let remainingGenMW = scenario.generator.outputMW;
+  const districtAllocations = {
+    D1: { demandMW: 0, deliveredMW: 0, unmetMW: 0, paths: [] },
+    D2: { demandMW: 0, deliveredMW: 0, unmetMW: 0, paths: [] },
+    D3: { demandMW: 0, deliveredMW: 0, unmetMW: 0, paths: [] },
+    D4: { demandMW: 0, deliveredMW: 0, unmetMW: 0, paths: [] },
+    D5: { demandMW: 0, deliveredMW: 0, unmetMW: 0, paths: [] }
+  };
+  for (const d of sortedDistricts) {
+    const demandMW = demandOverrides?.[d.id] !== void 0 ? demandOverrides[d.id] : d.demandCurve[clampedTurnIdx];
+    const targetNode = coordKey(d.row, d.col);
+    let deliveredMW = 0;
+    const pathsUsed = [];
+    let needed = Math.min(demandMW, remainingGenMW);
+    while (needed > 0) {
+      const queue = [genNode];
+      const parent = /* @__PURE__ */ new Map();
+      const visited = /* @__PURE__ */ new Set([genNode]);
+      while (queue.length > 0 && !visited.has(targetNode)) {
+        const u = queue.shift();
+        const neighbors = adj.get(u) ?? [];
+        for (const { neighbor: v, link } of neighbors) {
+          if (visited.has(v)) continue;
+          if (link.status !== "intact") continue;
+          if (!canTraverseDirected(link, u, v)) continue;
+          const cap = CONFIG.LINKS[link.type].capacityMW;
+          const revFlow = getDirectedFlow(v, u);
+          const fwdFlow = getDirectedFlow(u, v);
+          const residual = cap - fwdFlow + revFlow;
+          if (residual <= 0) continue;
+          visited.add(v);
+          parent.set(v, { prev: u, link });
+          queue.push(v);
+        }
+      }
+      if (!visited.has(targetNode)) {
+        break;
+      }
+      const pathNodes = [targetNode];
+      const pathSteps = [];
+      let curr = targetNode;
+      let pathResidual = needed;
+      while (curr !== genNode) {
+        const step = parent.get(curr);
+        pathSteps.push({ u: step.prev, v: curr, link: step.link });
+        pathNodes.push(step.prev);
+        const cap = CONFIG.LINKS[step.link.type].capacityMW;
+        const fwdFlow = getDirectedFlow(step.prev, curr);
+        const revFlow = getDirectedFlow(curr, step.prev);
+        pathResidual = Math.min(pathResidual, cap - fwdFlow + revFlow);
+        curr = step.prev;
+      }
+      pathNodes.reverse();
+      pathSteps.reverse();
+      const pushMW = Math.min(needed, pathResidual);
+      if (pushMW <= 0) break;
+      for (const step of pathSteps) {
+        const currentFwd = getDirectedFlow(step.u, step.v);
+        const currentRev = getDirectedFlow(step.v, step.u);
+        const net = currentFwd - currentRev + pushMW;
+        if (net >= 0) {
+          setDirectedFlow(step.u, step.v, net);
+          setDirectedFlow(step.v, step.u, 0);
+        } else {
+          setDirectedFlow(step.u, step.v, 0);
+          setDirectedFlow(step.v, step.u, -net);
+        }
+        const contribMap = edgeContributors.get(step.link.id);
+        contribMap.set(d.id, (contribMap.get(d.id) ?? 0) + pushMW);
+      }
+      deliveredMW += pushMW;
+      needed -= pushMW;
+      remainingGenMW -= pushMW;
+      pathsUsed.push(pathNodes);
+    }
+    districtAllocations[d.id] = {
+      demandMW,
+      deliveredMW,
+      unmetMW: Math.max(0, demandMW - deliveredMW),
+      paths: pathsUsed
+    };
+  }
+  let hasDirectedCycle = false;
+  const cancelDirectedCycles = () => {
+    const activeNodes = getAllGridNodes();
+    while (true) {
+      const state = /* @__PURE__ */ new Map();
+      const parentNode = /* @__PURE__ */ new Map();
+      let cycleStart = null;
+      let cycleEnd = null;
+      const dfs = (u) => {
+        state.set(u, 1);
+        const neighbors = adj.get(u) ?? [];
+        for (const { neighbor: v } of neighbors) {
+          if (getDirectedFlow(u, v) <= 0) continue;
+          const vState = state.get(v) ?? 0;
+          if (vState === 1) {
+            cycleStart = v;
+            cycleEnd = u;
+            return true;
+          }
+          if (vState === 0) {
+            parentNode.set(v, u);
+            if (dfs(v)) return true;
+          }
+        }
+        state.set(u, 2);
+        return false;
+      };
+      let found = false;
+      for (const node of activeNodes) {
+        if ((state.get(node) ?? 0) === 0) {
+          if (dfs(node)) {
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found || !cycleStart || !cycleEnd) break;
+      const cyclePairs = [
+        { u: cycleEnd, v: cycleStart }
+      ];
+      let cur = cycleEnd;
+      while (cur !== cycleStart) {
+        const prev = parentNode.get(cur);
+        cyclePairs.push({ u: prev, v: cur });
+        cur = prev;
+      }
+      let minCycleFlow = Infinity;
+      for (const pair of cyclePairs) {
+        minCycleFlow = Math.min(minCycleFlow, getDirectedFlow(pair.u, pair.v));
+      }
+      if (minCycleFlow <= 0 || !Number.isFinite(minCycleFlow)) break;
+      for (const pair of cyclePairs) {
+        setDirectedFlow(pair.u, pair.v, getDirectedFlow(pair.u, pair.v) - minCycleFlow);
+      }
+    }
+  };
+  cancelDirectedCycles();
+  {
+    const state = /* @__PURE__ */ new Map();
+    const checkDfs = (u) => {
+      state.set(u, 1);
+      for (const { neighbor: v } of adj.get(u) ?? []) {
+        if (getDirectedFlow(u, v) <= 0) continue;
+        const s = state.get(v) ?? 0;
+        if (s === 1) return true;
+        if (s === 0 && checkDfs(v)) return true;
+      }
+      state.set(u, 2);
+      return false;
+    };
+    for (const node of getAllGridNodes()) {
+      if ((state.get(node) ?? 0) === 0 && checkDfs(node)) {
+        hasDirectedCycle = true;
+        break;
+      }
+    }
+  }
+  const edgeFlows = {};
+  for (const link of Object.values(board.links)) {
+    const { nodeA, nodeB } = parseEdgeId(link.id);
+    const flowAB = getDirectedFlow(nodeA, nodeB);
+    const flowBA = getDirectedFlow(nodeB, nodeA);
+    const flowMW = Math.max(flowAB, flowBA);
+    const fromNode = flowBA > flowAB ? nodeB : nodeA;
+    const toNode = flowBA > flowAB ? nodeA : nodeB;
+    const capacityMW = link.status === "intact" ? CONFIG.LINKS[link.type].capacityMW : 0;
+    const contribMap = edgeContributors.get(link.id);
+    const contributors = [];
+    for (const [dId, mw] of contribMap.entries()) {
+      if (mw > 0) contributors.push({ districtId: dId, mw });
+    }
+    edgeFlows[link.id] = {
+      edgeId: link.id,
+      type: link.type,
+      status: link.status,
+      capacityMW,
+      flowMW,
+      fromNode,
+      toNode,
+      isSaturated: link.status === "intact" && flowMW >= capacityMW && capacityMW > 0,
+      isDamagedBottleneck: false,
+      contributors
+    };
+  }
+  const diagnostics = {};
+  const findBuiltPath = (targetNode, intactOnly) => {
+    const q = [genNode];
+    const vis = /* @__PURE__ */ new Set([genNode]);
+    const par = /* @__PURE__ */ new Map();
+    while (q.length > 0 && !vis.has(targetNode)) {
+      const u = q.shift();
+      for (const { neighbor: v, link } of adj.get(u) ?? []) {
+        if (vis.has(v)) continue;
+        if (intactOnly && link.status !== "intact") continue;
+        if (!canTraverseDirected(link, u, v)) continue;
+        vis.add(v);
+        par.set(v, { prev: u, link });
+        q.push(v);
+      }
+    }
+    if (!vis.has(targetNode)) return null;
+    const links = [];
+    let cur = targetNode;
+    while (cur !== genNode) {
+      const step = par.get(cur);
+      links.push(step.link);
+      cur = step.prev;
+    }
+    links.reverse();
+    return links;
+  };
+  const residualReachable = /* @__PURE__ */ new Set([genNode]);
+  {
+    const q = [genNode];
+    while (q.length > 0) {
+      const u = q.shift();
+      for (const { neighbor: v, link } of adj.get(u) ?? []) {
+        if (residualReachable.has(v)) continue;
+        if (link.status !== "intact") continue;
+        if (!canTraverseDirected(link, u, v)) continue;
+        const cap = CONFIG.LINKS[link.type].capacityMW;
+        const revFlow = getDirectedFlow(v, u);
+        const fwdFlow = getDirectedFlow(u, v);
+        if (cap - fwdFlow + revFlow <= 0) continue;
+        residualReachable.add(v);
+        q.push(v);
+      }
+    }
+  }
+  for (const d of sortedDistricts) {
+    const alloc = districtAllocations[d.id];
+    const targetNode = coordKey(d.row, d.col);
+    if (alloc.unmetMW <= 0) {
+      diagnostics[d.id] = {
+        districtId: d.id,
+        districtName: d.name,
+        priority: d.priority,
+        reason: "OK",
+        demandMW: alloc.demandMW,
+        deliveredMW: alloc.deliveredMW,
+        unmetMW: 0,
+        bottleneckEdgeIds: [],
+        explanation: `${d.id} (${d.name}, P${d.priority}) is fully powered (${alloc.deliveredMW}/${alloc.demandMW} MW).`
+      };
+      continue;
+    }
+    const builtPathAll = findBuiltPath(targetNode, false);
+    const builtPathIntact = findBuiltPath(targetNode, true);
+    if (!builtPathAll) {
+      diagnostics[d.id] = {
+        districtId: d.id,
+        districtName: d.name,
+        priority: d.priority,
+        reason: "DISCONNECTED_NO_PATH",
+        demandMW: alloc.demandMW,
+        deliveredMW: alloc.deliveredMW,
+        unmetMW: alloc.unmetMW,
+        bottleneckEdgeIds: [],
+        explanation: `${d.id} (${d.name}, P${d.priority}) is DISCONNECTED (${alloc.deliveredMW}/${alloc.demandMW} MW): no link path reaches (${targetNode}).`
+      };
+      continue;
+    }
+    if (!builtPathIntact) {
+      const damagedEdges = builtPathAll.filter((l) => l.status === "damaged").map((l) => l.id);
+      for (const eId of damagedEdges) {
+        if (edgeFlows[eId]) edgeFlows[eId].isDamagedBottleneck = true;
+      }
+      const edgeLabels = damagedEdges.map(formatEdgeLabel).join(", ");
+      diagnostics[d.id] = {
+        districtId: d.id,
+        districtName: d.name,
+        priority: d.priority,
+        reason: "DAMAGED_LINE_OUTAGE",
+        demandMW: alloc.demandMW,
+        deliveredMW: alloc.deliveredMW,
+        unmetMW: alloc.unmetMW,
+        bottleneckEdgeIds: damagedEdges,
+        explanation: `${d.id} (${d.name}, P${d.priority}) is CUT OFF by storm damage on ${edgeLabels} (short ${alloc.unmetMW} MW). Repair the damaged link or complete a bypass loop.`
+      };
+      continue;
+    }
+    if (remainingGenMW <= 0 && residualReachable.has(targetNode)) {
+      diagnostics[d.id] = {
+        districtId: d.id,
+        districtName: d.name,
+        priority: d.priority,
+        reason: "GENERATOR_CAPACITY_EXHAUSTED",
+        demandMW: alloc.demandMW,
+        deliveredMW: alloc.deliveredMW,
+        unmetMW: alloc.unmetMW,
+        bottleneckEdgeIds: [],
+        explanation: `${d.id} (${d.name}, P${d.priority}) is short ${alloc.unmetMW} MW: Central Generator output (${scenario.generator.outputMW} MW) is exhausted by higher-priority districts.`
+      };
+      continue;
+    }
+    const bottleneckEdgeIds = [];
+    for (const link of builtPathIntact) {
+      const ef = edgeFlows[link.id];
+      if (ef && ef.isSaturated && !bottleneckEdgeIds.includes(link.id)) {
+        bottleneckEdgeIds.push(link.id);
+      }
+    }
+    for (const link of builtPathAll) {
+      if (link.status === "damaged" && !bottleneckEdgeIds.includes(link.id)) {
+        bottleneckEdgeIds.push(link.id);
+        if (edgeFlows[link.id]) edgeFlows[link.id].isDamagedBottleneck = true;
+      }
+    }
+    if (bottleneckEdgeIds.length === 0) {
+      for (const u of residualReachable) {
+        for (const { neighbor: v, link } of adj.get(u) ?? []) {
+          if (!residualReachable.has(v) && edgeFlows[link.id]?.isSaturated) {
+            if (!bottleneckEdgeIds.includes(link.id)) {
+              bottleneckEdgeIds.push(link.id);
+            }
+          }
+        }
+      }
+    }
+    const firstEdgeId = bottleneckEdgeIds[0];
+    const firstEdgeFlow = firstEdgeId ? edgeFlows[firstEdgeId] : void 0;
+    const edgeDesc = firstEdgeId ? `${formatEdgeLabel(firstEdgeId)} (${firstEdgeFlow?.flowMW ?? 0}/${firstEdgeFlow?.capacityMW ?? 0} MW)` : "upstream feeder";
+    diagnostics[d.id] = {
+      districtId: d.id,
+      districtName: d.name,
+      priority: d.priority,
+      reason: "CAPACITY_BOTTLENECK",
+      demandMW: alloc.demandMW,
+      deliveredMW: alloc.deliveredMW,
+      unmetMW: alloc.unmetMW,
+      bottleneckEdgeIds,
+      explanation: `${d.id} (${d.name}, P${d.priority}) short by ${alloc.unmetMW} MW (${alloc.deliveredMW}/${alloc.demandMW} MW): shared link ${edgeDesc} is saturated. Upgrade to Heavy Trunk (8 MW) or add a bypass loop.`
+    };
+  }
+  const intactReachable = /* @__PURE__ */ new Set([genNode]);
+  {
+    const q = [genNode];
+    while (q.length > 0) {
+      const u = q.shift();
+      for (const { neighbor: v, link } of adj.get(u) ?? []) {
+        if (intactReachable.has(v)) continue;
+        if (link.status !== "intact") continue;
+        intactReachable.add(v);
+        q.push(v);
+      }
+    }
+  }
+  const energizedRelayIds = scenario.relays.filter((r) => intactReachable.has(coordKey(r.row, r.col))).map((r) => r.id);
+  let totalDemandMW = 0;
+  let totalDeliveredMW = 0;
+  let totalUnmetMW = 0;
+  for (const d of sortedDistricts) {
+    const a = districtAllocations[d.id];
+    totalDemandMW += a.demandMW;
+    totalDeliveredMW += a.deliveredMW;
+    totalUnmetMW += a.unmetMW;
+  }
+  return {
+    generatorOutputMW: scenario.generator.outputMW,
+    generatorUsedMW: totalDeliveredMW,
+    totalDemandMW,
+    totalDeliveredMW,
+    totalUnmetMW,
+    edgeFlows,
+    districtAllocations,
+    diagnostics,
+    energizedRelayIds,
+    hasDirectedCycle
+  };
+}
+function resolveStormStrikesForTurn(board, scenario, turn) {
+  const postStrikeBoard = cloneBoard(board);
+  const strikes = scenario.stormStrikes.filter((s) => s.turn === turn);
+  const reports = [];
+  for (const strike of strikes) {
+    const link = postStrikeBoard.links[strike.edgeId];
+    if (!link) {
+      reports.push({
+        edgeId: strike.edgeId,
+        severity: strike.severity,
+        label: strike.label,
+        outcome: "missed_no_link"
+      });
+      continue;
+    }
+    if (link.status === "damaged") {
+      reports.push({
+        edgeId: strike.edgeId,
+        severity: strike.severity,
+        label: strike.label,
+        outcome: "already_damaged",
+        linkType: link.type
+      });
+      continue;
+    }
+    if (strike.severity === "wind" && CONFIG.LINKS[link.type].windImmune) {
+      reports.push({
+        edgeId: strike.edgeId,
+        severity: strike.severity,
+        label: strike.label,
+        outcome: "deflected",
+        linkType: link.type
+      });
+      continue;
+    }
+    link.status = "damaged";
+    reports.push({
+      edgeId: strike.edgeId,
+      severity: strike.severity,
+      label: strike.label,
+      outcome: "damaged",
+      linkType: link.type
+    });
+  }
+  return { postStrikeBoard, reports };
+}
+function previewTurnOutcome(state) {
+  const turnIdx = Math.max(0, Math.min(CONFIG.TOTAL_TURNS - 1, state.turn - 1));
+  const { postStrikeBoard, reports } = resolveStormStrikesForTurn(
+    state.board,
+    state.scenario,
+    state.turn
+  );
+  const flow = resolvePowerFlow(postStrikeBoard, state.scenario, void 0, turnIdx);
+  const projectedMaterialIncome = CONFIG.BASE_MATERIAL_INCOME_PER_TURN + flow.energizedRelayIds.length * CONFIG.RELAY_MATERIAL_BONUS_PER_TURN;
+  const projectedCityCumulativeUnmetMW = state.cityCumulativeUnmetMW + flow.totalUnmetMW;
+  const willFailCity = projectedCityCumulativeUnmetMW > state.scenario.cityOutageThresholdMW;
+  const failingDistrictIds = [];
+  for (const d of state.scenario.districts) {
+    const currentCum = state.districts[d.id].cumulativeUnmetMW;
+    const turnUnmet = flow.districtAllocations[d.id].unmetMW;
+    if (currentCum + turnUnmet > d.unmetLimitMW) {
+      failingDistrictIds.push(d.id);
+    }
+  }
+  return {
+    turn: state.turn,
+    imminentStrikes: reports,
+    postStrikeBoard,
+    flow,
+    projectedMaterialIncome,
+    projectedCityCumulativeUnmetMW,
+    willFailCity,
+    failingDistrictIds
+  };
+}
+function createInitialGameState(scenario = SCENARIO_1_HARBOR_SQUALL) {
+  const links = {};
+  for (const init of scenario.initialLinks) {
+    const id = makeEdgeId(init.from, init.to);
+    links[id] = {
+      id,
+      type: init.type,
+      status: init.status ?? "intact",
+      directionConstraint: init.directionConstraint ?? "auto"
+    };
+  }
+  const board = { links };
+  const districts = {};
+  for (const d of scenario.districts) {
+    districts[d.id] = {
+      id: d.id,
+      name: d.name,
+      shortCode: d.shortCode,
+      priority: d.priority,
+      row: d.row,
+      col: d.col,
+      demandCurve: d.demandCurve,
+      unmetLimitMW: d.unmetLimitMW,
+      cumulativeUnmetMW: 0,
+      lastTurnDeliveredMW: 0,
+      lastTurnUnmetMW: 0
+    };
+  }
+  const state = {
+    rulesVersion: CONFIG.RULES_VERSION,
+    scenarioId: scenario.id,
+    scenario,
+    turn: 1,
+    status: "playing",
+    lossReason: null,
+    materials: scenario.startingMaterials,
+    actionsRemaining: CONFIG.MAX_ACTIONS_PER_TURN,
+    board,
+    districts,
+    cityCumulativeUnmetMW: 0,
+    stagedActions: [],
+    turnStartSnapshot: {
+      board: cloneBoard(board),
+      materials: scenario.startingMaterials,
+      actionsRemaining: CONFIG.MAX_ACTIONS_PER_TURN
+    },
+    preview: null,
+    history: []
+  };
+  state.preview = previewTurnOutcome(state);
+  return state;
+}
+function validateEdgeEndpoints(scenario, edgeId) {
+  const { coordA, coordB } = parseEdgeId(edgeId);
+  if (coordA.row < 0 || coordA.row >= CONFIG.GRID_SIZE || coordA.col < 0 || coordA.col >= CONFIG.GRID_SIZE || coordB.row < 0 || coordB.row >= CONFIG.GRID_SIZE || coordB.col < 0 || coordB.col >= CONFIG.GRID_SIZE) {
+    return { ok: false, error: "Coordinates out of 8x8 board bounds." };
+  }
+  if (!isOrthogonallyAdjacent(coordA, coordB)) {
+    return { ok: false, error: "Links can only connect orthogonally adjacent cells." };
+  }
+  if (isBlockedCoord(scenario, coordA) || isBlockedCoord(scenario, coordB)) {
+    return { ok: false, error: "Cannot build across blocked harbor/ridge terrain." };
+  }
+  return { ok: true };
+}
+function stagePlaceLink(state, edgeId, linkType) {
+  if (state.status !== "playing") {
+    return { ok: false, error: "Game has already ended." };
+  }
+  if (state.actionsRemaining <= 0) {
+    return { ok: false, error: "No Actions remaining this turn (max 2 per turn). Undo or Commit Turn." };
+  }
+  const canonicalId = makeEdgeId(parseEdgeId(edgeId).coordA, parseEdgeId(edgeId).coordB);
+  const valid = validateEdgeEndpoints(state.scenario, canonicalId);
+  if (!valid.ok) return valid;
+  if (state.board.links[canonicalId]) {
+    return { ok: false, error: "A link already exists on this corridor. Use Upgrade or Repair instead." };
+  }
+  const cost = CONFIG.LINKS[linkType].buildCostMat;
+  if (state.materials < cost) {
+    return { ok: false, error: `Insufficient Materials: need ${cost} Mat, have ${state.materials} Mat.` };
+  }
+  const record = {
+    type: "place",
+    description: `Place ${CONFIG.LINKS[linkType].name} at ${formatEdgeLabel(canonicalId)} (-${cost} Mat)`,
+    edgeId: canonicalId,
+    linkType,
+    costMat: cost,
+    previousBoard: cloneBoard(state.board),
+    previousMaterials: state.materials,
+    previousActionsRemaining: state.actionsRemaining
+  };
+  state.board.links[canonicalId] = {
+    id: canonicalId,
+    type: linkType,
+    status: "intact",
+    directionConstraint: "auto"
+  };
+  state.materials -= cost;
+  state.actionsRemaining -= 1;
+  state.stagedActions.push(record);
+  state.preview = previewTurnOutcome(state);
+  return { ok: true };
+}
+function stageRepairLink(state, edgeId) {
+  if (state.status !== "playing") {
+    return { ok: false, error: "Game has already ended." };
+  }
+  if (state.actionsRemaining <= 0) {
+    return { ok: false, error: "No Actions remaining this turn (max 2 per turn)." };
+  }
+  const canonicalId = makeEdgeId(parseEdgeId(edgeId).coordA, parseEdgeId(edgeId).coordB);
+  const existing = state.board.links[canonicalId];
+  if (!existing) {
+    return { ok: false, error: "No link on this corridor to repair." };
+  }
+  if (existing.status === "intact") {
+    return { ok: false, error: "Link is already intact." };
+  }
+  const cost = CONFIG.LINKS[existing.type].repairCostMat;
+  if (state.materials < cost) {
+    return { ok: false, error: `Insufficient Materials to repair: need ${cost} Mat, have ${state.materials} Mat.` };
+  }
+  const record = {
+    type: "repair",
+    description: `Repair ${CONFIG.LINKS[existing.type].name} at ${formatEdgeLabel(canonicalId)} (-${cost} Mat)`,
+    edgeId: canonicalId,
+    linkType: existing.type,
+    costMat: cost,
+    previousBoard: cloneBoard(state.board),
+    previousMaterials: state.materials,
+    previousActionsRemaining: state.actionsRemaining
+  };
+  existing.status = "intact";
+  state.materials -= cost;
+  state.actionsRemaining -= 1;
+  state.stagedActions.push(record);
+  state.preview = previewTurnOutcome(state);
+  return { ok: true };
+}
+function stageUpgradeLink(state, edgeId, targetType) {
+  if (state.status !== "playing") {
+    return { ok: false, error: "Game has already ended." };
+  }
+  if (state.actionsRemaining <= 0) {
+    return { ok: false, error: "No Actions remaining this turn (max 2 per turn)." };
+  }
+  const canonicalId = makeEdgeId(parseEdgeId(edgeId).coordA, parseEdgeId(edgeId).coordB);
+  const existing = state.board.links[canonicalId];
+  if (!existing) {
+    return { ok: false, error: "No existing link on this corridor to upgrade. Use Place instead." };
+  }
+  if (existing.type === targetType && existing.status === "intact") {
+    return { ok: false, error: `Link is already an intact ${CONFIG.LINKS[targetType].name}.` };
+  }
+  const cost = getUpgradeCostMat(existing.type, targetType, existing.status === "damaged");
+  if (state.materials < cost) {
+    return { ok: false, error: `Insufficient Materials to upgrade: need ${cost} Mat, have ${state.materials} Mat.` };
+  }
+  const record = {
+    type: "upgrade",
+    description: `Upgrade ${formatEdgeLabel(canonicalId)} to ${CONFIG.LINKS[targetType].name} (-${cost} Mat)`,
+    edgeId: canonicalId,
+    linkType: targetType,
+    costMat: cost,
+    previousBoard: cloneBoard(state.board),
+    previousMaterials: state.materials,
+    previousActionsRemaining: state.actionsRemaining
+  };
+  existing.type = targetType;
+  existing.status = "intact";
+  state.materials -= cost;
+  state.actionsRemaining -= 1;
+  state.stagedActions.push(record);
+  state.preview = previewTurnOutcome(state);
+  return { ok: true };
+}
+function stageRerouteLink(state, fromEdgeId, options) {
+  if (state.status !== "playing") {
+    return { ok: false, error: "Game has already ended." };
+  }
+  if (state.actionsRemaining <= 0) {
+    return { ok: false, error: "No Actions remaining this turn (max 2 per turn)." };
+  }
+  const canonicalFrom = makeEdgeId(parseEdgeId(fromEdgeId).coordA, parseEdgeId(fromEdgeId).coordB);
+  const existing = state.board.links[canonicalFrom];
+  if (!existing) {
+    return { ok: false, error: "No link at source corridor to reroute." };
+  }
+  const cost = CONFIG.REROUTE_COST_MAT;
+  if (state.materials < cost) {
+    return { ok: false, error: `Insufficient Materials to reroute: need ${cost} Mat.` };
+  }
+  if (options.toEdgeId) {
+    const canonicalTo = makeEdgeId(
+      parseEdgeId(options.toEdgeId).coordA,
+      parseEdgeId(options.toEdgeId).coordB
+    );
+    const valid = validateEdgeEndpoints(state.scenario, canonicalTo);
+    if (!valid.ok) return valid;
+    if (state.board.links[canonicalTo]) {
+      return { ok: false, error: "Destination corridor already has a link." };
+    }
+    const record2 = {
+      type: "reroute",
+      description: `Reroute ${CONFIG.LINKS[existing.type].name} ${formatEdgeLabel(canonicalFrom)} \u2192 ${formatEdgeLabel(canonicalTo)} (-${cost} Mat)`,
+      edgeId: canonicalFrom,
+      targetEdgeId: canonicalTo,
+      linkType: existing.type,
+      costMat: cost,
+      previousBoard: cloneBoard(state.board),
+      previousMaterials: state.materials,
+      previousActionsRemaining: state.actionsRemaining
+    };
+    delete state.board.links[canonicalFrom];
+    state.board.links[canonicalTo] = {
+      id: canonicalTo,
+      type: existing.type,
+      status: existing.status,
+      directionConstraint: options.directionConstraint ?? "auto"
+    };
+    state.materials -= cost;
+    state.actionsRemaining -= 1;
+    state.stagedActions.push(record2);
+    state.preview = previewTurnOutcome(state);
+    return { ok: true };
+  }
+  const nextDir = options.directionConstraint ?? (existing.directionConstraint === "auto" ? "forward" : existing.directionConstraint === "forward" ? "reverse" : "auto");
+  const record = {
+    type: "reroute",
+    description: `Set flow gate on ${formatEdgeLabel(canonicalFrom)} to ${nextDir.toUpperCase()} (-${cost} Mat)`,
+    edgeId: canonicalFrom,
+    linkType: existing.type,
+    costMat: cost,
+    previousBoard: cloneBoard(state.board),
+    previousMaterials: state.materials,
+    previousActionsRemaining: state.actionsRemaining
+  };
+  existing.directionConstraint = nextDir;
+  state.materials -= cost;
+  state.actionsRemaining -= 1;
+  state.stagedActions.push(record);
+  state.preview = previewTurnOutcome(state);
+  return { ok: true };
+}
+function undoLastStagedAction(state) {
+  const last = state.stagedActions.pop();
+  if (!last) {
+    return { ok: false, error: "No staged actions to undo this turn." };
+  }
+  state.board = cloneBoard(last.previousBoard);
+  state.materials = last.previousMaterials;
+  state.actionsRemaining = last.previousActionsRemaining;
+  state.preview = previewTurnOutcome(state);
+  return { ok: true };
+}
+function resetStagedActions(state) {
+  if (state.stagedActions.length === 0) {
+    return { ok: false, error: "No staged actions to reset." };
+  }
+  state.board = cloneBoard(state.turnStartSnapshot.board);
+  state.materials = state.turnStartSnapshot.materials;
+  state.actionsRemaining = state.turnStartSnapshot.actionsRemaining;
+  state.stagedActions = [];
+  state.preview = previewTurnOutcome(state);
+  return { ok: true };
+}
+function commitTurn(state) {
+  if (state.status !== "playing") {
+    return state.preview;
+  }
+  const outcome = previewTurnOutcome(state);
+  state.board = cloneBoard(outcome.postStrikeBoard);
+  state.cityCumulativeUnmetMW = outcome.projectedCityCumulativeUnmetMW;
+  for (const d of state.scenario.districts) {
+    const alloc = outcome.flow.districtAllocations[d.id];
+    const distState = state.districts[d.id];
+    distState.lastTurnDeliveredMW = alloc.deliveredMW;
+    distState.lastTurnUnmetMW = alloc.unmetMW;
+    distState.cumulativeUnmetMW += alloc.unmetMW;
+  }
+  state.history.push({
+    turn: state.turn,
+    strikes: outcome.imminentStrikes,
+    totalDemandMW: outcome.flow.totalDemandMW,
+    totalDeliveredMW: outcome.flow.totalDeliveredMW,
+    totalUnmetMW: outcome.flow.totalUnmetMW,
+    materialIncome: outcome.projectedMaterialIncome,
+    diagnostics: outcome.flow.diagnostics
+  });
+  if (outcome.failingDistrictIds.length > 0) {
+    const failedId = outcome.failingDistrictIds[0];
+    const dState = state.districts[failedId];
+    const diag = outcome.flow.diagnostics[failedId];
+    state.status = "lost";
+    state.lossReason = `CRITICAL DISTRICT BLACKOUT: ${dState.id} (${dState.name}) reached ${dState.cumulativeUnmetMW}/${dState.unmetLimitMW} MW cumulative unmet demand. ${diag.explanation}`;
+    state.stagedActions = [];
+    return outcome;
+  }
+  if (outcome.willFailCity) {
+    state.status = "lost";
+    state.lossReason = `CITY-WIDE GRID COLLAPSE: Cumulative city unmet demand reached ${state.cityCumulativeUnmetMW}/${state.scenario.cityOutageThresholdMW} MW.`;
+    state.stagedActions = [];
+    return outcome;
+  }
+  if (state.turn >= CONFIG.TOTAL_TURNS) {
+    state.status = "won";
+    state.stagedActions = [];
+    return outcome;
+  }
+  state.turn += 1;
+  state.materials += outcome.projectedMaterialIncome;
+  state.actionsRemaining = CONFIG.MAX_ACTIONS_PER_TURN;
+  state.stagedActions = [];
+  state.turnStartSnapshot = {
+    board: cloneBoard(state.board),
+    materials: state.materials,
+    actionsRemaining: CONFIG.MAX_ACTIONS_PER_TURN
+  };
+  state.preview = previewTurnOutcome(state);
+  return outcome;
+}
+function getForecastStrikes(scenario, currentTurn) {
+  return {
+    imminent: scenario.stormStrikes.filter((s) => s.turn === currentTurn),
+    turnPlus1: scenario.stormStrikes.filter((s) => s.turn === currentTurn + 1),
+    turnPlus2: scenario.stormStrikes.filter((s) => s.turn === currentTurn + 2)
+  };
+}
+var SCENARIO_1_EFFICIENT_TRUNK_SCRIPT = {
+  1: [
+    { kind: "place", from: { row: 3, col: 2 }, to: { row: 3, col: 3 }, linkType: "standard" },
+    { kind: "place", from: { row: 3, col: 3 }, to: { row: 3, col: 4 }, linkType: "standard" }
+  ],
+  2: [
+    { kind: "upgrade", from: { row: 3, col: 2 }, to: { row: 3, col: 3 }, linkType: "heavy" },
+    { kind: "place", from: { row: 2, col: 5 }, to: { row: 2, col: 6 }, linkType: "standard" }
+  ],
+  3: [
+    { kind: "upgrade", from: { row: 1, col: 3 }, to: { row: 1, col: 4 }, linkType: "heavy" },
+    { kind: "upgrade", from: { row: 3, col: 3 }, to: { row: 3, col: 4 }, linkType: "shielded" }
+  ],
+  4: [
+    { kind: "upgrade", from: { row: 2, col: 4 }, to: { row: 2, col: 5 }, linkType: "shielded" }
+  ],
+  5: [
+    { kind: "upgrade", from: { row: 5, col: 3 }, to: { row: 5, col: 4 }, linkType: "shielded" }
+  ],
+  6: [
+    { kind: "upgrade", from: { row: 1, col: 4 }, to: { row: 2, col: 4 }, linkType: "shielded" }
+  ]
+};
+var SCENARIO_1_REDUNDANT_LOOP_SCRIPT = {
+  1: [
+    { kind: "place", from: { row: 3, col: 2 }, to: { row: 3, col: 3 }, linkType: "standard" },
+    { kind: "place", from: { row: 3, col: 3 }, to: { row: 3, col: 4 }, linkType: "standard" }
+  ],
+  2: [
+    { kind: "place", from: { row: 4, col: 4 }, to: { row: 3, col: 4 }, linkType: "standard" },
+    { kind: "place", from: { row: 2, col: 5 }, to: { row: 2, col: 6 }, linkType: "standard" }
+  ],
+  3: [
+    { kind: "place", from: { row: 3, col: 5 }, to: { row: 2, col: 5 }, linkType: "standard" },
+    { kind: "upgrade", from: { row: 5, col: 3 }, to: { row: 5, col: 4 }, linkType: "heavy" }
+  ],
+  4: [
+    { kind: "upgrade", from: { row: 5, col: 4 }, to: { row: 4, col: 4 }, linkType: "heavy" },
+    { kind: "upgrade", from: { row: 4, col: 4 }, to: { row: 3, col: 4 }, linkType: "heavy" }
+  ],
+  5: [
+    { kind: "upgrade", from: { row: 1, col: 3 }, to: { row: 1, col: 4 }, linkType: "heavy" },
+    { kind: "upgrade", from: { row: 3, col: 4 }, to: { row: 3, col: 5 }, linkType: "heavy" }
+  ],
+  6: [
+    { kind: "repair", from: { row: 3, col: 3 }, to: { row: 3, col: 4 } },
+    { kind: "upgrade", from: { row: 3, col: 2 }, to: { row: 3, col: 3 }, linkType: "heavy" }
+  ],
+  7: [
+    { kind: "upgrade", from: { row: 3, col: 3 }, to: { row: 3, col: 4 }, linkType: "heavy" },
+    { kind: "place", from: { row: 4, col: 3 }, to: { row: 4, col: 4 }, linkType: "heavy" }
+  ],
+  8: [
+    { kind: "repair", from: { row: 2, col: 4 }, to: { row: 2, col: 5 } },
+    { kind: "place", from: { row: 1, col: 3 }, to: { row: 2, col: 3 }, linkType: "standard" }
+  ],
+  9: [
+    { kind: "place", from: { row: 2, col: 3 }, to: { row: 2, col: 4 }, linkType: "standard" },
+    { kind: "repair", from: { row: 5, col: 3 }, to: { row: 5, col: 4 } }
+  ]
+};
+var SCENARIO_1_NEGLECT_LOSS_SCRIPT = {
+  1: [
+    { kind: "place", from: { row: 3, col: 2 }, to: { row: 3, col: 3 }, linkType: "standard" },
+    { kind: "place", from: { row: 3, col: 3 }, to: { row: 3, col: 4 }, linkType: "standard" }
+  ]
+};
+
+// games/02-blackout-dispatch/src/persistence.ts
+function serializeGameState(state) {
+  const payload = {
+    rulesVersion: CONFIG.RULES_VERSION,
+    savedAtIso: (/* @__PURE__ */ new Date()).toISOString(),
+    scenarioId: state.scenarioId,
+    seed: state.scenario.seed,
+    turn: state.turn,
+    status: state.status,
+    lossReason: state.lossReason,
+    materials: state.materials,
+    actionsRemaining: state.actionsRemaining,
+    board: cloneBoard(state.board),
+    districts: JSON.parse(JSON.stringify(state.districts)),
+    cityCumulativeUnmetMW: state.cityCumulativeUnmetMW,
+    stagedActions: JSON.parse(JSON.stringify(state.stagedActions)),
+    turnStartSnapshot: {
+      board: cloneBoard(state.turnStartSnapshot.board),
+      materials: state.turnStartSnapshot.materials,
+      actionsRemaining: state.turnStartSnapshot.actionsRemaining
+    },
+    history: JSON.parse(JSON.stringify(state.history))
+  };
+  return JSON.stringify(payload);
+}
+function deserializeGameState(rawJson) {
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (!parsed || typeof parsed !== "object") return null;
+    if (parsed.rulesVersion !== CONFIG.RULES_VERSION) return null;
+    if (typeof parsed.scenarioId !== "string") return null;
+    if (typeof parsed.turn !== "number" || parsed.turn < 1 || parsed.turn > CONFIG.TOTAL_TURNS) {
+      return null;
+    }
+    if (typeof parsed.materials !== "number" || typeof parsed.actionsRemaining !== "number") {
+      return null;
+    }
+    if (!parsed.board || typeof parsed.board.links !== "object") return null;
+    if (!parsed.districts || typeof parsed.districts !== "object") return null;
+    if (!parsed.turnStartSnapshot || typeof parsed.turnStartSnapshot.board?.links !== "object") {
+      return null;
+    }
+    const scenario = getScenarioById(parsed.scenarioId, parsed.seed ?? CONFIG.DEFAULT_SEED);
+    const baseState = createInitialGameState(scenario);
+    baseState.turn = parsed.turn;
+    baseState.status = parsed.status === "won" || parsed.status === "lost" ? parsed.status : "playing";
+    baseState.lossReason = parsed.lossReason ?? null;
+    baseState.materials = parsed.materials;
+    baseState.actionsRemaining = parsed.actionsRemaining;
+    baseState.board = cloneBoard(parsed.board);
+    baseState.cityCumulativeUnmetMW = typeof parsed.cityCumulativeUnmetMW === "number" ? parsed.cityCumulativeUnmetMW : 0;
+    for (const d of scenario.districts) {
+      const savedDist = parsed.districts[d.id];
+      if (savedDist && typeof savedDist.cumulativeUnmetMW === "number") {
+        baseState.districts[d.id] = {
+          ...baseState.districts[d.id],
+          cumulativeUnmetMW: savedDist.cumulativeUnmetMW,
+          lastTurnDeliveredMW: savedDist.lastTurnDeliveredMW ?? 0,
+          lastTurnUnmetMW: savedDist.lastTurnUnmetMW ?? 0
+        };
+      }
+    }
+    baseState.stagedActions = Array.isArray(parsed.stagedActions) ? parsed.stagedActions : [];
+    baseState.turnStartSnapshot = {
+      board: cloneBoard(parsed.turnStartSnapshot.board),
+      materials: parsed.turnStartSnapshot.materials,
+      actionsRemaining: parsed.turnStartSnapshot.actionsRemaining
+    };
+    baseState.history = Array.isArray(parsed.history) ? parsed.history : [];
+    baseState.preview = previewTurnOutcome(baseState);
+    return baseState;
+  } catch {
+    return null;
+  }
+}
+function saveGameStateToStorage(state, storageKey = CONFIG.STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    window.localStorage.setItem(storageKey, serializeGameState(state));
+    return true;
+  } catch {
+    return false;
+  }
+}
+function loadGameStateFromStorage(storageKey = CONFIG.STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const restored = deserializeGameState(raw);
+    if (!restored) {
+      window.localStorage.removeItem(storageKey);
+      return null;
+    }
+    return restored;
+  } catch {
+    return null;
+  }
+}
+function clearSavedGameState(storageKey = CONFIG.STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    window.localStorage.removeItem(storageKey);
+  } catch {
+  }
+}
+
+// games/02-blackout-dispatch/src/audio.ts
+var DispatchAudioEngine = class {
+  ctx = null;
+  muted = false;
+  isMuted() {
+    return this.muted;
+  }
+  setMuted(muted) {
+    this.muted = muted;
+  }
+  toggleMute() {
+    this.muted = !this.muted;
+    return this.muted;
+  }
+  getContext() {
+    if (this.muted) return null;
+    if (typeof window === "undefined") return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!this.ctx) {
+      try {
+        this.ctx = new AudioCtx();
+      } catch {
+        return null;
+      }
+    }
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  playRelayClick(pitchHz = 520) {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(pitchHz, now);
+      osc.frequency.exponentialRampToValueAtTime(pitchHz * 1.4, now + 0.045);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.055);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.06);
+    } catch {
+    }
+  }
+  playUndoClick() {
+    this.playRelayClick(340);
+  }
+  playTurnCommitHum(hasShortfall) {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      const baseFreq = hasShortfall ? 110 : 180;
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(hasShortfall ? 82 : 240, now + 0.18);
+      gain.gain.setValueAtTime(0.09, now);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.2);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.21);
+    } catch {
+    }
+  }
+  playStormStrike() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(95, now);
+      osc.frequency.exponentialRampToValueAtTime(42, now + 0.25);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.27);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.28);
+    } catch {
+    }
+  }
+  playBlackoutAlarm() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      for (let i = 0; i < 2; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "square";
+        const start = now + i * 0.14;
+        osc.frequency.setValueAtTime(440, start);
+        osc.frequency.setValueAtTime(310, start + 0.07);
+        gain.gain.setValueAtTime(0.06, start);
+        gain.gain.exponentialRampToValueAtTime(1e-3, start + 0.13);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.135);
+      }
+    } catch {
+    }
+  }
+  destroy() {
+    if (this.ctx) {
+      this.ctx.close().catch(() => {
+      });
+      this.ctx = null;
+    }
+  }
+};
+
+// games/02-blackout-dispatch/src/ui.ts
+var STYLES = `
+.bd-root {
+  container-type: inline-size;
+  container-name: dispatch-shell;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #09111e;
+  color: #e2e8f0;
+  min-block-size: 100dvh;
+  padding: clamp(0.5rem, 1.5vw, 1.25rem);
+  box-sizing: border-box;
+}
+
+.bd-root *, .bd-root *::before, .bd-root *::after {
+  box-sizing: border-box;
+}
+
+.bd-visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+.bd-root :where(button, select, input, [role="button"]):focus-visible {
+  outline: 3px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+.bd-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: #0f1b2d;
+  border: 1px solid #1e3a5f;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  margin-block-end: 0.75rem;
+}
+
+.bd-title-block h1 {
+  margin: 0;
+  font-size: clamp(1.1rem, 0.9rem + 1vw, 1.55rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bd-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.bd-top-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bd-btn, .bd-select, .bd-input {
+  min-block-size: 32px;
+  min-inline-size: 32px;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.bd-btn:hover:not(:disabled) {
+  background: #334155;
+  border-color: #64748b;
+}
+
+.bd-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.bd-btn-primary {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.bd-btn-primary:hover:not(:disabled) {
+  background: #0369a1;
+}
+
+.bd-btn-commit {
+  background: #059669;
+  border-color: #34d399;
+  color: #ffffff;
+  font-size: 0.92rem;
+  padding: 0.45rem 1rem;
+}
+
+.bd-btn-commit:hover:not(:disabled) {
+  background: #047857;
+}
+
+.bd-btn-warn {
+  background: #b45309;
+  border-color: #fbbf24;
+  color: #ffffff;
+}
+
+.bd-hud-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 0.5rem;
+  margin-block-end: 0.75rem;
+}
+
+.bd-metric-card {
+  background: #0f1b2d;
+  border: 1px solid #1e3a5f;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
+.bd-metric-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  display: block;
+}
+
+.bd-metric-value {
+  font-size: clamp(1rem, 0.85rem + 0.6vw, 1.3rem);
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.bd-banner {
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  margin-block-end: 0.75rem;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  border-left: 4px solid #38bdf8;
+  background: #0c192c;
+}
+
+.bd-banner-ok {
+  border-left-color: #10b981;
+  background: #06221c;
+  color: #d1fae5;
+}
+
+.bd-banner-warn {
+  border-left-color: #f59e0b;
+  background: #271a07;
+  color: #fef3c7;
+}
+
+.bd-banner-danger {
+  border-left-color: #ef4444;
+  background: #2a0d12;
+  color: #fee2e2;
+}
+
+.bd-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
+}
+
+@container dispatch-shell (min-width: 900px) {
+  .bd-layout {
+    grid-template-columns: minmax(480px, 1.25fr) minmax(350px, 0.95fr);
+    align-items: start;
+  }
+}
+
+.bd-panel {
+  background: #0f1b2d;
+  border: 1px solid #1e3a5f;
+  border-radius: 10px;
+  padding: 0.8rem;
+}
+
+.bd-panel h2 {
+  margin: 0 0 0.55rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bd-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-block-end: 0.65rem;
+}
+
+.bd-tool-btn {
+  flex: 1 1 auto;
+  min-block-size: 34px;
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #162235;
+  color: #cbd5e1;
+  font-size: 0.77rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.bd-tool-btn[aria-pressed="true"] {
+  background: #0369a1;
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.bd-board-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.bd-svg-board {
+  width: 100%;
+  max-width: 680px;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  display: block;
+  margin: 0 auto;
+  background: #070e1a;
+  border: 1px solid #1e3a5f;
+  border-radius: 8px;
+  user-select: none;
+}
+
+.bd-corridor-hit {
+  cursor: pointer;
+}
+
+.bd-corridor-hit:hover .bd-corridor-hover-ring {
+  opacity: 0.95;
+}
+
+.bd-inspector {
+  margin-block-start: 0.65rem;
+  padding: 0.65rem;
+  background: #091322;
+  border: 1px solid #264063;
+  border-radius: 8px;
+}
+
+.bd-inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-block-start: 0.45rem;
+}
+
+.bd-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-block-start: 0.65rem;
+  padding-block-start: 0.65rem;
+  border-top: 1px solid #1e3a5f;
+}
+
+.bd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.bd-table caption {
+  text-align: left;
+  font-weight: 700;
+  color: #cbd5e1;
+  margin-block-end: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.bd-table th, .bd-table td {
+  padding: 0.4rem 0.45rem;
+  border-bottom: 1px solid #1e293b;
+  text-align: left;
+}
+
+.bd-table th {
+  color: #94a3b8;
+  font-weight: 600;
+  background: #091322;
+}
+
+.bd-badge {
+  display: inline-block;
+  padding: 0.12rem 0.42rem;
+  border-radius: 4px;
+  font-size: 0.71rem;
+  font-weight: 700;
+}
+
+.bd-badge-lit {
+  background: #064e3b;
+  color: #6ee7b7;
+  border: 1px solid #10b981;
+}
+
+.bd-badge-short {
+  background: #78350f;
+  color: #fde68a;
+  border: 1px solid #f59e0b;
+}
+
+.bd-badge-out {
+  background: #7f1d1d;
+  color: #fecaca;
+  border: 1px solid #ef4444;
+}
+
+.bd-forecast-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.bd-forecast-item {
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  background: #091322;
+  border: 1px solid #1e3a5f;
+  font-size: 0.79rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.bd-dialog {
+  background: #0f1b2d;
+  color: #f1f5f9;
+  border: 1px solid #38bdf8;
+  border-radius: 10px;
+  padding: 1rem;
+  max-width: 520px;
+  width: 92vw;
+}
+
+.bd-dialog::backdrop {
+  background: rgba(2, 6, 23, 0.78);
+}
+
+.bd-textarea {
+  width: 100%;
+  min-height: 110px;
+  background: #070e1a;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-family: monospace;
+  font-size: 0.78rem;
+  margin-block: 0.5rem;
+}
+`;
+function createBlackoutDispatchUI(container2, options) {
+  const audio = new DispatchAudioEngine();
+  let debugEnabled = Boolean(options?.debug);
+  let activeTool = "auto-smart";
+  let selectedEdgeId = makeEdgeId({ row: 3, col: 2 }, { row: 3, col: 3 });
+  let feedbackBanner = null;
+  let state;
+  const saved = loadGameStateFromStorage();
+  if (options?.initialSeed !== void 0) {
+    state = createInitialGameState(getScenarioById("seeded", options.initialSeed));
+  } else if (saved) {
+    state = saved;
+  } else {
+    state = createInitialGameState(HANDCRAFTED_SCENARIOS[0]);
+  }
+  const styleEl = document.createElement("style");
+  styleEl.textContent = STYLES;
+  container2.innerHTML = "";
+  container2.appendChild(styleEl);
+  const root = document.createElement("div");
+  root.className = "bd-root";
+  container2.appendChild(root);
+  const persistCurrentState = () => {
+    saveGameStateToStorage(state);
+  };
+  const handleCorridorAction = (edgeId, toolOverride) => {
+    selectedEdgeId = edgeId;
+    const tool = toolOverride ?? activeTool;
+    const existing = state.board.links[edgeId];
+    let res = { ok: false };
+    if (tool === "auto-smart") {
+      if (!existing) {
+        res = stagePlaceLink(state, edgeId, "standard");
+      } else if (existing.status === "damaged") {
+        res = stageRepairLink(state, edgeId);
+      } else if (existing.type === "standard") {
+        res = stageUpgradeLink(state, edgeId, "heavy");
+      } else if (existing.type === "heavy") {
+        res = stageUpgradeLink(state, edgeId, "shielded");
+      } else {
+        feedbackBanner = {
+          text: `Selected ${formatEdgeLabel(edgeId)} (${CONFIG.LINKS[existing.type].name}). Use inspector buttons below to reroute or modify.`,
+          kind: "info"
+        };
+        render();
+        return;
+      }
+    } else if (tool === "place-standard") {
+      res = existing ? stageUpgradeLink(state, edgeId, "standard") : stagePlaceLink(state, edgeId, "standard");
+    } else if (tool === "place-heavy" || tool === "upgrade-heavy") {
+      res = existing ? stageUpgradeLink(state, edgeId, "heavy") : stagePlaceLink(state, edgeId, "heavy");
+    } else if (tool === "place-shielded" || tool === "upgrade-shielded") {
+      res = existing ? stageUpgradeLink(state, edgeId, "shielded") : stagePlaceLink(state, edgeId, "shielded");
+    } else if (tool === "repair") {
+      res = stageRepairLink(state, edgeId);
+    } else if (tool === "reroute") {
+      res = stageRerouteLink(state, edgeId, {});
+    }
+    if (res.ok) {
+      audio.playRelayClick();
+      const latestAction = state.stagedActions[state.stagedActions.length - 1];
+      feedbackBanner = {
+        text: `STAGED: ${latestAction?.description ?? edgeId} \u2014 Live flow preview updated!`,
+        kind: "info"
+      };
+      persistCurrentState();
+    } else if (res.error) {
+      audio.playBlackoutAlarm();
+      feedbackBanner = { text: res.error, kind: "warn" };
+    }
+    render();
+  };
+  const handleCommitTurn = () => {
+    if (state.status !== "playing") return;
+    const outcome = commitTurn(state);
+    const nextStatus = state.status;
+    if (outcome.imminentStrikes.some((s) => s.outcome === "damaged")) {
+      audio.playStormStrike();
+    } else {
+      audio.playTurnCommitHum(outcome.flow.totalUnmetMW > 0);
+    }
+    if (nextStatus === "lost") {
+      audio.playBlackoutAlarm();
+      feedbackBanner = {
+        text: state.lossReason ?? "Grid blackout threshold exceeded.",
+        kind: "error"
+      };
+    } else if (nextStatus === "won") {
+      feedbackBanner = {
+        text: `VICTORY! All 12 storm turns survived with ${state.cityCumulativeUnmetMW}/${state.scenario.cityOutageThresholdMW} MW total city shortfall!`,
+        kind: "info"
+      };
+    } else {
+      const damagedCount = outcome.imminentStrikes.filter((s) => s.outcome === "damaged").length;
+      const deflectedCount = outcome.imminentStrikes.filter(
+        (s) => s.outcome === "deflected"
+      ).length;
+      feedbackBanner = {
+        text: `Turn ${outcome.turn} Committed: Delivered ${outcome.flow.totalDeliveredMW}/${outcome.flow.totalDemandMW} MW (+${outcome.projectedMaterialIncome} Mat). Storm strikes damaged ${damagedCount} link(s), deflected ${deflectedCount}.`,
+        kind: outcome.flow.totalUnmetMW > 0 ? "warn" : "info"
+      };
+    }
+    persistCurrentState();
+    render();
+  };
+  const handleUndo = () => {
+    const res = undoLastStagedAction(state);
+    if (res.ok) {
+      audio.playUndoClick();
+      feedbackBanner = { text: "Undid last staged action. Pre-action flow restored.", kind: "info" };
+      persistCurrentState();
+    } else if (res.error) {
+      feedbackBanner = { text: res.error, kind: "warn" };
+    }
+    render();
+  };
+  const handleResetTurn = () => {
+    const res = resetStagedActions(state);
+    if (res.ok) {
+      audio.playUndoClick();
+      feedbackBanner = { text: "Reset all staged actions for this turn.", kind: "info" };
+      persistCurrentState();
+    }
+    render();
+  };
+  const runAutomatedScript = (script, label) => {
+    state = createInitialGameState(HANDCRAFTED_SCENARIOS[0]);
+    while (state.status === "playing") {
+      const actions = script[state.turn] ?? [];
+      for (const act of actions) {
+        const edgeId = makeEdgeId(act.from, act.to);
+        if (act.kind === "place") stagePlaceLink(state, edgeId, act.linkType);
+        else if (act.kind === "upgrade") stageUpgradeLink(state, edgeId, act.linkType);
+        else stageRepairLink(state, edgeId);
+      }
+      commitTurn(state);
+    }
+    feedbackBanner = {
+      text: `Executed "${label}": Status=${state.status.toUpperCase()} on Turn ${state.turn}, City Unmet=${state.cityCumulativeUnmetMW} MW.`,
+      kind: state.status === "won" ? "info" : "error"
+    };
+    persistCurrentState();
+    render();
+  };
+  const renderBoardSvg = () => {
+    const size = 640;
+    const pad = 46;
+    const step = (size - pad * 2) / (CONFIG.GRID_SIZE - 1);
+    const cellX = (col) => pad + col * step;
+    const cellY = (row) => pad + row * step;
+    const forecast = getForecastStrikes(state.scenario, state.turn);
+    const imminentSet = new Set(forecast.imminent.map((s) => s.edgeId));
+    const t1Set = new Set(forecast.turnPlus1.map((s) => s.edgeId));
+    const t2Set = new Set(forecast.turnPlus2.map((s) => s.edgeId));
+    const bottleneckSet = /* @__PURE__ */ new Set();
+    for (const diag of Object.values(state.preview.flow.diagnostics)) {
+      for (const eId of diag.bottleneckEdgeIds) {
+        bottleneckSet.add(eId);
+      }
+    }
+    const corridorSvgParts = [];
+    for (let r = 0; r < CONFIG.GRID_SIZE; r++) {
+      for (let c = 0; c < CONFIG.GRID_SIZE; c++) {
+        const neighbors = [];
+        if (c + 1 < CONFIG.GRID_SIZE) neighbors.push({ row: r, col: c + 1 });
+        if (r + 1 < CONFIG.GRID_SIZE) neighbors.push({ row: r + 1, col: c });
+        for (const nb of neighbors) {
+          const cA = { row: r, col: c };
+          const cB = nb;
+          if (isBlockedCoord(state.scenario, cA) || isBlockedCoord(state.scenario, cB)) {
+            continue;
+          }
+          const edgeId = makeEdgeId(cA, cB);
+          const x1 = cellX(cA.col);
+          const y1 = cellY(cA.row);
+          const x2 = cellX(cB.col);
+          const y2 = cellY(cB.row);
+          const mx = (x1 + x2) / 2;
+          const my = (y1 + y2) / 2;
+          const link = state.board.links[edgeId];
+          const ef = state.preview.flow.edgeFlows[edgeId];
+          const isSelected = selectedEdgeId === edgeId;
+          const isImminent = imminentSet.has(edgeId);
+          const isT1 = t1Set.has(edgeId);
+          const isT2 = t2Set.has(edgeId);
+          const isBottleneck = bottleneckSet.has(edgeId);
+          let strokeColor = "#1e293b";
+          let strokeWidth = 3;
+          let dashArray = "4,4";
+          if (link) {
+            dashArray = link.status === "damaged" ? "6,4" : "";
+            strokeWidth = link.type === "heavy" ? 8 : link.type === "shielded" ? 6 : 5;
+            if (link.status === "damaged") {
+              strokeColor = "#ef4444";
+            } else if (ef && ef.isSaturated) {
+              strokeColor = "#f59e0b";
+            } else if (ef && ef.flowMW > 0) {
+              strokeColor = link.type === "shielded" ? "#38bdf8" : "#10b981";
+            } else {
+              strokeColor = link.type === "shielded" ? "#0284c7" : "#64748b";
+            }
+          }
+          let chevronText = "";
+          if (ef && ef.flowMW > 0 && link?.status === "intact") {
+            const [fromR, fromC] = ef.fromNode.split(",").map(Number);
+            const [toR, toC] = ef.toNode.split(",").map(Number);
+            if (toC > fromC) chevronText = "\u25B6";
+            else if (toC < fromC) chevronText = "\u25C0";
+            else if (toR > fromR) chevronText = "\u25BC";
+            else if (toR < fromR) chevronText = "\u25B2";
+          }
+          let badgeLabel = "";
+          if (link) {
+            const cap = CONFIG.LINKS[link.type].capacityMW;
+            const flow = ef ? ef.flowMW : 0;
+            const tierCode = link.type === "heavy" ? "H" : link.type === "shielded" ? "S\u{1F6E1}" : "L";
+            if (link.status === "damaged") {
+              badgeLabel = `\u2716DMG (${tierCode})`;
+            } else {
+              badgeLabel = `${chevronText}${flow}/${cap}MW ${tierCode}`;
+            }
+          } else if (isImminent || isT1 || isT2) {
+            badgeLabel = isImminent ? "\u26A1NOW" : isT1 ? "\u26C8T+1" : "\u{1F327}T+2";
+          }
+          const stormTag = isImminent ? "\u26A1NOW" : isT1 ? "\u26C8T+1" : isT2 ? "\u{1F327}T+2" : "";
+          corridorSvgParts.push(`
+            <g class="bd-corridor-hit" data-edge-id="${edgeId}">
+              <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+                stroke="${isSelected ? "#38bdf8" : isBottleneck ? "#f59e0b" : "transparent"}"
+                stroke-width="${strokeWidth + 8}"
+                stroke-linecap="round"
+                opacity="${isSelected ? "0.55" : isBottleneck ? "0.45" : "0"}"
+                class="bd-corridor-hover-ring" />
+              <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+                stroke="${strokeColor}"
+                stroke-width="${strokeWidth}"
+                ${dashArray ? `stroke-dasharray="${dashArray}"` : ""}
+                stroke-linecap="round" />
+              <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+                stroke="transparent"
+                stroke-width="24" />
+              ${badgeLabel ? `<rect x="${mx - 28}" y="${my - 9}" width="56" height="17" rx="4"
+                       fill="${link?.status === "damaged" ? "#450a0a" : ef?.isSaturated ? "#451a03" : "#091322"}"
+                       stroke="${isSelected ? "#38bdf8" : link?.status === "damaged" ? "#ef4444" : ef?.isSaturated ? "#f59e0b" : "#334155"}"
+                       stroke-width="1" />
+                     <text x="${mx}" y="${my + 3}" text-anchor="middle" fill="#f8fafc" font-size="8.2" font-weight="700">${badgeLabel}</text>` : ""}
+              ${stormTag && link ? `<rect x="${mx - 18}" y="${my - 21}" width="36" height="12" rx="3" fill="#7c2d12" stroke="#fb923c" stroke-width="1" />
+                     <text x="${mx}" y="${my - 12.5}" text-anchor="middle" fill="#ffedd5" font-size="7.5" font-weight="800">${stormTag}</text>` : ""}
+            </g>
+          `);
+        }
+      }
+    }
+    const nodeSvgParts = [];
+    const districtMap = new Map(
+      state.scenario.districts.map((d) => [coordKey(d.row, d.col), d])
+    );
+    const relayMap = new Map(
+      state.scenario.relays.map((r) => [coordKey(r.row, r.col), r])
+    );
+    const genKey = coordKey(state.scenario.generator.row, state.scenario.generator.col);
+    for (let r = 0; r < CONFIG.GRID_SIZE; r++) {
+      for (let c = 0; c < CONFIG.GRID_SIZE; c++) {
+        const key = coordKey(r, c);
+        const cx = cellX(c);
+        const cy = cellY(r);
+        const blocked = isBlockedCoord(state.scenario, { row: r, col: c });
+        const dist = districtMap.get(key);
+        const relay = relayMap.get(key);
+        if (blocked) {
+          nodeSvgParts.push(`
+            <g>
+              <rect x="${cx - 16}" y="${cy - 16}" width="32" height="32" rx="5" fill="#0f172a" stroke="#1e293b" stroke-dasharray="2,2" />
+              <text x="${cx}" y="${cy + 3}" text-anchor="middle" fill="#475569" font-size="8" font-weight="700">\u26F0/\u{1F30A}</text>
+            </g>
+          `);
+          continue;
+        }
+        if (key === genKey) {
+          nodeSvgParts.push(`
+            <g>
+              <rect x="${cx - 23}" y="${cy - 23}" width="46" height="46" rx="8" fill="#0284c7" stroke="#7dd3fc" stroke-width="2.5" />
+              <text x="${cx}" y="${cy - 6}" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="900">\u26A1GEN</text>
+              <text x="${cx}" y="${cy + 6}" text-anchor="middle" fill="#e0f2fe" font-size="8.5" font-weight="800">${state.preview.flow.generatorUsedMW}/${state.scenario.generator.outputMW}MW</text>
+              <text x="${cx}" y="${cy + 17}" text-anchor="middle" fill="#bae6fd" font-size="7.5">(${r},${c})</text>
+            </g>
+          `);
+          continue;
+        }
+        if (dist) {
+          const alloc = state.preview.flow.districtAllocations[dist.id];
+          const isLit = alloc.unmetMW === 0;
+          const isZeroDemand = alloc.demandMW === 0;
+          const fill = isLit ? "#064e3b" : alloc.deliveredMW > 0 ? "#78350f" : "#7f1d1d";
+          const stroke = isLit ? "#34d399" : alloc.deliveredMW > 0 ? "#fbbf24" : "#f87171";
+          const statusGlyph = isZeroDemand ? "IDLE" : isLit ? "LIT \u2713" : alloc.deliveredMW > 0 ? `-${alloc.unmetMW}MW \u26A0` : "OUT \u2716";
+          nodeSvgParts.push(`
+            <g>
+              <rect x="${cx - 24}" y="${cy - 24}" width="48" height="48" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="2.2" />
+              <text x="${cx}" y="${cy - 10}" text-anchor="middle" fill="#ffffff" font-size="8.5" font-weight="900">P${dist.priority} ${dist.id} ${dist.shortCode}</text>
+              <text x="${cx}" y="${cy + 2}" text-anchor="middle" fill="#f8fafc" font-size="9.5" font-weight="800">${alloc.deliveredMW}/${alloc.demandMW} MW</text>
+              <text x="${cx}" y="${cy + 14}" text-anchor="middle" fill="#fde68a" font-size="7.8" font-weight="800">${statusGlyph}</text>
+            </g>
+          `);
+          continue;
+        }
+        if (relay) {
+          const energized = state.preview.flow.energizedRelayIds.includes(relay.id);
+          nodeSvgParts.push(`
+            <g>
+              <circle cx="${cx}" cy="${cy}" r="18" fill="${energized ? "#1e3a5f" : "#1e293b"}" stroke="${energized ? "#38bdf8" : "#64748b"}" stroke-width="2" />
+              <text x="${cx}" y="${cy - 2}" text-anchor="middle" fill="#e2e8f0" font-size="8" font-weight="800">\u25C8${relay.id}</text>
+              <text x="${cx}" y="${cy + 9}" text-anchor="middle" fill="#94a3b8" font-size="7.5">(${r},${c})</text>
+            </g>
+          `);
+          continue;
+        }
+        nodeSvgParts.push(`
+          <g>
+            <circle cx="${cx}" cy="${cy}" r="9" fill="#0f172a" stroke="#334155" stroke-width="1.2" />
+            <text x="${cx}" y="${cy + 3}" text-anchor="middle" fill="#64748b" font-size="7">${r},${c}</text>
+          </g>
+        `);
+      }
+    }
+    return `
+      <svg class="bd-svg-board" viewBox="0 0 ${size} ${size}" role="img" aria-label="8 by 8 Power Grid Dispatch Board">
+        <title>Port Argon 8x8 Power Grid Dispatch Board</title>
+        ${corridorSvgParts.join("\n")}
+        ${nodeSvgParts.join("\n")}
+      </svg>
+    `;
+  };
+  const render = () => {
+    const flow = state.preview.flow;
+    const forecast = getForecastStrikes(state.scenario, state.turn);
+    const failingDiagnostics = Object.values(flow.diagnostics).filter(
+      (d) => d.unmetMW > 0
+    );
+    let onboardingText = "";
+    if (state.turn === 1 && state.stagedActions.length < 2) {
+      onboardingText = state.scenario.onboardingHintTurn1;
+    } else if (state.turn === 2 && failingDiagnostics.length > 0) {
+      onboardingText = state.scenario.onboardingHintTurn2;
+    }
+    const primaryDiagnosticText = failingDiagnostics.length > 0 ? failingDiagnostics.map((d) => d.explanation).join(" | ") : `ALL 5 DISTRICTS 100% POWERED (${flow.totalDeliveredMW}/${flow.totalDemandMW} MW delivered, 0 MW shortfall). Ready to Commit Turn ${state.turn}.`;
+    const selectedLink = state.board.links[selectedEdgeId];
+    const selectedEf = flow.edgeFlows[selectedEdgeId];
+    root.innerHTML = `
+      <header class="bd-header">
+        <div class="bd-title-block">
+          <h1>\u26A1 BLACKOUT DISPATCH <span style="font-size:0.78rem;font-weight:600;color:#38bdf8;">[${state.scenario.title}]</span></h1>
+          <p class="bd-subtitle">${state.scenario.briefing}</p>
+        </div>
+        <nav class="bd-top-controls" aria-label="Scenario and System Controls">
+          <label for="bd-scenario-select" class="bd-visually-hidden">Select Scenario</label>
+          <select id="bd-scenario-select" class="bd-select">
+            ${HANDCRAFTED_SCENARIOS.map(
+      (s) => `<option value="${s.id}" ${state.scenario.id === s.id ? "selected" : ""}>${s.title}</option>`
+    ).join("")}
+            <option value="seeded" ${state.scenario.isSeeded ? "selected" : ""}>Seeded Storm Mode (#${state.scenario.seed ?? CONFIG.DEFAULT_SEED})</option>
+          </select>
+          <button type="button" class="bd-btn" id="bd-btn-new-seed" title="Generate new seeded storm">\u{1F3B2} Seed</button>
+          <button type="button" class="bd-btn" id="bd-btn-restart">\u21BB Restart</button>
+          <button type="button" class="bd-btn" id="bd-btn-save-modal">\u{1F4BE} Save/Load</button>
+          <button type="button" class="bd-btn" id="bd-btn-mute" aria-pressed="${audio.isMuted()}">${audio.isMuted() ? "\u{1F507} Muted" : "\u{1F50A} Audio"}</button>
+          <button type="button" class="bd-btn" id="bd-btn-debug" aria-pressed="${debugEnabled}"> \u{1F6E0} Debug [D]</button>
+        </nav>
+      </header>
+
+      <main id="bd-main-content">
+        <div class="bd-hud-strip" role="region" aria-label="Turn and Resource Telemetry">
+          <div class="bd-metric-card">
+            <span class="bd-metric-label">Storm Turn</span>
+            <span class="bd-metric-value">${state.turn} / ${CONFIG.TOTAL_TURNS}</span>
+          </div>
+          <div class="bd-metric-card">
+            <span class="bd-metric-label">Actions Left</span>
+            <span class="bd-metric-value" style="color:${state.actionsRemaining > 0 ? "#38bdf8" : "#94a3b8"}">${state.actionsRemaining} / ${CONFIG.MAX_ACTIONS_PER_TURN}</span>
+          </div>
+          <div class="bd-metric-card">
+            <span class="bd-metric-label">Material Reserve</span>
+            <span class="bd-metric-value" style="color:#fbbf24">${state.materials} Mat <small style="font-size:0.75rem;color:#94a3b8">(+${state.preview.projectedMaterialIncome}/t)</small></span>
+          </div>
+          <div class="bd-metric-card">
+            <span class="bd-metric-label">Preview Grid Load</span>
+            <span class="bd-metric-value" style="color:${flow.totalUnmetMW === 0 ? "#34d399" : "#f87171"}">${flow.totalDeliveredMW} / ${flow.totalDemandMW} MW</span>
+          </div>
+          <div class="bd-metric-card">
+            <span class="bd-metric-label">City Outage Meter</span>
+            <span class="bd-metric-value" style="color:${state.preview.projectedCityCumulativeUnmetMW > state.scenario.cityOutageThresholdMW ? "#ef4444" : "#e2e8f0"}">${state.preview.projectedCityCumulativeUnmetMW} / ${state.scenario.cityOutageThresholdMW} MW</span>
+          </div>
+        </div>
+
+        ${onboardingText ? `<div class="bd-banner bd-banner-warn" role="status"><strong>\u{1F4CB} DISPATCH ADVISORY:</strong> ${onboardingText}</div>` : ""}
+
+        <div class="bd-banner ${state.status === "lost" ? "bd-banner-danger" : failingDiagnostics.length > 0 ? "bd-banner-warn" : "bd-banner-ok"}" role="status" aria-live="polite">
+          <strong>${state.status === "lost" ? "\u{1F6A8} GRID FAILURE:" : state.status === "won" ? "\u{1F3C6} STORM SURVIVED:" : failingDiagnostics.length > 0 ? "\u26A0 PREVIEW BOTTLENECK DIAGNOSTIC:" : "\u2713 PREVIEW FLOW DIAGNOSTIC:"}</strong>
+          ${state.status === "lost" ? state.lossReason : primaryDiagnosticText}
+          ${feedbackBanner ? `<div style="margin-top:0.3rem;font-size:0.8rem;opacity:0.92;">\u21B3 ${feedbackBanner.text}</div>` : ""}
+        </div>
+
+        <div class="bd-layout">
+          <section class="bd-panel" aria-labelledby="bd-grid-heading">
+            <h2 id="bd-grid-heading">
+              <span>8x8 Municipal Transmission Grid</span>
+              <span style="font-size:0.76rem;font-weight:500;color:#94a3b8;">Click any corridor (r1,c1)\u2194(r2,c2) to stage work order</span>
+            </h2>
+
+            <div class="bd-toolbar" role="toolbar" aria-label="Dispatch Work Order Tools">
+              <button type="button" class="bd-tool-btn" data-tool="auto-smart" aria-pressed="${activeTool === "auto-smart"}">\u26A1 Smart Dispatch (Place/Repair/Upgrade)</button>
+              <button type="button" class="bd-tool-btn" data-tool="place-standard" aria-pressed="${activeTool === "place-standard"}">\u2795 Standard Line (4MW \xB7 10m)</button>
+              <button type="button" class="bd-tool-btn" data-tool="place-heavy" aria-pressed="${activeTool === "place-heavy"}">\u2795/\u2B06 Heavy Trunk (8MW \xB7 20m/10m)</button>
+              <button type="button" class="bd-tool-btn" data-tool="place-shielded" aria-pressed="${activeTool === "place-shielded"}">\u{1F6E1} Storm-Shielded (5MW \xB7 25m/15m)</button>
+              <button type="button" class="bd-tool-btn" data-tool="repair" aria-pressed="${activeTool === "repair"}">\u{1F527} Repair Damaged (5-10m)</button>
+              <button type="button" class="bd-tool-btn" data-tool="reroute" aria-pressed="${activeTool === "reroute"}">\u21C4 Reroute Flow Gate (5m)</button>
+            </div>
+
+            <div class="bd-board-wrapper">
+              ${renderBoardSvg()}
+            </div>
+
+            <div class="bd-inspector" aria-label="Selected Corridor Inspector">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;">
+                <strong>Selected Corridor: <code>${formatEdgeLabel(selectedEdgeId)}</code></strong>
+                <span style="font-size:0.8rem;color:#94a3b8;">
+                  ${selectedLink ? `${CONFIG.LINKS[selectedLink.type].name} \xB7 Status: ${selectedLink.status.toUpperCase()} \xB7 Flow: ${selectedEf?.flowMW ?? 0}/${selectedEf?.capacityMW ?? 0} MW \xB7 Gate: ${selectedLink.directionConstraint.toUpperCase()}` : "Empty Corridor (No Link Installed)"}
+                </span>
+              </div>
+              <div class="bd-inspector-actions">
+                ${!selectedLink ? `
+                      <button type="button" class="bd-btn bd-btn-primary" data-direct-action="place-standard">Place Standard (4MW \xB7 10 Mat)</button>
+                      <button type="button" class="bd-btn" data-direct-action="place-heavy">Place Heavy Trunk (8MW \xB7 20 Mat)</button>
+                      <button type="button" class="bd-btn" data-direct-action="place-shielded">Place Storm-Shielded (5MW \xB7 25 Mat)</button>
+                    ` : `
+                      ${selectedLink.status === "damaged" ? `<button type="button" class="bd-btn bd-btn-warn" data-direct-action="repair">\u{1F527} Repair ${CONFIG.LINKS[selectedLink.type].name} (${CONFIG.LINKS[selectedLink.type].repairCostMat} Mat)</button>` : ""}
+                      ${selectedLink.type !== "heavy" ? `<button type="button" class="bd-btn bd-btn-primary" data-direct-action="upgrade-heavy">\u2B06 Upgrade to Heavy Trunk 8MW (${getUpgradeCostMat(selectedLink.type, "heavy", selectedLink.status === "damaged")} Mat)</button>` : ""}
+                      ${selectedLink.type !== "shielded" ? `<button type="button" class="bd-btn" data-direct-action="upgrade-shielded">\u{1F6E1} Upgrade to Storm-Shielded 5MW (${getUpgradeCostMat(selectedLink.type, "shielded", selectedLink.status === "damaged")} Mat)</button>` : ""}
+                      <button type="button" class="bd-btn" data-direct-action="reroute">\u21C4 Cycle Flow Gate (${CONFIG.REROUTE_COST_MAT} Mat)</button>
+                    `}
+              </div>
+            </div>
+
+            <div class="bd-action-bar">
+              <div style="display:flex;gap:0.45rem;flex-wrap:wrap;align-items:center;">
+                <button type="button" class="bd-btn" id="bd-btn-undo" ${state.stagedActions.length === 0 ? "disabled" : ""}>\u21A9 Undo Action (${state.stagedActions.length})</button>
+                <button type="button" class="bd-btn" id="bd-btn-reset-turn" ${state.stagedActions.length === 0 ? "disabled" : ""}>\u27F2 Reset Turn</button>
+              </div>
+              <button type="button" class="bd-btn bd-btn-commit" id="bd-btn-commit" ${state.status !== "playing" ? "disabled" : ""}>
+                \u2713 Commit Turn ${state.turn} (${flow.totalDeliveredMW}/${flow.totalDemandMW} MW)
+              </button>
+            </div>
+          </section>
+
+          <div style="display:flex;flex-direction:column;gap:0.85rem;">
+            <section class="bd-panel" aria-labelledby="bd-districts-heading">
+              <h2 id="bd-districts-heading">5-District Priority & Demand Schedule</h2>
+              <table class="bd-table">
+                <caption>Deterministic allocation follows strict Priority Order (P1 \u2192 P5)</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Pri</th>
+                    <th scope="col">District</th>
+                    <th scope="col">Turn ${state.turn}</th>
+                    <th scope="col">Turn ${Math.min(CONFIG.TOTAL_TURNS, state.turn + 1)}</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Unmet Limit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${state.scenario.districts.map((d) => {
+      const alloc = flow.districtAllocations[d.id];
+      const dState = state.districts[d.id];
+      const nextDemand = d.demandCurve[Math.min(CONFIG.TOTAL_TURNS - 1, state.turn)];
+      const projCum = dState.cumulativeUnmetMW + alloc.unmetMW;
+      const badgeClass = alloc.unmetMW === 0 ? "bd-badge-lit" : alloc.deliveredMW > 0 ? "bd-badge-short" : "bd-badge-out";
+      const badgeText = alloc.demandMW === 0 ? "IDLE \u2713" : alloc.unmetMW === 0 ? "LIT \u2713" : alloc.deliveredMW > 0 ? `SHORT -${alloc.unmetMW}MW \u26A0` : `OUTAGE -${alloc.unmetMW}MW \u2716`;
+      return `
+                        <tr>
+                          <th scope="row">P${d.priority}</th>
+                          <td><strong>${d.id}</strong> ${d.name} <small style="color:#94a3b8;">(${d.row},${d.col})</small></td>
+                          <td><strong>${alloc.deliveredMW}/${alloc.demandMW} MW</strong></td>
+                          <td>${nextDemand} MW</td>
+                          <td><span class="bd-badge ${badgeClass}">${badgeText}</span></td>
+                          <td style="color:${projCum > d.unmetLimitMW ? "#ef4444" : "#cbd5e1"}">${projCum} / ${d.unmetLimitMW} MW</td>
+                        </tr>
+                      `;
+    }).join("")}
+                </tbody>
+              </table>
+            </section>
+
+            <section class="bd-panel" aria-labelledby="bd-forecast-heading">
+              <h2 id="bd-forecast-heading">2-Turn Weather Radar Forecast</h2>
+              <ul class="bd-forecast-list" role="list">
+                ${forecast.imminent.length === 0 ? `<li class="bd-forecast-item"><span><strong>Turn ${state.turn} (Imminent):</strong> Clear skies \u2014 no strikes this turn</span><span class="bd-badge bd-badge-lit">CLEAR</span></li>` : forecast.imminent.map(
+      (s) => `
+                        <li class="bd-forecast-item" style="border-color:#f59e0b;">
+                          <span><strong>\u26A1 Turn ${s.turn} (Resolves Now):</strong> ${s.label} at <code>${formatEdgeLabel(s.edgeId)}</code></span>
+                          <span class="bd-badge bd-badge-short">${s.severity.toUpperCase()}</span>
+                        </li>`
+    ).join("")}
+                ${forecast.turnPlus1.length === 0 ? `<li class="bd-forecast-item"><span><strong>Turn ${state.turn + 1} (T+1):</strong> No strikes forecast</span><span class="bd-badge bd-badge-lit">CLEAR</span></li>` : forecast.turnPlus1.map(
+      (s) => `
+                        <li class="bd-forecast-item">
+                          <span><strong>\u26C8 Turn ${s.turn} (T+1):</strong> ${s.label} at <code>${formatEdgeLabel(s.edgeId)}</code></span>
+                          <span class="bd-badge bd-badge-short">${s.severity.toUpperCase()}</span>
+                        </li>`
+    ).join("")}
+                ${forecast.turnPlus2.length === 0 ? `<li class="bd-forecast-item"><span><strong>Turn ${state.turn + 2} (T+2):</strong> No strikes forecast</span><span class="bd-badge bd-badge-lit">CLEAR</span></li>` : forecast.turnPlus2.map(
+      (s) => `
+                        <li class="bd-forecast-item">
+                          <span><strong>\u{1F327} Turn ${s.turn} (T+2):</strong> ${s.label} at <code>${formatEdgeLabel(s.edgeId)}</code></span>
+                          <span class="bd-badge bd-badge-short">${s.severity.toUpperCase()}</span>
+                        </li>`
+    ).join("")}
+              </ul>
+            </section>
+
+            <section class="bd-panel" aria-labelledby="bd-legend-heading">
+              <h2 id="bd-legend-heading">Transmission Link Specs & Tradeoffs</h2>
+              <ul class="bd-forecast-list" role="list">
+                <li class="bd-forecast-item">
+                  <span><strong>Standard Line (L):</strong> 4 MW Capacity \xB7 Build 10 Mat \xB7 Repair 5 Mat</span>
+                  <span style="color:#94a3b8;">Vulnerable to Wind</span>
+                </li>
+                <li class="bd-forecast-item">
+                  <span><strong>Heavy Trunk (H):</strong> 8 MW Capacity \xB7 Build 20 Mat \xB7 Upgrade 10 Mat</span>
+                  <span style="color:#34d399;">High Throughput</span>
+                </li>
+                <li class="bd-forecast-item">
+                  <span><strong>Storm-Shielded (S\u{1F6E1}):</strong> 5 MW Capacity \xB7 Build 25 Mat \xB7 Upgrade 15 Mat</span>
+                  <span style="color:#38bdf8;">Immune to Wind</span>
+                </li>
+              </ul>
+            </section>
+
+            ${debugEnabled ? `
+                  <section class="bd-panel" aria-labelledby="bd-debug-heading" style="border-color:#a855f7;">
+                    <h2 id="bd-debug-heading" style="color:#e9d5ff;">\u{1F6E0} Solver & Telemetry Debug Panel</h2>
+                    <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;">
+                      <button type="button" class="bd-btn" id="bd-dbg-trunk">Run Strategy A: Efficient Trunk (Win)</button>
+                      <button type="button" class="bd-btn" id="bd-dbg-loop">Run Strategy B: Redundant Loop (Win)</button>
+                      <button type="button" class="bd-btn bd-btn-warn" id="bd-dbg-loss">Run Neglect Script (Blackout Loss)</button>
+                    </div>
+                    <div style="font-family:monospace;font-size:0.74rem;color:#cbd5e1;">
+                      DAG Verified (No Cycles): ${!flow.hasDirectedCycle} | Links: ${Object.keys(state.board.links).length} | Energized Relays: ${flow.energizedRelayIds.join(", ") || "None"}
+                    </div>
+                  </section>
+                ` : ""}
+          </div>
+        </div>
+      </main>
+
+      <dialog id="bd-save-dialog" class="bd-dialog" aria-labelledby="bd-dialog-title">
+        <h2 id="bd-dialog-title" style="margin-top:0;">Save / Export / Import Dispatch State</h2>
+        <p style="font-size:0.82rem;color:#94a3b8;">Copy this JSON snapshot to back up your mid-turn dispatch state or paste a saved payload below.</p>
+        <label for="bd-save-textarea" class="bd-visually-hidden">Serialized Game State JSON</label>
+        <textarea id="bd-save-textarea" class="bd-textarea">${serializeGameState(state)}</textarea>
+        <div style="display:flex;justify-content:flex-end;gap:0.5rem;flex-wrap:wrap;">
+          <button type="button" class="bd-btn" id="bd-btn-clear-save">Clear LocalStorage</button>
+          <button type="button" class="bd-btn bd-btn-primary" id="bd-btn-import-save">Import JSON</button>
+          <button type="button" class="bd-btn" id="bd-btn-close-dialog">Close</button>
+        </div>
+      </dialog>
+    `;
+    root.querySelector("#bd-scenario-select")?.addEventListener("change", (e) => {
+      const val = e.target.value;
+      const nextScenario = val === "seeded" ? getScenarioById("seeded", state.scenario.seed ?? CONFIG.DEFAULT_SEED) : getScenarioById(val);
+      state = createInitialGameState(nextScenario);
+      feedbackBanner = { text: `Loaded ${nextScenario.title}.`, kind: "info" };
+      persistCurrentState();
+      render();
+    });
+    root.querySelector("#bd-btn-new-seed")?.addEventListener("click", () => {
+      const nextSeed = (state.scenario.seed ?? CONFIG.DEFAULT_SEED) + 137 >>> 0;
+      state = createInitialGameState(getScenarioById("seeded", nextSeed));
+      feedbackBanner = {
+        text: `Generated deterministic Seeded Storm #${nextSeed}.`,
+        kind: "info"
+      };
+      persistCurrentState();
+      render();
+    });
+    root.querySelector("#bd-btn-restart")?.addEventListener("click", () => {
+      state = createInitialGameState(state.scenario);
+      feedbackBanner = { text: `Restarted ${state.scenario.title} at Turn 1.`, kind: "info" };
+      persistCurrentState();
+      render();
+    });
+    root.querySelector("#bd-btn-mute")?.addEventListener("click", () => {
+      audio.toggleMute();
+      render();
+    });
+    root.querySelector("#bd-btn-debug")?.addEventListener("click", () => {
+      debugEnabled = !debugEnabled;
+      render();
+    });
+    const dialog = root.querySelector("#bd-save-dialog");
+    root.querySelector("#bd-btn-save-modal")?.addEventListener("click", () => {
+      if (dialog && typeof dialog.showModal === "function") {
+        dialog.showModal();
+      }
+    });
+    root.querySelector("#bd-btn-close-dialog")?.addEventListener("click", () => {
+      dialog?.close();
+    });
+    root.querySelector("#bd-btn-clear-save")?.addEventListener("click", () => {
+      clearSavedGameState();
+      dialog?.close();
+      feedbackBanner = { text: "Cleared saved localStorage state.", kind: "info" };
+      render();
+    });
+    root.querySelector("#bd-btn-import-save")?.addEventListener("click", () => {
+      const raw = root.querySelector("#bd-save-textarea")?.value;
+      if (!raw) return;
+      const imported = deserializeGameState(raw);
+      if (imported) {
+        state = imported;
+        persistCurrentState();
+        dialog?.close();
+        feedbackBanner = { text: `Imported save state at Turn ${state.turn}.`, kind: "info" };
+        render();
+      } else {
+        feedbackBanner = {
+          text: "Invalid or corrupted save JSON \u2014 current state preserved.",
+          kind: "error"
+        };
+        dialog?.close();
+        render();
+      }
+    });
+    root.querySelectorAll("[data-tool]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        activeTool = btn.getAttribute("data-tool");
+        render();
+      });
+    });
+    root.querySelectorAll("[data-edge-id]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const edgeId = el.getAttribute("data-edge-id");
+        if (edgeId) handleCorridorAction(edgeId);
+      });
+    });
+    root.querySelectorAll("[data-direct-action]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tool = btn.getAttribute("data-direct-action");
+        handleCorridorAction(selectedEdgeId, tool);
+      });
+    });
+    root.querySelector("#bd-btn-undo")?.addEventListener("click", handleUndo);
+    root.querySelector("#bd-btn-reset-turn")?.addEventListener("click", handleResetTurn);
+    root.querySelector("#bd-btn-commit")?.addEventListener("click", handleCommitTurn);
+    root.querySelector("#bd-dbg-trunk")?.addEventListener(
+      "click",
+      () => runAutomatedScript(SCENARIO_1_EFFICIENT_TRUNK_SCRIPT, "Efficient Trunk Strategy")
+    );
+    root.querySelector("#bd-dbg-loop")?.addEventListener(
+      "click",
+      () => runAutomatedScript(SCENARIO_1_REDUNDANT_LOOP_SCRIPT, "Redundant Loop Strategy")
+    );
+    root.querySelector("#bd-dbg-loss")?.addEventListener(
+      "click",
+      () => runAutomatedScript(SCENARIO_1_NEGLECT_LOSS_SCRIPT, "Neglect Failure Script")
+    );
+  };
+  const onKeyDown = (e) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+      return;
+    }
+    if (e.key === "d" || e.key === "D") {
+      debugEnabled = !debugEnabled;
+      render();
+    } else if (e.key === "z" || e.key === "Z") {
+      handleUndo();
+    }
+  };
+  window.addEventListener("keydown", onKeyDown);
+  render();
+  return {
+    destroy() {
+      window.removeEventListener("keydown", onKeyDown);
+      audio.destroy();
+      container2.innerHTML = "";
+    },
+    getState() {
+      return state;
+    },
+    restartWithSeed(seed) {
+      state = createInitialGameState(getScenarioById("seeded", seed));
+      persistCurrentState();
+      render();
+    },
+    toggleDebug(force) {
+      debugEnabled = force !== void 0 ? force : !debugEnabled;
+      render();
+    }
+  };
+}
+
+// games/02-blackout-dispatch/src/index.ts
+function mountGame(container2, options) {
+  const controller = createBlackoutDispatchUI(container2, options);
+  return {
+    destroy() {
+      controller.destroy();
+    },
+    getStateSnapshot() {
+      return controller.getState();
+    },
+    restartWithSeed(seed) {
+      controller.restartWithSeed(seed);
+    },
+    toggleDebug(force) {
+      controller.toggleDebug(force);
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_02-blackout-dispatch.ts
+var container = document.getElementById("app");
+if (container) {
+  mountGame(container);
+}
+
+</script>
+  </body>
+</html>
