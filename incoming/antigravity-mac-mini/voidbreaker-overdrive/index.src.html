@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VOIDBREAKER: OVERDRIVE // Cyber-Mech Action Roguelite</title>
+    <link rel="stylesheet" href="/src/styles/main.css" />
+  </head>
+  <body>
+    <main id="game-viewport" class="game-viewport">
+      <canvas id="game-canvas" aria-label="Voidbreaker Overdrive Tactical Arena"></canvas>
+
+      <!-- TOP TACTICAL HUD -->
+      <header class="hud-top">
+        <!-- Left: Hull, Aegis Shield, Thermal Active-Vent Bar -->
+        <section class="hud-card vitals-card" aria-label="Mech Vitals">
+          <div class="mech-badge-row">
+            <span id="hud-mech-code" class="badge-code">STRIKER-09</span>
+            <strong id="hud-mech-name" class="mech-title">VALKYRIE</strong>
+            <span id="hud-level" class="level-pill">LVL 01</span>
+          </div>
+
+          <div class="bar-group">
+            <div class="bar-label">
+              <span>HULL INTEGRITY</span>
+              <span id="hud-hp-text">130 / 130</span>
+            </div>
+            <div class="bar-track hull-track">
+              <div id="hud-hp-fill" class="bar-fill hull-fill" style="width: 100%"></div>
+            </div>
+          </div>
+
+          <div class="bar-group">
+            <div class="bar-label">
+              <span>AEGIS SHIELD</span>
+              <span id="hud-shield-text">75 / 75</span>
+            </div>
+            <div class="bar-track shield-track">
+              <div id="hud-shield-fill" class="bar-fill shield-fill" style="width: 100%"></div>
+            </div>
+          </div>
+
+          <div class="bar-group">
+            <div class="bar-label">
+              <span>THERMAL CORE <kbd>[R] ACTIVE VENT</kbd></span>
+              <span id="hud-heat-state">NOMINAL</span>
+            </div>
+            <div class="bar-track heat-track">
+              <!-- Active Vent Sweet-Spot Zone [65%..80%] -->
+              <div class="heat-sweet-spot" title="Press [R] inside this zone for Overcharge!"></div>
+              <div id="hud-heat-fill" class="bar-fill heat-fill" style="width: 0%"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Center: Sector Wave & Boss Health Bar -->
+        <section class="hud-center">
+          <div class="sector-banner">
+            <span id="hud-wave-title" class="wave-title">SECTOR 01 // WAVE 01</span>
+            <div class="xp-track" title="Neural Augment XP Progress">
+              <div id="hud-xp-fill" class="xp-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div id="boss-hud" class="boss-hud" hidden>
+            <div class="boss-header">
+              <strong id="boss-name">SERAPH-MKIV</strong>
+              <span id="boss-subtitle">ORBITAL DEFENSE CORE</span>
+            </div>
+            <div class="boss-bar-track">
+              <div id="boss-hp-fill" class="boss-hp-fill" style="width: 100%"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right: Style Rank, Score, Void Cores & Declarative Modal Controls -->
+        <section class="hud-card style-card" aria-label="Combat Style and Controls">
+          <div class="style-rank-row">
+            <div>
+              <div class="style-caption">COMBAT STYLE RANK</div>
+              <div id="hud-combo-text" class="combo-counter">0 HIT COMBO</div>
+            </div>
+            <div id="hud-style-rank" class="style-rank-badge" data-rank="D">D</div>
+          </div>
+
+          <div class="metrics-row">
+            <div class="metric-item">
+              <span class="metric-label">SCORE</span>
+              <strong id="hud-score">0</strong>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">KILLS</span>
+              <strong id="hud-kills">0</strong>
+            </div>
+            <div class="metric-item core-metric">
+              <span class="metric-label">VOID CORES</span>
+              <strong id="hud-cores">50</strong>
+            </div>
+          </div>
+
+          <div class="hud-actions-row">
+            <button
+              type="button"
+              class="cyber-btn small-btn"
+              command="show-modal"
+              commandfor="hangar-dialog"
+            >
+              MECH HANGAR
+            </button>
+            <button
+              type="button"
+              class="cyber-btn small-btn"
+              command="show-modal"
+              commandfor="armory-dialog"
+            >
+              ARMORY
+            </button>
+            <button
+              type="button"
+              class="cyber-btn small-btn"
+              command="show-modal"
+              commandfor="codex-dialog"
+            >
+              CODEX
+            </button>
+            <button type="button" id="btn-mute" class="cyber-btn small-btn" aria-pressed="false">
+              AUDIO: ON
+            </button>
+          </div>
+        </section>
+      </header>
+
+      <!-- TOAST NOTIFICATION BANNER -->
+      <aside id="toast-banner" class="toast-banner" aria-live="polite" hidden>
+        <strong id="toast-title">SYNERGY EVOLUTION</strong>
+        <span id="toast-subtitle">Details</span>
+      </aside>
+
+      <!-- BOTTOM ABILITY DECK & TACTICAL RADAR -->
+      <footer class="hud-bottom">
+        <div class="ability-deck">
+          <div class="ability-slot" id="slot-dash">
+            <kbd>SPACE</kbd>
+            <span class="ability-name">PHASE DASH</span>
+            <span id="cd-dash" class="ability-status">READY</span>
+          </div>
+          <div class="ability-slot" id="slot-alt">
+            <kbd>RMB / E</kbd>
+            <span id="label-alt" class="ability-name">PLASMA KATANA</span>
+            <span id="cd-alt" class="ability-status">READY</span>
+          </div>
+          <div class="ability-slot ultimate-slot" id="slot-ult">
+            <kbd>Q</kbd>
+            <span id="label-ult" class="ability-name">OMEGA OVERCLOCK</span>
+            <span id="cd-ult" class="ability-status">100% READY</span>
+          </div>
+          <button type="button" id="btn-auto-aim" class="ability-slot toggle-slot" aria-pressed="false">
+            <kbd>C</kbd>
+            <span class="ability-name">AUTO-AIM</span>
+            <span id="state-auto-aim" class="ability-status">MANUAL</span>
+          </button>
+          <button type="button" id="btn-auto-fire" class="ability-slot toggle-slot" aria-pressed="false">
+            <kbd>F</kbd>
+            <span class="ability-name">AUTO-FIRE</span>
+            <span id="state-auto-fire" class="ability-status">MANUAL</span>
+          </button>
+        </div>
+
+        <div class="radar-panel">
+          <canvas id="radar-canvas" width="128" height="128" aria-label="Tactical Radar Minimap"></canvas>
+        </div>
+      </footer>
+    </main>
+
+    <!-- 1. MECH HANGAR & MISSION LAUNCH MODAL (<dialog>) -->
+    <dialog id="hangar-dialog" class="cyber-dialog" aria-labelledby="hangar-title">
+      <div class="dialog-header">
+        <div>
+          <span class="dialog-eyebrow">ORBITAL DROP COMMAND // SELECT CYBER-FRAME</span>
+          <h2 id="hangar-title">VOIDBREAKER: OVERDRIVE</h2>
+        </div>
+        <button
+          type="button"
+          class="cyber-btn close-btn"
+          command="close"
+          commandfor="hangar-dialog"
+        >
+          RESUME SORTIE [ESC]
+        </button>
+      </div>
+
+      <p class="dialog-lead">
+        Pilot an experimental Cyber-Frame against the Architect's swarm. Dash <strong>through</strong> enemy projectiles at the last split-second to trigger <strong>Tachyon Witch-Time</strong>, press <kbd>R</kbd> in the thermal sweet-spot for <strong>Overcharge</strong>, and combine Neural Augments to unlock <strong>Weapon Synergy Evolutions</strong>.
+      </p>
+
+      <div id="mech-cards-grid" class="mech-cards-grid"></div>
+
+      <div class="dialog-footer">
+        <div class="controls-cheatsheet">
+          <span><kbd>WASD / Arrows</kbd> Move</span>
+          <span><kbd>Mouse / C</kbd> Aim + Fire</span>
+          <span><kbd>Space / Shift</kbd> Phase Dash (Witch-Time)</span>
+          <span><kbd>Right-Click / E</kbd> Alt-Fire / Katana Parry</span>
+          <span><kbd>Q</kbd> Ultimate Overclock</span>
+          <span><kbd>R</kbd> Active Thermal Vent</span>
+        </div>
+        <div class="launch-actions">
+          <button type="button" id="btn-daily-seed" class="cyber-btn secondary-btn">
+            DAILY SEED RUN
+          </button>
+          <button type="button" id="btn-launch-run" class="cyber-btn primary-btn" autofocus>
+            DEPLOY SELECTED MECH
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 2. NEURAL AUGMENT LEVEL-UP DRAFT MODAL (<dialog>) -->
+    <dialog id="augment-dialog" class="cyber-dialog" closedby="none" aria-labelledby="augment-title">
+      <div class="dialog-header">
+        <div>
+          <span class="dialog-eyebrow">NEURAL UPLINK // LEVEL UP</span>
+          <h2 id="augment-title">SELECT NEURAL AUGMENT</h2>
+        </div>
+        <span class="hotkey-hint">PRESS <kbd>1</kbd> <kbd>2</kbd> OR <kbd>3</kbd> TO INSTALL</span>
+      </div>
+
+      <div id="augment-choices-grid" class="augment-choices-grid"></div>
+
+      <div id="active-synergies-strip" class="synergies-strip"></div>
+    </dialog>
+
+    <!-- 3. ARMORY META-PROGRESSION MODAL (<dialog>) -->
+    <dialog id="armory-dialog" class="cyber-dialog" closedby="any" aria-labelledby="armory-title">
+      <div class="dialog-header">
+        <div>
+          <span class="dialog-eyebrow">PERMANENT CHASSIS ENGINEERING</span>
+          <h2 id="armory-title">VOID CORE ARMORY</h2>
+        </div>
+        <div class="header-right-cluster">
+          <div class="core-balance-pill">
+            AVAILABLE CORES: <strong id="armory-cores-count">50</strong>
+          </div>
+          <button
+            type="button"
+            class="cyber-btn close-btn"
+            command="close"
+            commandfor="armory-dialog"
+            autofocus
+          >
+            CLOSE [ESC]
+          </button>
+        </div>
+      </div>
+
+      <div id="armory-grid" class="armory-grid"></div>
+    </dialog>
+
+    <!-- 4. CODEX, SYNERGY RECIPES & ACHIEVEMENTS MODAL (<dialog>) -->
+    <dialog id="codex-dialog" class="cyber-dialog" closedby="any" aria-labelledby="codex-title">
+      <div class="dialog-header">
+        <div>
+          <span class="dialog-eyebrow">TACTICAL INTELLIGENCE DATABASE</span>
+          <h2 id="codex-title">SYNERGY RECIPES &amp; ACHIEVEMENTS</h2>
+        </div>
+        <button
+          type="button"
+          class="cyber-btn close-btn"
+          command="close"
+          commandfor="codex-dialog"
+          autofocus
+        >
+          CLOSE [ESC]
+        </button>
+      </div>
+
+      <div class="codex-columns">
+        <section>
+          <h3 class="section-subtitle">6 WEAPON SYNERGY EVOLUTIONS</h3>
+          <div id="codex-synergies-list" class="codex-list"></div>
+        </section>
+        <section>
+          <h3 class="section-subtitle">COMBAT HONORS &amp; ACHIEVEMENTS</h3>
+          <div id="codex-achievements-list" class="codex-list"></div>
+        </section>
+      </div>
+    </dialog>
+
+    <!-- 5. RUN SUMMARY / VICTORY / DEFEAT MODAL (<dialog>) -->
+    <dialog id="gameover-dialog" class="cyber-dialog" closedby="none" aria-labelledby="gameover-title">
+      <div class="dialog-header">
+        <div>
+          <span id="gameover-eyebrow" class="dialog-eyebrow">SORTIE TELEMETRY REPORT</span>
+          <h2 id="gameover-title">SIGNAL LOST // MECH DESTROYED</h2>
+        </div>
+      </div>
+
+      <div id="gameover-stats-grid" class="gameover-stats-grid"></div>
+
+      <div class="dialog-footer">
+        <button
+          type="button"
+          id="btn-gameover-armory"
+          class="cyber-btn secondary-btn"
+        >
+          OPEN VOID ARMORY
+        </button>
+        <div class="launch-actions">
+          <button
+            type="button"
+            id="btn-endless-continue"
+            class="cyber-btn secondary-btn"
+            hidden
+          >
+            ENTER ENDLESS OVERDRIVE
+          </button>
+          <button
+            type="button"
+            id="btn-play-again"
+            class="cyber-btn primary-btn"
+            autofocus
+          >
+            REDEPLOY IMMEDIATELY
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

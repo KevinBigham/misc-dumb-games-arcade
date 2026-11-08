@@ -1,0 +1,2308 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Orbit Stack — Morphing Polygon Ring Matcher | Argon Game 08</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        min-height: 100vh;
+        background: #070b19;
+        color: #f8fafc;
+      }
+      #orbit-stack-root {
+        width: 100%;
+        min-height: 100vh;
+        display: flex;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="orbit-stack-root"></div>
+    <script type="module">
+// games/08-orbit-stack/src/content.ts
+var BLOCK_ARCHETYPES = [
+  {
+    id: 0,
+    name: "Cyan Apex",
+    shortLabel: "CYN",
+    symbol: "\u25B2",
+    fillHex: "#06b6d4",
+    strokeHex: "#a5f3fc",
+    glowHex: "rgba(34, 211, 238, 0.55)",
+    textHex: "#042f2e",
+    baseFreqHz: 261.63
+    // C4
+  },
+  {
+    id: 1,
+    name: "Amber Pulse",
+    shortLabel: "AMB",
+    symbol: "\u25CF",
+    fillHex: "#f59e0b",
+    strokeHex: "#fde68a",
+    glowHex: "rgba(251, 191, 36, 0.55)",
+    textHex: "#271300",
+    baseFreqHz: 293.66
+    // D4
+  },
+  {
+    id: 2,
+    name: "Magenta Core",
+    shortLabel: "MAG",
+    symbol: "\u25A0",
+    fillHex: "#ec4899",
+    strokeHex: "#fbcfe8",
+    glowHex: "rgba(244, 114, 182, 0.55)",
+    textHex: "#31071f",
+    baseFreqHz: 329.63
+    // E4
+  },
+  {
+    id: 3,
+    name: "Emerald Prism",
+    shortLabel: "EMR",
+    symbol: "\u25C6",
+    fillHex: "#10b981",
+    strokeHex: "#a7f3d0",
+    glowHex: "rgba(52, 211, 153, 0.55)",
+    textHex: "#022c22",
+    baseFreqHz: 392
+    // G4
+  },
+  {
+    id: 4,
+    name: "Violet Nova",
+    shortLabel: "VIO",
+    symbol: "\u2605",
+    fillHex: "#8b5cf6",
+    strokeHex: "#ddd6fe",
+    glowHex: "rgba(167, 139, 250, 0.6)",
+    textHex: "#1e1b4b",
+    baseFreqHz: 440
+    // A4
+  }
+];
+var WAVE_PATTERNS = {
+  SINGLE_STREAM: {
+    type: "SINGLE_STREAM",
+    label: "Single Stream",
+    description: "1\u20132 shards along a focused orbital lane.",
+    minLevel: 1
+  },
+  DOUBLE_OPPOSING: {
+    type: "DOUBLE_OPPOSING",
+    label: "Double Opposing",
+    description: "Simultaneous shards arriving on opposite sides of the polygon.",
+    minLevel: 2
+  },
+  SPIRAL_CASCADE: {
+    type: "SPIRAL_CASCADE",
+    label: "Spiral Cascade",
+    description: "3 sequential shards sweeping clockwise or counter-clockwise around the core.",
+    minLevel: 4
+  },
+  CROSSING_PAIR: {
+    type: "CROSSING_PAIR",
+    label: "Crossing Pair",
+    description: "Two staggered pairs of matching/contrasting shards testing cross-face chains.",
+    minLevel: 6
+  }
+};
+function generateOrbitalWave(rng, level, numSides, activeColorCount, waveIntervalMs, intraWaveStepMs) {
+  const availablePatterns = ["SINGLE_STREAM"];
+  if (level >= WAVE_PATTERNS.DOUBLE_OPPOSING.minLevel) {
+    availablePatterns.push("DOUBLE_OPPOSING");
+  }
+  if (level >= WAVE_PATTERNS.SPIRAL_CASCADE.minLevel) {
+    availablePatterns.push("SPIRAL_CASCADE");
+  }
+  if (level >= WAVE_PATTERNS.CROSSING_PAIR.minLevel) {
+    availablePatterns.push("CROSSING_PAIR");
+  }
+  const pattern = level === 1 ? "SINGLE_STREAM" : rng.pick(availablePatterns);
+  const pickColor = () => rng.nextInt(0, activeColorCount);
+  const baseLane = rng.nextInt(0, numSides);
+  const shards = [];
+  if (pattern === "SINGLE_STREAM") {
+    const primaryColor = pickColor();
+    shards.push({ lane: baseLane, color: primaryColor, delayMs: 0 });
+    if (level >= 2 && rng.nextFloat() < 0.35) {
+      const offset = rng.nextFloat() < 0.5 ? 1 : numSides - 1;
+      shards.push({
+        lane: (baseLane + offset) % numSides,
+        color: rng.nextFloat() < 0.55 ? primaryColor : pickColor(),
+        delayMs: intraWaveStepMs
+      });
+    }
+    return {
+      pattern,
+      shards,
+      durationMs: waveIntervalMs + (shards.length > 1 ? intraWaveStepMs : 0)
+    };
+  }
+  if (pattern === "DOUBLE_OPPOSING") {
+    const oppositeLane = (baseLane + Math.floor(numSides / 2)) % numSides;
+    const c1 = pickColor();
+    const c2 = rng.nextFloat() < 0.45 ? c1 : pickColor();
+    shards.push({ lane: baseLane, color: c1, delayMs: 0 });
+    shards.push({ lane: oppositeLane, color: c2, delayMs: Math.round(intraWaveStepMs * 0.45) });
+    return {
+      pattern,
+      shards,
+      durationMs: Math.round(waveIntervalMs * 1.18)
+    };
+  }
+  if (pattern === "SPIRAL_CASCADE") {
+    const stepDir = rng.nextFloat() < 0.5 ? 1 : -1;
+    const count = level >= 9 ? 4 : 3;
+    const sharedColor = pickColor();
+    for (let i = 0; i < count; i++) {
+      const lane = (baseLane + i * stepDir + numSides * 4) % numSides;
+      const color = i < 2 && rng.nextFloat() < 0.6 ? sharedColor : pickColor();
+      shards.push({
+        lane,
+        color,
+        delayMs: i * intraWaveStepMs
+      });
+    }
+    return {
+      pattern,
+      shards,
+      durationMs: waveIntervalMs + (count - 1) * intraWaveStepMs
+    };
+  }
+  const laneA = baseLane;
+  const laneB = (baseLane + 2) % numSides;
+  const colorA = pickColor();
+  const colorB = pickColor();
+  shards.push({ lane: laneA, color: colorA, delayMs: 0 });
+  shards.push({ lane: laneB, color: colorB, delayMs: 0 });
+  shards.push({
+    lane: (laneA + 1) % numSides,
+    color: colorA,
+    delayMs: intraWaveStepMs
+  });
+  return {
+    pattern,
+    shards,
+    durationMs: waveIntervalMs + intraWaveStepMs
+  };
+}
+function getCoreStageInfo(numSides) {
+  switch (numSides) {
+    case 6:
+      return {
+        numSides: 6,
+        title: "HEX CORE (6 SIDES)",
+        subtitle: "4 Frequencies Active \xB7 Standard 60\xB0 Lattice",
+        badgeColor: "#06b6d4"
+      };
+    case 7:
+      return {
+        numSides: 7,
+        title: "HEPTA CORE (7 SIDES)",
+        subtitle: "5th Frequency (\u2605 Violet) Unlocked \xB7 51.4\xB0 Asymmetric Lattice",
+        badgeColor: "#8b5cf6"
+      };
+    case 8:
+      return {
+        numSides: 8,
+        title: "OCTA CORE (8 SIDES)",
+        subtitle: "Full 8-Face Orbital Matrix \xB7 Spiral & Crossing Waves Active",
+        badgeColor: "#f59e0b"
+      };
+  }
+}
+
+// games/08-orbit-stack/src/audio.ts
+var OrbitAudioEngine = class {
+  ctx = null;
+  muted = false;
+  isMuted() {
+    return this.muted;
+  }
+  setMuted(muted) {
+    this.muted = muted;
+  }
+  toggleMute() {
+    this.muted = !this.muted;
+    return this.muted;
+  }
+  ensureContext() {
+    if (this.muted) return null;
+    if (typeof window === "undefined") return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!this.ctx) {
+      try {
+        this.ctx = new AudioCtx();
+      } catch {
+        return null;
+      }
+    }
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  playRotateTick() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(760, now + 0.032);
+    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.035);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.038);
+  }
+  playShardLock(color = 0, depth = 0) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const baseFreq = 95 + depth * 12 + color * 6;
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(baseFreq * 1.4, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.65, now + 0.085);
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.09);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.095);
+  }
+  playMatchChord(color = 0, clearedCount = 3, comboMultiplier = 1, cascadeDepth = 1) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const archetype = BLOCK_ARCHETYPES[color] ?? BLOCK_ARCHETYPES[0];
+    const rootFreq = archetype.baseFreqHz * Math.pow(1.06, Math.min(8, comboMultiplier - 1 + (cascadeDepth - 1) * 2));
+    const ratios = [1, 1.25, 1.5, clearedCount >= 5 ? 2 : 1.875];
+    const now = ctx.currentTime;
+    ratios.forEach((ratio, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx % 2 === 0 ? "triangle" : "sine";
+      const start = now + idx * 0.035;
+      const duration = 0.22;
+      osc.frequency.setValueAtTime(rootFreq * ratio, start);
+      osc.frequency.exponentialRampToValueAtTime(
+        rootFreq * ratio * 1.015,
+        start + duration
+      );
+      gain.gain.setValueAtTime(0.09, start);
+      gain.gain.exponentialRampToValueAtTime(1e-3, start + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + duration + 0.01);
+    });
+  }
+  playMorphFanfare(newSides) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const notes = newSides === 7 ? [330, 440, 554.37, 659.25] : [392, 523.25, 659.25, 783.99];
+    const now = ctx.currentTime;
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      const start = now + idx * 0.055;
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.07, start);
+      gain.gain.exponentialRampToValueAtTime(1e-3, start + 0.26);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.27);
+    });
+  }
+  playPhasePulse() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.exponentialRampToValueAtTime(680, now + 0.18);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.36);
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.38);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.39);
+  }
+  playContainmentBreach() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [220, 185, 146.8].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      const start = now + idx * 0.11;
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.1, start);
+      gain.gain.exponentialRampToValueAtTime(1e-3, start + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.26);
+    });
+  }
+  destroy() {
+    if (this.ctx) {
+      this.ctx.close().catch(() => {
+      });
+      this.ctx = null;
+    }
+  }
+};
+
+// games/08-orbit-stack/src/config.ts
+var CONFIG = {
+  GAME_ID: "08-orbit-stack",
+  STORAGE_KEY: "argon_game08_orbit_stack_v1",
+  DEFAULT_SEED: 80802026,
+  FIXED_STEP_MS: 1e3 / 60,
+  /** Radial stack capacity per polygon face before outer red perimeter breach */
+  MAX_STACK_DEPTH: 7,
+  /** Warning threshold on a face (triggers pulsing danger indicator) */
+  DANGER_STACK_DEPTH: 5,
+  /** Minimum connected same-color blocks (radial + angular neighbors) to clear */
+  MIN_MATCH_COUNT: 3,
+  /** Polygon morph level thresholds */
+  HEX_SIDES: 6,
+  HEPTA_SIDES: 7,
+  OCTA_SIDES: 8,
+  HEPTA_UNLOCK_LEVEL: 4,
+  OCTA_UNLOCK_LEVEL: 7,
+  /** Short-goal Victory milestone */
+  VICTORY_TARGET_LEVEL: 8,
+  VICTORY_TARGET_CLEARS: 100,
+  /** Hard difficulty cap modeled after Hextris wavegen */
+  MAX_DIFFICULTY_LEVEL: 35,
+  /** Normalized radial coordinate system:
+   *  0.0 = surface of central polygon core
+   *  Each stacked block occupies BLOCK_RADIAL_THICKNESS (0.105)
+   *  7 blocks = 0.735 -> outer containment ring is at 0.735
+   *  1.0 = outer orbital spawn ring
+   */
+  BLOCK_RADIAL_THICKNESS: 0.105,
+  SPAWN_RADIAL_DISTANCE: 1,
+  /** Fast-drop / Slam multiplier when player presses Space / Down */
+  SLAM_SPEED_MULTIPLIER: 5.5,
+  SLAM_SCORE_BONUS_PER_BLOCK: 15,
+  /** Gravity settling speed when inner blocks clear and outer blocks drop inward */
+  GRAVITY_SETTLE_SPEED_PER_SEC: 3.4,
+  /** Combo window & multiplier settings */
+  COMBO_WINDOW_MS: 2600,
+  MAX_COMBO_MULTIPLIER: 8,
+  /** Phase Pulse (emergency radial compression ability) */
+  PHASE_PULSE_MAX_CHARGE: 100,
+  PHASE_PULSE_INITIAL_CHARGE: 50,
+  PHASE_PULSE_CHARGE_PER_BLOCK: 7,
+  PHASE_PULSE_CROSS_FACE_BONUS: 14,
+  PHASE_PULSE_SCORE_BONUS: 150,
+  /** Base scoring */
+  BASE_BLOCK_SCORE: 50,
+  CROSS_FACE_BONUS_MULTIPLIER: 1.5,
+  CASCADE_BONUS_MULTIPLIER: 1.35
+};
+function getSidesForLevel(level) {
+  if (level >= CONFIG.OCTA_UNLOCK_LEVEL) {
+    return CONFIG.OCTA_SIDES;
+  }
+  if (level >= CONFIG.HEPTA_UNLOCK_LEVEL) {
+    return CONFIG.HEPTA_SIDES;
+  }
+  return CONFIG.HEX_SIDES;
+}
+function getColorCountForLevel(level) {
+  return level >= CONFIG.HEPTA_UNLOCK_LEVEL ? 5 : 4;
+}
+function getClearedBlocksForLevel(level) {
+  if (level <= 1) return 0;
+  let total = 0;
+  for (let l = 1; l < level; l++) {
+    total += 4 + Math.min(14, l);
+  }
+  return total;
+}
+function getLevelFromClearedBlocks(clearedBlocks) {
+  let level = 1;
+  while (getClearedBlocksForLevel(level + 1) <= clearedBlocks) {
+    level++;
+  }
+  return level;
+}
+function getDifficultyForLevel(rawLevel) {
+  const level = Math.max(1, Math.floor(rawLevel));
+  const effectiveLevel = Math.min(CONFIG.MAX_DIFFICULTY_LEVEL, level);
+  let progress01 = 0;
+  if (effectiveLevel <= 10) {
+    progress01 = (effectiveLevel - 1) / 9 * 0.62;
+  } else {
+    const post10 = (effectiveLevel - 10) / (CONFIG.MAX_DIFFICULTY_LEVEL - 10);
+    progress01 = 0.62 + (1 - Math.pow(1 - post10, 1.65)) * 0.38;
+  }
+  const speedMultiplier = Number((1 + progress01 * 1.45).toFixed(4));
+  const fallSpeedPerSec = Number((0.26 * speedMultiplier).toFixed(4));
+  const waveIntervalMs = Math.round(1580 - progress01 * 860);
+  const intraWaveStepMs = Math.round(340 - progress01 * 155);
+  return {
+    level,
+    effectiveLevel,
+    numSides: getSidesForLevel(level),
+    activeColorCount: getColorCountForLevel(level),
+    fallSpeedPerSec,
+    waveIntervalMs,
+    intraWaveStepMs,
+    speedMultiplier
+  };
+}
+
+// games/08-orbit-stack/src/persistence.ts
+var SAVE_SCHEMA_VERSION = 1;
+function createDefaultCareerStats() {
+  return {
+    highScore: 0,
+    maxLevelReached: 1,
+    maxComboReached: 1,
+    totalBlocksClearedLifetime: 0,
+    gamesPlayed: 0,
+    victoriesUnlocked: 0
+  };
+}
+function cloneOrbitState(state) {
+  return {
+    ...state,
+    stacks: state.stacks.map(
+      (faceStack) => faceStack.map((b) => ({ ...b }))
+    ),
+    fallingShards: state.fallingShards.map((s) => ({ ...s })),
+    waveQueue: state.waveQueue.map((q) => ({ ...q })),
+    events: []
+  };
+}
+function serializeOrbitEnvelope(career, activeRun) {
+  const envelope = {
+    schemaVersion: SAVE_SCHEMA_VERSION,
+    gameId: CONFIG.GAME_ID,
+    updatedAtIso: (/* @__PURE__ */ new Date()).toISOString(),
+    career: { ...career },
+    activeRun: activeRun ? cloneOrbitState(activeRun) : null
+  };
+  return JSON.stringify(envelope);
+}
+function deserializeOrbitEnvelope(rawJson) {
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (!parsed || parsed.schemaVersion !== SAVE_SCHEMA_VERSION || parsed.gameId !== CONFIG.GAME_ID || !parsed.career) {
+      return null;
+    }
+    const career = {
+      highScore: Math.max(0, Number(parsed.career.highScore) || 0),
+      maxLevelReached: Math.max(1, Number(parsed.career.maxLevelReached) || 1),
+      maxComboReached: Math.max(1, Number(parsed.career.maxComboReached) || 1),
+      totalBlocksClearedLifetime: Math.max(
+        0,
+        Number(parsed.career.totalBlocksClearedLifetime) || 0
+      ),
+      gamesPlayed: Math.max(0, Number(parsed.career.gamesPlayed) || 0),
+      victoriesUnlocked: Math.max(0, Number(parsed.career.victoriesUnlocked) || 0)
+    };
+    let activeRun = null;
+    if (parsed.activeRun && typeof parsed.activeRun.seed === "number" && Array.isArray(parsed.activeRun.stacks) && (parsed.activeRun.numSides === 6 || parsed.activeRun.numSides === 7 || parsed.activeRun.numSides === 8)) {
+      activeRun = cloneOrbitState(parsed.activeRun);
+    }
+    return {
+      schemaVersion: SAVE_SCHEMA_VERSION,
+      gameId: CONFIG.GAME_ID,
+      updatedAtIso: typeof parsed.updatedAtIso === "string" ? parsed.updatedAtIso : (/* @__PURE__ */ new Date()).toISOString(),
+      career,
+      activeRun
+    };
+  } catch {
+    return null;
+  }
+}
+function loadOrbitSave(storageKey = CONFIG.STORAGE_KEY) {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw) {
+        const loaded = deserializeOrbitEnvelope(raw);
+        if (loaded) return loaded;
+      }
+    }
+  } catch {
+  }
+  return {
+    schemaVersion: SAVE_SCHEMA_VERSION,
+    gameId: CONFIG.GAME_ID,
+    updatedAtIso: (/* @__PURE__ */ new Date()).toISOString(),
+    career: createDefaultCareerStats(),
+    activeRun: null
+  };
+}
+function saveOrbitState(career, activeRun, storageKey = CONFIG.STORAGE_KEY) {
+  const updatedCareer = {
+    highScore: Math.max(career.highScore, activeRun?.score ?? 0),
+    maxLevelReached: Math.max(career.maxLevelReached, activeRun?.level ?? 1),
+    maxComboReached: Math.max(
+      career.maxComboReached,
+      activeRun?.maxComboReached ?? 1
+    ),
+    totalBlocksClearedLifetime: career.totalBlocksClearedLifetime,
+    gamesPlayed: career.gamesPlayed,
+    victoriesUnlocked: career.victoriesUnlocked + (activeRun?.victoryUnlocked ? 1 : 0)
+  };
+  const json = serializeOrbitEnvelope(updatedCareer, activeRun);
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem(storageKey, json);
+    }
+  } catch {
+  }
+  return deserializeOrbitEnvelope(json);
+}
+
+// games/08-orbit-stack/src/rng.ts
+function createSeededRng(initialSeed) {
+  let state = initialSeed >>> 0 || 322420463;
+  const nextFloat = () => {
+    state = state + 1831565813 >>> 0;
+    let t = Math.imul(state ^ state >>> 15, 1 | state);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  const nextInt = (minInclusive, maxExclusive) => {
+    if (maxExclusive <= minInclusive) return minInclusive;
+    return minInclusive + Math.floor(nextFloat() * (maxExclusive - minInclusive));
+  };
+  const pick = (items) => {
+    if (items.length === 0) {
+      throw new Error("Cannot pick from an empty array");
+    }
+    return items[nextInt(0, items.length)];
+  };
+  return {
+    getState: () => state >>> 0,
+    setState: (newState) => {
+      state = newState >>> 0 || 322420463;
+    },
+    nextFloat,
+    nextInt,
+    pick
+  };
+}
+
+// games/08-orbit-stack/src/simulation.ts
+function getTargetFaceForLane(lane, coreRotationIndex, numSides) {
+  return ((lane - coreRotationIndex) % numSides + numSides) % numSides;
+}
+function getWorldLaneForFace(face, coreRotationIndex, numSides) {
+  return ((face + coreRotationIndex) % numSides + numSides) % numSides;
+}
+function createInitialState(seed = CONFIG.DEFAULT_SEED) {
+  const rng = createSeededRng(seed);
+  const numSides = CONFIG.HEX_SIDES;
+  const stacks = Array.from({ length: numSides }, () => []);
+  const state = {
+    seed,
+    rngState: rng.getState(),
+    status: "PLAYING",
+    elapsedMs: 0,
+    level: 1,
+    numSides,
+    coreRotationIndex: 0,
+    visualRotationSteps: 0,
+    stacks,
+    fallingShards: [],
+    waveQueue: [],
+    currentWavePattern: "SINGLE_STREAM",
+    nextWaveCooldownMs: 350,
+    nextEntityId: 1,
+    gravitySettleTimerMs: 0,
+    pendingCascadeDepth: 0,
+    score: 0,
+    totalClearedBlocks: 0,
+    comboCount: 0,
+    comboMultiplier: 1,
+    comboTimerMs: 0,
+    maxComboReached: 1,
+    phasePulseCharge: CONFIG.PHASE_PULSE_INITIAL_CHARGE,
+    phasePulsesUsed: 0,
+    victoryUnlocked: false,
+    victoryAcknowledged: false,
+    breachedFace: null,
+    events: []
+  };
+  return state;
+}
+function findConnectedMatches(stacks, numSides, minMatchCount = CONFIG.MIN_MATCH_COUNT) {
+  const visited = /* @__PURE__ */ new Set();
+  const groups = [];
+  const keyOf = (face, depth) => `${face}:${depth}`;
+  for (let face = 0; face < numSides; face++) {
+    const faceStack = stacks[face] ?? [];
+    for (let depth = 0; depth < faceStack.length; depth++) {
+      const startKey = keyOf(face, depth);
+      if (visited.has(startKey)) continue;
+      const targetColor = faceStack[depth].color;
+      const queue = [{ f: face, d: depth }];
+      visited.add(startKey);
+      const component = [];
+      const facesSet = /* @__PURE__ */ new Set();
+      while (queue.length > 0) {
+        const current = queue.shift();
+        const block = stacks[current.f]?.[current.d];
+        if (!block) continue;
+        component.push({
+          face: current.f,
+          depth: current.d,
+          color: block.color,
+          blockId: block.id
+        });
+        facesSet.add(current.f);
+        const leftFace = (current.f - 1 + numSides) % numSides;
+        const rightFace = (current.f + 1) % numSides;
+        const neighbors = [
+          { f: current.f, d: current.d - 1 },
+          { f: current.f, d: current.d + 1 },
+          { f: leftFace, d: current.d },
+          { f: rightFace, d: current.d }
+        ];
+        for (const nb of neighbors) {
+          if (nb.d < 0) continue;
+          const nbStack = stacks[nb.f];
+          if (!nbStack || nb.d >= nbStack.length) continue;
+          const nbKey = keyOf(nb.f, nb.d);
+          if (visited.has(nbKey)) continue;
+          if (nbStack[nb.d].color === targetColor) {
+            visited.add(nbKey);
+            queue.push(nb);
+          }
+        }
+      }
+      if (component.length >= minMatchCount) {
+        groups.push({
+          color: targetColor,
+          cells: component,
+          facesInvolved: Array.from(facesSet).sort((a, b) => a - b),
+          isCrossFace: facesSet.size > 1
+        });
+      }
+    }
+  }
+  return groups;
+}
+function morphPolygonSides(state, newSides) {
+  if (newSides <= state.numSides) return;
+  while (state.stacks.length < newSides) {
+    state.stacks.push([]);
+  }
+  state.numSides = newSides;
+  state.coreRotationIndex = (state.coreRotationIndex % newSides + newSides) % newSides;
+  for (const shard of state.fallingShards) {
+    shard.lane = (shard.lane % newSides + newSides) % newSides;
+  }
+  for (const queued of state.waveQueue) {
+    queued.lane = (queued.lane % newSides + newSides) % newSides;
+  }
+  state.events.push({
+    type: "POLYGON_MORPHED",
+    newSides
+  });
+}
+function resolveMatchesStep(state, cascadeDepth = 1) {
+  const groups = findConnectedMatches(state.stacks, state.numSides);
+  if (groups.length === 0) {
+    return { clearedBlocks: 0, outerBlocksDropped: false };
+  }
+  const toRemoveByFace = /* @__PURE__ */ new Map();
+  let totalRemoved = 0;
+  let anyCrossFace = false;
+  const allClearedCells = [];
+  for (const group of groups) {
+    if (group.isCrossFace) anyCrossFace = true;
+    for (const cell of group.cells) {
+      if (!toRemoveByFace.has(cell.face)) {
+        toRemoveByFace.set(cell.face, /* @__PURE__ */ new Set());
+      }
+      const set = toRemoveByFace.get(cell.face);
+      if (!set.has(cell.depth)) {
+        set.add(cell.depth);
+        totalRemoved++;
+        allClearedCells.push(cell);
+      }
+    }
+  }
+  let outerBlocksDropped = false;
+  for (const [face, depthsSet] of toRemoveByFace.entries()) {
+    const oldStack = state.stacks[face];
+    const newStack = [];
+    let removedBelowCount = 0;
+    for (let d = 0; d < oldStack.length; d++) {
+      if (depthsSet.has(d)) {
+        removedBelowCount++;
+      } else {
+        const surviving = oldStack[d];
+        if (removedBelowCount > 0) {
+          outerBlocksDropped = true;
+          surviving.radialOffset += removedBelowCount * CONFIG.BLOCK_RADIAL_THICKNESS;
+        }
+        newStack.push(surviving);
+      }
+    }
+    state.stacks[face] = newStack;
+  }
+  state.comboCount += 1;
+  state.comboTimerMs = CONFIG.COMBO_WINDOW_MS;
+  const crossFaceChainBonus = anyCrossFace && totalRemoved >= 4 ? 1 : 0;
+  state.comboMultiplier = Math.min(
+    CONFIG.MAX_COMBO_MULTIPLIER,
+    1 + Math.floor((state.comboCount + crossFaceChainBonus) / 1)
+  );
+  if (state.comboMultiplier > state.maxComboReached) {
+    state.maxComboReached = state.comboMultiplier;
+  }
+  const crossMultiplier = anyCrossFace ? CONFIG.CROSS_FACE_BONUS_MULTIPLIER : 1;
+  const cascadeMultiplier = cascadeDepth > 1 ? Math.pow(CONFIG.CASCADE_BONUS_MULTIPLIER, cascadeDepth - 1) : 1;
+  const sizeBonus = totalRemoved > 3 ? 1 + (totalRemoved - 3) * 0.25 : 1;
+  const scoreDelta = Math.round(
+    totalRemoved * CONFIG.BASE_BLOCK_SCORE * state.comboMultiplier * crossMultiplier * cascadeMultiplier * sizeBonus
+  );
+  state.score += scoreDelta;
+  state.totalClearedBlocks += totalRemoved;
+  const pulseGain = totalRemoved * CONFIG.PHASE_PULSE_CHARGE_PER_BLOCK + (anyCrossFace ? CONFIG.PHASE_PULSE_CROSS_FACE_BONUS : 0);
+  state.phasePulseCharge = Math.min(
+    CONFIG.PHASE_PULSE_MAX_CHARGE,
+    state.phasePulseCharge + pulseGain
+  );
+  const primaryCell = allClearedCells[0];
+  state.events.push({
+    type: cascadeDepth > 1 ? "CASCADE_CLEARED" : "MATCH_CLEARED",
+    face: primaryCell?.face,
+    depth: primaryCell?.depth,
+    color: primaryCell?.color,
+    clearedCount: totalRemoved,
+    scoreDelta,
+    comboMultiplier: state.comboMultiplier,
+    cascadeDepth,
+    cells: allClearedCells
+  });
+  const newLevel = getLevelFromClearedBlocks(state.totalClearedBlocks);
+  if (newLevel > state.level) {
+    state.level = newLevel;
+    const requiredSides = getSidesForLevel(state.level);
+    if (requiredSides > state.numSides) {
+      morphPolygonSides(state, requiredSides);
+    }
+  }
+  if (!state.victoryUnlocked && state.level >= CONFIG.VICTORY_TARGET_LEVEL && state.totalClearedBlocks >= CONFIG.VICTORY_TARGET_CLEARS) {
+    state.victoryUnlocked = true;
+    if (!state.victoryAcknowledged) {
+      state.status = "VICTORY";
+    }
+    state.events.push({ type: "VICTORY_UNLOCKED" });
+  }
+  return { clearedBlocks: totalRemoved, outerBlocksDropped };
+}
+function checkContainmentBreach(state) {
+  for (let face = 0; face < state.numSides; face++) {
+    const stack = state.stacks[face];
+    if (stack && stack.length > CONFIG.MAX_STACK_DEPTH) {
+      state.status = "GAME_OVER";
+      state.breachedFace = face;
+      state.events.push({
+        type: "GAME_OVER",
+        face
+      });
+      return true;
+    }
+  }
+  return false;
+}
+function applyInput(state, action) {
+  if (action.type === "TOGGLE_PAUSE") {
+    if (state.status === "PLAYING") {
+      state.status = "PAUSED";
+    } else if (state.status === "PAUSED") {
+      state.status = "PLAYING";
+    }
+    return state;
+  }
+  if (action.type === "CONTINUE_ENDLESS") {
+    if (state.status === "VICTORY") {
+      state.victoryAcknowledged = true;
+      state.status = "PLAYING";
+    }
+    return state;
+  }
+  if (state.status !== "PLAYING") {
+    return state;
+  }
+  if (action.type === "ROTATE_LEFT") {
+    state.coreRotationIndex = (state.coreRotationIndex - 1 + state.numSides) % state.numSides;
+    state.visualRotationSteps -= 1;
+    state.events.push({ type: "ROTATED" });
+    return state;
+  }
+  if (action.type === "ROTATE_RIGHT") {
+    state.coreRotationIndex = (state.coreRotationIndex + 1) % state.numSides;
+    state.visualRotationSteps += 1;
+    state.events.push({ type: "ROTATED" });
+    return state;
+  }
+  if (action.type === "SLAM_INWARD") {
+    if (state.fallingShards.length > 0) {
+      let closest = state.fallingShards[0];
+      for (const s of state.fallingShards) {
+        if (!s.slammed && s.distance < closest.distance) {
+          closest = s;
+        }
+      }
+      closest.slammed = true;
+    }
+    return state;
+  }
+  if (action.type === "PHASE_PULSE") {
+    if (state.phasePulseCharge >= CONFIG.PHASE_PULSE_MAX_CHARGE) {
+      state.phasePulseCharge = 0;
+      state.phasePulsesUsed += 1;
+      let compressedBlocks = 0;
+      const pulseCells = [];
+      for (let face = 0; face < state.numSides; face++) {
+        const stack = state.stacks[face];
+        if (stack && stack.length > 0) {
+          const removed = stack.shift();
+          compressedBlocks++;
+          pulseCells.push({
+            face,
+            depth: 0,
+            color: removed.color,
+            blockId: removed.id
+          });
+          for (const b of stack) {
+            b.radialOffset += CONFIG.BLOCK_RADIAL_THICKNESS;
+          }
+        }
+      }
+      const bonusScore = Math.max(
+        CONFIG.PHASE_PULSE_SCORE_BONUS,
+        compressedBlocks * 45
+      );
+      state.score += bonusScore;
+      state.totalClearedBlocks += compressedBlocks;
+      state.events.push({
+        type: "PHASE_PULSE_FIRED",
+        clearedCount: compressedBlocks,
+        scoreDelta: bonusScore,
+        cells: pulseCells
+      });
+      const newLevel = getLevelFromClearedBlocks(state.totalClearedBlocks);
+      if (newLevel > state.level) {
+        state.level = newLevel;
+        const requiredSides = getSidesForLevel(state.level);
+        if (requiredSides > state.numSides) {
+          morphPolygonSides(state, requiredSides);
+        }
+      }
+      const cascadeRes = resolveMatchesStep(state, 2);
+      if (cascadeRes.outerBlocksDropped) {
+        state.gravitySettleTimerMs = 95;
+        state.pendingCascadeDepth = 3;
+      }
+    }
+    return state;
+  }
+  return state;
+}
+function stepOrbitState(state, dtMs) {
+  if (state.status !== "PLAYING" || dtMs <= 0) {
+    return state;
+  }
+  state.elapsedMs += dtMs;
+  const difficulty = getDifficultyForLevel(state.level);
+  const rng = createSeededRng(state.seed);
+  rng.setState(state.rngState);
+  if (state.comboTimerMs > 0) {
+    state.comboTimerMs = Math.max(0, state.comboTimerMs - dtMs);
+    if (state.comboTimerMs === 0) {
+      state.comboCount = 0;
+      state.comboMultiplier = 1;
+    }
+  }
+  const settleDelta = CONFIG.GRAVITY_SETTLE_SPEED_PER_SEC * dtMs / 1e3;
+  for (let face = 0; face < state.numSides; face++) {
+    const stack = state.stacks[face];
+    if (!stack) continue;
+    for (const block of stack) {
+      if (block.radialOffset > 0) {
+        block.radialOffset = Math.max(0, block.radialOffset - settleDelta);
+      }
+    }
+  }
+  if (state.gravitySettleTimerMs > 0) {
+    state.gravitySettleTimerMs = Math.max(0, state.gravitySettleTimerMs - dtMs);
+    if (state.gravitySettleTimerMs === 0 && state.pendingCascadeDepth > 0) {
+      const depth = state.pendingCascadeDepth;
+      state.pendingCascadeDepth = 0;
+      const cascadeResult = resolveMatchesStep(state, depth);
+      if (cascadeResult.outerBlocksDropped) {
+        state.gravitySettleTimerMs = 95;
+        state.pendingCascadeDepth = depth + 1;
+      }
+    }
+  }
+  for (let i = state.waveQueue.length - 1; i >= 0; i--) {
+    const q = state.waveQueue[i];
+    q.spawnTimerMs -= dtMs;
+    if (q.spawnTimerMs <= 0) {
+      state.fallingShards.push({
+        id: state.nextEntityId++,
+        lane: q.lane % state.numSides,
+        color: q.color,
+        distance: CONFIG.SPAWN_RADIAL_DISTANCE,
+        slammed: false
+      });
+      state.waveQueue.splice(i, 1);
+    }
+  }
+  state.nextWaveCooldownMs -= dtMs;
+  if (state.nextWaveCooldownMs <= 0 && state.waveQueue.length === 0) {
+    const wave = generateOrbitalWave(
+      rng,
+      state.level,
+      state.numSides,
+      difficulty.activeColorCount,
+      difficulty.waveIntervalMs,
+      difficulty.intraWaveStepMs
+    );
+    state.currentWavePattern = wave.pattern;
+    state.nextWaveCooldownMs = wave.durationMs;
+    for (const s of wave.shards) {
+      if (s.delayMs <= 0) {
+        state.fallingShards.push({
+          id: state.nextEntityId++,
+          lane: s.lane % state.numSides,
+          color: s.color,
+          distance: CONFIG.SPAWN_RADIAL_DISTANCE,
+          slammed: false
+        });
+      } else {
+        state.waveQueue.push({
+          lane: s.lane % state.numSides,
+          color: s.color,
+          spawnTimerMs: s.delayMs
+        });
+      }
+    }
+  }
+  state.fallingShards.sort((a, b) => a.distance - b.distance);
+  const remainingShards = [];
+  let anyShardLocked = false;
+  for (const shard of state.fallingShards) {
+    const speed = difficulty.fallSpeedPerSec * (shard.slammed ? CONFIG.SLAM_SPEED_MULTIPLIER : 1);
+    shard.distance -= speed * dtMs / 1e3;
+    const targetFace = getTargetFaceForLane(
+      shard.lane,
+      state.coreRotationIndex,
+      state.numSides
+    );
+    const faceStack = state.stacks[targetFace];
+    const landingSurfaceDistance = (faceStack.length + 1) * CONFIG.BLOCK_RADIAL_THICKNESS;
+    if (shard.distance <= landingSurfaceDistance) {
+      const lockedBlock = {
+        id: shard.id,
+        color: shard.color,
+        radialOffset: 0
+      };
+      faceStack.push(lockedBlock);
+      anyShardLocked = true;
+      if (shard.slammed) {
+        state.score += CONFIG.SLAM_SCORE_BONUS_PER_BLOCK;
+      }
+      state.events.push({
+        type: "SHARD_LOCKED",
+        face: targetFace,
+        depth: faceStack.length - 1,
+        color: shard.color
+      });
+    } else {
+      remainingShards.push(shard);
+    }
+  }
+  state.fallingShards = remainingShards;
+  if (anyShardLocked) {
+    const matchRes = resolveMatchesStep(state, 1);
+    if (matchRes.outerBlocksDropped) {
+      state.gravitySettleTimerMs = 95;
+      state.pendingCascadeDepth = 2;
+    }
+    checkContainmentBreach(state);
+  }
+  state.rngState = rng.getState();
+  return state;
+}
+
+// games/08-orbit-stack/src/ui.ts
+var OrbitUIController = class {
+  container;
+  audio;
+  callbacks;
+  rootEl;
+  canvas;
+  ctx;
+  // HUD DOM elements
+  scoreValEl;
+  highScoreValEl;
+  levelValEl;
+  coreBadgeEl;
+  clearsValEl;
+  comboValEl;
+  pulseFillEl;
+  pulseBtnEl;
+  pauseBtnEl;
+  muteBtnEl;
+  debugBtnEl;
+  liveAnnouncerEl;
+  overlayEl;
+  debugPanelEl;
+  // Visual interpolation & FX state
+  visualAngleRad = 0;
+  screenShakeMs = 0;
+  screenShakeMagnitude = 0;
+  morphBannerTimerMs = 0;
+  morphBannerText = "";
+  particles = [];
+  popups = [];
+  shockwaves = [];
+  debugVisible = false;
+  lastAnnouncedStatus = "";
+  lastAnnouncedLevel = 1;
+  boundKeyDown;
+  boundResize;
+  constructor(container2, audio, callbacks, initialDebug = false) {
+    this.container = container2;
+    this.audio = audio;
+    this.callbacks = callbacks;
+    this.debugVisible = initialDebug;
+    this.boundKeyDown = this.handleKeyDown.bind(this);
+    this.boundResize = this.handleResize.bind(this);
+    this.buildDOM();
+    window.addEventListener("keydown", this.boundKeyDown);
+    window.addEventListener("resize", this.boundResize);
+    this.handleResize();
+  }
+  buildDOM() {
+    this.container.innerHTML = "";
+    const styleEl = document.createElement("style");
+    styleEl.textContent = `
+      .orbit-stack-shell {
+        --os-bg: #070b19;
+        --os-panel: #0f172a;
+        --os-border: #334155;
+        --os-text: #f8fafc;
+        --os-muted: #cbd5e1;
+        --os-accent: #22d3ee;
+        --os-warn: #f43f5e;
+        color-scheme: dark;
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 100%;
+        background: radial-gradient(circle at 50% 35%, #111c38 0%, #070b19 72%);
+        color: var(--os-text);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        gap: 8px;
+        user-select: none;
+      }
+      .orbit-stack-shell *, .orbit-stack-shell *::before, .orbit-stack-shell *::after {
+        box-sizing: border-box;
+      }
+      .os-visually-hidden:where(:not(:focus-within, :active)) {
+        position: absolute !important;
+        clip-path: inset(50%) !important;
+        overflow: hidden !important;
+        width: 1px !important;
+        height: 1px !important;
+        margin: -1px !important;
+        padding: 0 !important;
+        border: 0 !important;
+        white-space: nowrap !important;
+      }
+      .os-header {
+        width: 100%;
+        max-width: 820px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        background: rgba(15, 23, 42, 0.88);
+        border: 1.5px solid var(--os-border);
+        border-radius: 12px;
+        padding: 8px 12px;
+      }
+      .os-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .os-title {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #f8fafc;
+      }
+      .os-core-badge {
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: rgba(6, 182, 212, 0.18);
+        border: 1.5px solid #22d3ee;
+        color: #ecfeff;
+        letter-spacing: 0.04em;
+      }
+      .os-stats-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+      }
+      .os-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+      }
+      .os-stat-label {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--os-muted);
+      }
+      .os-stat-value {
+        font-size: 0.98rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: #ffffff;
+      }
+      .os-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .os-btn {
+        appearance: none;
+        background: #1e293b;
+        color: #f8fafc;
+        border: 1.5px solid #64748b;
+        border-radius: 8px;
+        padding: 6px 11px;
+        min-block-size: 36px;
+        min-inline-size: 36px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        transition: background 120ms ease, transform 80ms ease, border-color 120ms ease;
+      }
+      .os-btn:hover {
+        background: #334155;
+        border-color: #94a3b8;
+      }
+      .os-btn:active {
+        transform: scale(0.97);
+      }
+      .os-btn:focus-visible {
+        outline: 3px solid #38bdf8;
+        outline-offset: 3px;
+      }
+      .os-btn[aria-pressed="true"] {
+        background: #0e7490;
+        border-color: #67e8f9;
+        color: #ffffff;
+      }
+      .os-main {
+        position: relative;
+        width: 100%;
+        max-width: 820px;
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 340px;
+      }
+      .os-canvas-wrap {
+        position: relative;
+        width: min(100%, 500px);
+        aspect-ratio: 1 / 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .os-canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        border-radius: 16px;
+        touch-action: none;
+      }
+      .os-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(7, 11, 25, 0.86);
+        backdrop-filter: blur(5px);
+        border: 1.5px solid #475569;
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        text-align: center;
+        z-index: 10;
+      }
+      .os-overlay[hidden] {
+        display: none !important;
+      }
+      .os-overlay-title {
+        margin: 0 0 6px;
+        font-size: 1.45rem;
+        font-weight: 900;
+        letter-spacing: 0.05em;
+        color: #f8fafc;
+      }
+      .os-overlay-desc {
+        margin: 0 0 16px;
+        max-width: 360px;
+        font-size: 0.88rem;
+        line-height: 1.45;
+        color: #cbd5e1;
+      }
+      .os-overlay-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+      }
+      .os-btn-primary {
+        background: #0284c7;
+        border-color: #7dd3fc;
+        color: #ffffff;
+        padding: 9px 16px;
+        font-size: 0.86rem;
+      }
+      .os-btn-primary:hover {
+        background: #0369a1;
+      }
+      .os-footer {
+        width: 100%;
+        max-width: 820px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .os-controls-bar {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1.15fr 1fr;
+        gap: 8px;
+        width: 100%;
+      }
+      .os-action-btn {
+        min-block-size: 44px;
+        font-size: 0.84rem;
+        border-radius: 10px;
+      }
+      .os-pulse-btn {
+        position: relative;
+        overflow: hidden;
+        background: #1e1b4b;
+        border-color: #818cf8;
+      }
+      .os-pulse-btn[data-ready="true"] {
+        background: #4c1d95;
+        border-color: #ddd6fe;
+        box-shadow: 0 0 12px rgba(167, 139, 250, 0.45);
+      }
+      .os-pulse-fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 50%;
+        background: rgba(139, 92, 246, 0.32);
+        pointer-events: none;
+        transition: width 120ms linear;
+      }
+      .os-pulse-label {
+        position: relative;
+        z-index: 1;
+      }
+      .os-legend {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 0.72rem;
+        color: var(--os-muted);
+        background: rgba(15, 23, 42, 0.75);
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 6px 10px;
+      }
+      .os-glyph-list {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .os-glyph-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 6px;
+        border-radius: 5px;
+        font-weight: 700;
+        font-size: 0.7rem;
+        background: rgba(30, 41, 59, 0.9);
+        border: 1px solid #475569;
+      }
+      .os-debug-panel {
+        width: 100%;
+        max-width: 820px;
+        background: rgba(2, 6, 23, 0.92);
+        border: 1.5px solid #38bdf8;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.72rem;
+        color: #bae6fd;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 6px;
+      }
+      .os-debug-panel[hidden] {
+        display: none !important;
+      }
+      @media (pointer: coarse) {
+        .os-btn {
+          min-block-size: 44px;
+          min-inline-size: 44px;
+        }
+        .os-action-btn {
+          min-block-size: 50px;
+        }
+      }
+      @media (forced-colors: active) {
+        .os-btn, .os-header, .os-overlay, .os-legend {
+          border: 2px solid ButtonText;
+        }
+      }
+    `;
+    this.container.appendChild(styleEl);
+    this.rootEl = document.createElement("div");
+    this.rootEl.className = "orbit-stack-shell";
+    this.rootEl.innerHTML = `
+      <div class="os-visually-hidden" aria-live="polite" aria-atomic="true" data-role="live-announcer"></div>
+
+      <header class="os-header">
+        <div class="os-brand">
+          <h1 class="os-title">Orbit Stack</h1>
+          <span class="os-core-badge" data-role="core-badge">HEX CORE (6 SIDES)</span>
+        </div>
+
+        <div class="os-stats-row">
+          <div class="os-stat">
+            <span class="os-stat-label">Score</span>
+            <span class="os-stat-value" data-role="score-val">0</span>
+          </div>
+          <div class="os-stat">
+            <span class="os-stat-label">Best</span>
+            <span class="os-stat-value" data-role="best-val">0</span>
+          </div>
+          <div class="os-stat">
+            <span class="os-stat-label">Level</span>
+            <span class="os-stat-value" data-role="level-val">1</span>
+          </div>
+          <div class="os-stat">
+            <span class="os-stat-label">Cleared</span>
+            <span class="os-stat-value" data-role="clears-val">0 / 100</span>
+          </div>
+          <div class="os-stat">
+            <span class="os-stat-label">Combo</span>
+            <span class="os-stat-value" data-role="combo-val">x1</span>
+          </div>
+        </div>
+
+        <div class="os-toolbar">
+          <button type="button" class="os-btn" data-role="pause-btn" aria-pressed="false">Pause (P)</button>
+          <button type="button" class="os-btn" data-role="mute-btn" aria-pressed="false">Audio On</button>
+          <button type="button" class="os-btn" data-role="debug-btn" aria-pressed="${this.debugVisible}">Debug (D)</button>
+          <button type="button" class="os-btn" data-role="restart-btn">Restart</button>
+        </div>
+      </header>
+
+      <main class="os-main">
+        <div class="os-canvas-wrap">
+          <canvas class="os-canvas" width="540" height="540" aria-label="Orbit Stack radial polygon puzzle board"></canvas>
+          <div class="os-overlay" data-role="overlay" role="dialog" aria-labelledby="os-overlay-heading" hidden>
+            <h2 class="os-overlay-title" id="os-overlay-heading" data-role="overlay-title">PAUSED</h2>
+            <p class="os-overlay-desc" data-role="overlay-desc">Orbital shard streams suspended.</p>
+            <div class="os-overlay-actions" data-role="overlay-actions"></div>
+          </div>
+        </div>
+      </main>
+
+      <aside class="os-debug-panel" data-role="debug-panel" aria-label="Debug Telemetry" ${this.debugVisible ? "" : "hidden"}></aside>
+
+      <footer class="os-footer">
+        <div class="os-controls-bar">
+          <button type="button" class="os-btn os-action-btn" data-role="rot-left-btn">\u27F2 Rotate Left (A / \u2190)</button>
+          <button type="button" class="os-btn os-action-btn" data-role="slam-btn">\u26A1 Slam Shard (Space / \u2193)</button>
+          <button type="button" class="os-btn os-action-btn os-pulse-btn" data-role="pulse-btn" data-ready="false">
+            <span class="os-pulse-fill" data-role="pulse-fill"></span>
+            <span class="os-pulse-label" data-role="pulse-label">\u2726 Pulse 50% (Shift / \u2191)</span>
+          </button>
+          <button type="button" class="os-btn os-action-btn" data-role="rot-right-btn">Rotate Right (D / \u2192) \u27F3</button>
+        </div>
+        <div class="os-legend">
+          <span><strong>Goal:</strong> Match 3+ connected shards (radial or adjacent faces). Morphs 6 \u2192 7 (Lv4) \u2192 8 sides (Lv7).</span>
+          <div class="os-glyph-list" aria-label="Colorblind Shard Key">
+            <span class="os-glyph-chip" style="color:#67e8f9">\u25B2 Cyan</span>
+            <span class="os-glyph-chip" style="color:#fde68a">\u25CF Amber</span>
+            <span class="os-glyph-chip" style="color:#fbcfe8">\u25A0 Magenta</span>
+            <span class="os-glyph-chip" style="color:#a7f3d0">\u25C6 Emerald</span>
+            <span class="os-glyph-chip" style="color:#ddd6fe">\u2605 Violet (Lv4+)</span>
+          </div>
+        </div>
+      </footer>
+    `;
+    this.container.appendChild(this.rootEl);
+    this.canvas = this.rootEl.querySelector("canvas");
+    this.ctx = this.canvas.getContext("2d");
+    this.scoreValEl = this.rootEl.querySelector('[data-role="score-val"]');
+    this.highScoreValEl = this.rootEl.querySelector('[data-role="best-val"]');
+    this.levelValEl = this.rootEl.querySelector('[data-role="level-val"]');
+    this.coreBadgeEl = this.rootEl.querySelector('[data-role="core-badge"]');
+    this.clearsValEl = this.rootEl.querySelector('[data-role="clears-val"]');
+    this.comboValEl = this.rootEl.querySelector('[data-role="combo-val"]');
+    this.pulseFillEl = this.rootEl.querySelector('[data-role="pulse-fill"]');
+    this.pulseBtnEl = this.rootEl.querySelector('[data-role="pulse-btn"]');
+    this.pauseBtnEl = this.rootEl.querySelector('[data-role="pause-btn"]');
+    this.muteBtnEl = this.rootEl.querySelector('[data-role="mute-btn"]');
+    this.debugBtnEl = this.rootEl.querySelector('[data-role="debug-btn"]');
+    this.liveAnnouncerEl = this.rootEl.querySelector('[data-role="live-announcer"]');
+    this.overlayEl = this.rootEl.querySelector('[data-role="overlay"]');
+    this.debugPanelEl = this.rootEl.querySelector('[data-role="debug-panel"]');
+    this.rootEl.querySelector('[data-role="rot-left-btn"]').addEventListener("click", () => {
+      this.callbacks.onAction({ type: "ROTATE_LEFT" });
+    });
+    this.rootEl.querySelector('[data-role="rot-right-btn"]').addEventListener("click", () => {
+      this.callbacks.onAction({ type: "ROTATE_RIGHT" });
+    });
+    this.rootEl.querySelector('[data-role="slam-btn"]').addEventListener("click", () => {
+      this.callbacks.onAction({ type: "SLAM_INWARD" });
+    });
+    this.pulseBtnEl.addEventListener("click", () => {
+      this.callbacks.onAction({ type: "PHASE_PULSE" });
+    });
+    this.pauseBtnEl.addEventListener("click", () => {
+      this.callbacks.onAction({ type: "TOGGLE_PAUSE" });
+    });
+    this.muteBtnEl.addEventListener("click", () => {
+      const muted = this.audio.toggleMute();
+      this.muteBtnEl.setAttribute("aria-pressed", String(muted));
+      this.muteBtnEl.textContent = muted ? "Audio Muted" : "Audio On";
+    });
+    this.debugBtnEl.addEventListener("click", () => {
+      this.callbacks.onToggleDebug();
+    });
+    this.rootEl.querySelector('[data-role="restart-btn"]').addEventListener("click", () => {
+      this.callbacks.onRestart();
+    });
+    this.canvas.addEventListener("pointerdown", (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const relX = e.clientX - rect.left;
+      const relY = e.clientY - rect.top;
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      const distFromCenter = Math.hypot(relX - cx, relY - cy);
+      if (distFromCenter < rect.width * 0.14) {
+        this.callbacks.onAction({ type: "SLAM_INWARD" });
+      } else if (relX < cx) {
+        this.callbacks.onAction({ type: "ROTATE_LEFT" });
+      } else {
+        this.callbacks.onAction({ type: "ROTATE_RIGHT" });
+      }
+    });
+  }
+  handleKeyDown(e) {
+    if (e.defaultPrevented) return;
+    const target = e.target;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+      return;
+    }
+    switch (e.key) {
+      case "ArrowLeft":
+      case "a":
+      case "A":
+        e.preventDefault();
+        this.callbacks.onAction({ type: "ROTATE_LEFT" });
+        break;
+      case "ArrowRight":
+      case "d":
+      case "D":
+        e.preventDefault();
+        if (e.shiftKey || e.altKey) {
+          this.callbacks.onToggleDebug();
+        } else {
+          this.callbacks.onAction({ type: "ROTATE_RIGHT" });
+        }
+        break;
+      case " ":
+      case "ArrowDown":
+      case "s":
+      case "S":
+        e.preventDefault();
+        this.callbacks.onAction({ type: "SLAM_INWARD" });
+        break;
+      case "Shift":
+      case "ArrowUp":
+      case "w":
+      case "W":
+        e.preventDefault();
+        this.callbacks.onAction({ type: "PHASE_PULSE" });
+        break;
+      case "p":
+      case "P":
+        e.preventDefault();
+        this.callbacks.onAction({ type: "TOGGLE_PAUSE" });
+        break;
+      case "i":
+      case "I":
+      case "`":
+      case "F3":
+        e.preventDefault();
+        this.callbacks.onToggleDebug();
+        break;
+      case "r":
+      case "R":
+        e.preventDefault();
+        this.callbacks.onRestart();
+        break;
+    }
+  }
+  handleResize() {
+    if (!this.canvas) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const size = Math.max(300, Math.floor(Math.min(rect.width, rect.height) * dpr));
+    if (this.canvas.width !== size || this.canvas.height !== size) {
+      this.canvas.width = size;
+      this.canvas.height = size;
+    }
+  }
+  setDebugVisible(visible) {
+    this.debugVisible = visible;
+    if (this.debugPanelEl) {
+      this.debugPanelEl.hidden = !visible;
+    }
+    if (this.debugBtnEl) {
+      this.debugBtnEl.setAttribute("aria-pressed", String(visible));
+    }
+  }
+  isDebugVisible() {
+    return this.debugVisible;
+  }
+  resetVisuals() {
+    this.visualAngleRad = 0;
+    this.particles = [];
+    this.popups = [];
+    this.shockwaves = [];
+    this.screenShakeMs = 0;
+    this.morphBannerTimerMs = 0;
+  }
+  consumeEvents(state, events) {
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const boardRadius = this.canvas.width * 0.44;
+    const coreRadius = boardRadius * 0.25;
+    const playfieldSpan = boardRadius - coreRadius;
+    for (const ev of events) {
+      if (ev.type === "ROTATED") {
+        this.audio.playRotateTick();
+      } else if (ev.type === "SHARD_LOCKED") {
+        this.audio.playShardLock(ev.color ?? 0, ev.depth ?? 0);
+        this.screenShakeMs = Math.max(this.screenShakeMs, 55);
+        this.screenShakeMagnitude = Math.max(this.screenShakeMagnitude, 2.2);
+      } else if (ev.type === "MATCH_CLEARED" || ev.type === "CASCADE_CLEARED") {
+        this.audio.playMatchChord(
+          ev.color ?? 0,
+          ev.clearedCount ?? 3,
+          ev.comboMultiplier ?? 1,
+          ev.cascadeDepth ?? 1
+        );
+        this.screenShakeMs = Math.max(this.screenShakeMs, 130);
+        this.screenShakeMagnitude = Math.max(
+          this.screenShakeMagnitude,
+          (ev.clearedCount ?? 3) >= 5 ? 6.5 : 4
+        );
+        if (ev.cells && ev.cells.length > 0) {
+          let sumX = 0;
+          let sumY = 0;
+          const stepAngle = Math.PI * 2 / state.numSides;
+          for (const cell of ev.cells) {
+            const worldLane = getWorldLaneForFace(
+              cell.face,
+              state.coreRotationIndex,
+              state.numSides
+            );
+            const angle = -Math.PI / 2 + worldLane * stepAngle;
+            const r = coreRadius + (cell.depth + 0.5) * CONFIG.BLOCK_RADIAL_THICKNESS * playfieldSpan;
+            const px = cx + Math.cos(angle) * r;
+            const py = cy + Math.sin(angle) * r;
+            sumX += px;
+            sumY += py;
+            this.spawnBurstParticles(px, py, cell.color, 9);
+          }
+          const avgX = sumX / ev.cells.length;
+          const avgY = sumY / ev.cells.length;
+          const arch = BLOCK_ARCHETYPES[ev.color ?? 0] ?? BLOCK_ARCHETYPES[0];
+          const label = ev.type === "CASCADE_CLEARED" ? `CASCADE +${ev.scoreDelta}` : `+${ev.scoreDelta}`;
+          const sub = (ev.comboMultiplier ?? 1) > 1 ? `${arch.symbol} x${ev.comboMultiplier} COMBO!` : void 0;
+          this.popups.push({
+            x: avgX,
+            y: avgY,
+            vy: -42,
+            text: label,
+            subtext: sub,
+            color: arch.strokeHex,
+            lifeMs: 950,
+            maxLifeMs: 950
+          });
+        }
+      } else if (ev.type === "POLYGON_MORPHED") {
+        this.audio.playMorphFanfare(ev.newSides ?? 7);
+        const stageInfo = getCoreStageInfo(ev.newSides ?? 7);
+        this.morphBannerText = `MORPH UNLOCKED: ${stageInfo.title}`;
+        this.morphBannerTimerMs = 2600;
+        this.shockwaves.push({
+          radius: coreRadius,
+          maxRadius: boardRadius * 1.05,
+          color: stageInfo.badgeColor,
+          lifeMs: 650,
+          maxLifeMs: 650
+        });
+      } else if (ev.type === "PHASE_PULSE_FIRED") {
+        this.audio.playPhasePulse();
+        this.screenShakeMs = 190;
+        this.screenShakeMagnitude = 7.5;
+        this.shockwaves.push({
+          radius: coreRadius * 0.8,
+          maxRadius: boardRadius * 1.08,
+          color: "#a78bfa",
+          lifeMs: 520,
+          maxLifeMs: 520
+        });
+        this.popups.push({
+          x: cx,
+          y: cy - coreRadius * 0.9,
+          vy: -36,
+          text: `PHASE PULSE +${ev.scoreDelta ?? 150}`,
+          subtext: "INNER RING VAPORIZED",
+          color: "#ddd6fe",
+          lifeMs: 1100,
+          maxLifeMs: 1100
+        });
+      } else if (ev.type === "GAME_OVER") {
+        this.audio.playContainmentBreach();
+        this.screenShakeMs = 280;
+        this.screenShakeMagnitude = 9;
+      }
+    }
+  }
+  spawnBurstParticles(x, y, colorId, count) {
+    const arch = BLOCK_ARCHETYPES[colorId] ?? BLOCK_ARCHETYPES[0];
+    for (let i = 0; i < count; i++) {
+      const angle = Math.PI * 2 * i / count + (Math.random() - 0.5) * 0.4;
+      const speed = 45 + Math.random() * 115;
+      const lifeMs = 340 + Math.random() * 260;
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        radius: 2.8 + Math.random() * 3,
+        color: i % 2 === 0 ? arch.fillHex : arch.strokeHex,
+        alpha: 1,
+        lifeMs,
+        maxLifeMs: lifeMs
+      });
+    }
+  }
+  render(state, career, dtMs) {
+    const stageInfo = getCoreStageInfo(state.numSides);
+    this.scoreValEl.textContent = state.score.toLocaleString();
+    this.highScoreValEl.textContent = Math.max(
+      career.highScore,
+      state.score
+    ).toLocaleString();
+    this.levelValEl.textContent = String(state.level);
+    this.coreBadgeEl.textContent = stageInfo.title;
+    this.coreBadgeEl.style.borderColor = stageInfo.badgeColor;
+    this.clearsValEl.textContent = `${state.totalClearedBlocks} / ${CONFIG.VICTORY_TARGET_CLEARS}`;
+    this.comboValEl.textContent = `x${state.comboMultiplier}`;
+    const pulsePct = Math.min(
+      100,
+      Math.round(state.phasePulseCharge / CONFIG.PHASE_PULSE_MAX_CHARGE * 100)
+    );
+    const pulseReady = state.phasePulseCharge >= CONFIG.PHASE_PULSE_MAX_CHARGE;
+    this.pulseFillEl.style.width = `${pulsePct}%`;
+    this.pulseBtnEl.setAttribute("data-ready", String(pulseReady));
+    const pulseLabelEl = this.pulseBtnEl.querySelector('[data-role="pulse-label"]');
+    if (pulseLabelEl) {
+      pulseLabelEl.textContent = pulseReady ? "\u2726 PHASE PULSE READY! (Shift / \u2191)" : `\u2726 Pulse ${pulsePct}% (Shift / \u2191)`;
+    }
+    const isPaused = state.status === "PAUSED";
+    this.pauseBtnEl.setAttribute("aria-pressed", String(isPaused));
+    this.pauseBtnEl.textContent = isPaused ? "Resume (P)" : "Pause (P)";
+    if (state.status !== this.lastAnnouncedStatus || state.level !== this.lastAnnouncedLevel) {
+      this.lastAnnouncedStatus = state.status;
+      this.lastAnnouncedLevel = state.level;
+      if (state.status === "GAME_OVER") {
+        this.liveAnnouncerEl.textContent = `Containment Breach! Game Over at Level ${state.level} with score ${state.score}.`;
+      } else if (state.status === "VICTORY") {
+        this.liveAnnouncerEl.textContent = `Octa-Core Mastery Achieved! Level ${state.level}, ${state.totalClearedBlocks} shards cleared.`;
+      } else if (state.level > 1) {
+        this.liveAnnouncerEl.textContent = `Level ${state.level} reached. ${stageInfo.title}.`;
+      }
+    }
+    this.updateOverlay(state);
+    if (this.debugVisible) {
+      const diff = getDifficultyForLevel(state.level);
+      const depths = state.stacks.map((s, idx) => `F${idx}:${s.length}`).join(" ");
+      this.debugPanelEl.innerHTML = `
+        <div><strong>SEED:</strong> ${state.seed}</div>
+        <div><strong>RNG:</strong> 0x${state.rngState.toString(16).toUpperCase()}</div>
+        <div><strong>SIDES:</strong> ${state.numSides} (RotIdx: ${state.coreRotationIndex})</div>
+        <div><strong>WAVE:</strong> ${WAVE_PATTERNS[state.currentWavePattern].label}</div>
+        <div><strong>SPEED:</strong> ${diff.speedMultiplier.toFixed(2)}x (Lv${diff.effectiveLevel}/35)</div>
+        <div><strong>STACKS:</strong> ${depths}</div>
+      `;
+    }
+    const stepAngle = Math.PI * 2 / state.numSides;
+    const targetAngle = state.visualRotationSteps * stepAngle;
+    const lerpFactor = 1 - Math.exp(-18 * dtMs / 1e3);
+    this.visualAngleRad += (targetAngle - this.visualAngleRad) * lerpFactor;
+    if (this.screenShakeMs > 0) {
+      this.screenShakeMs = Math.max(0, this.screenShakeMs - dtMs);
+    }
+    if (this.morphBannerTimerMs > 0) {
+      this.morphBannerTimerMs = Math.max(0, this.morphBannerTimerMs - dtMs);
+    }
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.lifeMs -= dtMs;
+      if (p.lifeMs <= 0) {
+        this.particles.splice(i, 1);
+      } else {
+        p.x += p.vx * dtMs / 1e3;
+        p.y += p.vy * dtMs / 1e3;
+        p.alpha = Math.max(0, p.lifeMs / p.maxLifeMs);
+      }
+    }
+    for (let i = this.popups.length - 1; i >= 0; i--) {
+      const pop = this.popups[i];
+      pop.lifeMs -= dtMs;
+      if (pop.lifeMs <= 0) {
+        this.popups.splice(i, 1);
+      } else {
+        pop.y += pop.vy * dtMs / 1e3;
+      }
+    }
+    for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+      const sw = this.shockwaves[i];
+      sw.lifeMs -= dtMs;
+      if (sw.lifeMs <= 0) {
+        this.shockwaves.splice(i, 1);
+      }
+    }
+    this.drawBoard(state);
+  }
+  updateOverlay(state) {
+    if (state.status === "PLAYING") {
+      this.overlayEl.hidden = true;
+      return;
+    }
+    this.overlayEl.hidden = false;
+    const titleEl = this.overlayEl.querySelector('[data-role="overlay-title"]');
+    const descEl = this.overlayEl.querySelector('[data-role="overlay-desc"]');
+    const actionsEl = this.overlayEl.querySelector('[data-role="overlay-actions"]');
+    actionsEl.innerHTML = "";
+    if (state.status === "PAUSED") {
+      titleEl.textContent = "ORBIT PAUSED";
+      descEl.textContent = "Rotate the polygon core so 3+ matching shards connect radially or across adjacent faces.";
+      const resumeBtn = document.createElement("button");
+      resumeBtn.type = "button";
+      resumeBtn.className = "os-btn os-btn-primary";
+      resumeBtn.textContent = "Resume Orbit (P)";
+      resumeBtn.addEventListener(
+        "click",
+        () => this.callbacks.onAction({ type: "TOGGLE_PAUSE" })
+      );
+      actionsEl.appendChild(resumeBtn);
+    } else if (state.status === "VICTORY") {
+      titleEl.textContent = "OCTA-CORE MASTERY!";
+      descEl.textContent = `You reached Level ${state.level} (8-Sided Octa Core) and cleared ${state.totalClearedBlocks} orbital shards! Score: ${state.score.toLocaleString()}.`;
+      const continueBtn = document.createElement("button");
+      continueBtn.type = "button";
+      continueBtn.className = "os-btn os-btn-primary";
+      continueBtn.textContent = "Continue Endless Orbit (To Lv 35)";
+      continueBtn.addEventListener(
+        "click",
+        () => this.callbacks.onAction({ type: "CONTINUE_ENDLESS" })
+      );
+      const newRunBtn = document.createElement("button");
+      newRunBtn.type = "button";
+      newRunBtn.className = "os-btn";
+      newRunBtn.textContent = "New Seeded Run";
+      newRunBtn.addEventListener("click", () => this.callbacks.onRestart());
+      actionsEl.appendChild(continueBtn);
+      actionsEl.appendChild(newRunBtn);
+    } else if (state.status === "GAME_OVER") {
+      titleEl.textContent = "CONTAINMENT BREACH";
+      descEl.textContent = `Face ${(state.breachedFace ?? 0) + 1} exceeded the ${CONFIG.MAX_STACK_DEPTH}-shard containment perimeter! Final Score: ${state.score.toLocaleString()} \xB7 Level ${state.level} \xB7 Max Combo x${state.maxComboReached}.`;
+      const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "os-btn os-btn-primary";
+      retryBtn.textContent = "Play Again (R)";
+      retryBtn.addEventListener("click", () => this.callbacks.onRestart());
+      actionsEl.appendChild(retryBtn);
+    }
+  }
+  drawBoard(state) {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    ctx.save();
+    ctx.clearRect(0, 0, w, h);
+    if (this.screenShakeMs > 0) {
+      const mag = this.screenShakeMs / 200 * this.screenShakeMagnitude;
+      ctx.translate(
+        (Math.random() - 0.5) * mag * 2,
+        (Math.random() - 0.5) * mag * 2
+      );
+    }
+    const numSides = state.numSides;
+    const stepAngle = Math.PI * 2 / numSides;
+    const boardRadius = w * 0.45;
+    const coreRadius = boardRadius * 0.25;
+    const playfieldSpan = boardRadius - coreRadius;
+    const containmentRadius = coreRadius + CONFIG.MAX_STACK_DEPTH * CONFIG.BLOCK_RADIAL_THICKNESS * playfieldSpan;
+    for (let lane = 0; lane < numSides; lane++) {
+      const midAngle = -Math.PI / 2 + lane * stepAngle;
+      const a0 = midAngle - stepAngle / 2;
+      const a1 = midAngle + stepAngle / 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a0) * coreRadius, cy + Math.sin(a0) * coreRadius);
+      ctx.lineTo(cx + Math.cos(a0) * boardRadius, cy + Math.sin(a0) * boardRadius);
+      ctx.lineTo(cx + Math.cos(a1) * boardRadius, cy + Math.sin(a1) * boardRadius);
+      ctx.lineTo(cx + Math.cos(a1) * coreRadius, cy + Math.sin(a1) * coreRadius);
+      ctx.closePath();
+      ctx.fillStyle = lane % 2 === 0 ? "rgba(15, 23, 42, 0.45)" : "rgba(30, 41, 59, 0.28)";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a0) * coreRadius, cy + Math.sin(a0) * coreRadius);
+      ctx.lineTo(cx + Math.cos(a0) * boardRadius, cy + Math.sin(a0) * boardRadius);
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.22)";
+      ctx.lineWidth = 1.25;
+      ctx.stroke();
+    }
+    const anyFaceInDanger = state.stacks.some(
+      (s) => s.length >= CONFIG.DANGER_STACK_DEPTH
+    );
+    ctx.beginPath();
+    for (let lane = 0; lane < numSides; lane++) {
+      const a0 = -Math.PI / 2 + lane * stepAngle - stepAngle / 2;
+      const px = cx + Math.cos(a0) * containmentRadius;
+      const py = cy + Math.sin(a0) * containmentRadius;
+      if (lane === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = anyFaceInDanger ? "rgba(244, 63, 94, 0.92)" : "rgba(244, 63, 94, 0.48)";
+    ctx.lineWidth = anyFaceInDanger ? 3 : 2;
+    ctx.setLineDash([7, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const shard of state.fallingShards) {
+      const targetFace = getTargetFaceForLane(
+        shard.lane,
+        state.coreRotationIndex,
+        numSides
+      );
+      const stackDepth = state.stacks[targetFace]?.length ?? 0;
+      const rInner = coreRadius + stackDepth * CONFIG.BLOCK_RADIAL_THICKNESS * playfieldSpan;
+      const rOuter = rInner + CONFIG.BLOCK_RADIAL_THICKNESS * playfieldSpan * 0.92;
+      const midAngle = -Math.PI / 2 + shard.lane * stepAngle;
+      const arch = BLOCK_ARCHETYPES[shard.color] ?? BLOCK_ARCHETYPES[0];
+      this.drawTrapezoidShard(
+        ctx,
+        cx,
+        cy,
+        midAngle,
+        stepAngle * 0.92,
+        rInner,
+        rOuter,
+        arch,
+        true
+      );
+    }
+    for (let face = 0; face < numSides; face++) {
+      const faceAngle = -Math.PI / 2 + face * stepAngle + this.visualAngleRad;
+      const stack = state.stacks[face] ?? [];
+      if (stack.length >= CONFIG.DANGER_STACK_DEPTH) {
+        const a0 = faceAngle - stepAngle / 2;
+        const a1 = faceAngle + stepAngle / 2;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a0) * coreRadius, cy + Math.sin(a0) * coreRadius);
+        ctx.lineTo(
+          cx + Math.cos(a0) * containmentRadius,
+          cy + Math.sin(a0) * containmentRadius
+        );
+        ctx.lineTo(
+          cx + Math.cos(a1) * containmentRadius,
+          cy + Math.sin(a1) * containmentRadius
+        );
+        ctx.lineTo(cx + Math.cos(a1) * coreRadius, cy + Math.sin(a1) * coreRadius);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(244, 63, 94, 0.16)";
+        ctx.fill();
+      }
+      for (let depth = 0; depth < stack.length; depth++) {
+        const block = stack[depth];
+        const normDist = depth * CONFIG.BLOCK_RADIAL_THICKNESS + block.radialOffset;
+        const rInner = coreRadius + normDist * playfieldSpan + 1.5;
+        const rOuter = rInner + CONFIG.BLOCK_RADIAL_THICKNESS * playfieldSpan - 3;
+        const arch = BLOCK_ARCHETYPES[block.color] ?? BLOCK_ARCHETYPES[0];
+        this.drawTrapezoidShard(
+          ctx,
+          cx,
+          cy,
+          faceAngle,
+          stepAngle * 0.94,
+          rInner,
+          rOuter,
+          arch,
+          false
+        );
+      }
+    }
+    for (const shard of state.fallingShards) {
+      const midAngle = -Math.PI / 2 + shard.lane * stepAngle;
+      const rOuter = coreRadius + shard.distance * playfieldSpan;
+      const rInner = rOuter - CONFIG.BLOCK_RADIAL_THICKNESS * playfieldSpan + 2.5;
+      const arch = BLOCK_ARCHETYPES[shard.color] ?? BLOCK_ARCHETYPES[0];
+      this.drawTrapezoidShard(
+        ctx,
+        cx,
+        cy,
+        midAngle,
+        stepAngle * 0.92,
+        Math.max(coreRadius, rInner),
+        rOuter,
+        arch,
+        false
+      );
+    }
+    const stageInfo = getCoreStageInfo(numSides);
+    ctx.beginPath();
+    for (let i = 0; i < numSides; i++) {
+      const vAngle = -Math.PI / 2 + i * stepAngle - stepAngle / 2 + this.visualAngleRad;
+      const vx = cx + Math.cos(vAngle) * coreRadius;
+      const vy = cy + Math.sin(vAngle) * coreRadius;
+      if (i === 0) ctx.moveTo(vx, vy);
+      else ctx.lineTo(vx, vy);
+    }
+    ctx.closePath();
+    ctx.fillStyle = "#0f172a";
+    ctx.fill();
+    ctx.lineWidth = 3.2;
+    ctx.strokeStyle = stageInfo.badgeColor;
+    ctx.stroke();
+    const face0Angle = -Math.PI / 2 + this.visualAngleRad;
+    const notchR = coreRadius * 0.72;
+    ctx.beginPath();
+    ctx.arc(
+      cx + Math.cos(face0Angle) * notchR,
+      cy + Math.sin(face0Angle) * notchR,
+      4.5,
+      0,
+      Math.PI * 2
+    );
+    ctx.fillStyle = "#38bdf8";
+    ctx.fill();
+    if (state.comboTimerMs > 0) {
+      const comboRatio = state.comboTimerMs / CONFIG.COMBO_WINDOW_MS;
+      ctx.beginPath();
+      ctx.arc(
+        cx,
+        cy,
+        coreRadius * 0.56,
+        -Math.PI / 2,
+        -Math.PI / 2 + Math.PI * 2 * comboRatio
+      );
+      ctx.strokeStyle = "#fbbf24";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#f8fafc";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `900 ${Math.round(w * 0.042)}px Inter, sans-serif`;
+    ctx.fillText(
+      state.comboMultiplier > 1 ? `x${state.comboMultiplier}` : `${numSides}-GON`,
+      cx,
+      cy - w * 0.015
+    );
+    const nextLvClears = getClearedBlocksForLevel(state.level + 1);
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = `700 ${Math.round(w * 0.022)}px Inter, sans-serif`;
+    ctx.fillText(
+      `LV ${state.level} \xB7 ${state.totalClearedBlocks}/${nextLvClears}`,
+      cx,
+      cy + w * 0.024
+    );
+    for (const sw of this.shockwaves) {
+      const p = 1 - sw.lifeMs / sw.maxLifeMs;
+      const r = sw.radius + (sw.maxRadius - sw.radius) * p;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = sw.color;
+      ctx.globalAlpha = Math.max(0, 1 - p);
+      ctx.lineWidth = 4.5 * (1 - p * 0.6);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    for (const pt of this.particles) {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.radius, 0, Math.PI * 2);
+      ctx.fillStyle = pt.color;
+      ctx.globalAlpha = pt.alpha;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    for (const pop of this.popups) {
+      const alpha = Math.min(1, pop.lifeMs / pop.maxLifeMs * 1.4);
+      ctx.globalAlpha = alpha;
+      ctx.font = `800 ${Math.round(w * 0.032)}px Inter, sans-serif`;
+      ctx.fillStyle = "#020617";
+      ctx.fillText(pop.text, pop.x + 1.5, pop.y + 1.5);
+      ctx.fillStyle = pop.color;
+      ctx.fillText(pop.text, pop.x, pop.y);
+      if (pop.subtext) {
+        ctx.font = `700 ${Math.round(w * 0.022)}px Inter, sans-serif`;
+        ctx.fillStyle = "#fde68a";
+        ctx.fillText(pop.subtext, pop.x, pop.y + w * 0.03);
+      }
+    }
+    ctx.globalAlpha = 1;
+    if (this.morphBannerTimerMs > 0) {
+      const alpha = Math.min(1, this.morphBannerTimerMs / 400);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+      const bw = w * 0.72;
+      const bh = h * 0.085;
+      ctx.fillRect(cx - bw / 2, h * 0.05, bw, bh);
+      ctx.strokeStyle = stageInfo.badgeColor;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cx - bw / 2, h * 0.05, bw, bh);
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = `800 ${Math.round(w * 0.028)}px Inter, sans-serif`;
+      ctx.fillText(this.morphBannerText, cx, h * 0.05 + bh / 2);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+  drawTrapezoidShard(ctx, cx, cy, midAngle, sectorSpanRad, rInner, rOuter, arch, isGhost) {
+    const a0 = midAngle - sectorSpanRad / 2;
+    const a1 = midAngle + sectorSpanRad / 2;
+    const x0 = cx + Math.cos(a0) * rInner;
+    const y0 = cy + Math.sin(a0) * rInner;
+    const x1 = cx + Math.cos(a0) * rOuter;
+    const y1 = cy + Math.sin(a0) * rOuter;
+    const x2 = cx + Math.cos(a1) * rOuter;
+    const y2 = cy + Math.sin(a1) * rOuter;
+    const x3 = cx + Math.cos(a1) * rInner;
+    const y3 = cy + Math.sin(a1) * rInner;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x3, y3);
+    ctx.closePath();
+    if (isGhost) {
+      ctx.fillStyle = arch.fillHex;
+      ctx.globalAlpha = 0.16;
+      ctx.fill();
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = arch.strokeHex;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    ctx.fillStyle = arch.fillHex;
+    ctx.fill();
+    ctx.strokeStyle = arch.strokeHex;
+    ctx.lineWidth = 1.75;
+    ctx.stroke();
+    const rMid = (rInner + rOuter) / 2;
+    const gx = cx + Math.cos(midAngle) * rMid;
+    const gy = cy + Math.sin(midAngle) * rMid;
+    const glyphSize = Math.max(10, Math.round((rOuter - rInner) * 0.58));
+    ctx.font = `900 ${glyphSize}px Inter, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = arch.textHex;
+    ctx.fillText(arch.symbol, gx, gy);
+  }
+  destroy() {
+    window.removeEventListener("keydown", this.boundKeyDown);
+    window.removeEventListener("resize", this.boundResize);
+    this.container.innerHTML = "";
+  }
+};
+
+// games/08-orbit-stack/src/index.ts
+function mountGame(container2, options) {
+  const savedEnvelope = loadOrbitSave();
+  let career = { ...savedEnvelope.career };
+  const initialSeed = options?.initialSeed ?? CONFIG.DEFAULT_SEED;
+  let state = options?.initialSeed === void 0 && savedEnvelope.activeRun && savedEnvelope.activeRun.status !== "GAME_OVER" ? cloneOrbitState(savedEnvelope.activeRun) : createInitialState(initialSeed);
+  const audio = new OrbitAudioEngine();
+  const handleAction = (action) => {
+    applyInput(state, action);
+    if (state.events.length > 0) {
+      ui.consumeEvents(state, state.events);
+      state.events = [];
+    }
+    if (state.status === "PAUSED") {
+      const env = saveOrbitState(career, state);
+      career = env.career;
+    }
+  };
+  const handleRestart = (newSeed) => {
+    const seedToUse = typeof newSeed === "number" ? newSeed : state.seed + 104729 >>> 0;
+    career.gamesPlayed += 1;
+    state = createInitialState(seedToUse);
+    ui.resetVisuals();
+    const env = saveOrbitState(career, state);
+    career = env.career;
+  };
+  const handleToggleDebug = (force) => {
+    const next = typeof force === "boolean" ? force : !ui.isDebugVisible();
+    ui.setDebugVisible(next);
+  };
+  const ui = new OrbitUIController(
+    container2,
+    audio,
+    {
+      onAction: handleAction,
+      onRestart: handleRestart,
+      onToggleDebug: () => handleToggleDebug()
+    },
+    Boolean(options?.debug)
+  );
+  let rafId = 0;
+  let lastTimeMs = performance.now();
+  let accumulatorMs = 0;
+  let destroyed = false;
+  const loop = (nowMs) => {
+    if (destroyed) return;
+    const rawDt = Math.min(100, Math.max(0, nowMs - lastTimeMs));
+    lastTimeMs = nowMs;
+    accumulatorMs += rawDt;
+    const prevLevel = state.level;
+    const prevStatus = state.status;
+    while (accumulatorMs >= CONFIG.FIXED_STEP_MS) {
+      stepOrbitState(state, CONFIG.FIXED_STEP_MS);
+      if (state.events.length > 0) {
+        ui.consumeEvents(state, state.events);
+        state.events = [];
+      }
+      accumulatorMs -= CONFIG.FIXED_STEP_MS;
+    }
+    if (state.level !== prevLevel || state.status !== prevStatus || state.score > career.highScore) {
+      const env = saveOrbitState(
+        career,
+        state.status === "GAME_OVER" ? null : state
+      );
+      career = env.career;
+    }
+    ui.render(state, career, rawDt || CONFIG.FIXED_STEP_MS);
+    rafId = window.requestAnimationFrame(loop);
+  };
+  ui.render(state, career, CONFIG.FIXED_STEP_MS);
+  rafId = window.requestAnimationFrame(loop);
+  return {
+    destroy() {
+      destroyed = true;
+      window.cancelAnimationFrame(rafId);
+      saveOrbitState(career, state.status === "GAME_OVER" ? null : state);
+      audio.destroy();
+      ui.destroy();
+    },
+    getStateSnapshot() {
+      return cloneOrbitState(state);
+    },
+    restartWithSeed(seed) {
+      handleRestart(seed);
+      ui.render(state, career, CONFIG.FIXED_STEP_MS);
+    },
+    toggleDebug(force) {
+      handleToggleDebug(force);
+      ui.render(state, career, CONFIG.FIXED_STEP_MS);
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_08-orbit-stack.ts
+var container = document.getElementById("orbit-stack-root");
+if (container) {
+  mountGame(container);
+}
+
+</script>
+  </body>
+</html>
