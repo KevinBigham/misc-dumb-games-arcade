@@ -1,1 +1,0 @@
-export { MfdBadge } from './MfdBadge';

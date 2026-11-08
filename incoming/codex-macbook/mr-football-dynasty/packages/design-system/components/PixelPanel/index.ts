@@ -1,1 +1,0 @@
-export { PixelPanel } from './PixelPanel';

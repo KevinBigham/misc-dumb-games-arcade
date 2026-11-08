@@ -1,1 +1,0 @@
-function a(r,o,e){return Math.max(o,Math.min(e,r))}function l(r,o){const e=10**o;return Math.round(r*e)/e}function n(r,o){const e=a((r-20)/60,0,1),c=o?9.5:8.5,t=-.4;return l(t+Math.pow(e,1.7)*(c-t),1)}function i(r){return{currentWar:n(r.overall,r.isPitcher),floorWar:r.floor==null?null:n(r.floor,r.isPitcher),ceilingWar:r.ceiling==null?null:n(r.ceiling,r.isPitcher)}}export{i as e};

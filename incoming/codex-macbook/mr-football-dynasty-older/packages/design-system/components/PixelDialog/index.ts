@@ -1,1 +1,0 @@
-export { PixelDialog } from './PixelDialog';

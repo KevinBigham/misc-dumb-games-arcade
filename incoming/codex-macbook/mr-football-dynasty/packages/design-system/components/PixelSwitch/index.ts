@@ -1,1 +1,0 @@
-export { PixelSwitch } from './PixelSwitch';

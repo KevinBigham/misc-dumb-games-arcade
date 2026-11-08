@@ -58,3 +58,7 @@ Paths below are original locations. A directory entry means its entire subtree w
 | `/Users/kevin/.codex/worktrees/5616/MBD-main-main/apps/web/dist/.vite` | build cache |
 | `/Users/kevin/.codex/worktrees/17c3/MBD-main-main/.git` | Git metadata |
 | `/Users/kevin/.codex/worktrees/goal31-direct/MBD-main-main/.git` | Git metadata |
+
+## Removed on 2026-11-08
+
+At Kevin's request, these folders were removed from this branch because Mr. Football Dynasty and Mr. Baseball Dynasty live in their own repos: mr-baseball-dynasty-17c3, mr-baseball-dynasty-5616, mr-baseball-dynasty-goal31, mr-football-dynasty, mr-football-dynasty-older.

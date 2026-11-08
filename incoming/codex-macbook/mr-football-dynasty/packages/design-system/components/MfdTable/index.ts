@@ -1,1 +1,0 @@
-export { MfdTable } from './MfdTable';
