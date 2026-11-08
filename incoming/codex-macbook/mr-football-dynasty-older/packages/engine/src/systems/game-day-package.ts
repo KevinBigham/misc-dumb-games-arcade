@@ -1,0 +1,310 @@
+import type { Hook } from './hooks-engine';
+import type { CallYourShotResult } from './call-your-shot';
+import type {
+  BrokenRecord,
+  GameDayPackage,
+  GameDayPressConference,
+  GameDayTopPerformer,
+  GameDayTurningPoint,
+  GameResult,
+  MilestoneReached,
+  NarrativeHook,
+  Player,
+  PressConference,
+  RivalryGameContext,
+  StoryArc,
+  Team,
+  WeeklySummary,
+} from '../types';
+
+interface BuildGameDayPackageParams {
+  team: Team;
+  opponent: Team | null;
+  result: GameResult;
+  summary: WeeklySummary;
+  hooks: Array<Hook | NarrativeHook>;
+  activeArcs: StoryArc[];
+  pressConference?: PressConference | null;
+  rivalry?: RivalryGameContext | null;
+  activeEffectSummaries?: string[];
+  recordsMoments?: BrokenRecord[];
+  milestoneMoments?: MilestoneReached[];
+  callYourShotResult?: CallYourShotResult;
+  namedGame?: GameResult['namedGame'];
+}
+
+function findPlayer(team: Team, playerId: string | null): Player | null {
+  return playerId ? team.roster.find((player) => player.id === playerId) ?? null : null;
+}
+
+function formatPerformerLine(player: Player, teamStats: GameResult['stats'][string]): string {
+  // Look up the player's actual game line from the box score
+  const line = teamStats.playerLines?.find((l) => l.playerId === player.id);
+  if (line) {
+    if (player.pos === 'QB') {
+      return `${line.passComp ?? 0}/${line.passAtt ?? 0}, ${line.passYds ?? 0} yds, ${line.passTD ?? 0} TD, ${line.passINT ?? 0} INT`;
+    }
+    if (player.pos === 'RB') {
+      return `${line.rushAtt ?? 0} car, ${line.rushYds ?? 0} yds, ${line.rushTD ?? 0} TD${(line.rec ?? 0) > 0 ? `, ${line.rec} rec` : ''}`;
+    }
+    if (player.pos === 'WR' || player.pos === 'TE') {
+      return `${line.rec ?? 0} rec, ${line.recYds ?? 0} yds, ${line.recTD ?? 0} TD`;
+    }
+    if (player.pos === 'DL' || player.pos === 'LB') {
+      return `${line.tackles ?? 0} tkl, ${line.sacks ?? 0} sack${(line.sacks ?? 0) !== 1 ? 's' : ''}`;
+    }
+    if (player.pos === 'CB' || player.pos === 'S') {
+      return `${line.tackles ?? 0} tkl, ${line.defINT ?? 0} INT`;
+    }
+    if (player.pos === 'K') {
+      return `${line.fgMade ?? 0}/${line.fgAtt ?? 0} FG`;
+    }
+  }
+  // Fallback for positions without lines
+  return `${player.ovr} OVR`;
+}
+
+// Pick the actual top performer by stat output for the given position group.
+// Mirrors the findTopLine pattern in broadcast.ts:115. Falls back to the
+// highest-OVR player in the position group when no playerLines stats exist
+// (e.g., a fixture build or pre-sim state). Returns null if nothing matches.
+function pickPerformer(
+  team: Team,
+  positions: ReadonlyArray<Player['pos']>,
+  teamStats: GameResult['stats'][string],
+  metric: (line: NonNullable<GameResult['stats'][string]['playerLines']>[number]) => number,
+): Player | null {
+  const positionSet = new Set(positions);
+  // Try to find the top performer by stat output first.
+  const lines = (teamStats.playerLines ?? [])
+    .filter((line) => positionSet.has(line.pos))
+    .map((line) => ({ line, score: metric(line) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.line.playerId.localeCompare(b.line.playerId));
+  for (const { line } of lines) {
+    const player = findPlayer(team, line.playerId);
+    if (player) return player;
+  }
+  // Fallback: highest-OVR roster player in the group (deterministic tiebreak by id).
+  return [...team.roster]
+    .filter((player) => positionSet.has(player.pos))
+    .sort((a, b) => b.ovr - a.ovr || a.id.localeCompare(b.id))[0] ?? null;
+}
+
+function buildTopPerformers(team: Team, result: GameResult): GameDayTopPerformer[] {
+  const teamStats = result.stats[team.id];
+  if (!teamStats) return [];
+
+  const mvp = findPlayer(team, result.mvpPlayerId)
+    ?? pickPerformer(team, ['QB'], teamStats, (line) => (line.passYds ?? 0) + (line.passTD ?? 0) * 50);
+  const skill = pickPerformer(
+    team,
+    ['RB', 'WR', 'TE'],
+    teamStats,
+    (line) =>
+      (line.rushYds ?? 0)
+      + (line.rushTD ?? 0) * 30
+      + (line.recYds ?? 0)
+      + (line.recTD ?? 0) * 40,
+  );
+  const defender = pickPerformer(
+    team,
+    ['DL', 'LB', 'CB', 'S'],
+    teamStats,
+    (line) => (line.sacks ?? 0) * 30 + (line.defINT ?? 0) * 40 + (line.tackles ?? 0),
+  );
+  const group = [mvp, skill, defender].filter((player, index, arr): player is Player =>
+    !!player && arr.findIndex((candidate) => candidate?.id === player.id) === index);
+
+  return group.map((player) => ({
+    playerId: player.id,
+    label: `${player.name} (${player.pos})`,
+    statLine: formatPerformerLine(player, teamStats),
+  }));
+}
+
+function buildTurningPoints(team: Team, result: GameResult, injuries: WeeklySummary['injuries']): GameDayTurningPoint[] {
+  const teamStats = result.stats[team.id];
+  const opponentId = result.homeTeamId === team.id ? result.awayTeamId : result.homeTeamId;
+  const opponentStats = result.stats[opponentId];
+  if (!teamStats || !opponentStats) return [];
+
+  const points: GameDayTurningPoint[] = [];
+  const turnoverMargin = opponentStats.turnovers - teamStats.turnovers;
+
+  points.push({
+    label: turnoverMargin >= 0 ? 'Turnover edge' : 'Turnover drag',
+    detail: turnoverMargin >= 0
+      ? `Finished +${turnoverMargin} in takeaways and protected the ball well enough to stay ahead.`
+      : `Finished ${turnoverMargin} in turnover margin and handed away extra possessions.`,
+    impact: turnoverMargin >= 0 ? 'positive' : 'negative',
+  });
+  points.push({
+    label: 'Third-down rhythm',
+    detail: `${teamStats.thirdDownConversions}/${teamStats.thirdDownAttempts} on third down versus ${opponentStats.thirdDownConversions}/${opponentStats.thirdDownAttempts} for the opponent.`,
+    impact: teamStats.thirdDownConversions >= opponentStats.thirdDownConversions ? 'positive' : 'negative',
+  });
+  points.push({
+    label: 'Pocket pressure',
+    detail: `${teamStats.sacks} sacks generated while allowing ${opponentStats.sacks}. Pressure dictated the tempo in key spots.`,
+    impact: teamStats.sacks >= opponentStats.sacks ? 'positive' : 'negative',
+  });
+  if (injuries.length > 0) {
+    points.push({
+      label: 'Injury toll',
+      detail: `${injuries.length} rotation piece${injuries.length > 1 ? 's' : ''} left the day on the report.`,
+      impact: 'neutral',
+    });
+  }
+
+  return points.slice(0, 4);
+}
+
+function hookLabel(hook: Hook | NarrativeHook): string {
+  return 'cat' in hook ? hook.cat.toUpperCase() : hook.type.toUpperCase();
+}
+
+function hookText(hook: Hook | NarrativeHook): string {
+  return 'cat' in hook ? hook.text : hook.description;
+}
+
+function buildStakes(team: Team, summary: WeeklySummary, hooks: Array<Hook | NarrativeHook>, activeArcs: StoryArc[]) {
+  const stakes = [];
+  stakes.push({
+    label: summary.phase === 'playoffs' ? 'Playoff survival' : 'Season pressure',
+    detail: summary.phase === 'playoffs'
+      ? 'Every snap now shapes whether the season survives.'
+      : `Current record ${summary.record} keeps the weekly margin for error thin.`,
+  });
+  if (team.ownerMood < 45 || summary.ownerDelta < 0) {
+    stakes.push({
+      label: 'Owner patience',
+      detail: `Approval sits at ${team.ownerMood}. Another stumble would intensify the front-office heat.`,
+    });
+  }
+  const arc = activeArcs[0];
+  if (arc) {
+    stakes.push({ label: arc.title, detail: arc.summary });
+  } else if (hooks[0]) {
+    stakes.push({ label: hookLabel(hooks[0]), detail: hookText(hooks[0]) });
+  }
+  return stakes.slice(0, 3);
+}
+
+function buildCeremony(team: Team, summary: WeeklySummary, activeArcs: StoryArc[]) {
+  if (summary.phase === 'playoffs' && summary.result === 'win') {
+    return {
+      title: 'Postgame podium',
+      subtitle: `${team.city} kept its season alive and the stadium stayed loud long after the clock hit zero.`,
+    };
+  }
+  if (team.streak >= 3) {
+    return {
+      title: 'Locker room pulse',
+      subtitle: `${team.streak}-game momentum has the room believing something bigger is building.`,
+    };
+  }
+  const arc = activeArcs.find((entry) => entry.template === 'breakout_player');
+  return arc ? { title: arc.title, subtitle: arc.summary } : null;
+}
+
+function buildAutopsy(team: Team, summary: WeeklySummary, result: GameResult) {
+  const teamStats = result.stats[team.id];
+  const opponentId = result.homeTeamId === team.id ? result.awayTeamId : result.homeTeamId;
+  const opponentStats = result.stats[opponentId];
+  const diagnosis = !teamStats || !opponentStats
+    ? 'The tape points to a flat, incomplete performance.'
+    : teamStats.passingYards >= opponentStats.passingYards
+      ? 'Controlled passing rhythm kept the offense ahead of schedule.'
+      : 'The offense never fully solved down-to-down efficiency.';
+  const leverage = !teamStats || !opponentStats
+    ? 'Field position and late-down sequence will decide the rematch.'
+    : opponentStats.turnovers > teamStats.turnovers
+      ? 'Turnover margin and situational stops decided which drives ended in points.'
+      : 'Third-down execution and pocket integrity decided which drives stayed alive.';
+  const nextFocus = [
+    team.ownerMood < 40 ? 'Stabilize owner confidence with a cleaner follow-up week' : 'Carry the clean situational football forward',
+    summary.injuries.length > 0 ? 'Protect the injured depth chart before the next kickoff' : 'Protect the current health advantage',
+    teamStats && opponentStats && teamStats.sacks < opponentStats.sacks ? 'Firm up pass protection' : 'Keep the pass rush disruptive',
+  ];
+
+  return { diagnosis, leverage, nextFocus };
+}
+
+export function buildGameDayPackage(params: BuildGameDayPackageParams): GameDayPackage {
+  const {
+    team,
+    opponent,
+    result,
+    summary,
+    hooks,
+    activeArcs,
+    pressConference,
+    rivalry = null,
+    activeEffectSummaries = [],
+    recordsMoments = [],
+    milestoneMoments = [],
+  } = params;
+  const ceremony = buildCeremony(team, summary, activeArcs);
+  const autopsy = buildAutopsy(team, summary, result);
+  const packagePressConference: GameDayPressConference = pressConference
+    ? {
+      theme: pressConference.type === 'postgame' ? 'Postgame Podium' : 'Media Availability',
+      opener: pressConference.opener,
+      quotes: pressConference.quotes,
+      speaker: pressConference.speaker,
+      tone: pressConference.tone,
+      topic: pressConference.topic,
+      reporterQuestions: pressConference.reporterQuestions,
+    }
+    : {
+      theme: summary.result === 'win' ? 'Statement win' : summary.result === 'loss' ? 'Hard truth' : 'Measured response',
+      opener: summary.result === 'win'
+        ? 'We played clean situational football and stayed aggressive without losing control.'
+        : 'The margins got away from us, and the tape is going to demand cleaner answers.',
+      quotes: [
+        `The ${summary.result === 'win' ? 'locker room feels the momentum' : 'room knows the standard was missed'}.`,
+        autopsy.leverage,
+        ceremony ? ceremony.subtitle : 'Next week starts with sharper detail and better finishing.',
+      ],
+      speaker: team.staff.hc?.name ?? 'Head Coach',
+      tone: summary.result === 'win'
+        ? 'confident'
+        : summary.result === 'loss'
+          ? 'somber'
+          : 'deflecting' as const,
+      topic: summary.result === 'win' ? 'postgame win' : 'postgame response',
+      reporterQuestions: [],
+    };
+
+  return {
+    id: `gameday-${summary.year}-${summary.week}-${team.id}`,
+    year: summary.year,
+    week: summary.week,
+    phase: summary.phase,
+    teamId: team.id,
+    opponentTeamId: opponent?.id ?? null,
+    headline: summary.headline,
+    result: summary.result,
+    finalScore: `${summary.teamScore ?? 0}-${summary.opponentScore ?? 0}`,
+    stakes: buildStakes(team, summary, hooks, activeArcs),
+    turningPoints: buildTurningPoints(team, result, summary.injuries),
+    topPerformers: buildTopPerformers(team, result),
+    injuryNotes: summary.injuries.map((injury) => `${injury.playerName}: ${injury.type} (${injury.severity}, ${injury.gamesOut} games)`),
+    ceremony,
+    pressConference: packagePressConference,
+    rivalry,
+    activeEffectSummaries,
+    autopsy,
+    weather: result.weather ?? null,
+    matchupHighlight: result.matchupHighlight ?? null,
+    broadcastNetwork: result.broadcastNetwork ?? null,
+    primetime: result.primetime ?? false,
+    flexed: result.flexed ?? false,
+    specialTeamsHighlights: result.specialTeams?.[team.id]?.highlights ?? [],
+    recordsMoments,
+    milestoneMoments,
+    callYourShotResult: params.callYourShotResult ?? result.callYourShotResult,
+    namedGame: params.namedGame ?? result.namedGame,
+  };
+}

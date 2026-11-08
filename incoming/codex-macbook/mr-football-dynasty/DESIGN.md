@@ -1,0 +1,89 @@
+# Design
+
+## Source of truth
+- Status: Active
+- Last refreshed: 2026-05-20
+- Primary product surfaces: title/new dynasty, first-ten-minutes setup, Monday Briefing, roster, depth chart, game plan, week advance, save/load, standings, power rankings, league pulse, records, scouting, draft, Chip companion.
+- Evidence reviewed: `README.md`, `docs/release/MFD_FINAL_SHIP_DECISION.md`, `docs/release/KEVIN_PLAYTEST_SCRIPT.md`, `apps/web/src/app/App.tsx`, `apps/web/src/app/NewGameScreen.tsx`, `apps/web/src/app/app-shell.css`, `packages/design-system/tokens/index.css`, `packages/design-system/components/*`, `apps/web/public/screenshots/v1/*`, `apps/web/public/assets/chip/*`.
+
+## Brand
+- Personality: 8-bit ESPN command center: football-serious, arcade-readable, cinematic, systems-heavy, but player-guided.
+- Trust signals: stable save/import/export copy, deterministic-season framing, visible current route/team/week context, Chip guidance, release checklist language that keeps the player from wondering what to click next.
+- Avoid: generic SaaS cards, one-note blue/purple gradients, soft rounded marketing hero layouts, hidden destructive actions, noisy panels that bury the next primary click.
+
+## Product goals
+- Goals: help one player start and sustain a football dynasty; make weekly decisions legible; make save/load feel safe; make late-season paths easy to enter (Continue or import a backup); keep the game cinematic without obscuring simulation data.
+- Non-goals: multiplayer, server-backed live ops, card collector economy, broad visual redesign detached from the pixel/broadcast identity.
+- Success signals: first 10 minutes are guided, Week 1 does not leave the player stuck, Chip helps without blocking play, save/load/import/export feel trustworthy, core routes load, mobile width is playable.
+
+## Personas and jobs
+- Primary personas: football franchise sim player, returning dynasty player, release playtester.
+- User jobs: start a clean dynasty, continue or import a save, understand the next critical action, evaluate roster/cap/game-plan choices, export a portable backup.
+- Key contexts of use: desktop browser for long play sessions, mobile-width smoke/playtest checks, local preview and GitHub Pages `/MFD/` production path.
+
+## Information architecture
+- Primary navigation: grouped command-center top nav on desktop/tablet, fixed five-slot mobile bottom nav with More drawer on phone widths.
+- Core routes/screens: title/new dynasty, setup wizard, Monday Briefing, roster, depth chart, game plan, week advance, trade center, cap lab, save/load, standings, scouting, draft, franchise/legacy.
+- Content hierarchy: each screen should surface current context first, then required action, then supporting detail. Dense data belongs in tables/cards only after the screen answers "what matters now?"
+
+## Design principles
+- Principle 1: Make the next good click obvious before exposing all secondary systems.
+- Principle 2: Preserve the broadcast/pixel identity through tokens, panel chrome, badges, and Chip art rather than new decorative layers.
+- Principle 3: Treat save, load, import, and export as trust-critical flows with calm copy and explicit failure states.
+- Principle 4: Design mobile as a playable narrow command surface, not a squeezed desktop.
+- Decision first: a screen's decisions (Next Call, Must Do, action buttons) come before any explanation of where its data comes from. "Sources" explainer panels are collapsed by default (`PixelPanel collapsible defaultCollapsed`); a panel that holds a control or confirms a player action stays open.
+- Tradeoffs: density is part of the sim's appeal, but first-run paths need stronger hierarchy than expert screens.
+
+## Visual language
+- Color: near-black surfaces, MFD gold as the signature action/accent, cyan/green/red for navigational, positive, and warning states. Use existing custom properties in `packages/design-system/tokens/index.css`.
+- Typography: pixel font for compact labels and command chrome, display/serif for brand and cinematic headlines, mono/sans for readable data and instructional copy.
+- Text size: every font size of 14px or smaller uses a `--mfd-fs-N` token (N = the original px size) from `packages/design-system/tokens/index.css`; never write a literal small size. Players choose Compact (the original sizes), Comfortable (default) or Large in Settings > Text Size, stored as `textSize` in `mfd-ui-preferences` and applied as `data-text-size` on `<html>`. Comfortable keeps reading text at 12px or more and labels at 9px or more. `apps/web/src/lib/type-scale-guard.test.ts` fails on literal small sizes.
+- Spacing/layout rhythm: 8-bit grid discipline with 4/8/12/16/20/32px token rhythm; responsive grids should use `minmax()`/`auto-fit` instead of fixed four-column assumptions on launch-critical screens.
+- Shape/radius/elevation: sharp pixel panels with 0-6px radii; shadows reserved for real elevation or active command surfaces.
+- Motion: short route/loading/feedback motion; respect `prefers-reduced-motion`.
+- Imagery/iconography: Chip art and team logos are primary brand assets. Use lucide icons where the app already does; do not add unrelated illustrations.
+
+## Components
+- Existing components to reuse: `PixelPanel`, `MfdPanel`, `PixelButton`, `PixelBadge`, `PixelScreenHeader`, `PixelMetricCard`, `PixelTable`, `MfdCommandPalette`, `Chip`, `ChipDialogueBubble`, `MobileBottomTabBar`.
+- New/changed components: keep launch-screen polish local unless a pattern repeats across screens; promote only reusable, tested patterns into `packages/design-system`.
+- Chip dock: compact "Ask Chip" bubble by default (a gold dot means a tip or an unread weekly message is waiting, red means an unread Must Do). Tapping it opens an unread weekly message first, otherwise the Ask Chip decision summary; it returns to the bubble when you finish a beat, leave the screen, or press Collapse/Escape (a weekly message stays open until you do). It opens by itself only for an unread Must Do beat on desktop widths and for live events; phones always keep the bubble until tapped. The shell reserves dock runway only while the dock is expanded (`data-mfd-chip-dock` on `<html>`).
+- Variants and states: selected, hover, focus-visible, disabled, loading, empty, error, success, destructive, route-active, drawer-open, import-in-progress.
+- Token/component ownership: design tokens live in `packages/design-system/tokens`; app-shell layout and launch-only classes live in `apps/web/src/app`.
+
+## Accessibility
+- Target standard: WCAG-informed browser game UI, with at least visible focus, keyboard navigation for command surfaces, readable contrast, and 44px touch targets on mobile.
+- Keyboard/focus behavior: all command buttons need `type="button"` where they are not submit controls; custom selectable buttons should expose `aria-pressed` or equivalent state when useful.
+- Contrast/readability: keep tiny pixel text for labels only; body/help text should remain readable, especially in mobile and setup screens. Text size is player-adjustable (see Typography).
+- Screen-reader semantics: use real buttons/inputs, labels for import text, `aria-live` for critical import/autosave errors when feasible, and current-route metadata in nav.
+- Reduced motion and sensory considerations: preserve existing reduced-motion tokens and disable decorative route/loading animation when requested.
+
+## Responsive behavior
+- Supported breakpoints/devices: phone portrait around 480px, phone landscape/small tablet around 768px, tablet/small desktop around 1024px, wide desktop command layout.
+- Layout adaptations: desktop can use multi-column command layouts; launch/setup screens should collapse to one column on mobile; team/difficulty grids should avoid fixed 4-column overflow.
+- App-shell header: on desktop it carries the brand with the record/week/season, the group rail, the active group's routes and a one-line "Later" list of locked routes; below 760px of window height it scrolls away instead of pinning. At phone width (<=768px) navigation is the bottom tab bar and its More drawer, so the header keeps only the brand line and the action buttons.
+- Wide tables can pin their first column (`PixelTable stickyFirstColumn`, above the phone breakpoint); phone card mode can lay short stats out three across (`denseCards`).
+- Touch/hover differences: hover polish is optional; focus and touch target size are mandatory.
+
+## Interaction states
+- Loading: autosave/import and lazy-route loading states must use clear labels and non-jumping layouts.
+- Empty: no active dynasty, no saves, no lore/records yet should explain the next action without sounding like an error.
+- Error: import/autosave errors must say current dynasty was not changed when applicable.
+- Success: save/import/export success should be explicit and short.
+- Disabled: disabled actions need visible reason nearby or self-explanatory copy.
+- Offline/slow network, if applicable: app is client-side; recovery messaging should assume browser storage and local file handling can fail.
+
+## Content voice
+- Tone: sideline-command, confident, calm under pressure, lightly cinematic.
+- Terminology: dynasty, franchise, briefing, command deck, portable backup, cartridge, week advance, Chip.
+- Microcopy rules: lead with the action/result; avoid generic "learn more" copy; trust-critical copy should be plain and specific.
+
+## Implementation constraints
+- Framework/styling system: React 19, Vite, TanStack Router, Zustand, Dexie, TypeScript, workspace `@mfd/design-system`, CSS custom properties plus inline styles in existing components.
+- Design-token constraints: extend existing CSS variables and data-attribute rules before adding a new styling layer.
+- Performance constraints: preserve lazy routes and existing chunking; known Vite chunk-size warnings are non-blocking release risks, not a UI-polish target.
+- Compatibility constraints: GitHub Pages `/MFD/` base path, stable browser saves, save schema v37, and exact-gate artifact deployment.
+- Test/screenshot expectations: run targeted Vitest, typecheck/build, and browser smoke/screenshots for launch path and mobile width when UI changes land.
+
+## Open questions
+- [ ] Owner: Kevin / What is the intended minimum mobile support beyond smoke checks? / Impacts how aggressively dense screens should be redesigned for phone play.
+- [ ] Owner: Kevin / Should Chip be visible on the title screen in a future pass? / Impacts first-run branding and onboarding scope.

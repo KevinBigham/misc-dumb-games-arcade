@@ -1,0 +1,1 @@
+const n="mbd:news-read";function i(e){window.dispatchEvent(new CustomEvent(n,{detail:{newsId:e}}))}function o(e){const t=s=>{if(!(s instanceof CustomEvent))return;const d=s.detail;typeof d.newsId=="string"&&e(d.newsId)};return window.addEventListener(n,t),()=>window.removeEventListener(n,t)}export{i as d,o as s};

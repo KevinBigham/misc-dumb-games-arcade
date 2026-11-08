@@ -1,0 +1,128 @@
+import { act } from 'react';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createRoot, type Root } from 'react-dom/client';
+import {
+  FrontOfficeBudgetCard,
+  FrontOfficeOwnerProfileCard,
+  type FrontOfficeOwnerView,
+} from './FrontOfficeOwnerCards';
+import { deriveMarketRevenueStatement } from '@mbd/sim-core';
+
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
+const OWNER: FrontOfficeOwnerView = {
+  archetype: 'win_now',
+  patience: 35,
+  confidence: 72,
+  hotSeat: true,
+  summary: 'The owner demands results immediately.',
+  expectations: { winsTarget: 95, playoffTarget: true, payrollTarget: 180_000_000 },
+  satisfaction: 45,
+  spendingWillingness: 'lavish',
+  winNowPressure: 90,
+  meddlingLevel: 60,
+  annualBudget: 200_000_000,
+  payrollCap: 180_000_000,
+  draftBonusPool: 8_000_000,
+  ifaBonusPool: 5_000_000,
+  staffBudget: 12_000_000,
+};
+
+describe('FrontOfficeOwnerCards', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it('renders owner profile expectations and budget money formatting', async () => {
+    await act(async () => {
+      root.render(
+        <>
+          <FrontOfficeOwnerProfileCard owner={OWNER} />
+          <FrontOfficeBudgetCard
+            marketRevenueStatement={deriveMarketRevenueStatement({
+              teamId: 'nym',
+              wins: 100,
+              losses: 62,
+              madePlayoffs: true,
+              ownerArchetype: 'win_now',
+            })}
+            owner={OWNER}
+            ownerPayrollPolicy={{
+              archetype: 'win_now',
+              floor: 90,
+              softCeiling: 180,
+              totalPayroll: 170,
+              ownerBand: 'on_plan',
+              floorShortfall: 0,
+              softCeilingRoom: 10,
+              softCeilingOverage: 0,
+              taxThreshold: 230,
+              luxuryTaxPayroll: 160,
+              taxBand: 'clear',
+              taxRoom: 70,
+              taxOverage: 0,
+              projectedTax: 0,
+            }}
+          />
+        </>,
+      );
+    });
+
+    expect(container.textContent).toContain('Owner Profile');
+    expect(container.querySelectorAll('[data-testid="dense-panel-body"]')).toHaveLength(2);
+    expect(container.textContent).toContain('HOT SEAT');
+    expect(container.textContent).toContain('Win Now');
+    expect(container.textContent).toContain('95+');
+    expect(container.textContent).toContain('Expected');
+    expect(container.textContent).toContain('owner demands results');
+    expect(container.textContent).toContain('$200.0M');
+    expect(container.textContent).toContain('$180.0M');
+    expect(container.textContent).toContain('$8.0M');
+    expect(container.textContent).toContain('$5.0M');
+    expect(container.textContent).toContain('$12.0M');
+    expect(container.textContent).toContain('GM Spending Style');
+    expect(container.textContent).toContain('Owner payroll plan');
+    expect(container.textContent).toContain('Floor $90.0M');
+    expect(container.textContent).toContain('Soft ceiling $180.0M');
+    expect(container.textContent).toContain('Advisory lines only');
+    expect(container.textContent).toContain('Settled market revenue');
+    expect(container.textContent).toContain('Modeled attendance +1.88%');
+    expect(container.textContent).toContain('Playoff bump 3.5%');
+    expect(container.textContent).toContain('Gross $331.9M');
+    expect(container.textContent).toContain('Projected tax is separate');
+  });
+
+  it('renders calm owner state and small budget values without hot-seat treatment', async () => {
+    const calmOwner: FrontOfficeOwnerView = {
+      ...OWNER,
+      archetype: 'patient_builder',
+      hotSeat: false,
+      expectations: { winsTarget: 81, playoffTarget: false, payrollTarget: 950_000 },
+      annualBudget: 950_000,
+    };
+
+    await act(async () => {
+      root.render(<FrontOfficeOwnerProfileCard owner={calmOwner} />);
+    });
+
+    expect(container.textContent).toContain('Patient Builder');
+    expect(container.textContent).toContain('81+');
+    expect(container.textContent).toContain('Optional');
+    expect(container.textContent).toContain('$950K');
+    expect(container.textContent).not.toContain('HOT SEAT');
+  });
+});
