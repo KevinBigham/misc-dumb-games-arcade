@@ -2,8 +2,8 @@
 
 Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the MacBook, and Antigravity on the Mac mini. Games marked "In the arcade" are in `games/<slug>/` and linked from the arcade page; everything else stays in its incoming PR so nothing is lost.
 
-- In the arcade: 75
-- Held: 2
+- In the arcade: 76
+- Held: 1
 - Source only or own repo: 4
 - Archived older versions and extras: 6
 
@@ -81,6 +81,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | The Last Signal: Ember Relay | lighthouse incremental strategy | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/the-last-signal/) |  |
 | The Metaphysical Deli at the End of Your Forehead | surreal arena | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/metaphysical-deli/) |  |
 | Thistlemarch | tactics | batch 2 | cloud PR #2 | [play](games/thistlemarch/) |  |
+| Turf Riot | arcade football | Mac mini (Codex collection) | Mac mini Codex PR #6, reworked | [play](games/turf-riot/) | Reworked from a held Mac mini build: new name, its own house-rules menu, source notes removed |
 | Twelve Sols | survival | batch 2 | cloud PR #2 | [play](games/twelve-sols/) |  |
 | Undertoll | roguelike | overnight research batch | cloud PR #2 | [play](games/undertoll/) |  |
 | VOIDBREAKER: OMEGA | twin-stick bullet heaven | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/voidbreaker-omega/) | Weapon names that borrowed from a sports game and a real player were replaced |
@@ -91,7 +92,6 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 
 | Game | Genre | Built by | Source | Why |
 |---|---|---|---|---|
-| Gridiron Blitz '00 | arcade football | Mac mini (Codex collection) | Mac mini Codex PR #6 | Built as a take on one specific existing game, which its title and on-screen credits name; not published |
 | Last Bell — The School Store Challenge | classroom economics game | Mac mini (Codex collection) | Mac mini Codex PR #6 | Classroom product with teacher and student PDFs; held until Kevin decides it belongs here |
 
 ## Source only
