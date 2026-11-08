@@ -2,8 +2,8 @@
 
 Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the MacBook, and Antigravity on the Mac mini. Games marked "In the arcade" are in `games/<slug>/` and linked from the arcade page; everything else stays in its incoming PR so nothing is lost.
 
-- In the arcade: 65
-- Held: 2
+- In the arcade: 67
+- Held: 0
 - Source only or own repo: 2
 - Archived older versions and extras: 4
 
@@ -12,6 +12,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Game | Genre | Built by | Source | Play | Notes |
 |---|---|---|---|---|---|
 | Argon Studio Collection | game launcher | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/argon-studio/) | Launcher for the 13 Argon games; borrowed game names and inspiration credits removed. Same games are also listed one by one |
+| Baseline Empire '05 | basketball franchise sim | unknown (Nov 5) | cloud PR #2 | [play](games/baseline-empire/) | Formerly Hardwood Franchise; league, teams, colleges, papers and name pools are now fictional |
 | Beatline Salvage | rhythm | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/beatline-salvage/) |  |
 | Belt & Bolt | factory defense | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/belt-and-bolt/) | Subtitle no longer names Mindustry or shapez |
 | Blackout Dispatch | storm power-grid routing | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/blackout-dispatch/) |  |
@@ -23,6 +24,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Comet Orchard | idle | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/comet-orchard/) |  |
 | Dual Meet | swim meet | Nov 6 new builds | cloud PR #2 | [play](games/dual-meet/) |  |
 | Fathomsong | rhythm | overnight research batch | cloud PR #2 | [play](games/fathomsong/) |  |
+| Fourth & Forever '05 | football franchise sim | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/fourth-and-forever/) | Formerly a football franchise sim built on real league names; league, teams, players, coaches, host and brands are now fictional |
 | Franchise Dynasty | football GM sim | Games project | cloud PR #2 | [play](games/franchise-dynasty/) |  |
 | Frostbore | mining | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/frostbore/) |  |
 | Gloamrush | firefly survival | Opus (audit blueprint) | cloud PR #2 | [play](games/gloamrush/) |  |
@@ -77,13 +79,6 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | VOIDBREAKER: OVERDRIVE | twin-stick roguelite | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/voidbreaker-overdrive/) | Older version of Voidbreaker Omega |
 | Wobble Bakery | physics stacker | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/wobble-bakery/) |  |
 
-## Held (left out of the arcade page)
-
-| Game | Genre | Built by | Source | Why |
-|---|---|---|---|---|
-| Hardwood Franchise | basketball franchise sim | unknown (Nov 5) | cloud PR #2 | Uses real NBA player names; not fit for a public page. A second copy with source came from the MacBook (Claude app scratch folder) |
-| Madden Franchise '05: Dynasty Edition | football franchise sim | Antigravity (Mac mini) | Mac mini PR #4 | Uses the Madden, NFL and NCAA names and a real radio host; not fit for a public page |
-
 ## Source only
 
 | Game | Genre | Built by | Source | Why |
@@ -108,7 +103,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 ## Duplicates and conflicts
 
 - One More Season: two different games share the name (cloud sports-season sim; Mac mini Ironvale Rovers FC). Both are in the arcade under separate folders.
-- Hardwood Franchise and Madden Franchise '05: held off the page until real league, team and player names are replaced.
+- Baseline Empire '05 and Fourth & Forever '05 are reworked versions of two franchise sims that used real league, team and player names; every real name was replaced with a made-up one.
 - The Argon Studio Collection launcher bundles 13 Argon games that are also listed one by one.
 - Voidbreaker: Overdrive is the older version of Omega.
 - Cloud copies newer than the arcade's first PR (#1): 20 of its 22 games are older; this PR uses the live versions.
