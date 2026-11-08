@@ -70,3 +70,7 @@ Directory entries below omit the whole subtree. No file in the selected game fol
 | `/Users/tkevinbigham/Game/output/last-light/build.log` | OS metadata, log, or build cache |
 | `/Users/tkevinbigham/Game/output/last-light/check.log` | OS metadata, log, or build cache |
 | `/Users/tkevinbigham/Game/output/last-light/test.log` | OS metadata, log, or build cache |
+
+## Removed on 2026-11-08
+
+At Kevin's request, these folders were removed from this branch because Mr. Football Dynasty and Mr. Baseball Dynasty live in their own repos: mr-baseball-dynasty-field-demo, mr-football-dynasty.
