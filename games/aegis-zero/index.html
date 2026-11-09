@@ -112,6 +112,9 @@ var AegisAudioEngine = class {
     const ctx = this.ctx;
     if (!ctx || ctx.state !== "running") return;
     const lookahead = 0.12;
+    if (this.nextStepTime < ctx.currentTime) {
+      this.nextStepTime = ctx.currentTime + 0.05;
+    }
     while (this.nextStepTime < ctx.currentTime + lookahead) {
       this.triggerStepAtTime(ctx, this.stepIndex, this.nextStepTime);
       const secondsPerBeat = 60 / Math.max(100, this.currentBpm);
@@ -1349,14 +1352,19 @@ function handleEnemyKill(state, enemy, killedByCrit) {
   if (killedByCrit && bloomStacks > 0) {
     const bloomRadius = 110;
     spawnShockwave(state, enemy.x, enemy.y, bloomRadius, "#a855f7", 5);
+    const blastKills = [];
     for (const other of state.enemies) {
       if (other.id !== enemy.id && other.hp > 0) {
         const d = Math.hypot(other.x - enemy.x, other.y - enemy.y);
         if (d <= bloomRadius + other.radius) {
           other.hp -= 95 * bloomStacks;
           state.totalDamageDealt += 95 * bloomStacks;
+          if (other.hp <= 0) blastKills.push(other);
         }
       }
+    }
+    for (const other of blastKills) {
+      handleEnemyKill(state, other, false);
     }
   }
 }
@@ -1913,7 +1921,7 @@ function updateVisualJuiceEntities(state, dt) {
 }
 function buildRunTelemetryRecord(state) {
   return {
-    runKey: `${state.runKey}-t${state.tick}`,
+    runKey: `${state.runKey}-t${state.tick}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
     seed: state.seed,
     loadoutId: state.loadoutId,
     outcome: state.status === "victory" ? "victory" : "defeat",
