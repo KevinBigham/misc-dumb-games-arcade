@@ -2,7 +2,7 @@
 
 Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the MacBook, Antigravity on the Mac mini, and Antigravity and Claude Cowork on the MacBook Air. Games marked "In the arcade" are in `games/<slug>/` and linked from the arcade page; everything else stays in its incoming PR so nothing is lost.
 
-- In the arcade: 85
+- In the arcade: 88
 - Held: 1
 - Source only or own repo: 4
 - Archived older versions and extras: 7
@@ -67,6 +67,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Orbit Stack | orbital match stacker | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/orbit-stack/) |  |
 | Oroboros: The Pinball Singularity | pinball roguelike | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/oroboros/) |  |
 | Paradox Protocol: The Mirror Engine | thought-experiment arena | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/paradox-protocol/) |  |
+| Piñata Panic! | 3D piñata survival | Kimi (MacBook Air) | Kimi Work PR #7 (Nov 9 update) | [play](games/pinata-panic/) | One upgrade renamed (was a real candy brand) |
 | Please Feed the Moon | arcade shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/please-feed-the-moon/) |  |
 | PRISM PRESS | reactor-grid puzzle | Kimi (MacBook) | Kimi Work PR #7 | [play](games/prism-press/) | Newest build from the Kimi Work collection (Nov 8) |
 | Prismwheel | ring arcade | overnight research batch | cloud PR #2 | [play](games/prismwheel/) |  |
@@ -82,6 +83,8 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Spore Siege | tower defense | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/spore-siege/) |  |
 | Spore Storm | survival | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/spore-storm/) |  |
 | Sporecrown | 4X | batch 2 | cloud PR #2 | [play](games/sporecrown/) |  |
+| STAMP DUTY: Executive Disorder | office arena brawler | Kimi (MacBook Air) | Kimi Work PR #7 (Nov 9 update) | [play](games/executive-disorder/) |  |
+| STAMP DUTY: OVERQUALIFIED | stamp-launch arcade | Kimi (MacBook Air) | Kimi Work PR #7 (Nov 9 update) | [play](games/stamp-duty-overqualified/) |  |
 | Stormglass | merge | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/stormglass/) |  |
 | Sunwire | transport | batch 2 | cloud PR #2 | [play](games/sunwire/) |  |
 | Ten Floors Down | tactical roguelike | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/ten-floors-down/) |  |
@@ -140,6 +143,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 - Antigravity MacBook Air PR #12 brought two new games (Accordion Courtroom and HonkCourt); every other game it checked on that MacBook Air was already here.
 - Claude Cowork MacBook Air PR #14 brought Kinetic Chain, The Moon Wants a Sandwich and Lane Four. The Lane Four swim racer replaces Negative Split and is a different piece from the Lane Four water toy kept in cloud PR #2.
 - PR #15 brought 5 new Argon games (Oroboros, Chrono-Syndicate, Chrono-Vortex, Event Horizon, Hypernova); its bundled copies of Argon 01–11, Paradox, Metaphysical Deli and Voidbreaker were already here and were not added twice.
+- Kimi Work PR #7 was updated on Nov 9 with three new games (Stamp Duty: Executive Disorder, Stamp Duty: Overqualified and Piñata Panic). Its other copies were already here. The two Stamp Duty games are different games that share a name. Piñata Panic had an upgrade named after a real candy brand, renamed Sour Bait.
 - Cloud copies newer than the arcade's first PR (#1): 20 of its 22 games are older; this PR uses the live versions.
 
 ## Checks
