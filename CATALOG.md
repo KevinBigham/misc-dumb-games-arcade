@@ -1,11 +1,13 @@
 # Arcade catalog
 
-Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the MacBook, Antigravity on the Mac mini, and Antigravity and Claude Cowork on the MacBook Air. Games marked "In the arcade" are in `games/<slug>/` and linked from the arcade page; everything else stays in its incoming PR so nothing is lost.
+Collections reviewed through Nov 9, 2026 from Claude (cloud), Codex, Kimi, Antigravity and Claude Cowork across the MacBook and Mac mini collections. Entries marked "In the arcade" are in `games/<slug>/` and linked from the arcade page. Sources and historical deliveries remain in their incoming PRs or pinned commit history.
+
+The 95 arcade entries include 94 game/version entries and one Argon launcher. This is not a count of independent game designs or comprehensive gameplay acceptance. Collection labels identify collectors, not exclusive authorship. See the [Nov 9 reconciliation](reconciliation/2026-11-09/RECONCILIATION.md) for pinned sources, actual launch paths, version decisions and bounded browser checks.
 
 - In the arcade: 95
 - Held: 1
-- Source only or own repo: 4
-- Archived older versions and extras: 7
+- Source only: 3
+- Archived versions and extras: 8
 
 ## In the arcade
 
@@ -117,12 +119,11 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 
 | Game | Genre | Built by | Source | Why |
 |---|---|---|---|---|
-| HUSH//PULSE + PRISM PRESS prototype | mixed prototype | Kimi (MacBook) | MacBook PR #3 | Source only; mixed prototype |
+| HUSH//PULSE + PRISM PRESS prototype (also collected as Kimi app prototype) | mixed prototype | Kimi (MacBook) | MacBook PR #3; Kimi Work PR #7 history | Exact same Git source tree in both collections; one prototype, two provenance references. Latest #7 no longer contains app/; see reconciliation for pinned history |
 | Cheap Local TV Chaos (player client) | party game fragment | Mac mini (Codex collection) | Mac mini Codex PR #6 | Incomplete: needs files from its host project |
 | Football franchise prototype (early Fourth & Forever) | football franchise sim | Mac mini (Codex collection) | Mac mini Codex PR #6 | Earlier source of Fourth & Forever; uses real names and has no page; not published |
-| Kimi app prototype | prototype | Kimi (MacBook Air) | Kimi Work PR #7 | Did not start in a browser; source only |
 
-## Older versions
+## Archived versions
 
 | Game | Genre | Built by | Source | Why |
 |---|---|---|---|---|
@@ -130,6 +131,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Stormglass (older version) | merge | Fable (Nov 5) | cloud PR #2 | Older version of Stormglass, kept in the cloud PR |
 | SIDELINE v0.1 | football franchise sim | Mac mini (Codex collection) | Mac mini Codex PR #6 | Older release, kept in PR #6 |
 | ECHO REQUIEM (Windows snapshot) | temporal arena shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | Older delivery, kept in PR #6 |
+| GRIDIRON OVERDRIVE (Mac mini ZIP release) | 3D football arcade | Multiple agents; collected by Codex | Mac mini Codex PR #6 | Distinct update candidate with mobile and game-code changes; not merely a build-format duplicate. Preserve and validate in its own project before replacing the existing arcade mirror |
 
 ## Extras
 
@@ -145,18 +147,26 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 - Baseline Empire '05 and Fourth & Forever '05 are reworked versions of two franchise sims that used real league, team and player names; every real name was replaced with a made-up one.
 - The Argon Studio Collection launcher bundles 13 Argon games that are also listed one by one.
 - Voidbreaker: Overdrive is the older version of Omega.
-- Mac mini Codex PR #6 also carried copies of the Argon games, Voidbreaker Omega and Gridiron Overdrive; they come from the same Mac mini folders as the copies already in the arcade (only the build format differs), so they were not added twice.
+- Mac mini Codex PR #6 carries repeated complete workspaces: seven Game-workspace folders share one exact Git tree, and fifteen Argon/prototype folders share another. These preserve source and packaging, not extra game identities. Gridiron Overdrive's ZIP release is a distinct update candidate; keep the current mirror until replacement testing passes.
 - Kimi Work PR #7 carried newer builds of Prism Press and Soupermarket Sweep and the first playable build of HUSH//PULSE; those replace the MacBook copies.
 - Antigravity MacBook Air PR #12 brought two new games (Accordion Courtroom and HonkCourt); every other game it checked on that MacBook Air was already here.
 - Claude Cowork MacBook Air PR #14 brought Kinetic Chain, The Moon Wants a Sandwich and Lane Four. The Lane Four swim racer replaces Negative Split and is a different piece from the Lane Four water toy kept in cloud PR #2.
 - PR #15 brought 5 new Argon games (Oroboros, Chrono-Syndicate, Chrono-Vortex, Event Horizon, Hypernova); its bundled copies of Argon 01–11, Paradox, Metaphysical Deli and Voidbreaker were already here and were not added twice.
+- Current PR #15 contains INDEX.md and argon-studio-nov9/. Its ten-row manifest still advertises absent game-lab, Gridiron and MFD paths. The five Argon games above were already integrated by PR #16; the manifest is not a current payload inventory.
 - Kimi Work PR #7 was updated on Nov 9 with three new games (Stamp Duty: Executive Disorder, Stamp Duty: Overqualified and Piñata Panic). Its other copies were already here. The two Stamp Duty games are different games that share a name. Piñata Panic had an upgrade named after a real candy brand, renamed Sour Bait.
 - Claude Cowork MacBook Air brought Emberward on Nov 9, and Lane Four was updated to its newest build.
 - PR #20 brought 5 more new Argon games (Aegis: Volt-Lash, Ricochet Vault, SLINGCORE, SNAP-LANCE, SNAPBACK). A sixth, Aegis-Zero: Graze Overclock, came later through PR #4 on Nov 9. Its perks were named after real game studios and games, so those names were replaced with made-up ones. The other new Wave 12 and Wave 13 copies in PR #4 were already here.
+- Main also contains PR #22's SNAP-LANCE and SNAPBACK fixes. Their older incoming JS assets must not replace those repaired versions.
 - Cloud copies newer than the arcade's first PR (#1): 20 of its 22 games are older; this PR uses the live versions.
+
+## Own projects
+
+- [Mr. Football Dynasty](https://github.com/KevinBigham/MFD) and [Mr. Baseball Dynasty](https://github.com/KevinBigham/MBD) stay in their existing repositories. Their earlier copies remain in collection history, not the current PR #3/#6 payloads. PR #15's MFD path is manifest-only and absent.
+- [Gridiron Overdrive](https://github.com/KevinBigham/mfd-playable-3d-standalone) has its own development repo and an existing arcade mirror. Do not add another card for the Mac mini release.
 
 ## Checks
 
-- Every arcade game's files were checked for missing or absolute paths: none missing. Antigravity, most MacBook, Mac mini Codex and Kimi Work games were also opened in a browser by the agent that collected them. Claude's cloud copies are the live pages as of Nov 8.
-- Not tested: playing them from GitHub Pages, or on a phone.
+- The Nov 9 reconciliation checked catalog paths and inspected source/build identities across incoming PRs. It found five inherited navigation errors in Sideline, Please Feed the Moon and Honk; this proposal repairs those links. Collector reports are historical launch/interaction evidence, not full gameplay acceptance.
+- Independent GitHub Pages checks covered 19 existing entries on Nov 9, including progression/scoring in several games. Some checks reached only menus or startup; see the reconciliation for exact results and unresolved controls. The rest were not independently played in this review.
+- Not established: phone acceptance, full campaigns, offline acceptance, or complete gameplay testing of all 95 entries. Incoming-only candidate builds were not independently run.
 - Franchise Dynasty loads one library from cdnjs; several games load Google Fonts.
