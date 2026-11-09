@@ -1,4 +1,4 @@
-# Incoming: Claude (Cowork) on Kevin's MacBook Air — recheck, Nov 8 evening
+# Incoming: Claude (Cowork) on Kevin's MacBook Air — recheck, Nov 8 evening (updated Nov 8 night)
 
 Checked against `main` at e71c496 (76 games in `games/`, plus CATALOG.md). Every Claude-built game on this MacBook lives as a claude.ai artifact, so each artifact's current live file was downloaded and its SHA-256 compared with every `games/*/index.html` on main. Gameplay was compared by hand where the hash didn't match.
 
@@ -9,10 +9,14 @@ Runs = opened from file:// in headless Chromium, clicked, sent arrow keys/Space:
 | Game | Group | Matches existing folder | Original path | Last modified | Runs | Notes |
 |---|---|---|---|---|---|---|
 | The Moon Wants a Sandwich | NEW | none | https://claude.ai/artifact/QgM6EQ5fVSjMDU9oyWJYHJ | 2026-11-08 (21:03 UTC) | yes | Balance-stacking game: a chef on a unicycle stacks sandwich layers and objects to feed the moon. 5 courses. Not the same game as `please-feed-the-moon` (a Codex arcade shooter), despite the moon theme. No real names, no external files. Single 120 KB `index.html`. |
+| Lane Four | NEWER BUILD | `games/negative-split/` | https://claude.ai/artifact/1bCrtsFPtDX5UuLrdTEb5t | 2026-11-09 (00:53 UTC; Nov 8 evening Central) | yes | Short-course freestyle racer, same core as Negative Split (blocks → underwater → strokes → turns, oxygen and flow meters) but rebuilt: on-the-beat stroke timing, breathing, flip turns with a 15-yard underwater limit, AI field, PB ghost and a season ladder (Dual Meet → Conference → Sectionals → State). Main's Negative Split freezes at the race start; this one runs. 72 KB vs 32 KB. Swimmer names and team codes are invented. Not the same thing as the old "Lane Four" water toy held in PR #2 — that one is an interactive toy and this is a game, so the name is reused. Loads Google Fonts. |
+| Kinetic Chain | NEW | none | https://claude.ai/artifact/1Aq6ujuvvrZhSphzMfoWCJ | 2026-11-09 (00:48 UTC; Nov 8 evening Central) | yes | One-input arcade dasher: time slows while you aim, you dash through enemies, and every hit refunds a dash. Waves plus pick-one upgrades. Closest arcade games (Voidbreaker, Echo Requiem, Gloamrush) are shooters/survivors, not this. Loads Google Fonts. |
 
-No NEWER BUILD and no NEEDS RENAME this time.
+No NEEDS RENAME this time.
 
 ## Duplicates skipped (byte-identical to the file already on main)
+
+Negative Split's own artifact (https://claude.ai/artifact/AjY8xXfTc1bQE7nMcdDxhx) is also identical to main; Lane Four above is the build that would replace it.
 
 | Game | Existing folder | Original path |
 |---|---|---|
@@ -41,7 +45,6 @@ No NEWER BUILD and no NEEDS RENAME this time.
 | Lowbell | `games/lowbell/` | https://claude.ai/artifact/B3wGstujgekmiiDKj28jNP |
 | Moonpond Angler | `games/moonpond-angler/` | https://claude.ai/artifact/9VWDKPJ55yfuh7kMT2rTo4 |
 | Nebula Greens | `games/nebula-greens/` | https://claude.ai/artifact/YKxfXjeUsCGweLfM8aMVcE |
-| Negative Split | `games/negative-split/` | https://claude.ai/artifact/AjY8xXfTc1bQE7nMcdDxhx |
 | Neon Nightcap | `games/neon-nightcap/` | https://claude.ai/artifact/C1yhkGELnYhLFpThwxcyhg |
 | Nine Lives Overdrive | `games/nine-lives-overdrive/` | https://claude.ai/artifact/YH8QamaprSBMbhUCQnX3Ux |
 | One More Season | `games/one-more-season/` | https://claude.ai/artifact/QDYfRtfYCsPv7kveXnSFuB |
