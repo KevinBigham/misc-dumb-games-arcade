@@ -2,7 +2,7 @@
 
 Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the MacBook, Antigravity on the Mac mini, and Antigravity and Claude Cowork on the MacBook Air. Games marked "In the arcade" are in `games/<slug>/` and linked from the arcade page; everything else stays in its incoming PR so nothing is lost.
 
-- In the arcade: 88
+- In the arcade: 89
 - Held: 1
 - Source only or own repo: 4
 - Archived older versions and extras: 7
@@ -29,6 +29,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | CROSSBLOCK | block puzzle | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/crossblock/) |  |
 | Dual Meet | swim meet | Nov 6 new builds | cloud PR #2 | [play](games/dual-meet/) |  |
 | ECHO REQUIEM | temporal arena shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/echo-requiem/) |  |
+| Emberward | card-cast wall defense | Claude (Cowork, MacBook) | MacBook Cowork PR (Nov 9) | [play](games/emberward/) |  |
 | Event Horizon: Singularity Slingshot | gravity slingshot roguelite | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/event-horizon/) |  |
 | Fathomsong | rhythm | overnight research batch | cloud PR #2 | [play](games/fathomsong/) |  |
 | Fourth & Forever '05 | football franchise sim | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/fourth-and-forever/) | Formerly a football franchise sim built on real league names; league, teams, players, coaches, host and brands are now fictional |

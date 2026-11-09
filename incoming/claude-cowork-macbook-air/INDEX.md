@@ -78,3 +78,11 @@ Negative Split's own artifact (https://claude.ai/artifact/AjY8xXfTc1bQE7nMcdDxhx
 ## Not games, left out
 
 VIRTUAL — light blue (animated short film), Inside the Machine, Inside the Homie (doc), plus the reports, timers, planners and research pages listed in the earlier collection. No MFD, MBD or Last Bell files were touched. Nothing over 50 MB; no node_modules or build caches.
+
+## Nov 9 update
+
+| Game | Group | Matches existing folder | Original path | Last modified | Runs | Notes |
+|---|---|---|---|---|---|---|
+| Emberward | NEW | none | https://claude.ai/artifact/EBCYFEgZQmBWf64yTrWrfu | 2026-11-09 (03:21 UTC; Nov 8 night Central) | yes | Turn-based card-casting wall defense: shades drift down a 5×7 grid toward your wall; cast Spark/Lance/Flare cards, popped shades burst into neighbors. 8 nights, card drafts, relics after nights 2 and 5, daily result to copy. Different from the arcade's deckbuilders (Kettle Crawl, Snapthread) and tower defense (Spore Siege). No real names, no external files. 71 KB. Also folded into `games/emberward/` (89 on the arcade). |
+
+Rechecked and skipped in this pass: Hardwood Franchise (unchanged since Nov 5, older source of `games/baseline-empire/`), both Lane Four artifacts (newest build is in PR #18), Kinetic Chain and The Moon Wants a Sandwich (identical to main).
