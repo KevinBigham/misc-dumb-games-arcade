@@ -1,0 +1,61 @@
+/* Runtime uses the real three npm package. These declarations avoid a cloud-filesystem
+ * path-resolution stall in the full @types/three graph; gameplay remains type-checked. */
+declare namespace THREE {
+  type Object3D = any;
+  type BufferGeometry = any;
+  type BufferAttribute = any;
+  type Material = any;
+  type Texture = any;
+  type MeshStandardMaterial = any;
+  type MeshBasicMaterial = any;
+  type Mesh = any;
+  type Group = any;
+  type Sprite = any;
+  type Points = any;
+  type Vector2 = any;
+  type Vector3 = any;
+  type Raycaster = any;
+  type Plane = any;
+  type PerspectiveCamera = any;
+  type Scene = any;
+  type WebGLRenderer = any;
+  type Color = any;
+
+  const Object3D: any;
+  const BufferGeometry: any;
+  const BufferAttribute: any;
+  const Material: any;
+  const MeshStandardMaterial: any;
+  const MeshBasicMaterial: any;
+  const Mesh: any;
+  const Group: any;
+  const Sprite: any;
+  const SpriteMaterial: any;
+  const Points: any;
+  const PointsMaterial: any;
+  const Vector2: any;
+  const Vector3: any;
+  const Raycaster: any;
+  const Plane: any;
+  const PerspectiveCamera: any;
+  const Scene: any;
+  const WebGLRenderer: any;
+  const Color: any;
+  const Fog: any;
+  const HemisphereLight: any;
+  const DirectionalLight: any;
+  const CircleGeometry: any;
+  const PlaneGeometry: any;
+  const BoxGeometry: any;
+  const SphereGeometry: any;
+  const ConeGeometry: any;
+  const CylinderGeometry: any;
+  const TorusGeometry: any;
+  const RingGeometry: any;
+  const InstancedMesh: any;
+  const CanvasTexture: any;
+  const SRGBColorSpace: any;
+  const ACESFilmicToneMapping: any;
+  const DoubleSide: any;
+}
+export = THREE;
