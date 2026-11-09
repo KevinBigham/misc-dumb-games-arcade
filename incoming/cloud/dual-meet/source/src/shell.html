@@ -1,0 +1,204 @@
+<title>Dual Meet</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one phone column. Title card, then the meet sheet (one card per event in meet order) with a docked Swim bar,
+   then a results card that reveals event by event. Look: a pool deck at night under scoreboard light.
+   Single dark theme by choice: it is a scoreboard. Shapes carry meaning as well as color: ● you, ◆ them, ★ scouted, ▲ back-to-back. */
+:root{
+  color-scheme: dark;
+  --bg:#0a1620; --bg2:#0f2130; --panel:#122635; --panel2:#17304266; --line:#24425a; --ink:#eaf4f8; --muted:#a3bac8;
+  --you:#4cc9f0; --you2:#0e3a4d; --them:#ffa25c; --them2:#4a2a14; --gold:#ffd45e; --good:#6ef0b4; --bad:#ff7d72; --warn:#ffc94d;
+  --display:"Avenir Next Condensed","Futura","Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif;
+  --body:"Avenir Next","Segoe UI","Helvetica Neue",Roboto,Arial,sans-serif;
+  --mono:"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font:15px/1.4 var(--body);-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;touch-action:manipulation}
+button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+#app{max-width:520px;margin:0 auto;min-height:100vh;min-height:100dvh;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);margin:0;letter-spacing:.02em;text-wrap:balance}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-weight:700;font-size:15px}
+.btn.go{background:var(--gold);color:#241a00;border-color:transparent}
+.btn.big{min-height:60px;font:800 22px var(--display);letter-spacing:.06em;text-transform:uppercase;width:100%}
+.btn:active{transform:translateY(1px)}
+.btn[disabled]{opacity:.45}
+/* ---------- title ---------- */
+#sTitle{padding-block:calc(26px + env(safe-area-inset-top,0px)) calc(28px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px}
+.logo{font:800 clamp(52px,17vw,84px)/.86 var(--display);text-transform:uppercase;letter-spacing:.03em}
+.logo span{color:var(--you)}
+.logo i{font-style:normal;color:var(--them)}
+.tag{margin:0;color:var(--muted);font-size:16px}
+.today{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:grid;gap:4px}
+.today .lbl{font:700 12px var(--display);letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+.today b{font:700 21px var(--display);letter-spacing:.02em}
+.foot{display:flex;gap:8px;flex-wrap:wrap}
+.foot .btn{flex:1 1 30%}
+/* ---------- meet ---------- */
+#sMeet{padding-top:calc(8px + env(safe-area-inset-top,0px));padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+.top{display:flex;align-items:center;gap:10px;padding:6px 0 10px}
+.top .ic{width:44px;height:44px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font:700 20px var(--display);flex:none}
+.top .mt{flex:1;min-width:0;display:grid}
+.top .mt b{font:800 20px var(--display);letter-spacing:.03em;text-transform:uppercase}
+.top .mt span{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);margin:0 0 10px}
+.legend .y{color:var(--you)} .legend .t{color:var(--them)} .legend .g{color:var(--gold)} .legend .w{color:var(--warn)}
+.coach{background:#2b2308;border:1px solid #6b5a1c;color:#fff4cf;border-radius:14px;padding:10px 12px;margin:0 0 10px;font-size:14px;display:flex;gap:10px;align-items:flex-start}
+.coach .ct{flex:1}
+.coach .btn{min-height:36px;padding:0 12px;font-size:13px;background:#4a3d10;border-color:#6b5a1c}
+#events{display:flex;flex-direction:column;gap:10px}
+.ev{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 10px 12px;display:grid;gap:8px}
+.ev.sc{border-color:#806a22;box-shadow:inset 3px 0 0 var(--gold)}
+.evh{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.evh .n{font:700 12px var(--mono);color:var(--muted);min-width:18px}
+.evh b{font:800 18px var(--display);letter-spacing:.03em;text-transform:uppercase}
+.evh .st{font-size:12px;font-weight:700;letter-spacing:.04em}
+.evh .st.g{color:var(--gold)} .evh .st.h{color:var(--muted)}
+.evh .pj{margin-left:auto;font-size:12px;color:var(--muted)}
+.evh .pj b{font:700 13px var(--mono);letter-spacing:0;text-transform:none}
+.evh .pj .w{color:var(--good)} .evh .pj .l{color:var(--bad)}
+.side{display:grid;grid-template-columns:18px 1fr;gap:6px;align-items:start}
+.side .mk{font-size:15px;line-height:44px;text-align:center}
+.side.you .mk{color:var(--you)} .side.them .mk{color:var(--them)}
+.lanes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.lanes.r{grid-template-columns:repeat(2,minmax(0,1fr))}
+.chip{min-height:46px;border-radius:10px;padding:5px 7px;text-align:left;display:grid;gap:1px;min-width:0;border:1px solid transparent}
+.you .chip{background:var(--you2);border-color:#1d5a73}
+.you .chip:active{background:#145069}
+.them .chip{background:var(--them2);border-color:#6a3d1d}
+.chip .cn{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .cl{font-size:12px;color:var(--muted)}
+.chip .ct{font:600 13px var(--mono);display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.chip .cf{font:700 12px var(--body);color:var(--warn)}
+.chip.empty{border-style:dashed;border-color:#3a6178;background:transparent;color:var(--muted);align-content:center;font-size:13px;font-weight:700}
+.chip.pulse{animation:pulse 1.1s ease-in-out infinite;border-color:var(--gold)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,212,94,.0)}50%{box-shadow:0 0 0 4px rgba(255,212,94,.55)}}
+.hid{font-size:13px;color:var(--muted);line-height:1.35;padding-top:4px}
+.hid .num{color:var(--ink)}
+.brk{font-size:12px;color:var(--muted);text-align:center;padding:2px 0;letter-spacing:.06em;text-transform:uppercase}
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:5;background:linear-gradient(to top,var(--bg) 70%,rgba(10,22,32,0));padding:14px max(16px,env(safe-area-inset-left,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px))}
+.dock .in{max-width:488px;margin:0 auto;display:flex;gap:8px;align-items:center}
+.dock .info{flex:1;min-width:0;font-size:12px;color:var(--muted);line-height:1.3}
+.dock .info b{color:var(--ink);font-size:13px}
+.dock .btn.go{min-width:132px;min-height:54px;font:800 21px var(--display);letter-spacing:.08em;text-transform:uppercase}
+/* ---------- sheet ---------- */
+.sheet{position:fixed;inset:0;z-index:20;background:rgba(2,8,12,.62);display:flex;align-items:flex-end;justify-content:center}
+.sh{background:var(--bg2);border:1px solid var(--line);border-bottom:0;width:100%;max-width:520px;max-height:86vh;max-height:86dvh;border-radius:18px 18px 0 0;display:flex;flex-direction:column}
+.shHead{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.shHead b{flex:1;font:800 18px var(--display);letter-spacing:.03em;text-transform:uppercase;min-width:0}
+.shBody{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:10px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:8px}
+.pk{display:grid;grid-template-columns:18px 1fr auto;gap:2px 8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 10px;text-align:left;min-height:52px}
+.pk .mk{color:var(--you);grid-row:span 2}
+.pk .pn{font-weight:700;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pk .pt{font:700 15px var(--mono);text-align:right}
+.pk .pm{font-size:12px;color:var(--muted);grid-column:2/4}
+.pk .pm .w{color:var(--warn);font-weight:700}
+.pk.cur{border-color:var(--you)}
+.pk.off{opacity:.5}
+.pk.pulse{animation:pulse 1.1s ease-in-out infinite;border-color:var(--gold)}
+.sec{font:700 12px var(--display);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+.note{font-size:14px;color:var(--muted);margin:0}
+.rules{margin:0;padding-left:18px;display:grid;gap:8px;font-size:14px}
+.rules b{color:var(--ink)}
+.tabs{display:flex;gap:6px}
+.tabs .btn{flex:1;min-height:40px}
+.tabs .btn.on{background:var(--you2);border-color:var(--you)}
+.ros{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 10px;display:grid;gap:3px}
+.ros .rn{display:flex;gap:8px;align-items:baseline}
+.ros .rn b{font-size:15px}
+.ros .rn span{font-size:12px;color:var(--muted)}
+.ros .rn .cnt{margin-left:auto;font:700 12px var(--mono);color:var(--ink)}
+.ros .re{font-size:13px;color:var(--muted)}
+.ros .re .num{color:var(--ink)}
+/* ---------- results ---------- */
+#sRes{padding-top:calc(14px + env(safe-area-inset-top,0px));padding-bottom:calc(28px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
+.board{background:#050c12;border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px;display:grid;gap:6px;text-align:center}
+.board .lbl{font:700 12px var(--display);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.score{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
+.score .tm{font:700 13px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score .pts{font:800 54px/1 var(--mono);font-variant-numeric:tabular-nums}
+.score .you .pts{color:var(--you)} .score .them .pts{color:var(--them)}
+.score .dash{font:800 30px var(--mono);color:var(--muted)}
+.bump{animation:bump .28s ease-out}
+@keyframes bump{0%{transform:scale(1.18)}100%{transform:scale(1)}}
+#rWL{font:800 30px var(--display);letter-spacing:.12em;text-transform:uppercase}
+#rWL.w{color:var(--good)} #rWL.l{color:var(--bad)} #rWL.t{color:var(--gold)}
+#rRate{font-size:14px;color:var(--muted)}
+#rRate b{color:var(--ink)}
+.stars{color:var(--gold);font-size:18px;letter-spacing:2px}
+#rEvents{display:flex;flex-direction:column;gap:8px}
+.re1{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:grid;gap:4px;animation:rin .3s ease-out}
+@keyframes rin{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:none}}
+.re1 .rh{display:flex;gap:8px;align-items:baseline}
+.re1 .rh b{font:800 16px var(--display);letter-spacing:.03em;text-transform:uppercase}
+.re1 .rh .rp{margin-left:auto;font:700 13px var(--mono)}
+.re1 .rh .rp .y{color:var(--you)} .re1 .rh .rp .t{color:var(--them)}
+.rr{display:grid;grid-template-columns:22px 16px 1fr auto 30px;gap:6px;font-size:13px;align-items:baseline}
+.rr .pl{color:var(--muted);font:600 12px var(--mono)}
+.rr.y .mk{color:var(--you)} .rr.t .mk{color:var(--them)}
+.rr .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rr .tm{font:600 13px var(--mono)}
+.rr .pt{font:700 13px var(--mono);text-align:right}
+.rr.y .pt{color:var(--you)} .rr.t .pt{color:var(--them)}
+.rr .b2{color:var(--warn);font-size:12px}
+.resBtns{display:grid;gap:8px}
+.resBtns .row .btn{flex:1}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px}
+.cmp div{min-width:0}
+.cmp .chg{color:var(--gold);font-weight:700}
+.badgeWrap .gk-badges{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+@media (prefers-reduced-motion:reduce){.chip.pulse,.pk.pulse{animation:none;box-shadow:0 0 0 3px rgba(255,212,94,.6)}.re1,.bump{animation:none}}
+</style>
+<div id="app">
+  <section id="sTitle" aria-label="Title">
+    <div class="logo">Dual<br><span>Me</span><i>et</i></div>
+    <p class="tag">Set the lineup. Out-think their coach. One meet a day.</p>
+    <div class="today" id="tToday"><span class="lbl" id="tDate">Today</span><b id="tVs">Setting up today's meet</b><span class="muted small" id="tState"></span></div>
+    <button class="btn go big" id="tGo">Today's meet</button>
+    <button class="btn" id="tPractice">Practice meet</button>
+    <div class="muted small" id="tNext"></div>
+    <div class="foot"><button class="btn" id="tHelp">How to play</button><button class="btn" id="tBadges">Badges</button><button class="btn" id="tSet">Settings</button></div>
+  </section>
+
+  <section id="sMeet" aria-label="Meet" hidden>
+    <div class="top">
+      <button class="ic" id="mBack" aria-label="Back to the title">‹</button>
+      <div class="mt"><b id="mTitle">Dual meet</b><span id="mSub"></span></div>
+      <button class="ic" id="mHelp" aria-label="How to play">?</button>
+    </div>
+    <div class="coach" id="coach" hidden><div class="ct" id="coachT"></div><button class="btn" id="coachX">Got it</button></div>
+    <div class="legend"><span class="y">● You</span><span class="t">◆ Them</span><span class="g">★ Scouted</span><span class="w">▲ Back-to-back +2%</span></div>
+    <div id="events"></div>
+    <div class="dock"><div class="in">
+      <button class="btn" id="mRoster">Roster</button>
+      <div class="info" id="mInfo"></div>
+      <button class="btn go" id="mSwim">Swim</button>
+    </div></div>
+  </section>
+
+  <section id="sRes" aria-label="Results" hidden>
+    <div class="board">
+      <div class="lbl" id="rLbl">Final</div>
+      <div class="score"><div class="you"><div class="tm" id="rYouN">You</div><div class="pts" id="rUs">0</div></div><div class="dash">–</div><div class="them"><div class="tm" id="rThemN">Them</div><div class="pts" id="rThem">0</div></div></div>
+      <div id="rWL"></div>
+      <div id="rRate"></div>
+    </div>
+    <div class="resBtns" id="rBtns">
+      <button class="btn go big" id="rAgain">Again</button>
+      <div class="row"><button class="btn" id="rShare">Share</button><button class="btn" id="rBest">Best lineup</button><button class="btn" id="rMenu">Menu</button></div>
+    </div>
+    <button class="btn" id="rSkip">Skip to the end</button>
+    <div id="rEvents"></div>
+  </section>
+
+  <div class="sheet" id="sheet" hidden><div class="sh" role="dialog" aria-modal="true" aria-labelledby="shTitle">
+    <div class="shHead"><b id="shTitle"></b><button class="btn" id="shClose">Close</button></div>
+    <div class="shBody" id="shBody"></div>
+  </div></div>
+</div>

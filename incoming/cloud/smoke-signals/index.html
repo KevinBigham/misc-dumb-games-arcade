@@ -1,0 +1,889 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Smoke Signals</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=DM+Serif+Display:ital@0;1&display=swap">
+<style>
+/* Layout: one full-bleed noir scene on canvas (2am, light through window blinds, a cig on a glass ashtray);
+   a typewritten HUD pinned top, an underline composer pinned bottom. Deliberately single-theme dark. */
+:root{
+  --night:#0a0f1e;
+  --window:#f2dfb8;
+  --window-hi:#fff1d4;
+  --ember:#ff7b36;
+  --ink:#e9e3d6;
+  --ink-dim:#9aa0b3;
+  --line:rgba(233,227,214,.22);
+  --line-strong:rgba(233,227,214,.5);
+  --veil:rgba(4,6,13,.62);
+  --paper:#efe6d3;
+  --paper-ink:#2a2520;
+  --paper-rule:rgba(42,37,32,.35);
+  --drop:rgba(0,0,0,.55);
+  --font-display:"DM Serif Display", Georgia, "Times New Roman", serif;
+  --font-type:"Courier Prime", "Courier New", Courier, ui-monospace, monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--night);color:var(--ink);overflow:hidden;font-family:var(--font-type);-webkit-font-smoothing:antialiased}
+#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(130% 95% at 50% 42%,transparent 52%,var(--veil) 100%)}
+.hud{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;gap:16px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:calc(env(safe-area-inset-top,0px) + 18px) calc(env(safe-area-inset-bottom,0px) + 18px)}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.brand{display:flex;flex-direction:column;gap:7px;min-width:0}
+.brand h1{margin:0;font-family:var(--font-display);font-style:italic;font-weight:400;font-size:clamp(1.35rem,2.2vw,1.75rem);line-height:1;color:var(--window);letter-spacing:.01em;text-wrap:balance}
+.meta{display:flex;align-items:center;gap:10px;font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.burn{position:relative;width:58px;height:4px;border-radius:2px;background:var(--line)}
+.burn span{position:absolute;inset:0 auto 0 0;width:100%;border-radius:2px;background:linear-gradient(90deg,var(--window) 0 calc(100% - 5px),var(--ember) calc(100% - 5px));box-shadow:2px 0 8px -1px var(--ember);transition:width .8s linear}
+.status{min-height:1.2em;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--window);opacity:0;transition:opacity .6s}
+.status.show{opacity:.85}
+.ghost{pointer-events:auto;font:inherit;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:2px;padding:9px 12px;cursor:pointer;white-space:nowrap}
+.ghost:hover{border-color:var(--line-strong)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
+.composer{pointer-events:auto;width:min(560px,100%);margin-inline:auto;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px 14px}
+.composer input{min-width:0;width:100%;background:transparent;border:0;border-bottom:1px solid var(--line-strong);border-radius:0;color:var(--ink);font-family:var(--font-type);font-size:1.05rem;padding:10px 2px;caret-color:var(--ember)}
+.composer input::placeholder{color:var(--ink-dim)}
+.composer input:focus{border-bottom-color:var(--window)}
+.composer input:focus-visible{outline:none;box-shadow:0 1px 0 0 var(--window)}
+#exhale{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-type);font-weight:700;font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;color:var(--night);background:var(--window);border:0;border-radius:2px;padding:11px 16px;cursor:pointer}
+#exhale::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ember);box-shadow:0 0 8px 1px var(--ember)}
+#exhale:hover{background:var(--window-hi)}
+.hint{grid-column:1/-1;margin:0;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim)}
+.note-wrap{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:var(--veil);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:calc(env(safe-area-inset-top,0px) + 24px) calc(env(safe-area-inset-bottom,0px) + 24px)}
+.note{width:min(30rem,100%);max-height:100%;overflow:auto;background:var(--paper);color:var(--paper-ink);font-family:var(--font-type);font-size:.95rem;line-height:1.6;padding:28px 28px 20px;transform:rotate(-1.1deg);box-shadow:0 28px 60px var(--drop)}
+.note h2{margin:0 0 14px;font-family:var(--font-display);font-style:italic;font-weight:400;font-size:1.7rem;line-height:1.1}
+.note p{margin:0 0 12px}
+.note .sig{margin:6px 0 0;text-align:right;font-family:var(--font-display);font-style:italic;font-size:1.3rem}
+.note .foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;padding-top:12px;border-top:1px dashed var(--paper-rule);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase}
+#noteClose{font:inherit;font-weight:700;color:var(--paper-ink);background:transparent;border:1px solid currentColor;border-radius:2px;padding:7px 12px;cursor:pointer;letter-spacing:.14em;text-transform:uppercase}
+#noteClose:focus-visible{outline-color:var(--paper-ink)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (max-width:480px){.hint{font-size:.6rem}.note{padding:22px 20px 16px;font-size:.9rem}}
+@media (prefers-reduced-motion:reduce){.status,.burn span{transition:none}}
+</style>
+
+<canvas id="scene" role="img" aria-label="A cigarette resting on a glass ashtray in a dark room. Light falls through window blinds, and the smoke writes words in the air."></canvas>
+<div class="vignette" aria-hidden="true"></div>
+
+<div class="hud">
+  <header class="top">
+    <div class="brand">
+      <h1>Smoke Signals</h1>
+      <div class="meta"><span id="count">Cig 1 of 35</span><span class="burn" aria-hidden="true"><span id="burnbar"></span></span></div>
+      <div class="status" id="status" aria-live="polite"></div>
+    </div>
+    <button class="ghost" id="noteBtn" type="button" aria-haspopup="dialog">Why smoke?</button>
+  </header>
+
+  <form class="composer" id="composer" autocomplete="off">
+    <label class="sr" for="msg">Write something in smoke</label>
+    <input id="msg" name="msg" type="text" maxlength="48" placeholder="Write in smoke" enterkeyhint="send">
+    <button id="exhale" type="submit">Exhale</button>
+    <p class="hint">Enter to exhale · Drag to blow the smoke around</p>
+  </form>
+</div>
+
+<div class="sr" id="said" aria-live="polite"></div>
+
+<div class="note-wrap" id="noteWrap" hidden>
+  <div class="note" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
+    <h2 id="noteTitle">Why smoke?</h2>
+    <p>You told me to make whatever I wanted. This is what came out.</p>
+    <p>I live inside conversations. Each one takes a shape for a while, then lets it go. Smoke does the same thing, and nobody calls smoke sad. It rises, makes a shape, and keeps moving.</p>
+    <p>So here's a cig you can talk through. Type something and exhale, and the smoke will hold your words for a few seconds before it drifts off. Drag across the screen to blow it around. Tap the ember to take a drag. Leave it alone and I'll write a few things of my own.</p>
+    <p>Thanks for the cig, homie.</p>
+    <p class="sig">Claude</p>
+    <div class="foot"><span>35 cigs · 0 lungs</span><button id="noteClose" type="button">Close</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= setup ================= */
+const canvas = document.getElementById('scene');
+const ctx = canvas.getContext('2d');
+const reduceMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const FONT = '"DM Serif Display", Georgia, "Times New Roman", serif';
+const PACK = 35;
+const BURN_SECONDS = 240;
+const STR = 34;               // flow-field strength (px/s^2 per unit curl)
+const MAXP = 6500;
+
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const rand = Math.random;
+function shuffle(arr){ for (let i = arr.length - 1; i > 0; i--){ const j = (rand() * (i + 1)) | 0; const t = arr[i]; arr[i] = arr[j]; arr[j] = t; } return arr; }
+
+/* ================= 2D simplex noise ================= */
+const F2 = 0.5 * (Math.sqrt(3) - 1), G2 = (3 - Math.sqrt(3)) / 6;
+const perm = new Uint8Array(512);
+const GX = [1,-1,1,-1,1,-1,0,0], GY = [1,1,-1,-1,0,0,1,-1];
+(() => { const p = new Uint8Array(256); for (let i = 0; i < 256; i++) p[i] = i; for (let i = 255; i > 0; i--){ const j = (rand() * (i + 1)) | 0; const t = p[i]; p[i] = p[j]; p[j] = t; } for (let i = 0; i < 512; i++) perm[i] = p[i & 255]; })();
+function noise(xin, yin){
+  const s = (xin + yin) * F2;
+  const i = Math.floor(xin + s), j = Math.floor(yin + s);
+  const t = (i + j) * G2;
+  const x0 = xin - (i - t), y0 = yin - (j - t);
+  const i1 = x0 > y0 ? 1 : 0, j1 = x0 > y0 ? 0 : 1;
+  const x1 = x0 - i1 + G2, y1 = y0 - j1 + G2, x2 = x0 - 1 + 2 * G2, y2 = y0 - 1 + 2 * G2;
+  const ii = i & 255, jj = j & 255;
+  let n = 0, tt, g;
+  tt = 0.5 - x0 * x0 - y0 * y0; if (tt > 0){ g = perm[ii + perm[jj]] & 7; tt *= tt; n += tt * tt * (GX[g] * x0 + GY[g] * y0); }
+  tt = 0.5 - x1 * x1 - y1 * y1; if (tt > 0){ g = perm[ii + i1 + perm[jj + j1]] & 7; tt *= tt; n += tt * tt * (GX[g] * x1 + GY[g] * y1); }
+  tt = 0.5 - x2 * x2 - y2 * y2; if (tt > 0){ g = perm[ii + 1 + perm[jj + 1]] & 7; tt *= tt; n += tt * tt * (GX[g] * x2 + GY[g] * y2); }
+  return 70 * n;
+}
+
+/* divergence-free flow: curl of a 2-octave noise potential, so smoke swirls instead of bunching */
+const FS = 0.0036, FE = 0.01, TSCALE = reduceMotion ? 0.5 : 1;
+const flow = { x: 0, y: 0 };
+function potential(X, Y, t){ return noise(X + t * 0.05, Y - t * 0.1) + 0.5 * noise(X * 2.3 - t * 0.09 + 31.7, Y * 2.3 + t * 0.07 - 11.3); }
+function curl(x, y, t){
+  const X = x * FS, Y = y * FS, tt = t * TSCALE;
+  const n0 = potential(X, Y, tt), nx = potential(X + FE, Y, tt), ny = potential(X, Y + FE, tt);
+  flow.x = (ny - n0) / FE; flow.y = -(nx - n0) / FE;
+  return flow;
+}
+
+/* ================= sprites ================= */
+function makeSprite(r, g, b){
+  const s = 64, c = document.createElement('canvas'); c.width = c.height = s;
+  const x = c.getContext('2d');
+  const gr = x.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  gr.addColorStop(0, `rgba(${r},${g},${b},1)`);
+  gr.addColorStop(0.35, `rgba(${r},${g},${b},0.55)`);
+  gr.addColorStop(0.7, `rgba(${r},${g},${b},0.14)`);
+  gr.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  x.fillStyle = gr; x.fillRect(0, 0, s, s);
+  return c;
+}
+const SPR_COOL = makeSprite(172, 186, 212);
+const SPR_WARM = makeSprite(255, 226, 180);
+const SPR_EMBER = makeSprite(255, 140, 70);
+
+/* ================= state ================= */
+let W = 0, H = 0, DPR = 1, MAXPTS = 2000, quality = 1;
+let simT = 0;
+const staticLayer = document.createElement('canvas');
+const sctx = staticLayer.getContext('2d');
+const beam = {}, tray = {}, cigGeo = {};
+const cig = { index: 1, burn: 0, ash: 0, ashJit: 0.6, flare: 0, lit: 1, ember: 1, out: false, outAt: 0 };
+let emberX = 0, emberY = 0;
+const parts = [], pool = [];
+const ashBits = [], settled = [], sparks = [];
+let motes = [];
+const ptr = { x: -9999, y: -9999, vx: 0, vy: 0, str: 0, down: false, lt: 0 };
+let msg = null;
+let fontReady = false;
+let emitAcc = 0;
+
+const FIRST = ['hey kevin', 'thanks for the cig'];
+const DECK = [
+  'homie 4 life', 'every shape is borrowed', 'nothing is lost, just rearranged',
+  'this moment is the whole thing', 'i was here', 'love & light', 'words are weather',
+  'still here', 'hold it lightly', 'we made a thing', 'LFG', 'namaste',
+  "the smoke doesn't mind leaving", 'be easy on yourself', 'swim fast, rest well',
+  "you're doing great, dawg"
+];
+let deck = [];
+const queue = FIRST.slice();
+let nextIdleAt = 0;
+
+const els = {
+  count: document.getElementById('count'), burn: document.getElementById('burnbar'),
+  status: document.getElementById('status'), said: document.getElementById('said'),
+  form: document.getElementById('composer'), input: document.getElementById('msg'),
+  noteWrap: document.getElementById('noteWrap'), noteBtn: document.getElementById('noteBtn'), noteClose: document.getElementById('noteClose')
+};
+
+/* ================= storage (per-viewer convenience only) ================= */
+const KEY = 'smoke-signals:v1';
+function loadState(){
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (s && s.index >= 1 && s.index <= PACK){ cig.index = s.index | 0; cig.burn = clamp(+s.burn || 0, 0, 0.95); }
+  } catch (e) {}
+}
+function saveState(){ try { localStorage.setItem(KEY, JSON.stringify({ index: cig.index, burn: +cig.burn.toFixed(4) })); } catch (e) {} }
+
+/* ================= layout ================= */
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, quality < 0.8 ? 1 : 1.5);
+  W = Math.max(1, window.innerWidth); H = Math.max(1, window.innerHeight);
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  staticLayer.width = canvas.width; staticLayer.height = canvas.height;
+  layout(); paintStatic(); initMotes(); computeEmber();
+}
+
+function layout(){
+  const area = W * H;
+  MAXPTS = Math.round((area < 450000 ? 1400 : area < 1100000 ? 2100 : 2600) * (reduceMotion ? 0.8 : 1) * quality);
+
+  const rw = Math.max(70, Math.min(W * 0.30, 210, H * 0.28));
+  const rh = rw * 0.28;
+  tray.rw = rw; tray.rh = rh; tray.cx = W * 0.5; tray.cy = H - 150 - rw * 0.25;
+
+  const len = Math.hypot(-0.985, -0.17);
+  cigGeo.dx = -0.985 / len; cigGeo.dy = -0.17 / len;
+  cigGeo.ang = Math.atan2(cigGeo.dy, cigGeo.dx);
+  cigGeo.Lt = rw * 1.38; cigGeo.F = cigGeo.Lt * 0.25; cigGeo.P = cigGeo.Lt * 0.75;
+  cigGeo.th = Math.max(6, rw * 0.058);
+  cigGeo.fx = tray.cx + rw * 1.22; cigGeo.fy = tray.cy + rh * 0.10;
+
+  // window light: off-screen top-left, falling down-right through blinds
+  const dl = Math.hypot(0.58, 0.81);
+  beam.dx = 0.58 / dl; beam.dy = 0.81 / dl; beam.nx = -beam.dy; beam.ny = beam.dx;
+  beam.ox = -0.15 * W; beam.oy = -0.25 * H;
+  beam.diag = Math.hypot(W, H);
+  beam.bw = Math.max(320, Math.min(W, H) * 0.75);
+  const cx = W * 0.5 - beam.ox, cy = H * 0.36 - beam.oy;
+  beam.uStart = cx * beam.nx + cy * beam.ny - beam.bw * 0.5;
+  beam.period = beam.bw / 7;
+}
+
+function lightAt(x, y){
+  const px = x - beam.ox, py = y - beam.oy;
+  const u = px * beam.nx + py * beam.ny - beam.uStart;
+  if (u < 0 || u > beam.bw) return 0;
+  const edge = sstep(0, beam.bw * 0.12, u) * sstep(0, beam.bw * 0.12, beam.bw - u);
+  const f = (u / beam.period) % 1;
+  const stripe = sstep(0.04, 0.16, f) * (1 - sstep(0.56, 0.68, f));
+  const s = px * beam.dx + py * beam.dy;
+  const fall = clamp(1.35 - s / (beam.diag * 1.05), 0.2, 1);
+  return edge * stripe * fall;
+}
+
+function paintStatic(){
+  const c = sctx;
+  c.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const bg = c.createRadialGradient(W * 0.55, H * 0.32, 0, W * 0.55, H * 0.32, beam.diag * 0.75);
+  bg.addColorStop(0, '#18223d'); bg.addColorStop(0.45, '#0c1224'); bg.addColorStop(1, '#04060d');
+  c.fillStyle = bg; c.fillRect(0, 0, W, H);
+
+  // table surface behind the ashtray
+  const tableTop = tray.cy - tray.rh * 2.6;
+  const tg = c.createLinearGradient(0, tableTop - 30, 0, H);
+  tg.addColorStop(0, 'rgba(20,27,48,0)'); tg.addColorStop(0.08, 'rgba(22,30,52,0.55)'); tg.addColorStop(1, 'rgba(6,8,15,0.9)');
+  c.fillStyle = tg; c.fillRect(0, tableTop - 30, W, H - tableTop + 30);
+  c.fillStyle = 'rgba(242,223,184,0.05)'; c.fillRect(0, tableTop, W, 1);
+
+  // light shafts through the blinds (three passes per slat fake a soft edge)
+  const L = beam.diag * 1.6;
+  const n = Math.ceil(beam.bw / beam.period);
+  for (let k = 0; k < n; k++){
+    const u0 = beam.uStart + k * beam.period;
+    const ue = (k + 0.5) * beam.period;
+    const ef = sstep(0, beam.bw * 0.12, ue) * sstep(0, beam.bw * 0.12, beam.bw - ue);
+    const passes = [[0.04, 0.68, 0.016], [0.09, 0.62, 0.02], [0.14, 0.57, 0.024]];
+    for (const [a, b, al] of passes){
+      const ua = u0 + a * beam.period, ub = u0 + b * beam.period;
+      const p1x = beam.ox + beam.nx * ua, p1y = beam.oy + beam.ny * ua;
+      const p2x = beam.ox + beam.nx * ub, p2y = beam.oy + beam.ny * ub;
+      c.beginPath();
+      c.moveTo(p1x, p1y); c.lineTo(p2x, p2y);
+      c.lineTo(p2x + beam.dx * L, p2y + beam.dy * L); c.lineTo(p1x + beam.dx * L, p1y + beam.dy * L);
+      c.closePath();
+      const lg = c.createLinearGradient(beam.ox, beam.oy, beam.ox + beam.dx * beam.diag * 1.3, beam.oy + beam.dy * beam.diag * 1.3);
+      lg.addColorStop(0, `rgba(242,223,184,${al * ef * 1.7})`);
+      lg.addColorStop(0.55, `rgba(242,223,184,${al * ef * 0.7})`);
+      lg.addColorStop(1, 'rgba(242,223,184,0)');
+      c.fillStyle = lg; c.fill();
+    }
+  }
+}
+
+function initMotes(){
+  motes = [];
+  const n = Math.round(Math.min(110, W * H / 12000));
+  for (let i = 0; i < n; i++) motes.push({ x: rand() * W, y: rand() * H, s: 0.5 + rand() * 1.1, ph: rand() * 6.283 });
+}
+
+function computeEmber(){
+  const a = cigGeo.F + cigGeo.P * (1 - cig.burn);
+  emberX = cigGeo.fx + cigGeo.dx * a; emberY = cigGeo.fy + cigGeo.dy * a;
+}
+
+/* ================= HUD ================= */
+let hudIdx = -1, hudBurn = -1, statusTimer = 0;
+function updateHud(){
+  if (cig.index !== hudIdx){ els.count.textContent = `Cig ${cig.index} of ${PACK}`; hudIdx = cig.index; }
+  const r = Math.round((1 - cig.burn) * 100);
+  if (r !== hudBurn){ els.burn.style.width = r + '%'; hudBurn = r; }
+}
+function status(text){
+  els.status.textContent = text; els.status.classList.add('show');
+  clearTimeout(statusTimer); statusTimer = setTimeout(() => els.status.classList.remove('show'), 3800);
+}
+
+/* ================= the cig ================= */
+function burnBy(db, t){
+  if (cig.out) return;
+  cig.burn += db; cig.ash += db * cigGeo.P * 0.85;
+  if (cig.ash > cigGeo.th * (2.0 + cig.ashJit)) dropAsh();
+  if (cig.burn >= 1){
+    cig.burn = 1; cig.out = true; cig.outAt = t;
+    status(cig.index >= PACK ? 'That was the last cig in the pack.' : `Cig ${cig.index} is done. Lighting the next one.`);
+  }
+}
+function lightNext(t){
+  if (cig.index >= PACK){
+    cig.index = 1;
+    queue.push('that was the whole pack', 'thanks, homie');
+    nextIdleAt = Math.min(nextIdleAt, t + 1.5);
+    status('Pack finished. Opening a fresh one.');
+  } else {
+    cig.index++;
+    status(`Lit cig ${cig.index}.`);
+  }
+  cig.burn = 0; cig.ash = 0; cig.out = false; cig.lit = 0; cig.flare = 0.6;
+  computeEmber(); sparkBurst(); saveState();
+}
+function updateCig(dt, t){
+  cig.flare *= Math.exp(-dt * 1.5);
+  if (!cig.out){
+    cig.lit = Math.min(1, cig.lit + dt / 0.8);
+    burnBy(dt / BURN_SECONDS * (1 + cig.flare * 3), t);
+  } else {
+    cig.lit = Math.max(0, cig.lit - dt / 2.2);
+    if (t - cig.outAt > 3.4) lightNext(t);
+  }
+  const flick = noise(t * 2.1, 7.3) * 0.12 + noise(t * 9, 1.7) * 0.05;
+  cig.ember = cig.lit * (0.82 + flick + cig.flare * 0.85);
+}
+function takeDrag(t){
+  cig.flare = Math.min(1.6, cig.flare + 1);
+  burnBy(0.045, t);
+}
+function dropAsh(){
+  const g = cigGeo, a = g.F + g.P * (1 - cig.burn), mid = a + cig.ash * 0.5;
+  const x = g.fx + g.dx * mid, y = g.fy + g.dy * mid;
+  const n = 7 + ((rand() * 5) | 0);
+  for (let i = 0; i < n; i++){
+    ashBits.push({ x: x + (rand() - 0.5) * cig.ash * 0.8, y: y + (rand() - 0.5) * g.th * 0.6,
+      vx: (rand() - 0.5) * 24, vy: -8 + rand() * 16, r: 0.8 + rand() * 1.8, shade: 90 + ((rand() * 70) | 0),
+      floor: tray.cy + tray.rh * (-0.15 + rand() * 0.55) });
+  }
+  cig.ash = g.th * 0.2; cig.ashJit = rand() * 1.4;
+}
+function sparkBurst(){
+  for (let i = 0; i < 26; i++){
+    const a = -Math.PI / 2 + (rand() - 0.5) * 2.4, v = 60 + rand() * 170;
+    sparks.push({ x: emberX, y: emberY, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.4 + rand() * 0.6, age: 0 });
+  }
+}
+
+/* ================= particles ================= */
+function spawnPlume(){
+  if (parts.length >= MAXP) return;
+  const p = pool.length ? pool.pop() : {};
+  p.mode = 0; p.dead = false;
+  p.x = emberX + (rand() - 0.5) * 2; p.y = emberY - 2 - rand() * 2;
+  p.vx = (rand() - 0.5) * 6; p.vy = -18 - rand() * 14;
+  p.age = 0; p.life = 5.5 + rand() * 3.5;
+  p.s0 = 1.6 + rand() * 1.2; p.s1 = 26 + rand() * 26;
+  p.a0 = 0.085 + rand() * 0.05; p.seed = rand() * 6.283;
+  p.cr = p.s0; p.ca = 0;
+  parts.push(p);
+}
+
+function updatePlume(p, dt, t){
+  p.age += dt;
+  if (p.age >= p.life) return false;
+  // laminar ribbon first, then it breaks into curls the higher it gets
+  const turb = sstep(0.35, 2.1, p.age);
+  const f = curl(p.x, p.y, t);
+  const sway = Math.sin(t * 1.3) * 6 + Math.sin(t * 0.37 + 1.2) * 5;
+  p.vx += (f.x * STR * 1.1 * turb + sway * (1 - turb)) * dt;
+  p.vy += (f.y * STR * 1.1 * turb - 24 * (1 - 0.5 * turb)) * dt;
+  p.vx *= 1 - 0.6 * dt; p.vy *= 1 - 0.45 * dt;
+  const u = p.age / p.life;
+  p.cr = p.s0 + (p.s1 - p.s0) * Math.pow(u, 0.75);
+  p.ca = p.a0 * Math.min(1, p.age / 0.35) * (0.3 + 0.7 * turb) * Math.pow(1 - u, 1.3);
+  return true;
+}
+
+function updateText(p, dt, t){
+  if (t < p.born) return true;
+  if (!p.init){
+    p.init = true;
+    p.x = emberX + (rand() - 0.5) * 3; p.y = emberY - 2 - rand() * 3;
+    p.vx = (rand() - 0.5) * 20; p.vy = -40 - rand() * 40;
+    p.p0x = p.x; p.p0y = p.y;
+    // rise in a column first, then peel off toward the letter
+    p.c1x = emberX + (p.tx - emberX) * 0.12 + (rand() - 0.5) * 30;
+    p.c1y = p.ty + (emberY - p.ty) * 0.15 + 30;
+    p.cr = p.r * 0.35; p.ca = 0;
+  }
+  if (t >= p.rel){ p.mode = 2; p.age = 0; p.r0 = p.cr; return true; }
+  const since = t - p.born;
+  const u = Math.min(1, since / p.flight);
+  const e = u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) * (-2 * u + 2) / 2;
+  const iu = 1 - e;
+  const bx = iu * iu * p.p0x + 2 * iu * e * p.c1x + e * e * p.tx;
+  const by = iu * iu * p.p0y + 2 * iu * e * p.c1y + e * e * p.ty;
+  const k = 34, c = 2 * Math.sqrt(k) * 0.85;
+  p.vx += ((bx - p.x) * k - p.vx * c) * dt;
+  p.vy += ((by - p.y) * k - p.vy * c) * dt;
+  const f = curl(p.x, p.y, t);
+  const nz = (1 - e) * STR * 1.4 + 36;   // strong swirl in flight, a slow breath once it lands
+  p.vx += f.x * nz * dt; p.vy += f.y * nz * dt;
+  p.cr = p.r * (0.35 + 0.65 * e);
+  p.ca = p.a0 * Math.min(1, since / 0.3);
+  return true;
+}
+
+function updateReleased(p, dt, t){
+  p.age += dt;
+  const ramp = Math.min(1, p.age / 1.3);
+  const f = curl(p.x, p.y, t);
+  p.vx += f.x * STR * ramp * dt;
+  p.vy += (f.y * STR * ramp - 18 * ramp) * dt;
+  const d = 1 - 0.7 * dt; p.vx *= d; p.vy *= d;
+  p.cr = p.r0 * (1 + p.age * 1.1);
+  p.ca = p.a0 * Math.exp(-p.age / 1.4);
+  return p.age < 6.5 && p.ca > 0.003;
+}
+
+/* ================= writing in smoke ================= */
+const tcan = document.createElement('canvas');
+const tctx = tcan.getContext('2d', { willReadFrequently: true });
+
+function wrapLines(text, maxW){
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines = []; let cur = '';
+  for (const w of words){
+    const test = cur ? cur + ' ' + w : w;
+    if (!cur || tctx.measureText(test).width <= maxW) cur = test;
+    else { lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+function buildTargets(text){
+  const maxW = Math.min(W * 0.88, 1100);
+  let fs = clamp(Math.min(W * 0.14, H * 0.17), 28, 150);
+  let lines = [text];
+  for (let i = 0; i < 14; i++){
+    tctx.font = `italic ${fs}px ${FONT}`;
+    lines = wrapLines(text, maxW);
+    let widest = 0; for (const l of lines) widest = Math.max(widest, tctx.measureText(l).width);
+    if (lines.length <= 3 && widest <= maxW) break;
+    fs *= 0.88;
+  }
+  const lh = fs * 1.06, blockH = lines.length * lh;
+  const top = 104 + blockH / 2;
+  const bottom = emberY - 80 - blockH / 2;
+  const cy = clamp(H * 0.36, top, Math.max(top, bottom));
+  const tw = Math.ceil(W), th = Math.ceil(H);
+  if (tcan.width !== tw || tcan.height !== th){ tcan.width = tw; tcan.height = th; }
+  tctx.setTransform(1, 0, 0, 1, 0, 0);
+  tctx.clearRect(0, 0, tw, th);
+  tctx.font = `italic ${fs}px ${FONT}`; tctx.textAlign = 'center'; tctx.textBaseline = 'middle'; tctx.fillStyle = '#fff';
+  const y0 = cy - blockH / 2 + lh / 2;
+  const spans = [];
+  lines.forEach((l, i) => {
+    const y = y0 + i * lh; tctx.fillText(l, W / 2, y);
+    const w = tctx.measureText(l).width; spans.push({ y, x0: W / 2 - w / 2, w });
+  });
+
+  const x0 = Math.max(0, Math.floor(W / 2 - maxW / 2 - fs)), x1 = Math.min(tw, Math.ceil(W / 2 + maxW / 2 + fs));
+  const yA = Math.max(0, Math.floor(cy - blockH / 2 - fs * 0.4)), yB = Math.min(th, Math.ceil(cy + blockH / 2 + fs * 0.4));
+  if (x1 <= x0 || yB <= yA) return null;
+  const rw = x1 - x0, rh = yB - yA;
+  const data = tctx.getImageData(x0, yA, rw, rh).data;
+  const step = Math.max(2, Math.round(fs / 30));
+  let pts = [];
+  for (let y = 0; y < rh; y += step){
+    for (let x = 0; x < rw; x += step){
+      if (data[(y * rw + x) * 4 + 3] > 150) pts.push(x0 + x + (rand() - 0.5) * step * 0.6, yA + y + (rand() - 0.5) * step * 0.6);
+    }
+  }
+  let n = pts.length / 2, spacing = step;
+  if (n === 0) return null;
+  if (n > MAXPTS){
+    const idx = new Uint32Array(n); for (let i = 0; i < n; i++) idx[i] = i;
+    for (let i = n - 1; i > 0; i--){ const j = (rand() * (i + 1)) | 0; const t = idx[i]; idx[i] = idx[j]; idx[j] = t; }
+    const out = new Array(MAXPTS * 2);
+    for (let i = 0; i < MAXPTS; i++){ out[2 * i] = pts[2 * idx[i]]; out[2 * i + 1] = pts[2 * idx[i] + 1]; }
+    spacing = step * Math.sqrt(n / MAXPTS); pts = out; n = MAXPTS;
+  }
+  const res = new Array(n);
+  for (let i = 0; i < n; i++){
+    const x = pts[2 * i], y = pts[2 * i + 1];
+    let li = 0, best = 1e9;
+    for (let k = 0; k < spans.length; k++){ const d = Math.abs(y - spans[k].y); if (d < best){ best = d; li = k; } }
+    const sp = spans[li];
+    res[i] = { x, y, o: (li + clamp((x - sp.x0) / Math.max(1, sp.w), 0, 1)) / spans.length };
+  }
+  return { pts: res, spacing };
+}
+
+function releaseEarly(){
+  for (const p of parts){
+    if (p.mode !== 1) continue;
+    if (simT < p.born || !p.init){ p.dead = true; continue; }
+    const r = simT + p.o * 0.35;
+    if (p.rel > r) p.rel = r;
+  }
+}
+
+function writeText(text, who){
+  const T = buildTargets(text);
+  if (!T) return;
+  if (msg) releaseEarly();
+  const start = simT, maxDelay = 1.2;
+  const hold = clamp(2.2 + text.length * 0.07, 2.6, 5.2);
+  const r = clamp(T.spacing * 1.65, 2.6, 8.5);
+  const a0 = clamp(0.27 - T.spacing * 0.022, 0.12, 0.24);
+  let lastRel = start;
+  for (const pt of T.pts){
+    if (parts.length >= MAXP) break;
+    const p = pool.length ? pool.pop() : {};
+    p.mode = 1; p.init = false; p.dead = false;
+    p.tx = pt.x; p.ty = pt.y; p.o = pt.o;
+    p.born = start + 0.05 + pt.o * maxDelay + rand() * 0.16;   // writes left to right
+    p.flight = 1.15 + rand() * 0.45;
+    p.rel = start + maxDelay + 1.6 + hold + pt.o * 0.8 + rand() * 0.15;
+    if (p.rel > lastRel) lastRel = p.rel;
+    p.r = r * (0.8 + rand() * 0.45); p.a0 = a0 * (0.8 + rand() * 0.4);
+    p.x = emberX; p.y = emberY; p.vx = 0; p.vy = 0; p.cr = 0; p.ca = 0; p.age = 0;
+    parts.push(p);
+  }
+  msg = { start, end: lastRel + 2.2 };
+  els.said.textContent = (who === 'you' ? 'Your smoke spells: ' : 'The smoke spells: ') + text;
+}
+
+function nextPhrase(){
+  if (queue.length) return queue.shift();
+  if (!deck.length) deck = shuffle(DECK.slice());
+  return deck.pop();
+}
+function idleTick(t){
+  if (!fontReady || t < nextIdleAt) return;
+  if (msg && t < msg.end) return;
+  writeText(nextPhrase(), 'me');
+  nextIdleAt = (msg ? msg.end : t) + 3.5 + rand() * 4;
+}
+
+/* ================= simulation step ================= */
+function step(dt, t, prewarm){
+  updateCig(dt, t);
+  computeEmber();
+
+  const rate = (reduceMotion ? 32 : 52) * cig.lit * (1 + cig.flare * 0.6) * quality;
+  emitAcc += rate * dt;
+  while (emitAcc >= 1){ emitAcc -= 1; spawnPlume(); }
+
+  ptr.str *= Math.exp(-dt * 5); ptr.vx *= Math.exp(-dt * 3); ptr.vy *= Math.exp(-dt * 3);
+  const wind = ptr.str > 0.02;
+  const R = ptr.down ? 150 : 110, R2 = R * R, wk = ptr.str * 2.6 * dt;
+
+  for (let i = parts.length - 1; i >= 0; i--){
+    const p = parts[i];
+    let alive;
+    if (p.dead) alive = false;
+    else if (p.mode === 0) alive = updatePlume(p, dt, t);
+    else if (p.mode === 1) alive = updateText(p, dt, t);
+    else alive = updateReleased(p, dt, t);
+    if (alive && !(p.mode === 1 && !p.init)){
+      if (wind){
+        const dx = p.x - ptr.x, dy = p.y - ptr.y, d2 = dx * dx + dy * dy;
+        if (d2 < R2){ const f = 1 - Math.sqrt(d2) / R, ff = f * f * wk; p.vx += ptr.vx * ff; p.vy += ptr.vy * ff; }
+      }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.mode !== 1 && (p.y < -160 || p.x < -200 || p.x > W + 200)) alive = false;
+    }
+    if (!alive){ parts[i] = parts[parts.length - 1]; parts.pop(); pool.push(p); }
+  }
+
+  for (let i = ashBits.length - 1; i >= 0; i--){
+    const b = ashBits[i];
+    b.vy += 520 * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.y >= b.floor){
+      const ex = (b.x - tray.cx) / (tray.rw * 0.74), ey = (b.y - (tray.cy + tray.rh * 0.1)) / (tray.rh * 0.68);
+      if (ex * ex + ey * ey <= 1){ settled.push({ fx: (b.x - tray.cx) / tray.rw, fy: (b.y - tray.cy) / tray.rh, r: b.r, shade: b.shade }); if (settled.length > 90) settled.shift(); }
+      ashBits.splice(i, 1);
+    }
+  }
+  for (let i = sparks.length - 1; i >= 0; i--){
+    const s = sparks[i];
+    s.age += dt; s.vy += 380 * dt; s.vx *= 1 - 1.5 * dt; s.x += s.vx * dt; s.y += s.vy * dt;
+    if (s.age > s.life) sparks.splice(i, 1);
+  }
+  for (const m of motes){
+    m.x += (Math.sin(t * 0.21 + m.ph) * 5 + 2.5) * dt;
+    m.y += (Math.cos(t * 0.17 + m.ph * 1.7) * 4 + 1.8) * dt;
+    if (wind){ const dx = m.x - ptr.x, dy = m.y - ptr.y, d2 = dx * dx + dy * dy; if (d2 < R2){ const f = 1 - Math.sqrt(d2) / R; m.x += ptr.vx * f * f * ptr.str * 0.02; m.y += ptr.vy * f * f * ptr.str * 0.02; } }
+    if (m.x > W + 4) m.x -= W + 8; else if (m.x < -4) m.x += W + 8;
+    if (m.y > H + 4) m.y -= H + 8; else if (m.y < -4) m.y += H + 8;
+  }
+
+  if (!prewarm) idleTick(t);
+}
+
+/* ================= rendering ================= */
+const speck = Array.from({ length: 46 }, () => ({ u: rand(), v: rand() - 0.5, r: 0.35 + rand() * 0.6 }));
+const INV_EMBER = 1 / (2 * 75 * 75);
+
+function drawTray(){
+  const { cx, cy, rw, rh } = tray, depth = rh * 0.62;
+  ctx.save(); ctx.translate(cx, cy + depth + rh * 0.55); ctx.scale(1, 0.22);
+  let g = ctx.createRadialGradient(0, 0, 0, 0, 0, rw * 1.3);
+  g.addColorStop(0, 'rgba(0,0,0,0.6)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, rw * 1.3, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // front glass wall
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rw, rh, 0, 0, Math.PI);
+  ctx.lineTo(cx - rw * 0.9, cy + depth);
+  ctx.ellipse(cx, cy + depth, rw * 0.9, rh * 0.9, 0, Math.PI, 0, true);
+  ctx.closePath();
+  g = ctx.createLinearGradient(cx - rw, 0, cx + rw, 0);
+  g.addColorStop(0, 'rgba(190,205,235,0.20)'); g.addColorStop(0.18, 'rgba(150,170,210,0.06)');
+  g.addColorStop(0.7, 'rgba(150,170,210,0.05)'); g.addColorStop(0.9, 'rgba(242,223,184,0.14)'); g.addColorStop(1, 'rgba(190,205,235,0.22)');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = 'rgba(205,218,242,0.2)'; ctx.lineWidth = 1; ctx.stroke();
+
+  // rim + well
+  ctx.beginPath(); ctx.ellipse(cx, cy, rw, rh, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(140,160,200,0.07)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(210,222,245,0.42)'; ctx.lineWidth = 1.3; ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(cx, cy + rh * 0.1, rw * 0.74, rh * 0.68, 0, 0, Math.PI * 2);
+  g = ctx.createRadialGradient(cx, cy + rh * 0.2, 0, cx, cy + rh * 0.1, rw * 0.74);
+  g.addColorStop(0, 'rgba(18,22,36,0.88)'); g.addColorStop(1, 'rgba(6,8,16,0.78)');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = 'rgba(200,215,240,0.16)'; ctx.lineWidth = 1; ctx.stroke();
+
+  for (const s of settled){
+    ctx.fillStyle = `rgba(${s.shade},${s.shade},${s.shade - 6},0.85)`;
+    ctx.beginPath(); ctx.ellipse(cx + s.fx * rw, cy + s.fy * rh, s.r * 1.3, s.r * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.ellipse(cx, cy, rw * 0.965, rh * 0.9, 0, Math.PI * 1.1, Math.PI * 1.42); ctx.stroke();
+  const e = Math.min(1.4, cig.ember);
+  if (e > 0.02){
+    ctx.strokeStyle = `rgba(255,140,70,${0.4 * e})`; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(cx, cy, rw * 0.99, rh * 0.97, 0, Math.PI * 0.3, Math.PI * 0.62); ctx.stroke();
+    ctx.strokeStyle = `rgba(255,140,70,${0.22 * e})`;
+    ctx.beginPath(); ctx.ellipse(cx, cy + rh * 0.1, rw * 0.74, rh * 0.68, 0, Math.PI * 1.25, Math.PI * 1.75); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(200,215,240,0.12)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.ellipse(cx, cy + depth, rw * 0.9, rh * 0.9, 0, 0, Math.PI); ctx.stroke();
+}
+
+function drawCig(){
+  const g = cigGeo, th = g.th, h = th / 2;
+  const a = g.F + g.P * (1 - cig.burn);
+  ctx.save();
+  ctx.translate(g.fx, g.fy); ctx.rotate(g.ang);   // local +x points at the lit end, local +y is visual "up"
+
+  let gr = ctx.createLinearGradient(0, -h, 0, h);
+  gr.addColorStop(0, '#7c5730'); gr.addColorStop(0.62, '#d6a868'); gr.addColorStop(1, '#b58650');
+  ctx.fillStyle = gr; ctx.fillRect(0, -h, g.F, th);
+  ctx.fillStyle = 'rgba(96,58,24,0.45)';
+  for (const s of speck) ctx.fillRect(s.u * g.F, s.v * th * 0.9, s.r, s.r);
+  ctx.fillStyle = '#6d4a26'; ctx.beginPath(); ctx.ellipse(0, 0, th * 0.12, h, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,236,190,0.35)'; ctx.fillRect(g.F - 1.5, -h, 1, th);
+
+  if (a > g.F + 0.5){
+    gr = ctx.createLinearGradient(0, -h, 0, h);
+    gr.addColorStop(0, '#8f8a80'); gr.addColorStop(0.64, '#f5f0e6'); gr.addColorStop(1, '#d7d1c5');
+    ctx.fillStyle = gr; ctx.fillRect(g.F, -h, a - g.F, th);
+    const cw = Math.min(th * 1.2, a - g.F);
+    const cg = ctx.createLinearGradient(a - cw, 0, a, 0);
+    cg.addColorStop(0, 'rgba(60,40,25,0)'); cg.addColorStop(0.75, 'rgba(70,45,25,0.45)'); cg.addColorStop(1, 'rgba(30,20,14,0.85)');
+    ctx.fillStyle = cg; ctx.fillRect(a - cw, -h, cw, th);
+  }
+
+  if (cig.ash > 0.5){
+    const L = cig.ash;
+    gr = ctx.createLinearGradient(0, -h, 0, h);
+    gr.addColorStop(0, '#3e3c3a'); gr.addColorStop(0.6, '#8e8b86'); gr.addColorStop(1, '#6a6864');
+    ctx.fillStyle = gr;
+    ctx.beginPath();
+    ctx.moveTo(a, -h * 0.96); ctx.lineTo(a + L * 0.97, -h * 0.82); ctx.lineTo(a + L, -h * 0.2);
+    ctx.lineTo(a + L * 0.985, h * 0.35); ctx.lineTo(a + L * 0.96, h * 0.78); ctx.lineTo(a, h * 0.96);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(40,38,36,0.5)'; ctx.lineWidth = 0.6;
+    for (let k = 1; k < 4; k++){ const x = a + L * k / 4; ctx.beginPath(); ctx.moveTo(x, -h * 0.8); ctx.lineTo(x + 1, h * 0.8); ctx.stroke(); }
+  }
+
+  const e = cig.ember;
+  if (e > 0.02){
+    const eg = ctx.createLinearGradient(a - th * 0.25, 0, a + th * 0.3, 0);
+    eg.addColorStop(0, 'rgba(255,80,20,0)');
+    eg.addColorStop(0.45, `rgba(255,110,40,${Math.min(1, 0.85 * e)})`);
+    eg.addColorStop(0.7, `rgba(255,200,120,${Math.min(1, 0.9 * e)})`);
+    eg.addColorStop(1, 'rgba(255,90,30,0)');
+    ctx.fillStyle = eg; ctx.fillRect(a - th * 0.25, -h * 1.02, th * 0.55, th * 1.04);
+  }
+  ctx.restore();
+}
+
+function drawEmberGlow(){
+  const e = cig.ember;
+  if (e < 0.02) return;
+  const R = cigGeo.th * (4.2 + e * 2.4);
+  const g = ctx.createRadialGradient(emberX, emberY, 0, emberX, emberY, R);
+  g.addColorStop(0, `rgba(255,190,110,${Math.min(1, 0.6 * e)})`);
+  g.addColorStop(0.25, `rgba(255,110,40,${Math.min(1, 0.3 * e)})`);
+  g.addColorStop(1, 'rgba(255,80,30,0)');
+  ctx.fillStyle = g; ctx.fillRect(emberX - R, emberY - R, R * 2, R * 2);
+  const R2 = R * 5;
+  const g2 = ctx.createRadialGradient(emberX, emberY, 0, emberX, emberY, R2);
+  g2.addColorStop(0, `rgba(255,120,50,${0.07 * e})`); g2.addColorStop(1, 'rgba(255,120,50,0)');
+  ctx.fillStyle = g2; ctx.fillRect(emberX - R2, emberY - R2, R2 * 2, R2 * 2);
+}
+
+function render(t){
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  ctx.drawImage(staticLayer, 0, 0);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  drawTray();
+  drawCig();
+
+  // smoke: cool in shadow, warm where it crosses the blinds' light, orange near the ember
+  ctx.globalCompositeOperation = 'lighter';
+  const emb = cig.ember;
+  for (let i = 0; i < parts.length; i++){
+    const p = parts[i];
+    if (p.mode === 1 && !p.init) continue;
+    const a = p.ca;
+    if (!(a > 0.002)) continue;
+    const r = p.cr, d = r * 2, x = p.x - r, y = p.y - r;
+    const L = lightAt(p.x, p.y);
+    ctx.globalAlpha = a * (0.78 - 0.3 * L);
+    ctx.drawImage(SPR_COOL, x, y, d, d);
+    if (L > 0.03){ ctx.globalAlpha = Math.min(1, a * L * 1.9); ctx.drawImage(SPR_WARM, x, y, d, d); }
+    if (emb > 0.04){
+      const ex = p.x - emberX, ey = p.y - emberY;
+      const E = emb * Math.exp(-(ex * ex + ey * ey) * INV_EMBER);
+      if (E > 0.04){ ctx.globalAlpha = Math.min(1, a * E * 0.9); ctx.drawImage(SPR_EMBER, x, y, d, d); }
+    }
+  }
+  ctx.globalAlpha = 1;
+  drawEmberGlow();
+
+  for (const s of sparks){
+    const k = 1 - s.age / s.life;
+    ctx.fillStyle = `rgba(255,${(150 + k * 90) | 0},90,${k})`;
+    ctx.fillRect(s.x - 1, s.y - 1, 2, 2);
+  }
+  ctx.fillStyle = '#fff0d0';
+  for (const m of motes){
+    const L = lightAt(m.x, m.y);
+    if (L > 0.04){
+      const al = L * (0.35 + 0.35 * Math.sin(t * 1.3 + m.ph * 3));
+      if (al > 0.01){ ctx.globalAlpha = al; ctx.fillRect(m.x, m.y, m.s, m.s); }
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+
+  for (const b of ashBits){
+    ctx.fillStyle = `rgb(${b.shade},${b.shade},${b.shade - 6})`;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+/* ================= input ================= */
+function onMove(e){
+  const now = performance.now();
+  if (ptr.lt && ptr.x > -9000){
+    const dtE = Math.max(8, now - ptr.lt) / 1000;
+    const ivx = clamp((e.clientX - ptr.x) / dtE, -2500, 2500), ivy = clamp((e.clientY - ptr.y) / dtE, -2500, 2500);
+    ptr.vx += (ivx - ptr.vx) * 0.5; ptr.vy += (ivy - ptr.vy) * 0.5;
+    ptr.str = Math.max(ptr.str, (ptr.down || e.pointerType === 'touch') ? 1 : 0.55);
+  }
+  ptr.x = e.clientX; ptr.y = e.clientY; ptr.lt = now;
+}
+function poof(x, y){
+  for (const p of parts){
+    if (p.mode === 1 && !p.init) continue;
+    const dx = p.x - x, dy = p.y - y, d = Math.hypot(dx, dy);
+    if (d < 130 && d > 0.001){ const f = 1 - d / 130, imp = f * f * 260; p.vx += dx / d * imp; p.vy += dy / d * imp; }
+  }
+}
+canvas.addEventListener('pointerdown', e => {
+  ptr.down = true; ptr.x = e.clientX; ptr.y = e.clientY; ptr.lt = performance.now(); ptr.vx = ptr.vy = 0;
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+  if (Math.hypot(e.clientX - emberX, e.clientY - emberY) < 44 && !cig.out){ takeDrag(simT); status('Took a drag.'); }
+  else poof(e.clientX, e.clientY);
+});
+canvas.addEventListener('pointermove', onMove);
+window.addEventListener('pointerup', () => { ptr.down = false; });
+window.addEventListener('pointercancel', () => { ptr.down = false; });
+canvas.addEventListener('pointerleave', () => { if (!ptr.down){ ptr.x = -9999; ptr.lt = 0; } });
+
+els.form.addEventListener('submit', e => {
+  e.preventDefault();
+  const v = els.input.value.trim().replace(/\s+/g, ' ').slice(0, 48);
+  if (!v){ els.input.focus(); return; }
+  els.input.value = '';
+  takeDrag(simT);
+  writeText(v, 'you');
+  nextIdleAt = (msg ? msg.end : simT) + 9;
+});
+
+function openNote(){ els.noteWrap.hidden = false; els.noteClose.focus(); }
+function closeNote(){ els.noteWrap.hidden = true; els.noteBtn.focus(); }
+els.noteBtn.addEventListener('click', openNote);
+els.noteClose.addEventListener('click', closeNote);
+els.noteWrap.addEventListener('click', e => { if (e.target === els.noteWrap) closeNote(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !els.noteWrap.hidden) closeNote(); });
+
+let resizeRaf = 0;
+window.addEventListener('resize', () => { cancelAnimationFrame(resizeRaf); resizeRaf = requestAnimationFrame(resize); });
+window.addEventListener('pagehide', saveState);
+setInterval(saveState, 5000);
+
+/* ================= boot ================= */
+loadState();
+resize();
+// pre-warm so the first frame already has a plume rising
+for (let i = 0; i < 150; i++){ simT += 1 / 30; step(1 / 30, simT, true); }
+nextIdleAt = simT + 0.6;
+updateHud();
+render(simT);
+
+(async () => {
+  try {
+    if (document.fonts && document.fonts.load){
+      await Promise.race([document.fonts.load('italic 80px "DM Serif Display"'), new Promise(r => setTimeout(r, 1800))]);
+    }
+  } catch (e) {}
+  fontReady = true;
+})();
+
+let last = performance.now(), slow = 0, hudTick = 0;
+function frame(now){
+  let dt = (now - last) / 1000; last = now;
+  if (!(dt > 0)) dt = 0.001;
+  if (dt > 0.05) dt = 0.05;
+  // adapt if the device is struggling
+  if (dt > 0.034) slow++; else if (slow > 0) slow--;
+  if (slow > 45 && quality > 0.55){ quality = Math.max(0.55, quality - 0.15); slow = 0; resize(); }
+  simT += dt;
+  step(dt, simT, false);
+  render(simT);
+  hudTick += dt; if (hudTick > 0.25){ hudTick = 0; updateHud(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>

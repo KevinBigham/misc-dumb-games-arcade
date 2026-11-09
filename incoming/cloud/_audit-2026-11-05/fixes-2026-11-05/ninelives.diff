@@ -1,0 +1,46 @@
+--- orig.html	2026-11-05 19:32:17.609677993 +0000
++++ index.html	2026-11-05 19:33:03.397407627 +0000
+@@ -324,6 +324,7 @@
+       save.settings = Object.assign(DEFAULT_SAVE().settings, s.settings || {});
+       save.meta = s.meta || {};
+       save.unlocked = Object.assign({ nova: true }, s.unlocked || {});
++      { const d = +save.diff; save.diff = Number.isInteger(d) && DIFFS[d] ? d : 1; }
+     }
+   } catch (e) { /* storage blocked: play without saves */ }
+ }
+@@ -2198,7 +2199,7 @@
+     box.appendChild(el);
+   }
+   for (const b of $('diff').querySelectorAll('.dbtn')) b.classList.toggle('on', +b.dataset.d === save.diff);
+-  $('diffNote').textContent = DIFFS[save.diff].desc;
++  $('diffNote').textContent = (DIFFS[save.diff] || DIFFS[1]).desc;
+   if (!charUnlocked(save.char)) save.char = 'nova';
+ }
+ 
+@@ -2412,7 +2413,25 @@
+ });
+ window.addEventListener('keyup', e => { IN.keys[e.code] = false; if ((APP === 'levelup' || APP === 'play') && e.code === 'Space') e.preventDefault(); });
+ window.addEventListener('blur', () => { IN.keys = {}; if (APP === 'play') pauseGame(); });
+-document.addEventListener('visibilitychange', () => { if (document.hidden && APP === 'play') pauseGame(); });
++document.addEventListener('visibilitychange', () => {
++  if (document.hidden) {
++    if (APP === 'play') pauseGame();
++    if (AU.ctx && AU.ctx.state === 'running') AU.ctx.suspend().catch(() => { });
++    if (MU.timer) { clearInterval(MU.timer); MU.timer = null; }
++  } else {
++    if (AU.ctx && AU.ctx.state === 'suspended') AU.ctx.resume().catch(() => { });
++    if (MU.name && !MU.timer) MU.timer = setInterval(() => MU.tick(), 25);
++  }
++});
++window.addEventListener('pagehide', () => {
++  if (AU.ctx && AU.ctx.state === 'running') AU.ctx.suspend().catch(() => { });
++  if (MU.timer) { clearInterval(MU.timer); MU.timer = null; }
++});
++window.addEventListener('pageshow', () => {
++  if (document.hidden) return;
++  if (AU.ctx && AU.ctx.state === 'suspended') AU.ctx.resume().catch(() => { });
++  if (MU.name && !MU.timer) MU.timer = setInterval(() => MU.tick(), 25);
++});
+ 
+ /* ---- mouse ---- */
+ window.addEventListener('mousemove', e => { IN.mx = e.clientX; IN.my = e.clientY; if (!IN.mouseSeen) { IN.mouseSeen = true; if (APP === 'play') cv.style.cursor = aimingWithMouse() ? 'none' : 'default'; } if (e.movementX || e.movementY) { IN.padActive = false; if (IN.touch && !isTouchDevice) IN.touch = false; } });

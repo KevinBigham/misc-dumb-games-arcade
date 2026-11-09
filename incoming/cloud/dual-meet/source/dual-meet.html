@@ -1,0 +1,1878 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<title>Dual Meet</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one phone column. Title card, then the meet sheet (one card per event in meet order) with a docked Swim bar,
+   then a results card that reveals event by event. Look: a pool deck at night under scoreboard light.
+   Single dark theme by choice: it is a scoreboard. Shapes carry meaning as well as color: ● you, ◆ them, ★ scouted, ▲ back-to-back. */
+:root{
+  color-scheme: dark;
+  --bg:#0a1620; --bg2:#0f2130; --panel:#122635; --panel2:#17304266; --line:#24425a; --ink:#eaf4f8; --muted:#a3bac8;
+  --you:#4cc9f0; --you2:#0e3a4d; --them:#ffa25c; --them2:#4a2a14; --gold:#ffd45e; --good:#6ef0b4; --bad:#ff7d72; --warn:#ffc94d;
+  --display:"Avenir Next Condensed","Futura","Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif;
+  --body:"Avenir Next","Segoe UI","Helvetica Neue",Roboto,Arial,sans-serif;
+  --mono:"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font:15px/1.4 var(--body);-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;touch-action:manipulation}
+button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+#app{max-width:520px;margin:0 auto;min-height:100vh;min-height:100dvh;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--display);margin:0;letter-spacing:.02em;text-wrap:balance}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{min-height:44px;padding:0 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-weight:700;font-size:15px}
+.btn.go{background:var(--gold);color:#241a00;border-color:transparent}
+.btn.big{min-height:60px;font:800 22px var(--display);letter-spacing:.06em;text-transform:uppercase;width:100%}
+.btn:active{transform:translateY(1px)}
+.btn[disabled]{opacity:.45}
+/* ---------- title ---------- */
+#sTitle{padding-block:calc(26px + env(safe-area-inset-top,0px)) calc(28px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px}
+.logo{font:800 clamp(52px,17vw,84px)/.86 var(--display);text-transform:uppercase;letter-spacing:.03em}
+.logo span{color:var(--you)}
+.logo i{font-style:normal;color:var(--them)}
+.tag{margin:0;color:var(--muted);font-size:16px}
+.today{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:grid;gap:4px}
+.today .lbl{font:700 12px var(--display);letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+.today b{font:700 21px var(--display);letter-spacing:.02em}
+.foot{display:flex;gap:8px;flex-wrap:wrap}
+.foot .btn{flex:1 1 30%}
+/* ---------- meet ---------- */
+#sMeet{padding-top:calc(8px + env(safe-area-inset-top,0px));padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+.top{display:flex;align-items:center;gap:10px;padding:6px 0 10px}
+.top .ic{width:44px;height:44px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font:700 20px var(--display);flex:none}
+.top .mt{flex:1;min-width:0;display:grid}
+.top .mt b{font:800 20px var(--display);letter-spacing:.03em;text-transform:uppercase}
+.top .mt span{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);margin:0 0 10px}
+.legend .y{color:var(--you)} .legend .t{color:var(--them)} .legend .g{color:var(--gold)} .legend .w{color:var(--warn)}
+.coach{background:#2b2308;border:1px solid #6b5a1c;color:#fff4cf;border-radius:14px;padding:10px 12px;margin:0 0 10px;font-size:14px;display:flex;gap:10px;align-items:flex-start}
+.coach .ct{flex:1}
+.coach .btn{min-height:36px;padding:0 12px;font-size:13px;background:#4a3d10;border-color:#6b5a1c}
+#events{display:flex;flex-direction:column;gap:10px}
+.ev{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 10px 12px;display:grid;gap:8px}
+.ev.sc{border-color:#806a22;box-shadow:inset 3px 0 0 var(--gold)}
+.evh{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.evh .n{font:700 12px var(--mono);color:var(--muted);min-width:18px}
+.evh b{font:800 18px var(--display);letter-spacing:.03em;text-transform:uppercase}
+.evh .st{font-size:12px;font-weight:700;letter-spacing:.04em}
+.evh .st.g{color:var(--gold)} .evh .st.h{color:var(--muted)}
+.evh .pj{margin-left:auto;font-size:12px;color:var(--muted)}
+.evh .pj b{font:700 13px var(--mono);letter-spacing:0;text-transform:none}
+.evh .pj .w{color:var(--good)} .evh .pj .l{color:var(--bad)}
+.side{display:grid;grid-template-columns:18px 1fr;gap:6px;align-items:start}
+.side .mk{font-size:15px;line-height:44px;text-align:center}
+.side.you .mk{color:var(--you)} .side.them .mk{color:var(--them)}
+.lanes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.lanes.r{grid-template-columns:repeat(2,minmax(0,1fr))}
+.chip{min-height:46px;border-radius:10px;padding:5px 7px;text-align:left;display:grid;gap:1px;min-width:0;border:1px solid transparent}
+.you .chip{background:var(--you2);border-color:#1d5a73}
+.you .chip:active{background:#145069}
+.them .chip{background:var(--them2);border-color:#6a3d1d}
+.chip .cn{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip .cl{font-size:12px;color:var(--muted)}
+.chip .ct{font:600 13px var(--mono);display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.chip .cf{font:700 12px var(--body);color:var(--warn)}
+.chip.empty{border-style:dashed;border-color:#3a6178;background:transparent;color:var(--muted);align-content:center;font-size:13px;font-weight:700}
+.chip.pulse{animation:pulse 1.1s ease-in-out infinite;border-color:var(--gold)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,212,94,.0)}50%{box-shadow:0 0 0 4px rgba(255,212,94,.55)}}
+.hid{font-size:13px;color:var(--muted);line-height:1.35;padding-top:4px}
+.hid .num{color:var(--ink)}
+.brk{font-size:12px;color:var(--muted);text-align:center;padding:2px 0;letter-spacing:.06em;text-transform:uppercase}
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:5;background:linear-gradient(to top,var(--bg) 70%,rgba(10,22,32,0));padding:14px max(16px,env(safe-area-inset-left,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px))}
+.dock .in{max-width:488px;margin:0 auto;display:flex;gap:8px;align-items:center}
+.dock .info{flex:1;min-width:0;font-size:12px;color:var(--muted);line-height:1.3}
+.dock .info b{color:var(--ink);font-size:13px}
+.dock .btn.go{min-width:132px;min-height:54px;font:800 21px var(--display);letter-spacing:.08em;text-transform:uppercase}
+/* ---------- sheet ---------- */
+.sheet{position:fixed;inset:0;z-index:20;background:rgba(2,8,12,.62);display:flex;align-items:flex-end;justify-content:center}
+.sh{background:var(--bg2);border:1px solid var(--line);border-bottom:0;width:100%;max-width:520px;max-height:86vh;max-height:86dvh;border-radius:18px 18px 0 0;display:flex;flex-direction:column}
+.shHead{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+.shHead b{flex:1;font:800 18px var(--display);letter-spacing:.03em;text-transform:uppercase;min-width:0}
+.shBody{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:10px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:8px}
+.pk{display:grid;grid-template-columns:18px 1fr auto;gap:2px 8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 10px;text-align:left;min-height:52px}
+.pk .mk{color:var(--you);grid-row:span 2}
+.pk .pn{font-weight:700;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pk .pt{font:700 15px var(--mono);text-align:right}
+.pk .pm{font-size:12px;color:var(--muted);grid-column:2/4}
+.pk .pm .w{color:var(--warn);font-weight:700}
+.pk.cur{border-color:var(--you)}
+.pk.off{opacity:.5}
+.pk.pulse{animation:pulse 1.1s ease-in-out infinite;border-color:var(--gold)}
+.sec{font:700 12px var(--display);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+.note{font-size:14px;color:var(--muted);margin:0}
+.rules{margin:0;padding-left:18px;display:grid;gap:8px;font-size:14px}
+.rules b{color:var(--ink)}
+.tabs{display:flex;gap:6px}
+.tabs .btn{flex:1;min-height:40px}
+.tabs .btn.on{background:var(--you2);border-color:var(--you)}
+.ros{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 10px;display:grid;gap:3px}
+.ros .rn{display:flex;gap:8px;align-items:baseline}
+.ros .rn b{font-size:15px}
+.ros .rn span{font-size:12px;color:var(--muted)}
+.ros .rn .cnt{margin-left:auto;font:700 12px var(--mono);color:var(--ink)}
+.ros .re{font-size:13px;color:var(--muted)}
+.ros .re .num{color:var(--ink)}
+/* ---------- results ---------- */
+#sRes{padding-top:calc(14px + env(safe-area-inset-top,0px));padding-bottom:calc(28px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
+.board{background:#050c12;border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px;display:grid;gap:6px;text-align:center}
+.board .lbl{font:700 12px var(--display);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.score{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
+.score .tm{font:700 13px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score .pts{font:800 54px/1 var(--mono);font-variant-numeric:tabular-nums}
+.score .you .pts{color:var(--you)} .score .them .pts{color:var(--them)}
+.score .dash{font:800 30px var(--mono);color:var(--muted)}
+.bump{animation:bump .28s ease-out}
+@keyframes bump{0%{transform:scale(1.18)}100%{transform:scale(1)}}
+#rWL{font:800 30px var(--display);letter-spacing:.12em;text-transform:uppercase}
+#rWL.w{color:var(--good)} #rWL.l{color:var(--bad)} #rWL.t{color:var(--gold)}
+#rRate{font-size:14px;color:var(--muted)}
+#rRate b{color:var(--ink)}
+.stars{color:var(--gold);font-size:18px;letter-spacing:2px}
+#rEvents{display:flex;flex-direction:column;gap:8px}
+.re1{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:grid;gap:4px;animation:rin .3s ease-out}
+@keyframes rin{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:none}}
+.re1 .rh{display:flex;gap:8px;align-items:baseline}
+.re1 .rh b{font:800 16px var(--display);letter-spacing:.03em;text-transform:uppercase}
+.re1 .rh .rp{margin-left:auto;font:700 13px var(--mono)}
+.re1 .rh .rp .y{color:var(--you)} .re1 .rh .rp .t{color:var(--them)}
+.rr{display:grid;grid-template-columns:22px 16px 1fr auto 30px;gap:6px;font-size:13px;align-items:baseline}
+.rr .pl{color:var(--muted);font:600 12px var(--mono)}
+.rr.y .mk{color:var(--you)} .rr.t .mk{color:var(--them)}
+.rr .nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rr .tm{font:600 13px var(--mono)}
+.rr .pt{font:700 13px var(--mono);text-align:right}
+.rr.y .pt{color:var(--you)} .rr.t .pt{color:var(--them)}
+.rr .b2{color:var(--warn);font-size:12px}
+.resBtns{display:grid;gap:8px}
+.resBtns .row .btn{flex:1}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px}
+.cmp div{min-width:0}
+.cmp .chg{color:var(--gold);font-weight:700}
+.badgeWrap .gk-badges{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+@media (prefers-reduced-motion:reduce){.chip.pulse,.pk.pulse{animation:none;box-shadow:0 0 0 3px rgba(255,212,94,.6)}.re1,.bump{animation:none}}
+</style>
+<div id="app">
+  <section id="sTitle" aria-label="Title">
+    <div class="logo">Dual<br><span>Me</span><i>et</i></div>
+    <p class="tag">Set the lineup. Out-think their coach. One meet a day.</p>
+    <div class="today" id="tToday"><span class="lbl" id="tDate">Today</span><b id="tVs">Setting up today's meet</b><span class="muted small" id="tState"></span></div>
+    <button class="btn go big" id="tGo">Today's meet</button>
+    <button class="btn" id="tPractice">Practice meet</button>
+    <div class="muted small" id="tNext"></div>
+    <div class="foot"><button class="btn" id="tHelp">How to play</button><button class="btn" id="tBadges">Badges</button><button class="btn" id="tSet">Settings</button></div>
+  </section>
+
+  <section id="sMeet" aria-label="Meet" hidden>
+    <div class="top">
+      <button class="ic" id="mBack" aria-label="Back to the title">‹</button>
+      <div class="mt"><b id="mTitle">Dual meet</b><span id="mSub"></span></div>
+      <button class="ic" id="mHelp" aria-label="How to play">?</button>
+    </div>
+    <div class="coach" id="coach" hidden><div class="ct" id="coachT"></div><button class="btn" id="coachX">Got it</button></div>
+    <div class="legend"><span class="y">● You</span><span class="t">◆ Them</span><span class="g">★ Scouted</span><span class="w">▲ Back-to-back +2%</span></div>
+    <div id="events"></div>
+    <div class="dock"><div class="in">
+      <button class="btn" id="mRoster">Roster</button>
+      <div class="info" id="mInfo"></div>
+      <button class="btn go" id="mSwim">Swim</button>
+    </div></div>
+  </section>
+
+  <section id="sRes" aria-label="Results" hidden>
+    <div class="board">
+      <div class="lbl" id="rLbl">Final</div>
+      <div class="score"><div class="you"><div class="tm" id="rYouN">You</div><div class="pts" id="rUs">0</div></div><div class="dash">–</div><div class="them"><div class="tm" id="rThemN">Them</div><div class="pts" id="rThem">0</div></div></div>
+      <div id="rWL"></div>
+      <div id="rRate"></div>
+    </div>
+    <div class="resBtns" id="rBtns">
+      <button class="btn go big" id="rAgain">Again</button>
+      <div class="row"><button class="btn" id="rShare">Share</button><button class="btn" id="rBest">Best lineup</button><button class="btn" id="rMenu">Menu</button></div>
+    </div>
+    <button class="btn" id="rSkip">Skip to the end</button>
+    <div id="rEvents"></div>
+  </section>
+
+  <div class="sheet" id="sheet" hidden><div class="sh" role="dialog" aria-modal="true" aria-labelledby="shTitle">
+    <div class="shHead"><b id="shTitle"></b><button class="btn" id="shClose">Close</button></div>
+    <div class="shBody" id="shBody"></div>
+  </div></div>
+</div>
+
+<script id="gamekit">/* GameKit 1.1 : shared starter kit for single-file phone games.
+   Paste inline in a script tag before the game's own script. No build step, no network.
+   Modules: GK.rng, GK.daily, GK.save, GK.audio, GK.input, GK.juice, GK.ease,
+            GK.badges, GK.share, GK.view, GK.ui, GK.loop, GK.retrofit.  README.md has the API. */
+(function (root) {
+  'use strict';
+  var GK = { version: '1.1.1' };
+  var HAS_DOM = typeof window !== 'undefined' && typeof document !== 'undefined';
+  var W = HAS_DOM ? window : {};
+  function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function on(t, ev, fn, opt) { if (t && t.addEventListener) t.addEventListener(ev, fn, opt); }
+  function off(t, ev, fn, opt) { if (t && t.removeEventListener) t.removeEventListener(ev, fn, opt); }
+  GK.clamp = clamp;
+  GK.now = now;
+
+  /* ---------- environment ---------- */
+  var ENV = GK.env = (function () {
+    var ua = HAS_DOM && navigator.userAgent || '';
+    var touchMac = HAS_DOM && /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+    var ios = /iPhone|iPad|iPod/.test(ua) || !!touchMac;
+    var reduced = false;
+    try { reduced = HAS_DOM && W.matchMedia && W.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    return { ios: ios, android: /Android/.test(ua), touch: HAS_DOM && (('ontouchstart' in W) || navigator.maxTouchPoints > 0), reducedMotion: !!reduced };
+  })();
+
+  /* ---------- storage (never throws) ---------- */
+  var mem = {};
+  var LS = GK.ls = {
+    get: function (k) { try { var v = W.localStorage.getItem(k); return v == null ? (k in mem ? mem[k] : null) : v; } catch (e) { return k in mem ? mem[k] : null; } },
+    set: function (k, v) { mem[k] = v; try { W.localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+    del: function (k) { delete mem[k]; try { W.localStorage.removeItem(k); } catch (e) {} }
+  };
+
+  /* ================= RNG ================= */
+  // hash4: string -> four 32-bit words (multiply-xorshift mixing, one pass per lane)
+  var HMUL = [0x85ebca6b, 0xc2b2ae35, 0x27d4eb2f, 0x165667b1];
+  function hash4(str) {
+    str = String(str);
+    var h = [0x6a09e667 ^ str.length, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a], M = HMUL;
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      for (var j = 0; j < 4; j++) {
+        h[j] = Math.imul(h[j] ^ c, M[j]);
+        h[j] ^= h[j] >>> 15;
+        c = (c + h[j]) | 0;
+      }
+    }
+    for (var k = 0; k < 4; k++) {
+      var x = h[k] ^ h[(k + 1) & 3];
+      x = Math.imul(x ^ (x >>> 16), 0x7feb352d);
+      x = Math.imul(x ^ (x >>> 15), 0x846ca68b);
+      h[k] = (x ^ (x >>> 16)) >>> 0;
+    }
+    return h;
+  }
+  function hash32(str) { return hash4(str)[0]; }
+  // sfc32 generator (small fast counting, 128-bit state); state is kept so a run can resume.
+  function sfc(s) {
+    var a = s[0] | 0, b = s[1] | 0, c = s[2] | 0, d = s[3] | 0;
+    function next() {
+      var t = (((a + b) | 0) + d) | 0;
+      d = (d + 1) | 0;
+      a = b ^ (b >>> 9);
+      b = (c + (c << 3)) | 0;
+      c = (c << 21) | (c >>> 11);
+      c = (c + t) | 0;
+      return (t >>> 0) / 4294967296;
+    }
+    for (var i = 0; i < 12; i++) next();
+    next.state = function () { return [a >>> 0, b >>> 0, c >>> 0, d >>> 0]; };
+    next.load = function (st) { a = st[0] | 0; b = st[1] | 0; c = st[2] | 0; d = st[3] | 0; };
+    return next;
+  }
+  // mulberry32: kept so shipped games keep their exact dailies
+  function mulberry32(seed) {
+    var s = seed >>> 0;
+    return function () {
+      s = (s + 0x6d2b79f5) | 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function wrap(fn, seedStr) {
+    var R = {
+      seed: seedStr,
+      next: fn,
+      float: function (a, b) { if (b === undefined) { b = a === undefined ? 1 : a; a = 0; } return a + fn() * (b - a); },
+      int: function (lo, hi) { return lo + Math.floor(fn() * (hi - lo + 1)); }, // inclusive
+      chance: function (p) { return fn() < p; },
+      pick: function (arr) { return arr[Math.floor(fn() * arr.length)]; },
+      sign: function () { return fn() < 0.5 ? -1 : 1; },
+      shuffle: function (arr) { for (var i = arr.length - 1; i > 0; i--) { var j = Math.floor(fn() * (i + 1)); var t = arr[i]; arr[i] = arr[j]; arr[j] = t; } return arr; },
+      weighted: function (items, weights) {
+        var tot = 0, i; for (i = 0; i < weights.length; i++) tot += Math.max(0, weights[i]);
+        var r = fn() * tot; for (i = 0; i < items.length; i++) { r -= Math.max(0, weights[i]); if (r < 0) return items[i]; }
+        return items[items.length - 1];
+      },
+      sub: function (label, n) { return GK.rng.make(seedFor(seedStr, label, n)); },
+      state: function () { return fn.state ? fn.state() : null; },
+      load: function (st) { if (fn.load && st) fn.load(st); return R; }
+    };
+    return R;
+  }
+  function seedFor(base, label, n) { return String(base) + '/' + label + (n === undefined ? '' : '#' + n); }
+  var CONS = 'BCDFGHJKLMNPQRSTVWXZ';
+  GK.rng = {
+    hash32: hash32,
+    hash4: hash4,
+    mulberry32: mulberry32,
+    seedFor: seedFor,
+    make: function (seed) { var s = String(seed); return wrap(sfc(hash4(s)), s); },
+    legacy: function (seed32) { return wrap(mulberry32(seed32), String(seed32)); },
+    streams: function (seed) { return { game: GK.rng.make(seedFor(seed, 'game')), fx: GK.rng.make(seedFor(seed, 'fx')) }; },
+    code: function (src) { // 9-letter shareable code, no vowels: BCD-FGH-JKL
+      var r = src && src.next ? src : GK.rng.make(src === undefined ? Math.random() + ':' + Date.now() : src);
+      var out = ''; for (var i = 0; i < 9; i++) { if (i && i % 3 === 0) out += '-'; out += CONS[Math.floor(r.next() * CONS.length)]; }
+      return out;
+    },
+    normalize: function (text) { // any typed text becomes a seed; codes ignore case, spaces and dashes
+      var t = String(text || '').trim();
+      var c = t.toUpperCase().replace(/[\s\-_.]/g, '');
+      if (/^[BCDFGHJKLMNPQRSTVWXZ]{9}$/.test(c)) return c.slice(0, 3) + '-' + c.slice(3, 6) + '-' + c.slice(6);
+      return t;
+    },
+    // bounded retry for generators: never loops on the clock
+    tries: function (max, fn) { for (var i = 0; i < max; i++) { var v = fn(i); if (v !== undefined && v !== null && v !== false) return v; } return null; }
+  };
+
+  /* ================= DAILY ================= */
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function partsIn(date, tz) {
+    if (!tz) return { y: date.getFullYear(), m: date.getMonth() + 1, d: date.getDate(), H: date.getHours(), M: date.getMinutes(), S: date.getSeconds() };
+    try {
+      var f = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' });
+      var o = {}; f.formatToParts(date).forEach(function (p) { o[p.type] = p.value; });
+      return { y: +o.year, m: +o.month, d: +o.day, H: (+o.hour) % 24, M: +o.minute, S: +o.second };
+    } catch (e) { return partsIn(date, null); }
+  }
+  GK.daily = {
+    // YYYY-MM-DD on the player's own clock (or a fixed zone, e.g. {tz:'America/Chicago'})
+    key: function (opts, date) { var p = partsIn(date || new Date(), opts && opts.tz); return p.y + '-' + pad(p.m) + '-' + pad(p.d); },
+    seed: function (gameId, key) { return gameId + '|' + (key || GK.daily.key()); },
+    msToNext: function (opts, date) {
+      var p = partsIn(date || new Date(), opts && opts.tz);
+      return ((23 - p.H) * 3600 + (59 - p.M) * 60 + (60 - p.S)) * 1000;
+    },
+    countdown: function (ms) {
+      var s = Math.max(0, Math.ceil(ms / 1000)); var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+      return h > 0 ? h + 'h ' + pad(m) + 'm' : m + 'm ' + pad(s % 60) + 's';
+    },
+    // record a day played. st = {days:0,last:''}; returns true on a new day. Counts total days, never resets.
+    mark: function (st, key) { key = key || GK.daily.key(); if (st.last === key) return false; st.last = key; st.days = (st.days | 0) + 1; return true; },
+    label: function (key) { var p = key.split('-'); var mo = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][(+p[1]) - 1]; return mo + ' ' + (+p[2]); },
+    // "Lantern Drum Nov 6: 1234" + optional emoji row
+    shareLine: function (o) { return (o.game || 'Game') + ' ' + GK.daily.label(o.key || GK.daily.key()) + ': ' + o.score + (o.grid ? '\n' + o.grid : '') + (o.tail ? '\n' + o.tail : ''); }
+  };
+
+  /* ================= SAVE ================= */
+  function b64e(s) { if (typeof btoa !== 'undefined') return btoa(unescape(encodeURIComponent(s))); return Buffer.from(s, 'utf8').toString('base64'); }
+  function b64d(s) { if (typeof atob !== 'undefined') return decodeURIComponent(escape(atob(s))); return Buffer.from(s, 'base64').toString('utf8'); }
+  function sum(s) { return (hash32('gk-save|' + s) >>> 0).toString(36); }
+  function okJSON(raw) { if (raw == null || raw === '') return false; try { JSON.parse(raw); return true; } catch (e) { return false; } }
+  var hideFns = [];
+  var hideBound = false;
+  function bindHide() {
+    if (hideBound || !HAS_DOM) return; hideBound = true;
+    var fire = function () { for (var i = 0; i < hideFns.length; i++) { try { hideFns[i](); } catch (e) {} } };
+    on(W, 'pagehide', fire);
+    on(document, 'visibilitychange', function () { if (document.visibilityState === 'hidden') fire(); });
+  }
+  function rotate(key, raw, keep) {
+    keep = keep || 3;
+    if (!raw || LS.get(key + '.bak1') === raw) return false;
+    for (var i = keep; i > 1; i--) { var prev = LS.get(key + '.bak' + (i - 1)); if (prev != null) LS.set(key + '.bak' + i, prev); }
+    LS.set(key + '.bak1', raw); return true;
+  }
+  function backups(key, keep) { var out = []; for (var i = 1; i <= (keep || 3); i++) { var v = LS.get(key + '.bak' + i); if (v != null) out.push(v); } return out; }
+  function exportRaw(key, raw) { var body = b64e(JSON.stringify({ k: key, v: raw, t: Date.now() })); return 'GK1.' + body + '.' + sum(body); }
+  function importRaw(key, code) {
+    code = String(code || '').replace(/\s+/g, '');
+    var p = code.split('.'); if (p.length !== 3 || p[0] !== 'GK1' || sum(p[1]) !== p[2]) return null;
+    try { var o = JSON.parse(b64d(p[1])); if (o.k !== key || typeof o.v !== 'string') return null; return o.v; } catch (e) { return null; }
+  }
+  GK.save = {
+    onHide: function (fn) { hideFns.push(fn); bindHide(); },
+    persist: function () { try { if (navigator.storage && navigator.storage.persist) return navigator.storage.persist().catch(function () { return false; }); } catch (e) {} return Promise.resolve(false); },
+    // Retrofit an existing game: no format change. Keeps 3 rolling backups (one per session),
+    // restores the newest good backup when the key is missing or unreadable, and adds export/import.
+    protect: function (key, opts) {
+      opts = opts || {};
+      var valid = opts.validate || okJSON;
+      var keep = opts.keep || 3;
+      var raw = LS.get(key), restored = false;
+      if (!valid(raw)) {
+        var bs = backups(key, keep);
+        for (var i = 0; i < bs.length; i++) if (valid(bs[i])) { LS.set(key, bs[i]); raw = bs[i]; restored = true; break; }
+      }
+      if (valid(raw)) rotate(key, raw, keep);
+      GK.save.persist();
+      return {
+        key: key, restored: restored,
+        backups: function () { return backups(key, keep); },
+        exportCode: function () { return exportRaw(key, LS.get(key) || ''); },
+        importCode: function (code) { var v = importRaw(key, code); if (v == null || !valid(v)) return false; rotate(key, LS.get(key), keep); LS.set(key, v); return true; }
+      };
+    },
+    // New games: versioned store {v,t,d} with defaults, migrations, backups and save on hide.
+    store: function (key, opts) {
+      opts = opts || {};
+      var version = opts.version || 1, defaults = opts.defaults || {}, keep = opts.keep || 3;
+      function fresh() { return JSON.parse(JSON.stringify(defaults)); }
+      function parse(raw) { try { var o = JSON.parse(raw); return (o && typeof o === 'object' && typeof o.v === 'number' && o.d && typeof o.d === 'object') ? o : null; } catch (e) { return null; } }
+      function fill(d) { var f = fresh(); for (var k in f) if (!(k in d) || typeof d[k] !== typeof f[k]) d[k] = f[k]; return d; }
+      var S = { key: key, data: null, restored: false };
+      S.load = function () {
+        var raw = LS.get(key), o = parse(raw);
+        if (!o) { var bs = backups(key, keep); for (var i = 0; i < bs.length && !o; i++) { o = parse(bs[i]); if (o) S.restored = true; } }
+        var d = o ? o.d : fresh(), v = o ? o.v : version;
+        while (o && v < version && opts.migrate) { d = opts.migrate(d, v) || d; v++; }
+        S.data = fill(d);
+        if (o && raw && parse(raw)) rotate(key, raw, keep);
+        return S.data;
+      };
+      S.save = function () { if (!S.data) return false; return LS.set(key, JSON.stringify({ v: version, t: Date.now(), d: S.data })); };
+      S.reset = function () { rotate(key, LS.get(key), keep); S.data = fresh(); S.save(); return S.data; };
+      S.exportCode = function () { S.save(); return exportRaw(key, LS.get(key) || ''); };
+      S.importCode = function (code) { var v = importRaw(key, code); if (v == null || !parse(v)) return false; rotate(key, LS.get(key), keep); LS.set(key, v); S.load(); return true; };
+      S.backups = function () { return backups(key, keep); };
+      S.load();
+      GK.save.onHide(S.save);
+      GK.save.persist();
+      return S;
+    }
+  };
+
+  /* ================= AUDIO ================= */
+  var A = GK.audio = { ctx: null, master: null, bank: {}, volume: 1, muted: false, unlocked: false, _last: {}, _voices: {} };
+  var GESTURES = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'];
+  function silentWavURL() {
+    try {
+      var n = 800, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+      var w = function (o, s) { for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+      w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true);
+      v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+      v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+      for (var i = 0; i < n; i++) v.setUint8(44 + i, 128);
+      return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    } catch (e) { return null; }
+  }
+  var silentEl = null, silentDone = false;
+  function playSilentEl() { // routes Web Audio to the media channel so the ringer switch does not mute it
+    if (silentDone || !HAS_DOM || !W.Audio) return;
+    try {
+      if (!silentEl) { var u = silentWavURL(); if (!u) { silentDone = true; return; } silentEl = new W.Audio(u); silentEl.setAttribute('playsinline', ''); silentEl.loop = false; silentEl.volume = 0.01; }
+      var p = silentEl.play(); silentDone = true;
+      if (p && p.catch) p.catch(function () { silentDone = false; });
+    } catch (e) {}
+  }
+  function poke() { // tiny silent buffer, needed by older iOS to open the output
+    var c = A.ctx; if (!c || !c.createBuffer) return;
+    try { var b = c.createBuffer(1, 1, c.sampleRate || 44100), s = c.createBufferSource(); s.buffer = b; s.connect(c.destination); s.start(0); } catch (e) {}
+  }
+  function gesture() {
+    if (!A.ctx) { if (A.autoCreate === false) return; A.ensure(); }
+    var c = A.ctx; if (!c) return;
+    playSilentEl();
+    if (c.state !== 'running' && !A.held) { try { var p = c.resume(); if (p && p.then) p.then(check, function () {}); } catch (e) {} poke(); }
+    check();
+  }
+  function check() {
+    var c = A.ctx;
+    if (c && c.state === 'running') {
+      if (!A.unlocked) { A.unlocked = true; ringerHint(); if (A._onUnlock) A._onUnlock(); }
+      if (silentDone) { // stay listening until both are done; re-arm happens on interruption
+        for (var i = 0; i < GESTURES.length; i++) off(W, GESTURES[i], gesture, true);
+        A._armed = false;
+      }
+    }
+  }
+  function arm() { if (A._armed || !HAS_DOM) return; A._armed = true; for (var i = 0; i < GESTURES.length; i++) on(W, GESTURES[i], gesture, true); }
+  function watch() {
+    var c = A.ctx; if (!c || c._gkWatched) return; c._gkWatched = true;
+    // the game's own suspend() (pause, mute, hidden tab) is a hold: taps and focus must not resume it; its own resume() lifts it
+    A.held = false;
+    if (typeof c.suspend === 'function' && typeof c.resume === 'function') {
+      var s0 = c.suspend, r0 = c.resume;
+      try {
+        c.suspend = function () { if (A.ctx === c) A.held = true; return s0.apply(c, arguments); };
+        c.resume = function () { if (A.ctx === c) A.held = false; return r0.apply(c, arguments); };
+      } catch (e) {}
+    }
+    var prev = c.onstatechange;
+    var h = function (e) { if (A.ctx.state !== 'running') { A.unlocked = false; arm(); } else check(); if (A._onState) A._onState(A.ctx.state); };
+    if (c.addEventListener) c.addEventListener('statechange', h); else c.onstatechange = function (e) { if (prev) prev.call(c, e); h(e); };
+  }
+  if (HAS_DOM) {
+    var wake = function () { if (A.ctx && A.ctx.state !== 'running' && !A.held && document.visibilityState !== 'hidden') { try { A.ctx.resume().catch(function () {}); } catch (e) {} arm(); } };
+    on(document, 'visibilitychange', wake); on(W, 'focus', wake); on(W, 'pageshow', wake);
+  }
+  A.init = function (opts) {
+    opts = opts || {};
+    A._onUnlock = opts.onUnlock; A._onState = opts.onState;
+    if (opts.create === false) A.autoCreate = false; // the game makes its own context later and hands it over with adopt()
+    if (opts.ctx) A.adopt(opts.ctx, opts.output);
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    arm();
+    return A;
+  };
+  A.ensure = function () {
+    if (A.ctx) return A.ctx;
+    var C = W.AudioContext || W.webkitAudioContext; if (!C) return null;
+    try { A.adopt(new C({ latencyHint: 'interactive' })); } catch (e) { try { A.adopt(new C()); } catch (e2) { return null; } }
+    return A.ctx;
+  };
+  // Adopt a game's own AudioContext; output = the node kit sounds should feed (default: a new master gain)
+  A.adopt = function (ctx, output) {
+    A.ctx = ctx; A._external = !!output;
+    if (output) A.master = output;
+    else { A.master = ctx.createGain(); A.master.connect(ctx.destination); }
+    A._applyVol(); watch(); arm();
+    for (var k in A.bank) A.bank[k].buf = null; // re-render for this context
+    return ctx;
+  };
+  A._applyVol = function () { if (A.master && A.master.gain && !A._external) A.master.gain.value = A.muted ? 0 : A.volume; };
+  A.setVolume = function (v) { A.volume = clamp(v, 0, 1); A._applyVol(); };
+  A.setMuted = function (m) { A.muted = !!m; A._applyVol(); };
+  // call inside a tap handler right after adopt() so the very first tap also unlocks
+  A.unlockNow = function () { gesture(); };
+  A.running = function () { return !!(A.ctx && A.ctx.state === 'running'); };
+  // Synth spec: {wave:'sine'|'square'|'tri'|'saw'|'noise', f:Hz, f2:end Hz, dur:s, a:attack s, vol:0..1, at:start s} or an array of them
+  function osc(wave, ph) {
+    if (wave === 'square') return ph % 1 < 0.5 ? 1 : -1;
+    if (wave === 'saw') return 2 * (ph % 1) - 1;
+    if (wave === 'tri') { var x = ph % 1; return x < 0.5 ? 4 * x - 1 : 3 - 4 * x; }
+    return Math.sin(ph * 6.283185307);
+  }
+  A.render = function (spec, rate) {
+    rate = rate || 44100;
+    var layers = Array.isArray(spec) ? spec : [spec], end = 0, i;
+    for (i = 0; i < layers.length; i++) end = Math.max(end, (layers[i].at || 0) + (layers[i].dur || 0.1));
+    var n = Math.ceil(end * rate) + 1, out = new Float32Array(n), nz = mulberry32(7);
+    for (i = 0; i < layers.length; i++) {
+      var L = layers[i], dur = L.dur || 0.1, s0 = Math.floor((L.at || 0) * rate), len = Math.floor(dur * rate);
+      var a = Math.max(1, Math.floor((L.a === undefined ? 0.004 : L.a) * rate)), ph = 0, f = L.f || 440, f2 = L.f2 || f, vol = L.vol === undefined ? 0.5 : L.vol;
+      for (var j = 0; j < len && s0 + j < n; j++) {
+        var t = j / len, freq = f * Math.pow(f2 / f, t);
+        ph += freq / rate;
+        var env = (j < a ? j / a : 1) * Math.pow(1 - t, L.curve || 2);
+        out[s0 + j] += (L.wave === 'noise' ? nz() * 2 - 1 : osc(L.wave, ph)) * env * vol;
+      }
+    }
+    for (i = 0; i < n; i++) out[i] = clamp(out[i], -1, 1);
+    return out;
+  };
+  A.define = function (name, spec) { A.bank[name] = { spec: spec, buf: null }; return A; };
+  A.std = function () {
+    A.define('tap', { wave: 'tri', f: 660, f2: 520, dur: 0.06, vol: 0.35 });
+    A.define('success', [{ wave: 'tri', f: 523, dur: 0.09, vol: 0.35 }, { wave: 'tri', f: 784, dur: 0.14, vol: 0.35, at: 0.07 }]);
+    A.define('fail', [{ wave: 'square', f: 220, f2: 110, dur: 0.22, vol: 0.18 }, { wave: 'noise', dur: 0.08, vol: 0.12 }]);
+    A.define('combo', { wave: 'sine', f: 880, f2: 1320, dur: 0.1, vol: 0.3 });
+    A.define('win', [{ wave: 'tri', f: 523, dur: 0.12, vol: 0.3 }, { wave: 'tri', f: 659, dur: 0.12, vol: 0.3, at: 0.1 }, { wave: 'tri', f: 784, dur: 0.12, vol: 0.3, at: 0.2 }, { wave: 'sine', f: 1047, dur: 0.35, vol: 0.3, at: 0.3 }]);
+    A.define('hit', [{ wave: 'noise', dur: 0.09, vol: 0.3 }, { wave: 'sine', f: 140, f2: 60, dur: 0.14, vol: 0.4 }]);
+    return A;
+  };
+  // play(name,{vol,rate,jitter=0.05}): +/-5% pitch so repeats do not sound robotic; caps 4 voices and 25 ms repeats per sound
+  A.play = function (name, o) {
+    o = o || {};
+    var c = A.ctx, e = A.bank[name];
+    if (!c || !e || A.muted || c.state !== 'running') return false;
+    var t = now(); if (A._last[name] && t - A._last[name] < (o.gap === undefined ? 25 : o.gap)) return false;
+    if ((A._voices[name] | 0) >= (o.voices || 4)) return false;
+    try {
+      if (!e.buf) { var data = A.render(e.spec, c.sampleRate || 44100); e.buf = c.createBuffer(1, data.length, c.sampleRate || 44100); e.buf.getChannelData(0).set(data); }
+      var src = c.createBufferSource(), g = c.createGain();
+      src.buffer = e.buf;
+      var j = o.jitter === undefined ? 0.05 : o.jitter;
+      src.playbackRate.value = (o.rate || 1) * (1 + (Math.random() * 2 - 1) * j);
+      g.gain.value = o.vol === undefined ? 1 : o.vol;
+      src.connect(g); g.connect(A.master || c.destination);
+      A._voices[name] = (A._voices[name] | 0) + 1; A._last[name] = t;
+      src.onended = function () { A._voices[name] = Math.max(0, (A._voices[name] | 0) - 1); };
+      src.start(0);
+      ringerHint();
+      return true;
+    } catch (err) { return false; }
+  };
+  // one-time hint on iPhone, the first time sound unlocks
+  var hinted = false;
+  function ringerHint() {
+    if (hinted || !ENV.ios || A.noHint) return; hinted = true;
+    if (LS.get('gk.ringerHint')) return; LS.set('gk.ringerHint', '1');
+    if (GK.ui && HAS_DOM) setTimeout(function () { GK.ui.toast('No sound? Check the ringer switch', 3200); }, 400);
+  }
+
+  /* ================= INPUT ================= */
+  GK.input = {
+    // attach(el,{onDown,onMove,onUp,stick:{dead:.1,radius:56,follow:true}}) : one pointer layer for touch, pen and mouse
+    attach: function (el, o) {
+      o = o || {};
+      var H = { queue: [], down: {}, count: 0, stick: null, el: el };
+      if (el.style) { el.style.touchAction = 'none'; el.style.webkitUserSelect = 'none'; el.style.userSelect = 'none'; el.style.webkitTouchCallout = 'none'; el.style.webkitTapHighlightColor = 'transparent'; }
+      var st = o.stick ? (H.stick = { x: 0, y: 0, active: false, id: null, ox: 0, oy: 0, px: 0, py: 0, dead: o.stick.dead || 0.1, r: o.stick.radius || 56, follow: o.stick.follow !== false }) : null;
+      function pos(e) { var r = el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 0, top: 0 }; return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+      function upd(p) {
+        var dx = p.x - st.ox, dy = p.y - st.oy, d = Math.sqrt(dx * dx + dy * dy);
+        if (st.follow && d > st.r) { st.ox = p.x - dx / d * st.r; st.oy = p.y - dy / d * st.r; dx = p.x - st.ox; dy = p.y - st.oy; d = st.r; }
+        var m = Math.min(1, d / st.r); if (m < st.dead) { st.x = st.y = 0; } else { var k = (m - st.dead) / (1 - st.dead) / (d || 1) * st.r; st.x = dx / st.r * k; st.y = dy / st.r * k; }
+        st.px = p.x; st.py = p.y;
+      }
+      H._down = function (e) {
+        if (e.cancelable) e.preventDefault();
+        try { el.setPointerCapture && el.setPointerCapture(e.pointerId); } catch (x) {}
+        var p = pos(e); H.down[e.pointerId] = p; H.count++;
+        var ev = { type: 'down', x: p.x, y: p.y, id: e.pointerId, t: now(), kind: e.pointerType };
+        H.queue.push(ev);
+        if (st && st.id === null) { st.id = e.pointerId; st.active = true; st.ox = p.x; st.oy = p.y; st.x = st.y = 0; st.px = p.x; st.py = p.y; }
+        if (o.onDown) o.onDown(ev, e);
+      };
+      H._move = function (e) {
+        if (!(e.pointerId in H.down)) return;
+        var p = pos(e); H.down[e.pointerId] = p;
+        if (st && st.id === e.pointerId) upd(p);
+        if (o.onMove) o.onMove({ type: 'move', x: p.x, y: p.y, id: e.pointerId, t: now() }, e);
+      };
+      H._up = function (e) {
+        if (!(e.pointerId in H.down)) return;
+        var p = pos(e); delete H.down[e.pointerId]; H.count = Math.max(0, H.count - 1);
+        var ev = { type: 'up', x: p.x, y: p.y, id: e.pointerId, t: now() };
+        H.queue.push(ev);
+        if (st && st.id === e.pointerId) { st.id = null; st.active = false; st.x = st.y = 0; }
+        if (o.onUp) o.onUp(ev, e);
+      };
+      var stop = function (e) { if (e.cancelable) e.preventDefault(); };
+      on(el, 'pointerdown', H._down, { passive: false });
+      on(el, 'pointermove', H._move, { passive: false });
+      on(el, 'pointerup', H._up); on(el, 'pointercancel', H._up); on(el, 'lostpointercapture', H._up);
+      on(el, 'contextmenu', stop); on(el, 'selectstart', stop); on(el, 'gesturestart', stop); on(el, 'dblclick', stop);
+      on(el, 'touchmove', stop, { passive: false });
+      H.drain = function () { var q = H.queue; H.queue = []; return q; };
+      H.held = function () { return H.count > 0; };
+      H.detach = function () {
+        off(el, 'pointerdown', H._down, { passive: false }); off(el, 'pointermove', H._move, { passive: false }); off(el, 'pointerup', H._up);
+        off(el, 'pointercancel', H._up); off(el, 'lostpointercapture', H._up); off(el, 'contextmenu', stop); off(el, 'selectstart', stop);
+        off(el, 'gesturestart', stop); off(el, 'dblclick', stop); off(el, 'touchmove', stop, { passive: false });
+      };
+      return H;
+    },
+    // buffer: a press counts if it happened within `win` seconds before the moment it can be used
+    buffer: function (win) {
+      win = win === undefined ? 0.1 : win; var t = -1e9;
+      return { press: function (at) { t = at; }, ready: function (at) { return at - t <= win; }, consume: function (at) { if (at - t <= win) { t = -1e9; return true; } return false; }, clear: function () { t = -1e9; } };
+    },
+    // coyote: grace after leaving a ledge
+    coyote: function (win) {
+      win = win === undefined ? 0.1 : win; var t = -1e9, used = false;
+      return { ground: function (at) { t = at; used = false; }, can: function (at) { return !used && at - t <= win; }, use: function () { used = true; } };
+    },
+    keys: function (target) {
+      var K = { held: {}, pressed: [] };
+      on(target || W, 'keydown', function (e) { if (!K.held[e.key]) K.pressed.push(e.key); K.held[e.key] = true; });
+      on(target || W, 'keyup', function (e) { K.held[e.key] = false; });
+      on(W, 'blur', function () { K.held = {}; });
+      K.drain = function () { var p = K.pressed; K.pressed = []; return p; };
+      return K;
+    }
+  };
+
+  /* ================= EASING ================= */
+  GK.ease = {
+    linear: function (t) { return t; },
+    quadOut: function (t) { return 1 - (1 - t) * (1 - t); },
+    cubicOut: function (t) { var u = 1 - t; return 1 - u * u * u; },
+    backOut: function (t, s) { s = s === undefined ? 1.70158 : s; var u = t - 1; return u * u * ((s + 1) * u + s) + 1; },
+    smooth: function (cur, target, k, dt) { return cur + (target - cur) * (1 - Math.exp(-k * dt)); }, // frame-rate independent
+    lerp: function (a, b, t) { return a + (b - a) * t; }
+  };
+
+  /* ================= JUICE ================= */
+  function ihash(i) { i = Math.imul((i ^ 61) ^ (i >>> 16), 9); i ^= i >>> 4; i = Math.imul(i, 0x27d4eb2d); i ^= i >>> 15; return (i >>> 0) / 4294967296 * 2 - 1; }
+  function noise1(x, lane) { var i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return ihash(i + lane * 7919) * (1 - u) + ihash(i + 1 + lane * 7919) * u; }
+  GK.noise1 = noise1;
+  var hapticLabel = null;
+  GK.juice = {
+    create: function (o) {
+      o = o || {};
+      var red = o.reducedMotion === undefined ? ENV.reducedMotion : o.reducedMotion;
+      var J = {
+        on: { shake: true, hitstop: true, squash: true, haptics: true, particles: true, flash: !red, numbers: true },
+        shakeScale: red ? 0.35 : 1, maxShake: o.maxShake || 10, maxRot: o.maxRot || 0.03, decay: o.decay || 0.8, freq: o.freq || 15,
+        trauma: 0, kx: 0, ky: 0, t: 0, stopT: 0, recT: 0, recDur: 0.06, x: 0, y: 0, rot: 0, fps: 0, _fpsAcc: 0, _fpsN: 0
+      };
+      J.addTrauma = function (a) { J.trauma = clamp(J.trauma + a, 0, 1); };
+      J.kick = function (dx, dy) { if (!J.on.shake) return; J.kx += dx * J.shakeScale; J.ky += dy * J.shakeScale; };
+      J.hitstop = function (sec) { if (!J.on.hitstop) return; J.stopT = Math.max(J.stopT, sec); J.recT = J.recDur; };
+      // call once per frame with real dt; returns {x,y,rot} camera offset; J.scale(dt) gives the game dt after hitstop
+      J.update = function (dt) {
+        J.t += dt;
+        J.trauma = Math.max(0, J.trauma - J.decay * dt);
+        var s = J.on.shake ? J.trauma * J.trauma * J.shakeScale : 0;
+        J.x = J.maxShake * s * noise1(J.t * J.freq, 1) + J.kx;
+        J.y = J.maxShake * s * noise1(J.t * J.freq, 2) + J.ky;
+        J.rot = J.maxRot * s * noise1(J.t * J.freq, 3);
+        var k = Math.exp(-18 * dt); J.kx *= k; J.ky *= k;
+        if (Math.abs(J.kx) < 0.05) J.kx = 0; if (Math.abs(J.ky) < 0.05) J.ky = 0;
+        J._fpsAcc += dt; J._fpsN++; if (J._fpsAcc >= 0.5) { J.fps = Math.round(J._fpsN / J._fpsAcc); J._fpsAcc = 0; J._fpsN = 0; }
+        return J;
+      };
+      J.scale = function (dt) {
+        if (J.stopT > 0) { J.stopT -= dt; return 0; }
+        if (J.recT > 0) { J.recT = Math.max(0, J.recT - dt); return dt * (0.2 + 0.8 * GK.ease.quadOut(1 - J.recT / J.recDur)); }
+        return dt;
+      };
+      J.frozen = function () { return J.stopT > 0; };
+      // squash: s = J.squash() then J.squashTo(s,'jump'|'land'|'hit') and J.squashStep(s,dt); draw with scale(s.sx,s.sy)
+      J.squash = function () { return { sx: 1, sy: 1 }; };
+      J.squashTo = function (s, kind) {
+        if (!J.on.squash) return s;
+        var m = kind === 'jump' ? [0.6, 1.4] : kind === 'land' ? [1.4, 0.6] : kind === 'hit' ? [1.25, 0.8] : (kind || [1.2, 0.8]);
+        var f = red ? 0.5 : 1; s.sx = 1 + (m[0] - 1) * f; s.sy = 1 + (m[1] - 1) * f; return s;
+      };
+      J.squashStep = function (s, dt, rate) { var r = (rate || 1.75) * dt * 2; s.sx += clamp(1 - s.sx, -r, r); s.sy += clamp(1 - s.sy, -r, r); return s; };
+      J.haptic = function (kind) { if (J.on.haptics) GK.juice.haptic(kind); };
+      J.apply = function (ctx) { if (ctx && (J.x || J.y || J.rot)) { ctx.translate(J.x, J.y); if (J.rot) ctx.rotate(J.rot); } };
+      return J;
+    },
+    // Android: vibrate. iPhone (Safari 17.4+): a hidden switch toggle gives a light tick, only inside a real tap
+    // (call from click or pointerup on touch, not touch pointerdown). Elsewhere: nothing.
+    haptic: function (kind) {
+      if (!HAS_DOM) return false;
+      var pat = { tap: 8, light: 8, hit: 18, heavy: 30, success: [10, 40, 14], fail: [30, 50, 30] }[kind] || 10;
+      try { if (navigator.vibrate) return navigator.vibrate(pat); } catch (e) {}
+      if (!ENV.ios) return false;
+      try {
+        if (!hapticLabel) {
+          var lab = document.createElement('label'), inp = document.createElement('input');
+          inp.type = 'checkbox'; inp.setAttribute('switch', ''); inp.tabIndex = -1; lab.setAttribute('aria-hidden', 'true');
+          lab.appendChild(inp); lab.style.cssText = 'position:fixed;left:-100px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden';
+          document.body.appendChild(lab); hapticLabel = lab;
+        }
+        hapticLabel.click(); return true;
+      } catch (e) { return false; }
+    },
+    // Hidden tuning panel: opens with ?juice or #juice in the address, or 5 quick taps in the top-left corner.
+    // extra: [{label,get(),set(v)}] for game-specific toggles; po.keys limits which built-in toggles show.
+    panel: function (J, extra, po) {
+      if (!HAS_DOM) return null;
+      po = po || {};
+      var P = { el: null, open: false };
+      function build() {
+        GK.ui._css();
+        var el = document.createElement('div'); el.className = 'gk-panel'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Juice settings');
+        var html = '<div class="gk-ph"><b>Juice</b><span class="gk-fps">-- fps</span><button class="gk-x" aria-label="Close">x</button></div>';
+        var keys = po.keys || Object.keys(J.on);
+        keys.forEach(function (k) { html += '<label><input type="checkbox" data-k="' + k + '"' + (J.on[k] ? ' checked' : '') + '> ' + k + '</label>'; });
+        (extra || []).forEach(function (x, i) { html += '<label><input type="checkbox" data-x="' + i + '"' + (x.get() ? ' checked' : '') + '> ' + x.label + '</label>'; });
+        html += '<label>shake size <input type="range" min="0" max="2" step="0.1" value="' + J.shakeScale + '" data-r="1"></label>';
+        el.innerHTML = html;
+        el.addEventListener('change', function (e) {
+          var t = e.target;
+          if (t.dataset.k) J.on[t.dataset.k] = t.checked;
+          if (t.dataset.x !== undefined) extra[+t.dataset.x].set(t.checked);
+          if (t.dataset.r) J.shakeScale = +t.value;
+        });
+        el.querySelector('.gk-x').addEventListener('click', function () { P.hide(); });
+        ['pointerdown', 'touchstart', 'click'].forEach(function (ev) { el.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+        document.body.appendChild(el); P.el = el;
+        var fpsEl = el.querySelector('.gk-fps');
+        P._timer = setInterval(function () { if (P.open) fpsEl.textContent = J.fps + ' fps'; }, 500);
+      }
+      P.show = function () { if (!P.el) build(); P.el.style.display = 'block'; P.open = true; };
+      P.hide = function () { if (P.el) P.el.style.display = 'none'; P.open = false; };
+      P.toggle = function () { if (P.open) P.hide(); else P.show(); };
+      var loc = '';
+      try { loc = (W.location.search || '') + (W.location.hash || ''); } catch (e) {}
+      if (/[?#&]juice\b/.test(loc)) setTimeout(P.show, 0);
+      var taps = [];
+      on(W, 'pointerdown', function (e) {
+        if (e.clientX > 48 || e.clientY > 48 + ((GK.view.insets && GK.view.insets.t) || 0)) { taps.length = 0; return; }
+        var t = now(); taps.push(t); while (taps.length && t - taps[0] > 2000) taps.shift();
+        if (taps.length >= 5) { taps.length = 0; P.toggle(); }
+      }, true);
+      return P;
+    }
+  };
+
+  /* ================= BADGES ================= */
+  // defs: [{id,name,desc,test?(stats),hidden?,funny?}]; st: a plain object in the game's save (badges stored at st[id]=time)
+  GK.badges = {
+    create: function (defs, st, opts) {
+      opts = opts || {};
+      var B = { defs: defs, st: st, failed: {}, listeners: [] };
+      B.has = function (id) { return !!st[id]; };
+      B.earn = function (id) {
+        if (st[id]) return false; var d = B.get(id); if (!d) return false;
+        st[id] = Date.now(); delete B.failed[id];
+        for (var i = 0; i < B.listeners.length; i++) B.listeners[i](d);
+        if (opts.toast !== false && GK.ui && HAS_DOM) GK.ui.toast('Badge: ' + d.name, 2400);
+        return true;
+      };
+      B.fail = function (id) { if (!st[id]) B.failed[id] = true; };
+      B.startRun = function () { B.failed = {}; };
+      B.get = function (id) { for (var i = 0; i < defs.length; i++) if (defs[i].id === id) return defs[i]; return null; };
+      B.check = function (stats) { var got = []; defs.forEach(function (d) { if (d.test && !st[d.id] && d.test(stats)) { if (B.earn(d.id)) got.push(d); } }); return got; };
+      B.onEarn = function (fn) { B.listeners.push(fn); };
+      B.count = function () { var n = 0; defs.forEach(function (d) { if (st[d.id]) n++; }); return n; };
+      B.list = function () {
+        return defs.map(function (d) {
+          var s = st[d.id] ? 'earned' : B.failed[d.id] ? 'failed' : 'open';
+          return { id: d.id, name: (d.hidden && s !== 'earned') ? '???' : d.name, desc: (d.hidden && s !== 'earned') ? 'Hidden' : d.desc, state: s, funny: !!d.funny };
+        });
+      };
+      B.render = function (el) {
+        if (!HAS_DOM || !el) return; GK.ui._css();
+        var h = '<div class="gk-badges">'; B.list().forEach(function (b) {
+          h += '<div class="gk-b gk-' + b.state + '" title="' + esc(b.desc) + '"><div class="gk-bi">' + (b.state === 'earned' ? '★' : b.state === 'failed' ? '✕' : '·') + '</div><div class="gk-bn">' + esc(b.name) + '</div><div class="gk-bd">' + esc(b.desc) + '</div></div>';
+        });
+        el.innerHTML = h + '</div><div class="gk-bc">' + B.count() + ' of ' + defs.length + '</div>';
+      };
+      return B;
+    },
+    // two paths to each milestone: play it enough OR win enough. Both count, so less skilled players still progress.
+    milestones: function (playsAt, winsAt, nameFn) {
+      var out = [];
+      (playsAt || []).forEach(function (n) { out.push({ id: 'plays' + n, name: nameFn ? nameFn('plays', n) : n + (n === 1 ? ' run' : ' runs'), desc: 'Play ' + n + (n === 1 ? ' run' : ' runs'), test: function (s) { return (s.plays | 0) >= n; } }); });
+      (winsAt || []).forEach(function (n) { out.push({ id: 'wins' + n, name: nameFn ? nameFn('wins', n) : n + (n === 1 ? ' win' : ' wins'), desc: 'Win ' + n + (n === 1 ? ' time' : ' times'), test: function (s) { return (s.wins | 0) >= n; } }); });
+      return out;
+    }
+  };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  GK.esc = esc;
+
+  /* ================= SHARE ================= */
+  GK.share = {
+    // resolves 'shared' | 'copied' | 'sheet' | 'cancel'. Falls back share -> clipboard -> selectable text sheet.
+    text: function (text, o) {
+      o = o || {};
+      return new Promise(function (res) {
+        function copyLegacy() {
+          try {
+            var ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+            document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+            var ok = document.execCommand && document.execCommand('copy'); ta.remove(); return !!ok;
+          } catch (e) { return false; }
+        }
+        function sheet() { GK.ui.sheet(o.title || 'Copy your result', text); res('sheet'); }
+        function clip() {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text).then(function () { if (GK.ui) GK.ui.toast('Copied', 1600); res('copied'); }, function () { if (copyLegacy()) { GK.ui.toast('Copied', 1600); res('copied'); } else sheet(); });
+              return;
+            }
+          } catch (e) {}
+          if (copyLegacy()) { GK.ui.toast('Copied', 1600); res('copied'); } else sheet();
+        }
+        var data = { text: text }; if (o.title) data.title = o.title;
+        try {
+          if (o.preferCopy !== true && navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+            navigator.share(data).then(function () { res('shared'); }, function (e) { if (e && e.name === 'AbortError') res('cancel'); else clip(); });
+            return;
+          }
+        } catch (e) {}
+        clip();
+      });
+    },
+    button: function (el, getText, o) { on(el, 'click', function (e) { e.stopPropagation(); GK.share.text(typeof getText === 'function' ? getText() : getText, o); }); return el; }
+  };
+
+  /* ================= VIEW ================= */
+  var V = GK.view = { insets: { t: 0, r: 0, b: 0, l: 0 }, w: 0, h: 0, dprCap: 2, _fns: [] };
+  V.init = function (o) {
+    o = o || {}; if (o.dprCap) V.dprCap = o.dprCap;
+    if (!HAS_DOM) return V;
+    var m = document.querySelector('meta[name=viewport]');
+    if (!m) { m = document.createElement('meta'); m.name = 'viewport'; document.head.appendChild(m); }
+    var c = m.getAttribute('content') || 'width=device-width,initial-scale=1';
+    if (!/viewport-fit/.test(c)) m.setAttribute('content', c + ',viewport-fit=cover');
+    if (!V._probe) {
+      var p = document.createElement('div'); p.setAttribute('aria-hidden', 'true');
+      p.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+      document.body.appendChild(p); V._probe = p;
+      var fire = function () { V.measure(); for (var i = 0; i < V._fns.length; i++) V._fns[i](V); };
+      on(W, 'resize', fire); on(W, 'orientationchange', function () { setTimeout(fire, 120); });
+      if (W.visualViewport) on(W.visualViewport, 'resize', fire);
+    }
+    V.measure();
+    return V;
+  };
+  V.measure = function () {
+    if (!HAS_DOM) return V;
+    if (V._probe && W.getComputedStyle) { var cs = W.getComputedStyle(V._probe); V.insets = { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 }; }
+    var vv = W.visualViewport; V.w = vv ? vv.width : W.innerWidth; V.h = vv ? vv.height : W.innerHeight;
+    return V;
+  };
+  V.onResize = function (fn) { V._fns.push(fn); };
+  V.dpr = function () { return Math.min(V.dprCap, (HAS_DOM && W.devicePixelRatio) || 1); };
+  // fit a design-size box (dw x dh) into aw x ah. mode 'fit' letterboxes, 'fill' crops, 'fitfill' fits then grows the short side.
+  V.fit = function (dw, dh, aw, ah, mode) {
+    var sFit = Math.min(aw / dw, ah / dh), sFill = Math.max(aw / dw, ah / dh), s = mode === 'fill' ? sFill : sFit, w = dw, h = dh;
+    if (mode === 'fitfill') { w = aw / s; h = ah / s; }
+    return { scale: s, w: w, h: h, x: (aw - w * s) / 2, y: (ah - h * s) / 2 };
+  };
+  // size a canvas for crisp drawing; returns ctx already scaled to CSS pixels
+  V.canvas = function (cv, cssW, cssH) {
+    var d = V.dpr(); cv.width = Math.round(cssW * d); cv.height = Math.round(cssH * d);
+    cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
+    var ctx = cv.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0); return ctx;
+  };
+
+  /* ================= UI ================= */
+  GK.ui = {
+    _css: function () {
+      if (!HAS_DOM || document.getElementById('gk-css')) return;
+      var s = document.createElement('style'); s.id = 'gk-css';
+      s.textContent = '.gk-toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:rgba(20,20,28,.92);color:#fff;font:600 14px/1.3 -apple-system,system-ui,sans-serif;padding:10px 14px;border-radius:12px;z-index:99999;pointer-events:none;max-width:86vw;text-align:center;transition:opacity .25s}' +
+        '.gk-sheet{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99998;display:flex;align-items:flex-end;justify-content:center}' +
+        '.gk-sheet>div{background:#1b1b24;color:#fff;width:min(520px,100%);padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));border-radius:16px 16px 0 0;font:15px -apple-system,system-ui,sans-serif}' +
+        '.gk-sheet textarea{width:100%;box-sizing:border-box;min-height:110px;font:14px ui-monospace,monospace;background:#0e0e14;color:#fff;border:1px solid #444;border-radius:8px;padding:8px;-webkit-user-select:text;user-select:text}' +
+        '.gk-sheet button,.gk-panel button{font:600 15px -apple-system,system-ui,sans-serif;border:0;border-radius:10px;padding:10px 14px;margin-top:10px;background:#3d6cf0;color:#fff;min-height:44px}' +
+        '.gk-panel{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:8px;z-index:99997;background:rgba(18,18,26,.94);color:#fff;font:14px -apple-system,system-ui,sans-serif;padding:10px 12px;border-radius:12px;min-width:180px;display:none}' +
+        '.gk-panel label{display:flex;align-items:center;gap:8px;min-height:32px}.gk-ph{display:flex;align-items:center;gap:10px;margin-bottom:4px}.gk-fps{opacity:.7;margin-left:auto}.gk-panel .gk-x{margin:0;padding:4px 10px;min-height:32px;background:#444}' +
+        '.gk-badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}.gk-b{border-radius:10px;padding:8px 6px;text-align:center;background:rgba(127,127,127,.12);font:12px/1.25 -apple-system,system-ui,sans-serif}' +
+        '.gk-bi{font-size:20px}.gk-bn{font-weight:700;margin:2px 0}.gk-bd{opacity:.7;font-size:11px}.gk-earned{background:rgba(255,196,64,.22)}.gk-failed{opacity:.55}.gk-open{opacity:.8}.gk-bc{text-align:center;margin-top:8px;opacity:.7;font:12px -apple-system,system-ui,sans-serif}';
+      document.head.appendChild(s);
+    },
+    toast: function (text, ms) {
+      if (!HAS_DOM) return; GK.ui._css();
+      var t = document.createElement('div'); t.className = 'gk-toast'; t.setAttribute('role', 'status'); t.textContent = text;
+      document.body.appendChild(t);
+      setTimeout(function () { t.style.opacity = '0'; setTimeout(function () { t.remove(); }, 300); }, ms || 2000);
+    },
+    // a bottom sheet with selectable text (the last share fallback, and the save export box)
+    sheet: function (title, text, o) {
+      if (!HAS_DOM) return null; GK.ui._css(); o = o || {};
+      var s = document.createElement('div'); s.className = 'gk-sheet';
+      s.innerHTML = '<div role="dialog" aria-label="' + esc(title) + '"><b>' + esc(title) + '</b>' + (o.note ? '<p style="opacity:.75;margin:6px 0">' + esc(o.note) + '</p>' : '') + '<textarea' + (o.editable ? '' : ' readonly') + '></textarea><div style="display:flex;gap:8px;flex-wrap:wrap">' + (o.okLabel ? '<button class="gk-ok">' + esc(o.okLabel) + '</button>' : '') + '<button class="gk-close">Close</button></div></div>';
+      var ta = s.querySelector('textarea'); ta.value = text || '';
+      ['pointerdown', 'touchstart', 'click'].forEach(function (ev) { s.addEventListener(ev, function (e) { e.stopPropagation(); }); });
+      s.querySelector('.gk-close').addEventListener('click', function () { s.remove(); });
+      if (o.okLabel) s.querySelector('.gk-ok').addEventListener('click', function () { if (!o.onOk || o.onOk(ta.value) !== false) s.remove(); });
+      document.body.appendChild(s);
+      if (!o.editable) setTimeout(function () { try { ta.focus(); ta.select(); } catch (e) {} }, 50);
+      return s;
+    },
+    // export/import UI for a save handle from GK.save.protect or GK.save.store
+    saveTools: function (handle, o) {
+      o = o || {};
+      return {
+        exportSave: function () { GK.ui.sheet('Your save code', handle.exportCode(), { note: 'Copy this somewhere safe. Paste it back with Import to restore.' }); },
+        importSave: function () {
+          GK.ui.sheet('Import a save code', '', { editable: true, okLabel: 'Import', note: 'This replaces your current progress. Your old save is kept as a backup.', onOk: function (v) {
+            if (handle.importCode(v)) { GK.ui.toast('Save imported', 1800); if (o.onImported) o.onImported(); return true; }
+            GK.ui.toast('That code did not work', 2000); return false;
+          } });
+        }
+      };
+    }
+  };
+
+  /* ================= LOOP ================= */
+  // fixed-step loop: update(dt) at `step`, render(alpha) every frame; pauses while the page is hidden; uses juice hitstop if given
+  GK.loop = function (update, render, o) {
+    o = o || {};
+    var step = o.step || 1 / 60, acc = 0, last = 0, running = false, raf = 0, J = o.juice;
+    var L = { paused: false };
+    function frame(t) {
+      if (!running) return;
+      raf = W.requestAnimationFrame(frame);
+      var dt = last ? Math.min(0.1, (t - last) / 1000) : step; last = t;
+      if (J) J.update(dt);
+      if (!L.paused) { acc += J ? J.scale(dt) : dt; var n = 0; while (acc >= step && n++ < 5) { update(step); acc -= step; } if (n >= 5) acc = 0; }
+      if (render) render(acc / step, dt);
+    }
+    L.start = function () { if (running) return L; running = true; last = 0; raf = W.requestAnimationFrame(frame); return L; };
+    L.stop = function () { running = false; if (W.cancelAnimationFrame) W.cancelAnimationFrame(raf); return L; };
+    if (HAS_DOM) on(document, 'visibilitychange', function () { if (document.visibilityState === 'hidden') { L.paused = true; if (o.onHide) o.onHide(); } else { last = 0; L.paused = false; } });
+    return L;
+  };
+
+
+  /* ================= RETROFIT (drop-in for a finished game) ================= */
+  // GK.retrofit({ game, saves: ['key', ...], validate }) goes in its own script tag right after the kit
+  // and before the game's script. It changes no save format and no game code:
+  //  - each listed localStorage key gets 3 rolling backups and is restored from the newest good one
+  //    when it is missing or broken;
+  //  - the first AudioContext the game makes is handed to GK.audio, so it is unlocked on every tap,
+  //    plays with the ringer switch on silent, and comes back after a call or a locked screen.
+  GK.retrofit = function (o) {
+    o = o || {};
+    var R = { game: o.game || '', saves: {}, made: 0 };
+    var keys = o.saves || [];
+    for (var i = 0; i < keys.length; i++) { try { R.saves[keys[i]] = GK.save.protect(keys[i], { validate: o.validate, keep: o.keep }); } catch (e) {} }
+    if (o.audio !== false && HAS_DOM) {
+      A.init({ create: false });
+      var wrap = function (name) {
+        var C = W[name]; if (!C || C._gkWrapped) return;
+        var G = function (opts) {
+          var c = arguments.length ? new C(opts) : new C();
+          R.made++;
+          if (!A.ctx || A.ctx.state === 'closed') { A.adopt(c, c.destination); gesture(); }
+          return c;
+        };
+        G.prototype = C.prototype; G._gkWrapped = true; G._gkOriginal = C;
+        try { Object.setPrototypeOf(G, C); } catch (e) {}
+        try { W[name] = G; } catch (e) {}
+      };
+      wrap('AudioContext'); wrap('webkitAudioContext');
+    }
+    GK.retrofitted = R;
+    return R;
+  };
+
+  root.GK = GK;
+  if (typeof module !== 'undefined' && module.exports) module.exports = GK;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script id="rules">// Dual Meet rules: pure logic, no DOM. Runs in the browser (global GK from GameKit) and in node (tests set global.GK).
+// Everything here is deterministic for a given seed string.
+(function (root) {
+  'use strict';
+  var GK = root.GK;
+
+  /* ---------- events, in high school dual meet order ---------- */
+  // ab = which ability an individual swim uses. legs = stroke per relay leg. brk = a break (diving) after this event.
+  var EV = [
+    { id: 'mr', name: '200 Medley Relay', short: 'Medley Relay', relay: true, legs: ['back', 'breast', 'fly', 'free'], leg: 50 },
+    { id: '200fr', name: '200 Free', short: '200 Free', ab: 'f200', dist: 200 },
+    { id: '200im', name: '200 IM', short: '200 IM', ab: 'im200', dist: 200 },
+    { id: '50fr', name: '50 Free', short: '50 Free', ab: 'f50', dist: 50, brk: true },
+    { id: '100fl', name: '100 Fly', short: '100 Fly', ab: 'fl100', dist: 100 },
+    { id: '100fr', name: '100 Free', short: '100 Free', ab: 'f100', dist: 100 },
+    { id: '500fr', name: '500 Free', short: '500 Free', ab: 'f500', dist: 500 },
+    { id: '200frr', name: '200 Free Relay', short: '200 Free Relay', relay: true, legs: ['free', 'free', 'free', 'free'], leg: 50 },
+    { id: '100bk', name: '100 Back', short: '100 Back', ab: 'bk100', dist: 100 },
+    { id: '100br', name: '100 Breast', short: '100 Breast', ab: 'br100', dist: 100 },
+    { id: '400frr', name: '400 Free Relay', short: '400 Free Relay', relay: true, legs: ['free', 'free', 'free', 'free'], leg: 100 }
+  ];
+  var LEGNAME = { back: 'Back', breast: 'Breast', fly: 'Fly', free: 'Free' };
+  var IND_PTS = [6, 4, 3, 2, 1], REL_PTS = [8, 4, 2];
+  var LANES = 3, MAX_IND = 2, MAX_TOT = 4, ROSTER = 12;
+  var LOAD = { 50: 0.5, 100: 1, 200: 1.6, 500: 3.2 };
+  var SWAP_P = 0.35, T0 = 2.2, TIRE = 0.004, B2B = 0.02, REVEAL_IND = 3, AWAY_EDGE = 0;
+
+  // flat slot layout: 8 individual events x 3 lanes, then 3 relays x 4 legs = 36 slots
+  var SLOTS = [];
+  EV.forEach(function (e, ei) {
+    if (e.relay) for (var k = 0; k < 4; k++) SLOTS.push({ ev: ei, k: k, leg: e.legs[k], relay: true });
+    else for (var j = 0; j < LANES; j++) SLOTS.push({ ev: ei, k: j, relay: false });
+  });
+  var NS = SLOTS.length;
+  var EV_SLOTS = EV.map(function (e, ei) { var a = []; SLOTS.forEach(function (s, i) { if (s.ev === ei) a.push(i); }); return a; });
+  var TOTAL_PTS = EV.reduce(function (t, e) { return t + (e.relay ? REL_PTS[0] + REL_PTS[1] : 16); }, 0); // 164
+
+  /* ---------- time formatting ---------- */
+  function fmt(t) {
+    if (t == null || !isFinite(t)) return '--';
+    var c = Math.round(t * 100), m = Math.floor(c / 6000), s = (c - m * 6000) / 100;
+    var ss = s.toFixed(2); if (m > 0 && s < 10) ss = '0' + ss;
+    return m > 0 ? m + ':' + ss : ss;
+  }
+  function r2(x) { return Math.round(x * 100) / 100; }
+
+  /* ---------- names (invented) ---------- */
+  var FIRST = {
+    girls: ['Ada', 'Bree', 'Cora', 'Dani', 'Elle', 'Faye', 'Gwen', 'Hana', 'Ivy', 'Jo', 'Kira', 'Lena', 'Mira', 'Nell', 'Opal', 'Pia', 'Quinn', 'Rae', 'Sage', 'Tess', 'Uma', 'Vera', 'Wren', 'Xia', 'Yara', 'Zoe', 'Ines', 'Maeve', 'Noor', 'Lark', 'Juno', 'Esme', 'Callie', 'Della', 'Rhea', 'Tova', 'Mina', 'Kaia', 'Liv', 'Sela'],
+    boys: ['Abe', 'Beck', 'Cal', 'Dax', 'Eli', 'Finn', 'Gus', 'Hal', 'Ike', 'Jude', 'Kit', 'Lev', 'Milo', 'Nico', 'Otis', 'Pax', 'Rafe', 'Seth', 'Tate', 'Ugo', 'Vic', 'Wes', 'Xan', 'Yuri', 'Zeke', 'Ansel', 'Bo', 'Cy', 'Dov', 'Emil', 'Ford', 'Gray', 'Hugo', 'Ivo', 'Jett', 'Kai', 'Lars', 'Moss', 'Nash', 'Odin']
+  };
+  var LAST = ['Abernathy', 'Birchall', 'Calloway', 'Dunmore', 'Eskew', 'Fairlie', 'Garrow', 'Holloway', 'Iverly', 'Jessup', 'Kettering', 'Lorne', 'Marchetti', 'Nyland', 'Okonkwo', 'Pellam', 'Quarles', 'Roswell', 'Sandoval', 'Tremaine', 'Underhill', 'Vasquez', 'Whitlock', 'Yarrow', 'Zielin', 'Ambrose', 'Brannock', 'Corliss', 'Delacroix', 'Ellery', 'Fenwick', 'Gaskill', 'Harrow', 'Ingles', 'Jaramillo', 'Kowal', 'Lindqvist', 'Mabry', 'Nakashima', 'Ortolan', 'Pruett', 'Rasmus', 'Sorrell', 'Thibault', 'Varga', 'Wexler', 'Achebe', 'Brightwater', 'Cuthbert', 'Dorsey', 'Faraday', 'Greaves', 'Hartigan', 'Lomax', 'Mercado', 'Nightingale', 'Petrakis', 'Rook', 'Stavros', 'Tolliver'];
+  var SCHOOLS = ['Larkspur Ridge', 'Thistle Creek', 'Quarry Hill', 'Bramblewood', 'Kestrel Point', 'Ashgrove', 'Millrace', 'Copper Hollow', 'Wrenfield', 'Osprey Bay', 'Fennel Park', 'Granite Bend', 'Marrowbrook', 'Silverleaf', 'Tamarack'];
+  var MASCOTS = ['Otters', 'Herons', 'Marlins', 'Barracudas', 'Gulls', 'Pike', 'Seals', 'Kingfishers', 'Orcas', 'Stingrays', 'Terns', 'Narwhals'];
+  var HOME = { school: 'Juniper Lake', mascot: 'Comets' };
+
+  var PROFILES = ['sprint', 'distance', 'back', 'breast', 'fly', 'im', 'free'];
+  var PROFILE_LABEL = { sprint: 'Sprinter', distance: 'Distance', back: 'Backstroker', breast: 'Breaststroker', fly: 'Flyer', im: 'IMer', free: 'Freestyler' };
+
+  /* ---------- roster generation ---------- */
+  function makeSwimmer(R, L, prof, g) {
+    var f50 = (21.7 + L * 5.2) * g;
+    var d = prof === 'distance' ? R.float(0.55, 1) : prof === 'sprint' ? R.float(-1, -0.55) : R.float(-0.4, 0.4);
+    var f100 = f50 * 2.2 * (1 - 0.01 * d);
+    var f200 = f100 * 2.19 * (1 - 0.022 * d);
+    var f500 = f200 * 2.75 * (1 - 0.03 * d);
+    var sb = R.float(-0.01, 0.05), sr = R.float(-0.015, 0.06), sf = R.float(-0.01, 0.05);
+    if (prof === 'back') sb = R.float(-0.055, -0.03);
+    if (prof === 'breast') sr = R.float(-0.065, -0.035);
+    if (prof === 'fly') sf = R.float(-0.05, -0.025);
+    if (prof === 'im') { sb = R.float(-0.035, 0); sr = R.float(-0.035, 0.005); sf = R.float(-0.035, 0); }
+    var bk100 = f100 * 1.12 * (1 + sb), br100 = f100 * 1.27 * (1 + sr), fl100 = f100 * 1.09 * (1 + sf);
+    var im200 = f200 * 1.115 * (1 + (sb + sr + sf) / 3 * 0.85 + (prof === 'im' ? -0.012 : 0));
+    var a = { f50: r2(f50), f100: r2(f100), f200: r2(f200), f500: r2(f500), bk100: r2(bk100), br100: r2(br100), fl100: r2(fl100), im200: r2(im200) };
+    return a;
+  }
+  function makeTeam(R, gender, strength, school, mascot, used) {
+    var g = gender === 'girls' ? 1.105 : 1;
+    // a roster always has the strokes a medley relay needs, plus some spread
+    var profs = ['back', 'back', 'breast', 'breast', 'fly', 'fly', 'sprint', 'sprint', 'distance', 'im', 'free', R.pick(PROFILES)];
+    R.shuffle(profs);
+    var levels = [];
+    for (var i = 0; i < ROSTER; i++) levels.push(Math.max(0, Math.min(1, (i / (ROSTER - 1)) * 0.92 + R.float(-0.07, 0.07) - strength)));
+    R.shuffle(levels);
+    var sw = [];
+    for (i = 0; i < ROSTER; i++) {
+      var nm, sh, tries = 0;
+      do {
+        var fn = R.pick(FIRST[gender]), ln = R.pick(LAST);
+        nm = fn + ' ' + ln; sh = fn.charAt(0) + '. ' + ln; tries++;
+      } while ((used[nm] || used['s:' + school + sh] || used['l:' + ln]) && tries < 60);
+      used[nm] = 1; used['s:' + school + sh] = 1; used['l:' + ln] = 1;
+      sw.push({ id: i, name: nm, short: sh, last: ln, grade: R.int(9, 12), prof: profs[i], label: PROFILE_LABEL[profs[i]], ab: makeSwimmer(R, levels[i], profs[i], g) });
+    }
+    return { school: school, mascot: mascot, name: school + ' ' + mascot, swimmers: sw };
+  }
+
+  /* ---------- swim times ---------- */
+  // base time for a swimmer in a slot (before fatigue and noise). Relay legs 2-4 get a relay start.
+  function legBase(ab, leg, dist, k) {
+    var t;
+    if (leg === 'free') t = dist === 100 ? ab.f100 : ab.f50;
+    else if (leg === 'back') t = ab.bk100 * 0.476;
+    else if (leg === 'breast') t = ab.br100 * 0.468;
+    else t = ab.fl100 * 0.462;
+    if (k > 0) t -= dist === 100 ? 0.65 : 0.6;
+    return t;
+  }
+  function slotBase(team, si, p) {
+    var s = SLOTS[si], e = EV[s.ev], ab = team.swimmers[p].ab;
+    return s.relay ? legBase(ab, s.leg, e.leg, s.k) : ab[e.ab];
+  }
+  function slotLoad(si) { var s = SLOTS[si], e = EV[s.ev]; return s.relay ? LOAD[e.leg] : LOAD[e.dist]; }
+
+  // per-day race-day swing for every swimmer and event: small (about 0.3%), never big enough to flip a clear seed gap
+  function makeNoise(seed, side) {
+    var R = GK.rng.make(seed + '/noise/' + side), n = [];
+    for (var p = 0; p < ROSTER; p++) { var row = []; for (var e = 0; e < EV.length; e++) { var u = (R.next() + R.next() + R.next() - 1.5) * 0.0062; row.push(Math.max(-0.008, Math.min(0.008, u))); } n.push(row); }
+    return n;
+  }
+
+  // fatigue multiplier for each filled slot, from that swimmer's earlier swims in the meet
+  // returns {mult: [NS], b2b: [NS], load: [NS]}
+  function fatigue(lu) {
+    var mult = new Array(NS), b2b = new Array(NS), ld = new Array(NS);
+    var acc = new Float64Array(ROSTER), lastEv = new Int32Array(ROSTER).fill(-9);
+    for (var e = 0; e < EV.length; e++) {
+      var sl = EV_SLOTS[e];
+      for (var j = 0; j < sl.length; j++) {
+        var si = sl[j], p = lu[si];
+        if (p < 0) { mult[si] = 1; b2b[si] = false; ld[si] = 0; continue; }
+        var bb = lastEv[p] === e - 1 && !EV[e - 1].brk;
+        mult[si] = 1 + TIRE * acc[p] + (bb ? B2B : 0); b2b[si] = bb; ld[si] = acc[p];
+      }
+      for (j = 0; j < sl.length; j++) { var q = lu[sl[j]]; if (q >= 0) { acc[q] += slotLoad(sl[j]); lastEv[q] = e; } }
+    }
+    return { mult: mult, b2b: b2b, load: ld };
+  }
+
+  // swim times for a whole lineup. noise optional (projections use none).
+  function times(team, lu, noise) {
+    var f = fatigue(lu), t = new Array(NS);
+    for (var si = 0; si < NS; si++) {
+      var p = lu[si]; if (p < 0) { t[si] = null; continue; }
+      var x = slotBase(team, si, p) * f.mult[si];
+      if (noise) x *= 1 + noise[p][SLOTS[si].ev];
+      t[si] = r2(x);
+    }
+    return { t: t, mult: f.mult, b2b: f.b2b };
+  }
+  function relayTime(tt, ei) { var sl = EV_SLOTS[ei], s = 0; for (var j = 0; j < sl.length; j++) { if (tt[sl[j]] == null) return null; s += tt[sl[j]]; } return r2(s); }
+
+  /* ---------- validity ---------- */
+  function counts(lu) {
+    var ind = new Int32Array(ROSTER), tot = new Int32Array(ROSTER);
+    for (var e = 0; e < EV.length; e++) {
+      var seen = {}, sl = EV_SLOTS[e];
+      for (var j = 0; j < sl.length; j++) { var p = lu[sl[j]]; if (p < 0 || seen[p]) continue; seen[p] = 1; tot[p]++; if (!EV[e].relay) ind[p]++; }
+    }
+    return { ind: ind, tot: tot };
+  }
+  function problems(lu) {
+    var out = [];
+    if (!lu || lu.length !== NS) return ['bad lineup'];
+    for (var e = 0; e < EV.length; e++) { var seen = {}; EV_SLOTS[e].forEach(function (si) { var p = lu[si]; if (p < -1 || p >= ROSTER || p !== (p | 0)) out.push('bad swimmer in ' + EV[e].id); else if (p >= 0) { if (seen[p]) out.push('swimmer ' + p + ' twice in ' + EV[e].id); seen[p] = 1; } }); }
+    var c = counts(lu);
+    for (var p = 0; p < ROSTER; p++) { if (c.ind[p] > MAX_IND) out.push('swimmer ' + p + ' has ' + c.ind[p] + ' individual events'); if (c.tot[p] > MAX_TOT) out.push('swimmer ' + p + ' has ' + c.tot[p] + ' events'); }
+    return out;
+  }
+  function valid(lu) { return problems(lu).length === 0; }
+
+  /* ---------- scoring ---------- */
+  function placePoints(entries, table) {
+    // entries: [{side, t, ...}] -> sets place and pts with ties splitting points
+    entries.sort(function (a, b) { return a.t - b.t; });
+    var i = 0;
+    while (i < entries.length) {
+      var j = i; while (j + 1 < entries.length && entries[j + 1].t === entries[i].t) j++;
+      var sum = 0; for (var k = i; k <= j; k++) sum += table[k] || 0;
+      for (k = i; k <= j; k++) { entries[k].place = i + 1; entries[k].pts = sum / (j - i + 1); entries[k].tie = j > i; }
+      i = j + 1;
+    }
+    return entries;
+  }
+  // score a meet. A = home team, B = visitor. ta/tb are times() results.
+  function scoreMeet(luA, ta, luB, tb, detail) {
+    var us = 0, them = 0, evs = detail ? [] : null;
+    for (var e = 0; e < EV.length; e++) {
+      var en = [], ev = EV[e], sl = EV_SLOTS[e], j, x;
+      if (ev.relay) {
+        x = relayTime(ta.t, e); if (x != null) en.push({ side: 0, t: x, legs: sl.map(function (si) { return { p: luA[si], t: ta.t[si] }; }) });
+        x = relayTime(tb.t, e); if (x != null) en.push({ side: 1, t: x, legs: sl.map(function (si) { return { p: luB[si], t: tb.t[si] }; }) });
+        placePoints(en, REL_PTS);
+      } else {
+        for (j = 0; j < sl.length; j++) {
+          if (luA[sl[j]] >= 0) en.push({ side: 0, t: ta.t[sl[j]], p: luA[sl[j]], b2b: ta.b2b[sl[j]], mult: ta.mult[sl[j]] });
+          if (luB[sl[j]] >= 0) en.push({ side: 1, t: tb.t[sl[j]], p: luB[sl[j]], b2b: tb.b2b[sl[j]], mult: tb.mult[sl[j]] });
+        }
+        placePoints(en, IND_PTS);
+      }
+      var eu = 0, et = 0; for (j = 0; j < en.length; j++) { if (en[j].side === 0) eu += en[j].pts; else et += en[j].pts; }
+      us += eu; them += et;
+      if (detail) evs.push({ ev: e, entries: en, us: eu, them: et, runUs: us, runThem: them });
+    }
+    return { us: us, them: them, margin: us - them, events: evs };
+  }
+
+  /* ---------- the assistant's lineup: a sensible but naive default ---------- */
+  // Puts each swimmer in their relatively strongest events, ignores back-to-back and the other team.
+  function defaultLineup(team) {
+    var lu = new Array(NS).fill(-1), sw = team.swimmers;
+    var ind = new Int32Array(ROSTER), tot = new Int32Array(ROSTER), pairs = [];
+    EV.forEach(function (e, ei) {
+      if (e.relay) return;
+      var ts = sw.map(function (s) { return s.ab[e.ab]; }).slice().sort(function (a, b) { return a - b; });
+      var med = (ts[5] + ts[6]) / 2;
+      sw.forEach(function (s, p) { pairs.push({ ei: ei, p: p, v: (med - s.ab[e.ab]) / med }); });
+    });
+    pairs.sort(function (a, b) { return b.v - a.v || a.ei - b.ei || a.p - b.p; });
+    var filled = {};
+    pairs.forEach(function (q) {
+      if (ind[q.p] >= MAX_IND) return; var sl = EV_SLOTS[q.ei], n = filled[q.ei] | 0; if (n >= LANES) return;
+      lu[sl[n]] = q.p; filled[q.ei] = n + 1; ind[q.p]++; tot[q.p]++;
+    });
+    // relays: best available four, in meet order
+    EV.forEach(function (e, ei) {
+      if (!e.relay) return;
+      var sl = EV_SLOTS[ei], cand = [];
+      for (var p = 0; p < ROSTER; p++) if (tot[p] < MAX_TOT) cand.push(p);
+      var best = null, bt = 1e9;
+      if (e.legs[0] === 'back') {
+        for (var a = 0; a < cand.length; a++) for (var b = 0; b < cand.length; b++) { if (b === a) continue; for (var c = 0; c < cand.length; c++) { if (c === a || c === b) continue; for (var d = 0; d < cand.length; d++) { if (d === a || d === b || d === c) continue;
+          var t = legBase(sw[cand[a]].ab, 'back', 50, 0) + legBase(sw[cand[b]].ab, 'breast', 50, 1) + legBase(sw[cand[c]].ab, 'fly', 50, 2) + legBase(sw[cand[d]].ab, 'free', 50, 3);
+          if (t < bt) { bt = t; best = [cand[a], cand[b], cand[c], cand[d]]; } } } }
+      } else {
+        best = cand.slice().sort(function (x, y) { return legBase(sw[x].ab, 'free', e.leg, 1) - legBase(sw[y].ab, 'free', e.leg, 1) || x - y; }).slice(0, 4);
+        best.sort(function (x, y) { return legBase(sw[x].ab, 'free', e.leg, 1) - legBase(sw[y].ab, 'free', e.leg, 1) || x - y; });
+        best = [best[1], best[2], best[3], best[0]].filter(function (v) { return v !== undefined; }); // fastest anchors
+      }
+      if (best && best.length === 4) for (var k = 0; k < 4; k++) { lu[sl[k]] = best[k]; tot[best[k]]++; }
+    });
+    return lu;
+  }
+
+  /* ---------- local search: best lineup for one side against a fixed other side ---------- */
+  // A fast scorer for one side against fixed opponent times (no allocation per call). Same rules as scoreMeet.
+  function fastScorer(team, noise, oppLu, oppTimes) {
+    var base = new Float64Array(NS * ROSTER), nz = new Float64Array(NS * ROSTER), ld = new Float64Array(NS);
+    for (var si = 0; si < NS; si++) { ld[si] = slotLoad(si); for (var p = 0; p < ROSTER; p++) { base[si * ROSTER + p] = slotBase(team, si, p); nz[si * ROSTER + p] = noise ? 1 + noise[p][SLOTS[si].ev] : 1; } }
+    var opp = EV.map(function (e, ei) {
+      if (e.relay) return relayTime(oppTimes.t, ei);
+      var a = []; EV_SLOTS[ei].forEach(function (k) { if (oppLu[k] >= 0) a.push(oppTimes.t[k]); }); return a;
+    });
+    var acc = new Float64Array(ROSTER), last = new Int32Array(ROSTER), tt = new Float64Array(NS), mine = [0, 0, 0];
+    function pts(x, arrA, nA, arrB, table) { // points for time x among arrA (first nA) + arrB
+      var faster = 0, eq = 0, i;
+      for (i = 0; i < nA; i++) { if (arrA[i] < x) faster++; else if (arrA[i] === x) eq++; }
+      for (i = 0; i < arrB.length; i++) { if (arrB[i] < x) faster++; else if (arrB[i] === x) eq++; }
+      var s = 0; for (i = faster; i < faster + eq; i++) s += table[i] || 0; return s / eq;
+    }
+    return function (lu) {
+      acc.fill(0); last.fill(-9);
+      var us = 0, them = 0, soft = 0;
+      for (var e = 0; e < EV.length; e++) {
+        var sl = EV_SLOTS[e], ev = EV[e], j, q;
+        for (j = 0; j < sl.length; j++) {
+          var k = sl[j]; q = lu[k];
+          if (q < 0) { tt[k] = -1; soft -= 0.05; continue; }
+          var m = 1 + TIRE * acc[q] + ((last[q] === e - 1 && !EV[e - 1].brk) ? B2B : 0);
+          tt[k] = Math.round(base[k * ROSTER + q] * m * nz[k * ROSTER + q] * 100) / 100; soft -= m - 1;
+        }
+        for (j = 0; j < sl.length; j++) { q = lu[sl[j]]; if (q >= 0) { acc[q] += ld[sl[j]]; last[q] = e; } }
+        if (ev.relay) {
+          var rt = 0, ok = true; for (j = 0; j < 4; j++) { if (tt[sl[j]] < 0) { ok = false; break; } rt += tt[sl[j]]; }
+          rt = Math.round(rt * 100) / 100; var ot = opp[e];
+          if (ok && ot != null) { if (rt < ot) { us += 8; them += 4; } else if (rt > ot) { us += 4; them += 8; } else { us += 6; them += 6; } }
+          else if (ok) us += 8; else if (ot != null) them += 8;
+        } else {
+          var n = 0; for (j = 0; j < sl.length; j++) if (tt[sl[j]] >= 0) mine[n++] = tt[sl[j]];
+          var oa = opp[e];
+          for (j = 0; j < n; j++) us += pts(mine[j], mine, n, oa, IND_PTS);
+          for (j = 0; j < oa.length; j++) them += pts(oa[j], mine, n, oa, IND_PTS);
+        }
+      }
+      return us - them + soft * 0.02;
+    };
+  }
+  // simulated annealing with swaps and restarts, deterministic RNG; then a greedy polish
+  function optimize(team, noise, oppLu, oppTimes, o) {
+    o = o || {};
+    var R = GK.rng.make(o.seed || 'opt'), iters = o.iters || 6000, restarts = o.restarts || 4;
+    var asA = o.asA !== false; void asA; // the scorer is symmetric: it always scores `team` against the fixed side
+    var evalLu = fastScorer(team, noise, oppLu, oppTimes);
+    var starts = o.starts || [], best = null, bestV = -1e9, evals = 0;
+    for (var r = 0; r < restarts; r++) {
+      var cur = (starts[r] || starts[0] || defaultLineup(team)).slice();
+      if (!starts[r] && r > 0) cur = shake(R, cur, 14);
+      var cv = evalLu(cur); evals++;
+      var lbest = cur.slice(), lbv = cv;
+      for (var it = 0; it < iters; it++) {
+        var T = T0 * Math.pow(0.02 / T0, it / iters);
+        var nx = neighbor(R, cur); if (!nx) continue;
+        var nv = evalLu(nx); evals++;
+        if (nv >= cv || R.next() < Math.exp((nv - cv) / T)) { cur = nx; cv = nv; if (cv > lbv) { lbv = cv; lbest = cur.slice(); } }
+      }
+      var pol = polish(team, lbest, evalLu); evals += pol.evals; if (pol.v > lbv) { lbv = pol.v; lbest = pol.lu; }
+      if (lbv > bestV) { bestV = lbv; best = lbest; }
+    }
+    return { lu: best, v: bestV, evals: evals };
+  }
+  function polish(team, lu, evalLu) {
+    var cur = lu.slice(), cv = evalLu(cur), evals = 1, improved = true, rounds = 0;
+    while (improved && rounds++ < 6) {
+      improved = false;
+      for (var si = 0; si < NS; si++) for (var p = -1; p < ROSTER; p++) {
+        var nx = setSlot(cur, si, p); if (!nx) continue;
+        var v = evalLu(nx); evals++; if (v > cv + 1e-9) { cur = nx; cv = v; improved = true; }
+      }
+    }
+    return { lu: cur, v: cv, evals: evals };
+  }
+  // put swimmer p (or -1) in slot si; swaps inside the event or with p's slot elsewhere when needed. null if impossible.
+  function setSlot(lu, si, p) {
+    if (lu[si] === p) return null;
+    var s = SLOTS[si], out = lu.slice(), sl = EV_SLOTS[s.ev], q = lu[si];
+    if (p < 0) { if (s.relay) return null; out[si] = -1; return out; }
+    for (var j = 0; j < sl.length; j++) if (lu[sl[j]] === p) { out[sl[j]] = q; out[si] = p; return out; }
+    out[si] = p;
+    if (fastOk(out, p) && (q < 0 || fastOk(out, q))) return out;
+    // swap: p leaves one of its other slots of the same kind, q takes it
+    var cands = [];
+    for (var k = 0; k < NS; k++) if (lu[k] === p && SLOTS[k].relay === s.relay) cands.push(k);
+    for (k = 0; k < cands.length; k++) {
+      var o2 = out.slice(); o2[cands[k]] = q;
+      if (o2[cands[k]] === q && dupFree(o2, SLOTS[cands[k]].ev) && fastOk(o2, p) && (q < 0 || fastOk(o2, q))) return o2;
+    }
+    return null;
+  }
+  // limits for one swimmer only (the others did not change)
+  function fastOk(lu, p) {
+    var ind = 0, tot = 0;
+    for (var e = 0; e < EV.length; e++) { var sl = EV_SLOTS[e], n = 0; for (var j = 0; j < sl.length; j++) if (lu[sl[j]] === p) n++; if (n > 1) return false; if (n) { tot++; if (!EV[e].relay) ind++; } }
+    return ind <= MAX_IND && tot <= MAX_TOT;
+  }
+  function dupFree(lu, e) { var sl = EV_SLOTS[e], seen = 0; for (var j = 0; j < sl.length; j++) { var p = lu[sl[j]]; if (p < 0) continue; if (seen & (1 << p)) return false; seen |= 1 << p; } return true; }
+  function swapSlots(lu, a, b) {
+    var pa = lu[a], pb = lu[b]; if (pa === pb || SLOTS[a].ev === SLOTS[b].ev) return null;
+    var out = lu.slice(); out[a] = pb; out[b] = pa;
+    if (!dupFree(out, SLOTS[a].ev) || !dupFree(out, SLOTS[b].ev)) return null;
+    if ((pa >= 0 && !fastOk(out, pa)) || (pb >= 0 && !fastOk(out, pb))) return null;
+    if ((pa < 0 && SLOTS[b].relay) || (pb < 0 && SLOTS[a].relay)) return null;
+    return out;
+  }
+  function neighbor(R, lu) {
+    if (R.next() < SWAP_P) { for (var t2 = 0; t2 < 8; t2++) { var sw2 = swapSlots(lu, R.int(0, NS - 1), R.int(0, NS - 1)); if (sw2) return sw2; } }
+    for (var tries = 0; tries < 8; tries++) {
+      var si = R.int(0, NS - 1), r = R.next(), p;
+      if (r < 0.04 && !SLOTS[si].relay) p = -1; else p = R.int(0, ROSTER - 1);
+      var nx = setSlot(lu, si, p); if (nx) return nx;
+    }
+    return null;
+  }
+  function shake(R, lu, n) { var cur = lu; for (var i = 0; i < n; i++) { var nx = neighbor(R, cur); if (nx) cur = nx; } return cur; }
+
+  /* ---------- a whole meet from a seed ---------- */
+  var cache = {};
+  function makeMeet(seed, o) {
+    o = o || {};
+    var key = seed + '|' + (o.quick ? 'q' : 'f') + '|' + (o.homeEdge || 0) + '|' + (o.awayEdge || 0) + '|' + (o.revealInd === undefined ? '' : o.revealInd);
+    if (cache[key]) return cache[key];
+    var M = null;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      M = buildMeet(seed, attempt, o);
+      if (M.defaultMargin < 0 && M.best.margin >= 2) break;
+    }
+    M.attempt = attempt;
+    cache[key] = M;
+    return M;
+  }
+  function buildMeet(seed, attempt, o) {
+    var R = GK.rng.make(seed + '/meet/' + attempt);
+    var gender = R.chance(0.5) ? 'girls' : 'boys', used = {};
+    var home = makeTeam(R.sub('home'), gender, o.homeEdge === undefined ? 0 : o.homeEdge, HOME.school, HOME.mascot, used);
+    var away = makeTeam(R.sub('away'), gender, (o.awayEdge === undefined ? AWAY_EDGE : o.awayEdge) + R.float(-0.02, 0.02), R.pick(SCHOOLS), R.pick(MASCOTS), used);
+    var noiseA = makeNoise(seed + '#' + attempt, 'A'), noiseB = makeNoise(seed + '#' + attempt, 'B');
+    var defA = defaultLineup(home), tDefA = times(home, defA, noiseA);
+    // their coach scouted your usual lineup and built theirs to beat it
+    var defB = defaultLineup(away);
+    var optB = optimize(away, noiseB, defA, tDefA, { asA: false, seed: seed + '/coachB', iters: o.quick ? 1500 : 2500, restarts: 1, starts: [defB] });
+    var luB = optB.lu, tB = times(away, luB, noiseB);
+    var defScore = scoreMeet(defA, tDefA, luB, tB);
+    var optA = optimize(home, noiseA, luB, tB, { asA: true, seed: seed + '/best', iters: o.quick ? 4000 : 12000, restarts: o.quick ? 3 : 12, starts: [defA] });
+    var bestLu = optA.lu, bestScore = scoreMeet(bestLu, times(home, bestLu, noiseA), luB, tB);
+    // scouted events: one relay and two individual events of theirs are visible
+    var RR = R.sub('reveal'), rel = [0, 7, 10], indv = [1, 2, 3, 4, 5, 6, 8, 9];
+    RR.shuffle(indv);
+    var nInd = o.revealInd === undefined ? REVEAL_IND : o.revealInd;
+    var reveal = [RR.pick(rel)].concat(indv.slice(0, nInd)).sort(function (a, b) { return a - b; });
+    return {
+      seed: seed, gender: gender, home: home, away: away, noiseA: noiseA, noiseB: noiseB,
+      defA: defA, luB: luB, tB: tB, reveal: reveal,
+      defaultMargin: defScore.margin, defaultScore: defScore,
+      best: { lu: bestLu, us: bestScore.us, them: bestScore.them, margin: bestScore.margin },
+      evals: optA.evals + optB.evals
+    };
+  }
+  // final result of a player's lineup
+  function swim(M, lu) {
+    var tA = times(M.home, lu, M.noiseA);
+    return scoreMeet(lu, tA, M.luB, M.tB, true);
+  }
+  // seed-time projection (no race-day swing) for display
+  function project(team, lu) { return times(team, lu, null); }
+
+  // what a tap can do: put p in slot si directly, or swap lanes inside the same event. Never moves a swimmer out of another event.
+  function place(lu, si, p) {
+    var s = SLOTS[si], sl = EV_SLOTS[s.ev], q = lu[si], out = lu.slice();
+    if (q === p) return { lu: out, same: true };
+    if (p < 0) { if (s.relay) return { err: 'A relay needs all four legs.' }; out[si] = -1; return { lu: out }; }
+    for (var j = 0; j < sl.length; j++) if (lu[sl[j]] === p) { if (q < 0 && s.relay) return { err: 'A relay needs all four legs.' }; out[sl[j]] = q; out[si] = p; return { lu: out, swap: true }; }
+    out[si] = p;
+    var c = counts(out), ind = [], all = [];
+    EV.forEach(function (ev, e) { if (EV_SLOTS[e].some(function (k) { return lu[k] === p; })) { all.push(ev.short); if (!ev.relay) ind.push(ev.short); } });
+    if (c.ind[p] > MAX_IND) return { err: 'Already has 2 individual events (' + ind.join(', ') + ').' };
+    if (c.tot[p] > MAX_TOT) return { err: 'Already has 4 events (' + all.join(', ') + ').' };
+    return { lu: out };
+  }
+  // when p is at a limit: p takes slot si and the swimmer there (or an empty lane) takes p's place in one of p's other events
+  function trades(lu, si, p) {
+    var s = SLOTS[si], q = lu[si], outL = [];
+    if (p < 0 || q === p || EV_SLOTS[s.ev].some(function (k) { return lu[k] === p; })) return outL;
+    for (var k = 0; k < NS; k++) {
+      if (lu[k] !== p || SLOTS[k].ev === s.ev) continue;
+      if (q < 0 && SLOTS[k].relay) continue;
+      var o2 = lu.slice(); o2[si] = p; o2[k] = q;
+      if (valid(o2)) outL.push({ lu: o2, slot: k, q: q, ev: SLOTS[k].ev });
+    }
+    return outL;
+  }
+  // every lineup one tap away (a direct pick, a lane swap, or a trade)
+  function taps(lu) {
+    var outL = [];
+    for (var si = 0; si < NS; si++) for (var p = -1; p < ROSTER; p++) {
+      var pr = place(lu, si, p);
+      if (pr.lu && !pr.same) outL.push({ slot: si, p: p, lu: pr.lu });
+      else if (pr.err && p >= 0) trades(lu, si, p).forEach(function (t) { outL.push({ slot: si, p: p, lu: t.lu, trade: t.slot }); });
+    }
+    return outL;
+  }
+  // what the player can know of their lineup: the scouted events as they are, the rest guessed from their usual lineup
+  function assumedOpp(M) {
+    var lu = defaultLineup(M.away);
+    M.reveal.forEach(function (ei) { EV_SLOTS[ei].forEach(function (si) { lu[si] = M.luB[si]; }); });
+    return lu;
+  }
+  // best single tap for the first-play hint, judged only on what the page shows (seed times, scouted events, their roster)
+  function hint(M, lu) {
+    var opp = assumedOpp(M), tOpp = times(M.away, opp, null);
+    var f = fastScorer(M.home, null, opp, tOpp), base = f(lu), best = null, bestV = base + 0.99;
+    taps(lu).forEach(function (t) {
+      var v = f(t.lu) + (M.reveal.indexOf(SLOTS[t.slot].ev) >= 0 ? 0.5 : 0);
+      if (v > bestV) { bestV = v; best = { slot: t.slot, p: t.p, trade: t.trade, lu: t.lu, gain: Math.round(v - base) }; }
+    });
+    return best;
+  }
+
+  var DM = {
+    EV: EV, SLOTS: SLOTS, NS: NS, EV_SLOTS: EV_SLOTS, LEGNAME: LEGNAME, IND_PTS: IND_PTS, REL_PTS: REL_PTS, TOTAL_PTS: TOTAL_PTS,
+    LANES: LANES, MAX_IND: MAX_IND, MAX_TOT: MAX_TOT, ROSTER: ROSTER, TIRE: TIRE, B2B: B2B, LOAD: LOAD, HOME: HOME,
+    fmt: fmt, makeTeam: makeTeam, times: times, project: project, fatigue: fatigue, relayTime: relayTime, counts: counts,
+    problems: problems, valid: valid, scoreMeet: scoreMeet, placePoints: placePoints, defaultLineup: defaultLineup,
+    optimize: optimize, _tune: function (k, v) { if (k === 'swap') SWAP_P = v; if (k === 't0') T0 = v; }, fastScorer: fastScorer, setSlot: setSlot, place: place, trades: trades, taps: taps, assumedOpp: assumedOpp, makeMeet: makeMeet, swim: swim, hint: hint, slotBase: slotBase, _cache: cache
+  };
+  root.DM = DM;
+  if (typeof module !== 'undefined' && module.exports) module.exports = DM;
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script id="game">// Dual Meet: screens and input. Rules live in rules.js (window.DM). Kit: window.GK.
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var DM = window.DM, EV = DM.EV, SL = DM.SLOTS, ES = DM.EV_SLOTS, fmt = DM.fmt, esc = GK.esc;
+  var GAME = 'dual-meet';
+  GK.view.init();
+
+  /* ---------- save ---------- */
+  var S = GK.save.store('dualMeet.v1', {
+    version: 1,
+    defaults: { plays: 0, wins: 0, perfect: 0, beat: 0, days: { days: 0, last: '' }, badges: {}, muted: false, tut: 0,
+      draft: { key: '', lu: [] }, today: { key: '', lu: [], us: 0, them: 0, best: 0 }, hist: [] }
+  });
+  var D = S.data;
+  function okLu(lu) { return Array.isArray(lu) && lu.length === DM.NS && DM.valid(lu); }
+  function save() { S.save(); }
+
+  /* ---------- kit pieces ---------- */
+  GK.audio.init({}).std();
+  GK.audio.setMuted(D.muted);
+  var J = GK.juice.create();
+  GK.juice.panel(J);
+  var BADGES = [
+    { id: 'first', name: 'First Meet', desc: 'Swim a meet', test: function (s) { return s.plays >= 1; } },
+    { id: 'win', name: 'Dual Win', desc: 'Win a meet', test: function (s) { return s.won; } },
+    { id: 'perfect', name: 'Perfect Lineup', desc: 'Match the best lineup we found', test: function (s) { return s.perfect; } },
+    { id: 'beat', name: 'Coach of the Year', desc: 'Beat the best lineup we found', hidden: true, test: function (s) { return s.beat; } },
+    { id: 'relays', name: 'Relay Sweep', desc: 'Win all three relays', test: function (s) { return s.relays === 3; } },
+    { id: 'photo', name: 'Photo Finish', desc: 'Win by 2 points or fewer', test: function (s) { return s.won && s.margin <= 2; } },
+    { id: 'comeback', name: 'Comeback', desc: 'Win after trailing by 10 or more', test: function (s) { return s.won && s.low <= -10; } },
+    { id: 'days7', name: 'Pool Regular', desc: 'Swim 7 daily meets', test: function (s) { return s.days >= 7; } },
+    { id: 'scratch', name: 'Scratched', desc: 'Win with an empty lane', funny: true, test: function (s) { return s.won && s.empty > 0; } },
+    { id: 'wrongpool', name: 'Wrong Pool', desc: 'Lose by 40 or more', funny: true, test: function (s) { return s.margin <= -40; } }
+  ];
+  var BD = GK.badges.create(BADGES, D.badges, { toast: true });
+
+  /* ---------- state ---------- */
+  var st = { mode: 'title', M: null, lu: null, practice: false, code: '', key: '', sheet: null, hint: null, res: null, shown: 0, timer: 0, retry: false };
+  var todayCache = { key: '', M: null };
+  function todayKey() { return GK.daily.key(); }
+  function todayMeet() {
+    var k = todayKey();
+    if (todayCache.key !== k) { todayCache.key = k; todayCache.M = DM.makeMeet(GK.daily.seed(GAME, k)); }
+    return todayCache.M;
+  }
+  function pts(x) { return Number.isInteger(x) ? String(x) : x.toFixed(1); }
+  function sw(side, p) { return (side === 0 ? st.M.home : st.M.away).swimmers[p]; }
+  function g(M) { return M.gender === 'girls' ? 'Girls' : 'Boys'; }
+
+  function show(mode) {
+    st.mode = mode;
+    $('sTitle').hidden = mode !== 'title'; $('sMeet').hidden = mode !== 'meet'; $('sRes').hidden = mode !== 'res';
+    try { window.scrollTo(0, 0); } catch (e) {}
+  }
+
+  /* ---------- title ---------- */
+  function titleRender() {
+    var k = todayKey();
+    $('tDate').textContent = 'Today · ' + GK.daily.label(k);
+    var M = todayCache.key === k ? todayCache.M : null;
+    $('tVs').textContent = M ? g(M) + ' dual meet vs ' + M.away.name : 'Setting up today\'s meet';
+    var done = D.today.key === k;
+    $('tState').textContent = done ? (D.today.us > D.today.them ? 'Won ' : D.today.us < D.today.them ? 'Lost ' : 'Tied ') + pts(D.today.us) + '–' + pts(D.today.them) + '. Best lineup found: +' + pts(D.today.best) + '.' : (D.draft.key === k ? 'Lineup in progress.' : 'Not swum yet.');
+    $('tGo').textContent = done ? 'See today\'s result' : 'Today\'s meet';
+    $('tNext').textContent = 'New meet in ' + GK.daily.countdown(GK.daily.msToNext()) + (D.days.days ? ' · ' + D.days.days + (D.days.days === 1 ? ' day' : ' days') + ' played' : '');
+  }
+  function goTitle() { closeSheet(); clearTimeout(st.timer); show('title'); titleRender(); }
+
+  /* ---------- open a meet ---------- */
+  function openToday() {
+    var M = todayMeet(), k = todayKey();
+    st.M = M; st.practice = false; st.retry = false; st.code = ''; st.key = k;
+    if (D.today.key === k && okLu(D.today.lu)) { st.lu = D.today.lu.slice(); finish(false); return; }
+    st.lu = (D.draft.key === k && okLu(D.draft.lu)) ? D.draft.lu.slice() : M.defA.slice();
+    enterMeet();
+  }
+  function openPractice(code, lu) {
+    st.code = code || GK.rng.code(); st.practice = true; st.key = '';
+    st.M = DM.makeMeet('practice|' + st.code);
+    st.lu = lu && okLu(lu) ? lu.slice() : st.M.defA.slice();
+    enterMeet();
+  }
+  function retryToday() {
+    var M = todayMeet(); st.M = M; st.practice = true; st.retry = true; st.code = ''; st.key = '';
+    st.lu = M.defA.slice(); enterMeet();
+  }
+  function enterMeet() {
+    var M = st.M;
+    $('mTitle').textContent = g(M) + (st.practice ? (st.retry ? ' · today again' : ' · practice') : ' dual meet');
+    $('mSub').textContent = M.home.school + ' vs ' + M.away.name + (st.practice ? (st.retry ? ' · not scored' : ' · ' + st.code) : ' · ' + GK.daily.label(st.key));
+    st.hint = D.tut === 0 ? DM.hint(M, st.lu) : null;
+    coach(D.tut === 0 ? (st.hint ? 'Their coach built a lineup to beat your usual one. You scouted the ★ events. Tap the pulsing lane to fix one.' : 'Their coach built a lineup to beat your usual one. You scouted the ★ events. Tap any lane to change who swims.') : '');
+    show('meet'); renderMeet();
+  }
+  function coach(text) { $('coach').hidden = !text; $('coachT').textContent = text || ''; }
+
+  /* ---------- the meet sheet ---------- */
+  function renderMeet() {
+    var M = st.M, lu = st.lu, pA = DM.project(M.home, lu), pB = DM.project(M.away, M.luB);
+    var proj = DM.scoreMeet(lu, pA, M.luB, pB, true), h = '', seenUs = 0, seenThem = 0, empty = 0;
+    for (var e = 0; e < EV.length; e++) {
+      var ev = EV[e], sc = M.reveal.indexOf(e) >= 0, pe = proj.events[e];
+      if (sc) { seenUs += pe.us; seenThem += pe.them; }
+      h += '<div class="ev' + (sc ? ' sc' : '') + '" data-ev="' + e + '"><div class="evh"><span class="n">' + (e + 1) + '</span><b>' + ev.name + '</b>' +
+        (sc ? '<span class="st g">★ Scouted</span><span class="pj">Seeds: <b class="' + (pe.us > pe.them ? 'w' : pe.us < pe.them ? 'l' : '') + '">' + pts(pe.us) + '–' + pts(pe.them) + '</b></span>' : '<span class="st h">Hidden</span>') + '</div>';
+      h += '<div class="side you"><span class="mk" aria-label="You">●</span><div class="lanes' + (ev.relay ? ' r' : '') + '">';
+      ES[e].forEach(function (si) {
+        var p = lu[si], s = SL[si], pulse = st.hint && st.hint.slot === si ? ' pulse' : '';
+        if (p < 0) { empty++; h += '<button class="chip empty' + pulse + '" data-slot="' + si + '">+ Add swimmer</button>'; return; }
+        var m = pA.mult[si], tag = pA.b2b[si] ? '<span class="cf">▲ +' + ((m - 1) * 100).toFixed(1) + '%</span>' : (m > 1.0049 ? '<span class="cl">+' + ((m - 1) * 100).toFixed(1) + '%</span>' : '');
+        h += '<button class="chip' + pulse + '" data-slot="' + si + '" aria-label="' + esc(sw(0, p).name + ', ' + ev.name + (s.relay ? ' ' + DM.LEGNAME[s.leg] + ' leg' : '') + ', ' + fmt(pA.t[si])) + '">' +
+          (s.relay ? '<span class="cl">' + DM.LEGNAME[s.leg] + (ev.legs[0] === 'free' ? ' ' + (s.k + 1) : '') + '</span>' : '') +
+          '<span class="cn">' + esc(sw(0, p).short) + '</span><span class="ct">' + fmt(pA.t[si]) + tag + '</span></button>';
+      });
+      h += '</div></div><div class="side them"><span class="mk" aria-label="Them">◆</span>';
+      if (sc) {
+        h += '<div class="lanes' + (ev.relay ? ' r' : '') + '">';
+        ES[e].forEach(function (si) {
+          var p = M.luB[si], s = SL[si]; if (p < 0) { h += '<div class="chip empty">Empty</div>'; return; }
+          h += '<div class="chip">' + (s.relay ? '<span class="cl">' + DM.LEGNAME[s.leg] + (ev.legs[0] === 'free' ? ' ' + (s.k + 1) : '') + '</span>' : '') + '<span class="cn">' + esc(sw(1, p).short) + '</span><span class="ct">' + fmt(pB.t[si]) + (pB.b2b[si] ? '<span class="cf">▲</span>' : '') + '</span></div>';
+        });
+        h += '</div>';
+      } else h += '<div class="hid">' + topSeeds(e) + '</div>';
+      h += '</div></div>';
+      if (ev.brk) h += '<div class="brk">Diving · swimmers get a break</div>';
+    }
+    $('events').innerHTML = h;
+    $('mInfo').innerHTML = '<b>Scouted events: ' + pts(seenUs) + '–' + pts(seenThem) + '</b><br>' + M.reveal.length + ' of 11 seen' + (empty ? ' · ' + empty + ' empty ' + (empty === 1 ? 'lane' : 'lanes') : ' · all lanes filled');
+    $('mSwim').disabled = false;
+  }
+  // what a coach can see of a hidden event: their roster's top seeds
+  function topSeeds(e) {
+    var M = st.M, ev = EV[e], ros = M.away.swimmers;
+    if (!ev.relay) {
+      var a = ros.slice().sort(function (x, y) { return x.ab[ev.ab] - y.ab[ev.ab]; }).slice(0, 3);
+      return 'Their top seeds: ' + a.map(function (s) { return esc(s.last) + ' <span class="num">' + fmt(s.ab[ev.ab]) + '</span>'; }).join(' · ');
+    }
+    var base = function (s, leg, k) { return DM.slotBase(M.away, ES[e][k], s.id); };
+    if (ev.legs[0] === 'free') {
+      var f = ros.slice().sort(function (x, y) { return base(x, 'free', 1) - base(y, 'free', 1); }).slice(0, 4);
+      return 'Their four fastest: ' + f.map(function (s) { return esc(s.last); }).join(', ');
+    }
+    var out = [];
+    ['back', 'breast', 'fly'].forEach(function (lg, k) { var b = ros.slice().sort(function (x, y) { return base(x, lg, k) - base(y, lg, k); })[0]; out.push(DM.LEGNAME[lg] + ' ' + esc(b.last)); });
+    return 'Their best legs: ' + out.join(' · ');
+  }
+
+  /* ---------- placing a swimmer ---------- */
+  var place = DM.place;
+  function schedule(lu, p) {
+    var ind = [], all = [];
+    EV.forEach(function (ev, e) { if (ES[e].some(function (si) { return lu[si] === p; })) { all.push(ev.short); if (!ev.relay) ind.push(ev.short); } });
+    return { ind: ind, all: all };
+  }
+  function openPick(si) {
+    var M = st.M, s = SL[si], ev = EV[s.ev], cur = st.lu[si], rows = [], c = DM.counts(st.lu);
+    for (var p = 0; p < DM.ROSTER; p++) {
+      var r = place(st.lu, si, p), sc = schedule(st.lu, p), base = { p: p, s: M.home.swimmers[p], sched: sc, ind: c.ind[p], tot: c.tot[p] };
+      if (r.lu) rows.push(proj(Object.assign({ r: r, lu: r.lu }, base), si));
+      else {
+        var tr = DM.trades(st.lu, si, p);
+        if (tr.length) tr.forEach(function (t) { rows.push(proj(Object.assign({ r: r, lu: t.lu, tr: t }, base), si)); });
+        else rows.push(Object.assign({ r: r }, base));
+      }
+    }
+    rows.sort(function (a, b) { if (!!a.lu !== !!b.lu) return a.lu ? -1 : 1; if (a.lu) return a.t - b.t || (a.tr ? 1 : 0) - (b.tr ? 1 : 0); return a.p - b.p; });
+    var h = '<p class="note">' + (s.relay ? DM.LEGNAME[s.leg] + ' leg' + (ev.legs[0] === 'free' ? ' ' + (s.k + 1) : '') + '. ' : '') + 'Times include tiredness from earlier swims. Up to 2 individual events and 4 events each.</p>';
+    rows.forEach(function (w) {
+      var ok = !!w.lu, hp = st.hint && st.hint.slot === si && st.hint.p === w.p && (st.hint.trade == null ? !w.tr : w.tr && w.tr.slot === st.hint.trade), pulse = hp ? ' pulse' : '';
+      var meta;
+      if (w.tr) meta = '↔ Trade: ' + (w.tr.q < 0 ? 'leaves ' + EV[w.tr.ev].short + ' open' : esc(M.home.swimmers[w.tr.q].short) + ' takes ' + esc(w.s.short) + '\'s ' + EV[w.tr.ev].short);
+      else if (ok) { meta = w.s.label + ' · grade ' + w.s.grade + ' · ' + w.ind + '/2 ind · ' + w.tot + '/4 events'; if (w.sched.all.length) meta += ' · swims ' + w.sched.all.join(', '); }
+      else meta = esc(w.r.err) + ' · ' + w.s.label;
+      if (ok && w.b2b) meta += ' · <span class="w">▲ back-to-back +' + ((w.m - 1) * 100).toFixed(1) + '%</span>';
+      else if (ok && w.m > 1.0049) meta += ' · tired +' + ((w.m - 1) * 100).toFixed(1) + '%';
+      h += '<button class="pk' + (w.p === cur ? ' cur' : '') + (ok ? '' : ' off') + pulse + '" data-p="' + w.p + '"' + (w.tr ? ' data-tr="' + w.tr.slot + '"' : '') + (ok ? '' : ' aria-disabled="true"') + '><span class="mk">●</span><span class="pn">' + esc(w.s.name) + (w.p === cur ? ' (here now)' : w.r.swap ? ' (swap lanes)' : '') + '</span><span class="pt">' + (ok ? fmt(w.t) : '–') + '</span><span class="pm">' + meta + '</span></button>';
+    });
+    if (!s.relay) h += '<button class="pk' + (cur < 0 ? ' cur' : '') + (st.hint && st.hint.slot === si && st.hint.p === -1 ? ' pulse' : '') + '" data-p="-1"><span class="mk">○</span><span class="pn">Leave this lane empty</span><span class="pt"></span><span class="pm">Scores nothing here, frees this swimmer for another event.</span></button>';
+    openSheet(ev.name + (s.relay ? ' · ' + DM.LEGNAME[s.leg] : ' · lane ' + (s.k + 1)), h, { kind: 'pick', slot: si });
+  }
+  function proj(w, si) { var pr = DM.project(st.M.home, w.lu); w.t = pr.t[si]; w.m = pr.mult[si]; w.b2b = pr.b2b[si]; return w; }
+  function choose(si, p, tr) {
+    var r = place(st.lu, si, p), nlu = r.lu;
+    if (!nlu && tr != null) { var t = DM.trades(st.lu, si, p).filter(function (x) { return x.slot === +tr; })[0]; if (t) nlu = t.lu; }
+    if (!nlu) { GK.ui.toast(r.err, 2400); J.haptic('fail'); return false; }
+    st.lu = nlu; closeSheet();
+    if (!st.practice) { D.draft.key = st.key; D.draft.lu = st.lu.slice(); save(); }
+    GK.audio.play('tap'); J.haptic('tap');
+    if (D.tut === 0 && st.hint) { st.hint = null; coach('Nice. The ★ events show seed points. Fix anything else you want, then tap Swim.'); }
+    renderMeet();
+    return true;
+  }
+
+  /* ---------- sheets ---------- */
+  function openSheet(title, html, o) { st.sheet = o || { kind: 'info' }; $('shTitle').textContent = title; $('shBody').innerHTML = html; $('sheet').hidden = false; }
+  function closeSheet() { st.sheet = null; $('sheet').hidden = true; $('shBody').innerHTML = ''; }
+  function openRoster(tab) {
+    var M = st.M, lu = st.lu, h = '<div class="tabs"><button class="btn' + (tab !== 'them' ? ' on' : '') + '" data-act="ros-you">Your roster</button><button class="btn' + (tab === 'them' ? ' on' : '') + '" data-act="ros-them">' + esc(M.away.school) + '</button></div>';
+    var c = DM.counts(lu);
+    if (tab !== 'them') {
+      M.home.swimmers.forEach(function (s, p) {
+        var sc = schedule(lu, p);
+        h += '<div class="ros"><div class="rn"><span style="color:var(--you)">●</span><b>' + esc(s.name) + '</b><span>' + s.label + ' · ' + s.grade + '</span><span class="cnt">' + c.ind[p] + '/2 · ' + c.tot[p] + '/4</span></div><div class="re">' + (sc.all.length ? 'Swims ' + sc.all.join(', ') : 'Not swimming yet') + '</div><div class="re">' + bests(s) + '</div></div>';
+      });
+    } else {
+      h += '<p class="note">Season best times. Their lineup is hidden except the ★ events.</p>';
+      M.away.swimmers.forEach(function (s) { h += '<div class="ros"><div class="rn"><span style="color:var(--them)">◆</span><b>' + esc(s.name) + '</b><span>' + s.label + ' · ' + s.grade + '</span></div><div class="re">' + bests(s) + '</div></div>'; });
+    }
+    openSheet('Roster', h, { kind: 'roster', tab: tab });
+  }
+  function bests(s) {
+    var a = s.ab, L = [['50 Fr', a.f50], ['100 Fr', a.f100], ['200 Fr', a.f200], ['500 Fr', a.f500], ['100 Bk', a.bk100], ['100 Br', a.br100], ['100 Fl', a.fl100], ['200 IM', a.im200]];
+    return L.map(function (x) { return x[0] + ' <span class="num">' + fmt(x[1]) + '</span>'; }).join(' · ');
+  }
+  function openHelp() {
+    openSheet('How to play', '<ol class="rules">' +
+      '<li><b>Beat their lineup.</b> Put your 12 swimmers into the 11 events of a high school dual meet, then tap Swim.</li>' +
+      '<li><b>Entry limits.</b> Each swimmer gets up to 2 individual events and 4 events in all. You have 3 lanes in each individual event and one relay.</li>' +
+      '<li><b>Scoring.</b> Individual places score 6, 4, 3, 2, 1. A relay win scores 8 and second scores 4. Ties split the points. 164 points in all, so 83 wins.</li>' +
+      '<li><b>Tired swimmers.</b> Every earlier swim adds a little time, more after long races. Back-to-back events (▲) add 2%. Diving after the 50 Free is a break.</li>' +
+      '<li><b>Scouting.</b> Their coach built a lineup to beat your usual one. You can see 4 of their events (★). For the rest you see their top seeds.</li>' +
+      '<li><b>Race day.</b> Every swim moves a few tenths from its seed, so a very close race can go either way. A clear gap never flips.</li>' +
+      '<li><b>Daily.</b> One meet a day, the same for everyone, new at your midnight. Practice meets never run out.</li>' +
+      '</ol><p class="note">All swimmers and schools are made up.</p>', { kind: 'help' });
+  }
+  function openSettings() {
+    openSheet('Settings', '<div class="row"><button class="btn" data-act="mute">' + (D.muted ? 'Sound: off' : 'Sound: on') + '</button><button class="btn" data-act="tut">Show the tips again</button></div>' +
+      '<div class="sec">Your save</div><p class="note">Progress keeps three backups and saves when you leave. Safari can clear a page after 7 days away, so export a code now and then.</p>' +
+      '<div class="row"><button class="btn" data-act="export">Export save</button><button class="btn" data-act="import">Import save</button></div>', { kind: 'settings' });
+  }
+  function openBadges() {
+    openSheet('Badges · ' + BD.count() + ' of ' + BADGES.length, '<div class="badgeWrap" id="bdWrap"></div>', { kind: 'badges' });
+    BD.render($('bdWrap'));
+  }
+  var tools = GK.ui.saveTools(S, { onImported: function () { D = S.data; BD = GK.badges.create(BADGES, D.badges, { toast: true }); GK.audio.setMuted(D.muted); goTitle(); } });
+  function sheetAct(act) {
+    if (act === 'ros-you') openRoster('you');
+    else if (act === 'ros-them') openRoster('them');
+    else if (act === 'mute') { D.muted = !D.muted; GK.audio.setMuted(D.muted); save(); openSettings(); }
+    else if (act === 'tut') { D.tut = 0; save(); GK.ui.toast('Tips will show on your next meet', 2000); }
+    else if (act === 'export') { closeSheet(); tools.exportSave(); }
+    else if (act === 'import') { closeSheet(); tools.importSave(); }
+    else if (act === 'again') { closeSheet(); again(); }
+  }
+
+  /* ---------- swim and results ---------- */
+  function swimNow() {
+    if (st.mode !== 'meet') return;
+    closeSheet();
+    if (D.tut === 0) { D.tut = 1; coach(''); }
+    finish(true);
+  }
+  function finish(fresh) {
+    var M = st.M, r = DM.swim(M, st.lu), best = M.best, low = 0, relays = 0, empty = 0;
+    r.events.forEach(function (e) { low = Math.min(low, e.runUs - e.runThem); if (EV[e.ev].relay && e.us > e.them) relays++; });
+    st.lu.forEach(function (p) { if (p < 0) empty++; });
+    var beat = r.margin > best.margin, perfect = r.margin >= best.margin;
+    st.res = { r: r, best: best, beat: beat, perfect: perfect, low: low, relays: relays, empty: empty };
+    if (fresh) {
+      D.plays++; if (r.margin > 0) D.wins++; if (perfect) D.perfect++; if (beat) D.beat++;
+      if (!st.practice) {
+        D.today = { key: st.key, lu: st.lu.slice(), us: r.us, them: r.them, best: best.margin };
+        D.draft = { key: '', lu: [] };
+        GK.daily.mark(D.days, st.key);
+        D.hist.push({ k: st.key, us: r.us, them: r.them, best: best.margin }); if (D.hist.length > 60) D.hist.splice(0, D.hist.length - 60);
+      }
+      save();
+    }
+    show('res'); renderResults(fresh);
+  }
+  function stars(res) { var m = res.r.margin, b = res.best.margin; return res.perfect ? 3 : m > 0 && m >= b / 2 ? 2 : m > 0 ? 1 : 0; }
+  function renderResults(animate) {
+    var M = st.M, res = st.res, r = res.r;
+    $('rYouN').textContent = M.home.school; $('rThemN').textContent = M.away.school;
+    $('rLbl').textContent = st.practice ? (st.retry ? 'Today again · not scored' : 'Practice · ' + st.code) : 'Final · ' + GK.daily.label(st.key);
+    $('rEvents').innerHTML = ''; st.shown = 0; st.reveal = r.events.map(eventCard);
+    $('rBest').textContent = 'Best';
+    var reduce = false; try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (!animate) { revealAll(); return; }
+    $('rWL').textContent = ''; $('rRate').innerHTML = ''; $('rUs').textContent = '0'; $('rThem').textContent = '0';
+    $('rBtns').hidden = true; $('rSkip').hidden = false;
+    var step = reduce ? 260 : 620;
+    (function tick() {
+      if (st.mode !== 'res' || st.shown >= r.events.length) { if (st.shown >= r.events.length) endReveal(); return; }
+      showEvent(st.shown++, true);
+      st.timer = setTimeout(tick, step);
+    })();
+  }
+  function showEvent(i, sound) {
+    var e = st.res.r.events[i], box = $('rEvents');
+    box.innerHTML = st.reveal[i] + box.innerHTML; // newest on top
+    $('rUs').textContent = pts(e.runUs); $('rThem').textContent = pts(e.runThem);
+    $('rUs').className = 'pts bump'; $('rThem').className = 'pts';
+    if (sound) GK.audio.play(e.us > e.them ? 'success' : e.us < e.them ? 'fail' : 'tap', { vol: e.us > e.them ? 0.55 : 0.3 });
+  }
+  function revealAll() { clearTimeout(st.timer); var box = $('rEvents'); box.innerHTML = st.reveal.slice().reverse().join(''); st.shown = st.reveal.length; endReveal(true); }
+  function endReveal(quiet) {
+    var res = st.res, r = res.r, M = st.M, b = res.best, n = stars(res);
+    $('rUs').textContent = pts(r.us); $('rThem').textContent = pts(r.them);
+    var w = r.margin > 0 ? 'w' : r.margin < 0 ? 'l' : 't';
+    $('rWL').className = w; $('rWL').textContent = w === 'w' ? 'Win by ' + pts(r.margin) : w === 'l' ? 'Lose by ' + pts(-r.margin) : 'Tie';
+    $('rRate').innerHTML = '<div class="stars" aria-label="' + n + ' of 3 stars">' + '★★★'.slice(0, n) + '<span style="opacity:.3">' + '★★★'.slice(0, 3 - n) + '</span></div>' +
+      (res.beat ? '<b>You beat the best lineup we found (' + signed(b.margin) + ').</b>' : res.perfect ? '<b>Perfect lineup.</b> That matches the best we found.' : 'Best lineup found: <b>' + signed(b.margin) + '</b> (' + pts(b.us) + '–' + pts(b.them) + ')') +
+      (st.practice ? '' : '<br>New meet in ' + GK.daily.countdown(GK.daily.msToNext()));
+    $('rBtns').hidden = false; $('rSkip').hidden = true;
+    $('rBest').textContent = 'Best'; $('rShare').textContent = 'Share';
+    var retry = $('rRetry'); if (retry) retry.hidden = st.practice;
+    if (!quiet) { GK.audio.play(r.margin > 0 ? 'win' : 'fail'); J.haptic(r.margin > 0 ? 'success' : 'fail'); }
+    BD.check({ plays: D.plays, won: r.margin > 0, margin: r.margin, perfect: res.perfect, beat: res.beat, relays: res.relays, low: res.low, empty: res.empty, days: D.days.days });
+    save();
+  }
+  function signed(x) { return (x > 0 ? '+' : x < 0 ? '−' : '') + pts(Math.abs(x)); }
+  function eventCard(e) {
+    var M = st.M, ev = EV[e.ev], h = '<div class="re1"><div class="rh"><span class="num muted small">' + (e.ev + 1) + '</span><b>' + ev.name + '</b><span class="rp"><span class="y">● ' + pts(e.us) + '</span> · <span class="t">◆ ' + pts(e.them) + '</span></span></div>';
+    e.entries.forEach(function (x) {
+      var nm = ev.relay ? (x.side === 0 ? M.home.school : M.away.school) + ' relay' : (x.side === 0 ? M.home : M.away).swimmers[x.p].short;
+      h += '<div class="rr ' + (x.side === 0 ? 'y' : 't') + '"><span class="pl">' + x.place + (x.tie ? '=' : '') + '</span><span class="mk">' + (x.side === 0 ? '●' : '◆') + '</span><span class="nm">' + esc(nm) + (x.b2b ? ' <span class="b2">▲</span>' : '') + '</span><span class="tm">' + fmt(x.t) + '</span><span class="pt">' + pts(x.pts) + '</span></div>';
+      if (ev.relay) h += '<div class="small muted" style="padding-left:44px">' + x.legs.map(function (l, k) { return DM.LEGNAME[ev.legs[k]] + ' ' + esc((x.side === 0 ? M.home : M.away).swimmers[l.p].last) + ' ' + fmt(l.t); }).join(' · ') + '</div>';
+    });
+    return h + '</div>';
+  }
+  function shareText() {
+    var r = st.res.r, b = st.res.best, n = stars(st.res);
+    var grid = r.events.map(function (e) { return e.us > e.them ? '🟦' : e.us < e.them ? '🟥' : '🟨'; }).join('');
+    var score = (r.margin > 0 ? 'W ' : r.margin < 0 ? 'L ' : 'T ') + pts(r.us) + '-' + pts(r.them);
+    var tail = '★'.repeat(n) + '☆'.repeat(3 - n) + ' · best ' + signed(b.margin);
+    if (st.practice && !st.retry) return 'Dual Meet practice ' + st.code + ': ' + score + '\n' + grid + '\n' + tail;
+    return GK.daily.shareLine({ game: 'Dual Meet' + (st.retry ? ' (retry)' : ''), key: st.retry ? todayKey() : st.key, score: score, grid: grid, tail: tail });
+  }
+  function openBest() {
+    var M = st.M, bl = M.best.lu, lu = st.lu, h = '<p class="note">The best lineup we found against their real lineup, race-day swings included: ' + pts(M.best.us) + '–' + pts(M.best.them) + '. Gold names are where it differs from yours.</p><div class="cmp"><div class="sec">Yours</div><div class="sec">Best found</div>';
+    EV.forEach(function (ev, e) {
+      var mine = ES[e].map(function (si) { return lu[si] < 0 ? '–' : M.home.swimmers[lu[si]].last; });
+      var bb = ES[e].map(function (si) { var x = bl[si] < 0 ? '–' : M.home.swimmers[bl[si]].last; return lu[si] !== bl[si] ? '<span class="chg">' + esc(x) + '</span>' : esc(x); });
+      h += '<div><b>' + ev.short + '</b><br>' + mine.map(esc).join(', ') + '</div><div><b>&nbsp;</b><br>' + bb.join(', ') + '</div>';
+    });
+    h += '</div><div class="sec">Their full lineup</div><div class="cmp">';
+    EV.forEach(function (ev, e) { h += '<div><b>' + ev.short + '</b></div><div>' + ES[e].map(function (si) { return M.luB[si] < 0 ? '–' : esc(M.away.swimmers[M.luB[si]].last); }).join(', ') + '</div>'; });
+    openSheet('Best lineup', h + '</div>', { kind: 'best' });
+  }
+  function again() { GK.ui.toast('New practice meet', 1200); setTimeout(function () { openPractice(); }, 30); }
+
+  /* ---------- wiring ---------- */
+  function on(id, fn) { var el = $(id); if (el) el.addEventListener('click', fn); }
+  function attr(e, name) { var el = e && e.target; while (el && el !== document) { if (el.getAttribute && el.getAttribute(name) != null) return el.getAttribute(name); el = el.parentNode; } return null; }
+  on('tGo', function () { openToday(); });
+  on('tPractice', function () { again(); });
+  on('tHelp', openHelp); on('tBadges', openBadges); on('tSet', openSettings);
+  on('mBack', goTitle); on('mHelp', openHelp); on('mRoster', function () { openRoster('you'); }); on('mSwim', swimNow);
+  on('coachX', function () { coach(''); });
+  on('rAgain', again); on('rShare', function () { GK.share.text(shareText(), { title: 'Dual Meet' }); });
+  on('rBest', openBest); on('rMenu', goTitle); on('rSkip', function () { revealAll(); });
+  on('shClose', closeSheet);
+  $('sheet').addEventListener('click', function (e) { if (e.target === $('sheet')) closeSheet(); });
+  $('events').addEventListener('click', function (e) { var s = attr(e, 'data-slot'); if (s != null) openPick(+s); });
+  $('shBody').addEventListener('click', function (e) {
+    var a = attr(e, 'data-act'); if (a) { sheetAct(a); return; }
+    var p = attr(e, 'data-p'); if (p != null && st.sheet && st.sheet.kind === 'pick') choose(st.sheet.slot, +p, attr(e, 'data-tr'));
+  });
+  // a Retry button for today's meet sits beside Share/Best/Menu on daily results
+  (function () { var row = $('rShare') && $('rShare').parentNode; if (!row || !row.insertBefore) return; var b = document.createElement('button'); b.className = 'btn'; b.id = 'rRetry'; b.textContent = 'Retry'; b.addEventListener('click', retryToday); row.insertBefore(b, $('rMenu')); })();
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && st.sheet) closeSheet(); });
+
+  show('title'); titleRender();
+  setTimeout(function () { todayMeet(); titleRender(); }, 30);
+  setInterval(function () { if (st.mode === 'title') titleRender(); }, 30000);
+
+  // test hook (bots and smoke tests drive the real handlers through this)
+  window.__DMT = {
+    st: st, get D() { return D; }, S: S, DM: DM, BD: BD,
+    openToday: openToday, openPractice: openPractice, retryToday: retryToday, openPick: openPick, choose: choose, place: place,
+    swim: swimNow, revealAll: revealAll, shareText: shareText, openBest: openBest, openRoster: openRoster, openHelp: openHelp, openSettings: openSettings, openBadges: openBadges,
+    goTitle: goTitle, sheetAct: sheetAct, todayMeet: todayMeet
+  };
+})();
+</script>
+</body></html>

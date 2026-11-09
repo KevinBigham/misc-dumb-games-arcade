@@ -1,0 +1,228 @@
+<title>Lanewake</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one full-bleed canvas (pool overhead shot + two thumb pads), with DOM menus floating over it.
+   Look: a natatorium at night on the broadcast camera — deep tiled water, deck slate, amber scoreboard digits. Single dark theme by choice. */
+:root{
+  color-scheme: dark;
+  --deck:#0f1a24;        /* wet deck slate */
+  --deck2:#162636;
+  --water:#0d6f8f;       /* tiled pool */
+  --ink:#eef6fa;
+  --muted:#9fb6c4;
+  --lane:#ffd84a;        /* lane-rope gold */
+  --led:#ffb23e;         /* scoreboard amber */
+  --you:#4cc9f0;         /* your cap */
+  --good:#6ef0b4; --bad:#ff7a6e;
+  --gold:#ffd45e; --silver:#dfe7f5; --bronze:#de9466;
+  --display:"Avenir Next Condensed","Futura","Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif;
+  --body:"Avenir Next","Segoe UI","Helvetica Neue",Roboto,Arial,sans-serif;
+  --mono:"SF Mono","Menlo","Consolas","Roboto Mono",monospace;
+}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--deck);color:var(--ink);overflow:hidden;overscroll-behavior:none}
+body{font-family:var(--body);-webkit-tap-highlight-color:transparent}
+#app{position:relative;height:100%;width:100%;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:none;background:var(--deck)}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--led);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+#bPause{position:absolute;top:6px;right:max(8px,env(safe-area-inset-right,0px));z-index:4;width:40px;height:34px;border-radius:9px;background:rgba(15,26,36,.72);font:700 calc(max(12px, 15px) * min(var(--gk-text-scale, 1), 1.25)) var(--display);letter-spacing:.06em}
+/* ---------- menus ---------- */
+.scr{position:absolute;inset:0;z-index:6;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
+  background:radial-gradient(120% 70% at 50% 0%,rgba(13,111,143,.55),rgba(15,26,36,.94) 62%);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 28px;box-sizing:border-box}
+.scr.dim{background:rgba(8,14,20,.78)}
+.card{width:100%;max-width:440px;display:flex;flex-direction:column;gap:14px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:.02em}
+.logo{font:800 clamp(46px,15vw,72px)/.9 var(--display);letter-spacing:.04em;text-transform:uppercase;margin-top:18px}
+.logo span{color:var(--you)}
+.tag{color:var(--muted);font-size:calc(max(12px, 15px) * var(--gk-text-scale, 1));line-height:1.45;margin:0}
+.lbl{font:700 calc(max(12px, 12px) * var(--gk-text-scale, 1)) var(--display);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.btn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:15px 16px;border-radius:12px;background:var(--deck2);font:700 calc(max(12px, 19px) * var(--gk-text-scale, 1)) var(--display);letter-spacing:.04em;text-transform:uppercase;text-align:left;box-sizing:border-box;border:1px solid rgba(159,182,196,.14)}
+.btn small{font:500 calc(max(12px, 13px) * var(--gk-text-scale, 1)) var(--body);letter-spacing:0;text-transform:none;color:var(--muted);text-align:right}
+.btn.go{background:var(--you);color:#06202c;border-color:transparent}
+.btn.go small{color:#0b3a4c}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>.btn{flex:1 1 140px}
+#sTitle .row:last-of-type>.btn{flex:1 1 100px}
+.panel.season{flex-direction:row;flex-wrap:wrap;justify-content:space-between;gap:8px 16px;font-size:calc(max(12px, 14px) * var(--gk-text-scale, 1))}
+.season b{font:800 calc(max(12px, 20px) * var(--gk-text-scale, 1)) var(--display);display:block}
+.season .gold{color:var(--gold)}.season .silver{color:var(--silver)}.season .bronze{color:var(--bronze)}
+.unlock{border-color:rgba(127,243,255,.5);background:rgba(18,52,66,.92)}
+.unl{font:800 28px var(--display);color:var(--you)}
+table.rec td.st{width:22px;text-align:center;font-weight:800;color:var(--gold)}
+table.rec td .hold{display:block;font-size:calc(max(12px, 12px) * var(--gk-text-scale, 1));color:var(--muted)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:10px 13px;border-radius:999px;background:var(--deck2);border:1px solid rgba(159,182,196,.2);font:700 calc(max(12px, 15px) * var(--gk-text-scale, 1)) var(--display);letter-spacing:.05em;text-transform:uppercase}
+.chip[aria-pressed="true"]{background:var(--you);color:#06202c;border-color:transparent}
+.chip:disabled{opacity:.4}
+.panel{background:rgba(22,38,54,.86);border:1px solid rgba(159,182,196,.14);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.small{font-size:calc(max(12px, 13px) * var(--gk-text-scale, 1));color:var(--muted);line-height:1.45;margin:0}
+.rungs{display:flex;flex-direction:column;gap:6px}
+.rung{display:grid;grid-template-columns:28px 1fr auto;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:rgba(22,38,54,.7);text-align:left;width:100%;box-sizing:border-box}
+.rung b{font:700 calc(max(12px, 16px) * var(--gk-text-scale, 1)) var(--display);letter-spacing:.03em;display:block}
+.rung i{font-style:normal;font-size:calc(max(12px, 12px) * var(--gk-text-scale, 1));color:var(--muted)}
+.rung.cur{outline:2px solid var(--you)}
+.rung.lock{opacity:.4}
+.med{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font:800 calc(max(12px, 12px) * var(--gk-text-scale, 1)) var(--display);color:#1a1300;background:rgba(159,182,196,.2)}
+.med:not(.m1):not(.m2):not(.m3){color:var(--ink)}.rung.cur .med{background:var(--you);color:#06202c}.med.m1{background:var(--gold)}.med.m2{background:var(--silver)}.med.m3{background:var(--bronze)}
+table.res{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+table.res td{padding:7px 4px;border-bottom:1px solid rgba(159,182,196,.12);font-size:calc(max(12px, 14px) * var(--gk-text-scale, 1))}
+table.res td.t{font-family:var(--mono);color:var(--led);text-align:right}
+table.res tr.you td{color:var(--you);font-weight:700}
+table.res td.pl{font:800 calc(max(12px, 15px) * var(--gk-text-scale, 1)) var(--display);width:26px}
+.big{font:800 54px/1 var(--display);letter-spacing:.02em}
+.time{font:600 28px var(--mono);color:var(--led)}
+.splits{font:calc(max(12px, 13px) * var(--gk-text-scale, 1)) var(--mono);color:var(--muted);line-height:1.6;word-break:break-word}
+.notes{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:calc(max(12px, 14px) * var(--gk-text-scale, 1));line-height:1.45}
+.gbar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:rgba(159,182,196,.15)}
+.gbar span{display:block;height:100%}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:calc(max(12px, 12px) * var(--gk-text-scale, 1));color:var(--muted)}
+.legend b{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.set{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:calc(max(12px, 15px) * var(--gk-text-scale, 1))}
+.set input[type=range]{width:46%}
+.tog{width:52px;height:30px;border-radius:15px;background:rgba(159,182,196,.25);position:relative;flex:none}
+.tog::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--ink);transition:transform .15s}
+.tog[aria-pressed="true"]{background:var(--you)}
+.tog[aria-pressed="true"]::after{transform:translateX(22px)}
+textarea{width:100%;box-sizing:border-box;min-height:70px;background:#0a131b;color:var(--ink);border:1px solid rgba(159,182,196,.25);border-radius:8px;font:calc(max(12px, 12px) * var(--gk-text-scale, 1)) var(--mono);padding:8px}
+.how{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;font-size:calc(max(12px, 14px) * var(--gk-text-scale, 1));line-height:1.4;align-items:start}
+.how b{font:800 calc(max(12px, 13px) * var(--gk-text-scale, 1)) var(--display);letter-spacing:.08em;color:var(--led);text-transform:uppercase;padding-top:1px}
+#toast{position:absolute;left:50%;top:58px;transform:translateX(-50%);z-index:9;background:rgba(10,19,27,.94);border:1px solid rgba(159,182,196,.25);padding:9px 14px;border-radius:10px;font-size:calc(max(12px, 14px) * var(--gk-text-scale, 1));max-width:86%;text-align:center;pointer-events:none}
+html[data-gk-motion=calm] .tog::after,html[data-gk-motion=still] .tog::after{transition:none}
+</style>
+<div id="app">
+  <canvas id="cv" aria-label="Pool and stroke pads"></canvas>
+  <button id="bPause" hidden aria-label="Pause">II</button>
+  <div id="toast" hidden></div>
+
+  <section class="scr" id="sTitle" hidden>
+    <div class="card">
+      <div class="logo">Lane<span>wake</span></div>
+      <p class="tag">Tap each stroke as your arm comes ready. Find the rhythm and you glide; mash and you sink. Breathe, flip at the T, touch them out.</p>
+      <button class="btn go" id="tGo">Race <small id="tGoSub">Splashdown Time Trial</small></button>
+      <div class="row">
+        <button class="btn" id="tLadder">Championship <small id="tLadSub"></small></button>
+        <button class="btn" id="tQuick">Quick race <small>any event</small></button>
+      </div>
+      <button class="btn" id="tDaily">Daily race <small id="tDailySub"></small></button>
+      <div class="row">
+        <button class="btn" id="tRec">Records <small id="tRecSub"></small></button>
+        <button class="btn" id="tHelp">How to swim</button>
+        <button class="btn" id="tSet">Settings</button>
+      </div>
+      <p class="small" id="tStats"></p>
+    </div>
+  </section>
+
+  <section class="scr" id="sLadder" hidden>
+    <div class="card">
+      <div class="lbl">Championship ladder</div>
+      <h2 style="font-size:30px">Medal to move up</h2>
+      <p class="small">Each final is one race against five swimmers. Finish top 3 to reach the next one. New strokes open as you climb. From Cobalt Cove on, Tamsin Quell of Bluefen swims every final in lane 4.</p>
+      <div class="panel season" id="lSum"></div>
+      <div class="rungs" id="lRungs"></div>
+      <button class="btn" id="lBack">Back</button>
+    </div>
+  </section>
+
+  <section class="scr" id="sQuick" hidden>
+    <div class="card">
+      <div class="lbl">Quick race</div>
+      <div class="panel"><div class="lbl">Stroke</div><div class="chips" id="qStroke"></div></div>
+      <div class="panel"><div class="lbl">Distance</div><div class="chips" id="qDist"></div></div>
+      <div class="panel"><div class="lbl">Field</div><div class="chips" id="qTier"></div><p class="small" id="qInfo"></p></div>
+      <button class="btn go" id="qGo">Step up <small id="qGoSub"></small></button>
+      <button class="btn" id="qBack">Back</button>
+    </div>
+  </section>
+
+  <section class="scr dim" id="sPre" hidden>
+    <div class="card">
+      <div class="lbl" id="pMeet"></div>
+      <h2 style="font-size:36px" id="pEvent"></h2>
+      <p class="small" id="pNote"></p>
+      <div class="panel"><div class="lbl">Heat sheet</div><table class="res" id="pField"></table><p class="small" id="pPool"></p></div>
+      <button class="btn go" id="pGo">Step up <small>tap, then wait for the beep</small></button>
+      <button class="btn" id="pBack">Back</button>
+    </div>
+  </section>
+
+  <section class="scr dim" id="sPause" hidden>
+    <div class="card" style="margin-top:12vh">
+      <h2 style="font-size:34px">Paused</h2>
+      <button class="btn go" id="uResume">Resume</button>
+      <button class="btn" id="uRestart">Restart race</button>
+      <button class="btn" id="uQuit">Quit to menu</button>
+    </div>
+  </section>
+
+  <section class="scr" id="sRes" hidden>
+    <div class="card">
+      <div class="lbl" id="rMeet"></div>
+      <div class="big" id="rPlace"></div>
+      <div class="time num" id="rTime"></div>
+      <p class="small" id="rSub"></p>
+      <div class="panel"><table class="res" id="rTable"></table></div>
+      <div class="panel"><div class="lbl">Splits</div><div class="splits" id="rSplits"></div>
+        <div class="lbl">Strokes</div><div class="gbar" id="rBar"></div><div class="legend" id="rLegend"></div></div>
+      <div class="panel unlock" id="rUnlock" hidden><div class="lbl">New stroke</div><div class="unl" id="rUnlockName"></div><p class="small" id="rUnlockHow"></p><button class="btn" id="rTry">Try it now</button></div>
+      <div class="panel"><div class="lbl">Coach says</div><ul class="notes" id="rNotes"></ul></div>
+      <button class="btn go" id="rNext">Next</button>
+      <div class="row"><button class="btn" id="rAgain">Race again</button><button class="btn" id="rMenu">Menu</button></div>
+    </div>
+  </section>
+
+  <section class="scr" id="sRec" hidden>
+    <div class="card">
+      <div class="lbl">Pool records</div>
+      <h2 style="font-size:30px">Beat the wall of fame</h2>
+      <p class="small">Each event has a pool record set by a legend of this pool. They take near-perfect strokes, clean walls and smart pacing. Any field counts.</p>
+      <div class="panel"><table class="res rec" id="recTable"></table></div>
+      <button class="btn" id="recBack">Back</button>
+    </div>
+  </section>
+
+  <section class="scr" id="sHelp" hidden>
+    <div class="card">
+      <div class="lbl">How to swim</div>
+      <h2 style="font-size:30px">Your body is the beat</h2>
+      <div class="panel how">
+        <b>Start</b><span>Tap once to step up. Don't move on "Take your mark". Go on the beep. Early is a false start: Rookie and Club meets call you back, from Regional up it's a DQ.</span>
+        <b>Under</b><span>Tap either pad in rhythm to dolphin kick. Hold a pad to break out. You must be up by the 15 m mark.</span>
+        <b>Stroke</b><span>The lit pad's ring closes when that arm is ready. Tap as it closes. Early taps are weak and burn energy. Late taps lose glide.</span>
+        <b>Arms</b><span>Freestyle and backstroke: alternate left and right. Butterfly and breaststroke: both pads together.</span>
+        <b>Breathe</b><span>Freestyle and butterfly: hold a stroke to breathe. It costs a little glide. Run out of air and you gasp.</span>
+        <b>Push</b><span>The Push pill shifts to a faster stroke rate. Faster, but it drains your tank. Empty tank = slow, heavy arms.</span>
+        <b>Walls</b><span>Freestyle and backstroke: tap both pads to flip as your head reaches the T on the floor. Butterfly and breaststroke: tap when your hands reach the wall.</span>
+        <b>Finish</b><span>Tap within reach of the wall to lunge for the touchpad. Lunge when your arm is ready, not mid-stroke.</span>
+        <b>Keys</b><span>F / J or ← / → for left and right arms. Space = both. ↑ or W = push. P = pause.</span>
+      </div>
+      <p class="small">Flow: eight perfect strokes in a row and your stroke gets a little longer. Keep it going.</p>
+      <button class="btn" id="hBack">Back</button>
+    </div>
+  </section>
+
+  <section class="scr" id="sSet" hidden>
+    <div class="card">
+      <div class="lbl">Settings</div>
+      <div class="panel">
+        <div class="set"><span>Sound</span><button class="tog" id="oSound" aria-pressed="true" aria-label="Sound"></button></div>
+        <div class="set"><span>Vibration (Android)</span><button class="tog" id="oHap" aria-pressed="true" aria-label="Vibration"></button></div>
+        <div class="set"><span>One-thumb mode<br><span class="small">Any pad is the right arm. Walls are automatic. Times still count.</span></span><button class="tog" id="oAssist" aria-pressed="false" aria-label="One-thumb mode"></button></div>
+        <div class="set"><label for="oOff">Tap timing <span class="small" id="oOffV"></span></label><input id="oOff" type="range" min="-80" max="80" step="5"></div>
+        <p class="small">If you keep seeing LATE when you feel on time, slide toward early (left). It shifts every judgment by that many milliseconds.</p>
+        <div id="pywSlot"></div>
+      </div>
+      <div class="panel">
+        <div class="lbl">Save</div>
+        <p class="small">Progress saves on this device after every race. Copy a backup code to keep it safe.</p>
+        <div class="row"><button class="btn" id="oExport">Copy backup</button><button class="btn" id="oImport">Load backup</button></div>
+        <textarea id="oCode" aria-label="Backup code" placeholder="Backup code appears here, or paste one to load"></textarea>
+        <button class="btn" id="oReset">Reset all progress</button>
+      </div>
+      <button class="btn" id="oBack">Back</button>
+    </div>
+  </section>
+</div>

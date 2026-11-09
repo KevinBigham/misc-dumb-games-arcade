@@ -1,0 +1,20 @@
+--- nebula/orig.html	2026-11-05 19:17:07.770472896 +0000
++++ nebula/index.html	2026-11-05 19:26:40.977710254 +0000
+@@ -195,10 +195,13 @@
+     const raw = localStorage.getItem(SKEY);
+     if (raw) {
+       const d = JSON.parse(raw);
+-      if (d && typeof d === 'object') {
+-        save.stars = Array.isArray(d.stars) ? d.stars.map(v => v | 0) : [];
+-        save.best = Array.isArray(d.best) ? d.best.map(v => v | 0) : [];
+-        save.ball = d.ball | 0; save.muted = !!d.muted; save.seenUnlock = d.seenUnlock | 0; save.intro = !!d.intro;
++      if (d && typeof d === 'object' && !Array.isArray(d)) {
++        // check each field on its own: a wrong type or range falls back to its default, the rest are kept
++        const int = (v, lo, hi, def) => (typeof v === 'number' && isFinite(v)) ? Math.min(hi, Math.max(lo, Math.floor(v))) : def;
++        save.stars = Array.isArray(d.stars) ? d.stars.slice(0, HOLES.length).map(v => int(v, 0, 3, 0)) : [];
++        save.best = Array.isArray(d.best) ? d.best.slice(0, HOLES.length).map(v => int(v, 0, 1e6, 0)) : [];
++        save.ball = int(d.ball, 0, BALLS.length - 1, 0); save.seenUnlock = int(d.seenUnlock, 0, BALLS.length - 1, 0);
++        save.muted = typeof d.muted === 'boolean' ? d.muted : false; save.intro = typeof d.intro === 'boolean' ? d.intro : false;
+       }
+     }
+   } catch (e) { /* storage blocked: play without persistence */ }
