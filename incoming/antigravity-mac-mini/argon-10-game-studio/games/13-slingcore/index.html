@@ -1,0 +1,2481 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>SLINGCORE</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100dvh;
+        background: #090d16;
+        color: #f8fafc;
+        overflow: hidden;
+      }
+      #game-root {
+        width: 100%;
+        height: 100dvh;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="game-root"></main>
+    <script type="module">
+// games/13-slingcore/src/synth.ts
+var HARMONIC_SEMITONES = [
+  0,
+  2,
+  4,
+  7,
+  9,
+  12,
+  14,
+  16,
+  19,
+  21,
+  24,
+  26,
+  28,
+  31,
+  33,
+  36
+];
+var BASE_FREQ = 261.63;
+function getStreakFrequency(streak) {
+  const idx = Math.max(0, Math.min(HARMONIC_SEMITONES.length - 1, streak - 1));
+  const semitones = HARMONIC_SEMITONES[idx];
+  const octaveBoost = streak > HARMONIC_SEMITONES.length ? Math.min(12, streak - HARMONIC_SEMITONES.length) : 0;
+  return BASE_FREQ * Math.pow(2, (semitones + octaveBoost) / 12);
+}
+var SlingSynth = class {
+  ctx = null;
+  chargeOsc = null;
+  chargeGain = null;
+  muted = false;
+  ensureContext() {
+    if (this.muted) return null;
+    if (typeof window === "undefined") return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!this.ctx) {
+      try {
+        this.ctx = new AudioCtx();
+      } catch {
+        return null;
+      }
+    }
+    if (this.ctx.state === "suspended") {
+      void this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  updateChargeTone(isCharging, chargeRatio, overchargeRatio) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    if (!isCharging) {
+      if (this.chargeGain && this.chargeOsc) {
+        try {
+          const now2 = ctx.currentTime;
+          this.chargeGain.gain.cancelScheduledValues(now2);
+          this.chargeGain.gain.setTargetAtTime(1e-4, now2, 0.025);
+          const osc = this.chargeOsc;
+          setTimeout(() => {
+            try {
+              osc.stop();
+              osc.disconnect();
+            } catch {
+            }
+          }, 90);
+        } catch {
+        }
+        this.chargeOsc = null;
+        this.chargeGain = null;
+      }
+      return;
+    }
+    const now = ctx.currentTime;
+    if (!this.chargeOsc || !this.chargeGain) {
+      try {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(110, now);
+        gain.gain.setValueAtTime(1e-3, now);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        this.chargeOsc = osc;
+        this.chargeGain = gain;
+      } catch {
+        return;
+      }
+    }
+    const jitter = overchargeRatio > 0 ? Math.sin(now * 55) * 18 * overchargeRatio : 0;
+    const targetFreq = 115 + chargeRatio * 195 + overchargeRatio * 180 + jitter;
+    const targetGain = Math.min(0.11, 0.025 + chargeRatio * 0.055 + overchargeRatio * 0.03);
+    this.chargeOsc.frequency.setTargetAtTime(targetFreq, now, 0.02);
+    this.chargeGain.gain.setTargetAtTime(targetGain, now, 0.03);
+  }
+  playLaunch(powerRatio) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    const startFreq = 150 + powerRatio * 90;
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(38, now + 0.13);
+    gain.gain.setValueAtTime(0.22 * Math.max(0.4, Math.min(1.2, powerRatio)), now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.14);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+    const snap = ctx.createOscillator();
+    const snapGain = ctx.createGain();
+    snap.type = "triangle";
+    snap.frequency.setValueAtTime(520 + powerRatio * 340, now);
+    snap.frequency.exponentialRampToValueAtTime(140, now + 0.055);
+    snapGain.gain.setValueAtTime(0.12, now);
+    snapGain.gain.exponentialRampToValueAtTime(1e-3, now + 0.06);
+    snap.connect(snapGain);
+    snapGain.connect(ctx.destination);
+    snap.start(now);
+    snap.stop(now + 0.065);
+  }
+  playStreakHit(streak, force = 1) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const freq = getStreakFrequency(streak);
+    const vol = Math.min(0.22, 0.11 + Math.min(1, force) * 0.08);
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = "triangle";
+    osc1.frequency.setValueAtTime(freq, now);
+    osc1.frequency.exponentialRampToValueAtTime(freq * 1.008, now + 0.18);
+    gain1.gain.setValueAtTime(vol, now);
+    gain1.gain.exponentialRampToValueAtTime(1e-3, now + 0.24);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.25);
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(freq * 2, now);
+    gain2.gain.setValueAtTime(vol * 0.45, now);
+    gain2.gain.exponentialRampToValueAtTime(1e-3, now + 0.16);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now);
+    osc2.stop(now + 0.17);
+  }
+  playBounce(streak, speedRatio = 1) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const freq = getStreakFrequency(Math.max(1, streak)) * 0.75;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq * 1.25, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.5, now + 0.08);
+    const amp = Math.min(0.16, 0.05 + speedRatio * 0.09);
+    gain.gain.setValueAtTime(amp, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.085);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.09);
+  }
+  playBankCombo(streak) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const root2 = getStreakFrequency(Math.max(2, streak));
+    const ratios = [1, 1.25, 1.5];
+    ratios.forEach((r, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      const start = now + idx * 0.035;
+      osc.frequency.setValueAtTime(root2 * r, start);
+      gain.gain.setValueAtTime(0.09, start);
+      gain.gain.exponentialRampToValueAtTime(1e-3, start + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.23);
+    });
+  }
+  playDamageOrOverheat() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(145, now);
+    osc.frequency.linearRampToValueAtTime(48, now + 0.26);
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.28);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.29);
+  }
+  playUpgradePick() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      const t = now + i * 0.045;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.11, t);
+      gain.gain.exponentialRampToValueAtTime(1e-3, t + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.23);
+    });
+  }
+  destroy() {
+    this.updateChargeTone(false, 0, 0);
+    if (this.ctx) {
+      try {
+        void this.ctx.close();
+      } catch {
+      }
+      this.ctx = null;
+    }
+  }
+};
+
+// games/13-slingcore/src/upgrades.ts
+var UPGRADE_CATALOG = [
+  {
+    id: "prism_split",
+    title: "PRISM SPLIT",
+    description: "Launching fires two phantom twin cores at 24\xB0 angles that ricochet independently.",
+    glyph: "\u27C1"
+  },
+  {
+    id: "tether_wire",
+    title: "TETHER WIRE",
+    description: "Your launch anchor stays behind and slices every enemy that crosses the wire between you.",
+    glyph: "\u26A1"
+  },
+  {
+    id: "gravity_coil",
+    title: "GRAVITY COIL",
+    description: "Holding charge pulls nearby enemies into a tight cluster right in your firing path.",
+    glyph: "\u25CE"
+  },
+  {
+    id: "wall_nova",
+    title: "WALL NOVA",
+    description: "Every wall bounce erupts in a wide cyan shockwave that shatters nearby enemies.",
+    glyph: "\u25C8"
+  },
+  {
+    id: "plasma_wake",
+    title: "PLASMA WAKE",
+    description: "Your launch leaves a blazing cyan trail for 2 seconds that vaporizes pursuers.",
+    glyph: "\u224B"
+  },
+  {
+    id: "pinball_seeker",
+    title: "PINBALL SEEKER",
+    description: "Smashing an enemy automatically ricochets you toward the nearest threat at full speed.",
+    glyph: "\u2316"
+  },
+  {
+    id: "orbital_glaives",
+    title: "ORBITAL GLAIVES",
+    description: "Two heavy cyan blades permanently orbit your core and expand outward while charging.",
+    glyph: "\u2756"
+  },
+  {
+    id: "boomerang_snap",
+    title: "BOOMERANG SNAP",
+    description: "Clicking mid-flight snaps your core straight back through your cursor at double speed.",
+    glyph: "\u21BA"
+  },
+  {
+    id: "vortex_finale",
+    title: "VORTEX FINALE",
+    description: "Braking after a 3+ bounce chain spawns a singularity that pulls in and crushes foes.",
+    glyph: "\u2739"
+  }
+];
+function rollUpgradeChoices(owned, rng, count = 3) {
+  const pool = UPGRADE_CATALOG.filter((u) => !owned.has(u.id));
+  const source = pool.length >= count ? [...pool] : [...UPGRADE_CATALOG];
+  const choices = [];
+  while (choices.length < count && source.length > 0) {
+    const idx = Math.floor(rng() * source.length);
+    choices.push(source.splice(idx, 1)[0]);
+  }
+  return choices;
+}
+
+// games/13-slingcore/src/engine.ts
+var WAVE_DURATION = 30;
+var CHARGE_FULL_TIME = 0.7;
+var OVERCHARGE_MAX_TIME = 1.85;
+var OVERHEAT_LIMIT_TIME = 2.05;
+var LAUNCH_MIN_SPEED = 680;
+var LAUNCH_MAX_SPEED = 1480;
+var LETHAL_SPEED_THRESHOLD = 310;
+function createSeededRng(seed) {
+  let s = seed >>> 0 || 20261108;
+  return () => {
+    s = s + 1831565813 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+var SlingCoreEngine = class {
+  width = 960;
+  height = 600;
+  wallPadding = 28;
+  phase = "playing";
+  wave = 1;
+  waveTimer = WAVE_DURATION;
+  score = 0;
+  scorePopScale = 1;
+  // Push-your-luck unbanked chain state (Rule 4)
+  chainCount = 0;
+  unbankedPoints = 0;
+  maxChainReached = 0;
+  totalKills = 0;
+  // Player Core Entity (Rule 1)
+  player = {
+    x: 480,
+    y: 300,
+    vx: 0,
+    vy: 0,
+    radius: 18,
+    hp: 3,
+    maxHp: 3,
+    invulnTimer: 0,
+    stunTimer: 0,
+    aimAngle: 0,
+    visualAngle: 0,
+    isCharging: false,
+    chargeTime: 0,
+    chargeRatio: 0,
+    // 0..1
+    overchargeRatio: 0,
+    // 0..1 (push-your-luck zone)
+    isLaunching: false,
+    bouncesInLaunch: 0,
+    maxBouncesForLaunch: 4,
+    usedBoomerangThisFlight: false,
+    anchorX: 480,
+    anchorY: 300,
+    tetherActiveTimer: 0,
+    // Squash-and-stretch spring physics (Rule 6)
+    scaleX: 1,
+    scaleY: 1,
+    scaleVelX: 0,
+    scaleVelY: 0,
+    trail: [],
+    glaiveAngle: 0
+  };
+  // Input state (Mouse OR 2-3 Keys — Rule 2)
+  pointer = {
+    x: 640,
+    y: 300,
+    isDown: false,
+    usingKeyboard: false,
+    turnLeft: false,
+    turnRight: false
+  };
+  // Juice state (Rule 6)
+  hitStopTimer = 0;
+  // 30-50ms freeze frame on heavy impacts
+  shakeX = 0;
+  shakeY = 0;
+  shakeVx = 0;
+  shakeVy = 0;
+  flashIntensity = 0;
+  hasLaunchedEver = false;
+  // Entities & Upgrades
+  ownedUpgrades = /* @__PURE__ */ new Set();
+  draftChoices = [];
+  enemies = [];
+  bumpers = [];
+  phantomTwins = [];
+  plasmaWake = [];
+  vortices = [];
+  shockwaves = [];
+  particles = [];
+  floatingPops = [];
+  wallRipples = [];
+  nextEnemyId = 1;
+  spawnCooldown = 0.45;
+  wakeEmitTimer = 0;
+  tetherZapCooldown = 0;
+  rng;
+  synth;
+  constructor(seed = 20261108, synth = new SlingSynth()) {
+    this.rng = createSeededRng(seed);
+    this.synth = synth;
+    this.resetRun(seed);
+  }
+  resetRun(seed) {
+    if (seed !== void 0) {
+      this.rng = createSeededRng(seed);
+    }
+    this.phase = "playing";
+    this.wave = 1;
+    this.waveTimer = WAVE_DURATION;
+    this.score = 0;
+    this.scorePopScale = 1;
+    this.chainCount = 0;
+    this.unbankedPoints = 0;
+    this.maxChainReached = 0;
+    this.totalKills = 0;
+    this.player.x = this.width * 0.5;
+    this.player.y = this.height * 0.5;
+    this.player.vx = 0;
+    this.player.vy = 0;
+    this.player.hp = 3;
+    this.player.invulnTimer = 0;
+    this.player.stunTimer = 0;
+    this.player.aimAngle = 0;
+    this.player.visualAngle = 0;
+    this.player.isCharging = false;
+    this.player.chargeTime = 0;
+    this.player.chargeRatio = 0;
+    this.player.overchargeRatio = 0;
+    this.player.isLaunching = false;
+    this.player.bouncesInLaunch = 0;
+    this.player.usedBoomerangThisFlight = false;
+    this.player.tetherActiveTimer = 0;
+    this.player.scaleX = 1;
+    this.player.scaleY = 1;
+    this.player.scaleVelX = 0;
+    this.player.scaleVelY = 0;
+    this.player.trail = [];
+    this.hitStopTimer = 0;
+    this.shakeX = 0;
+    this.shakeY = 0;
+    this.shakeVx = 0;
+    this.shakeVy = 0;
+    this.flashIntensity = 0;
+    this.ownedUpgrades.clear();
+    this.draftChoices = [];
+    this.enemies = [];
+    this.bumpers = [];
+    this.phantomTwins = [];
+    this.plasmaWake = [];
+    this.vortices = [];
+    this.shockwaves = [];
+    this.particles = [];
+    this.floatingPops = [];
+    this.wallRipples = [];
+    this.setupWaveArena(1);
+    this.spawnWaveEnemy();
+    this.spawnWaveEnemy();
+    for (const e of this.enemies) {
+      e.spawnTimer = 0.25;
+    }
+    this.spawnCooldown = 1.6;
+  }
+  resize(width, height) {
+    const oldW = this.width;
+    const oldH = this.height;
+    this.width = Math.max(480, width);
+    this.height = Math.max(360, height);
+    if (oldW > 0 && oldH > 0) {
+      this.player.x = Math.max(
+        this.wallPadding + this.player.radius,
+        Math.min(this.width - this.wallPadding - this.player.radius, this.player.x / oldW * this.width)
+      );
+      this.player.y = Math.max(
+        this.wallPadding + this.player.radius,
+        Math.min(this.height - this.wallPadding - this.player.radius, this.player.y / oldH * this.height)
+      );
+    }
+    if (this.wave >= 3) {
+      this.positionBumpers();
+    }
+  }
+  positionBumpers() {
+    if (this.wave < 3) {
+      this.bumpers = [];
+      return;
+    }
+    const cx = this.width * 0.5;
+    const cy = this.height * 0.5;
+    const offsetX = Math.min(220, this.width * 0.23);
+    if (this.bumpers.length === 0) {
+      this.bumpers = [
+        { x: cx - offsetX, y: cy, radius: 26, pulse: 0 },
+        { x: cx + offsetX, y: cy, radius: 26, pulse: 0 }
+      ];
+    } else {
+      this.bumpers[0].x = cx - offsetX;
+      this.bumpers[0].y = cy;
+      this.bumpers[1].x = cx + offsetX;
+      this.bumpers[1].y = cy;
+    }
+  }
+  setupWaveArena(waveNum) {
+    this.wave = waveNum;
+    this.waveTimer = WAVE_DURATION;
+    this.positionBumpers();
+    const waveSubtitles = {
+      1: "SMASH CRIMSON DRIFTERS",
+      2: "NEW THREAT: LOCK-ON DASHERS",
+      3: "NEW MECHANIC: RESONANCE BUMPERS",
+      4: "NEW THREAT: FRONT-SHIELDED SENTINELS",
+      5: "NEW HAZARD: VOLATILE PULSE CORES"
+    };
+    const sub = waveSubtitles[waveNum] ?? "OVERDRIVE INTENSIFIES";
+    if (waveNum > 1) {
+      this.floatingPops.push({
+        x: this.width * 0.5,
+        y: this.height * 0.28,
+        vy: -18,
+        text: `WAVE ${waveNum}`,
+        subtext: sub,
+        life: 2.1,
+        maxLife: 2.1,
+        scale: 1.35,
+        color: "cyan"
+      });
+    }
+  }
+  // Primary Input Handlers (Mouse OR Keyboard — Rule 2)
+  setPointerPosition(x, y) {
+    this.pointer.x = x;
+    this.pointer.y = y;
+    this.pointer.usingKeyboard = false;
+  }
+  beginPrimaryAction() {
+    if (this.phase === "gameover") {
+      this.resetRun();
+      return;
+    }
+    if (this.phase !== "playing") return;
+    if (this.player.stunTimer > 0) return;
+    if (this.player.isLaunching && this.ownedUpgrades.has("boomerang_snap") && !this.player.usedBoomerangThisFlight) {
+      this.triggerBoomerangSnap();
+      return;
+    }
+    if (this.player.isLaunching && this.unbankedPoints > 0) {
+      this.bankCurrentChain();
+    }
+    this.pointer.isDown = true;
+    this.player.isCharging = true;
+    this.player.isLaunching = false;
+    this.player.chargeTime = 0;
+    this.player.chargeRatio = 0;
+    this.player.overchargeRatio = 0;
+    this.player.scaleX = 0.78;
+    this.player.scaleY = 1.24;
+    this.emitParticles(this.player.x, this.player.y, -this.player.vx * 0.15, -this.player.vy * 0.15, 6, "cyan");
+  }
+  releasePrimaryAction() {
+    this.pointer.isDown = false;
+    if (this.phase !== "playing") return;
+    if (!this.player.isCharging) return;
+    this.executeSnapLaunch();
+  }
+  triggerBoomerangSnap() {
+    this.player.usedBoomerangThisFlight = true;
+    const dx = this.pointer.x - this.player.x;
+    const dy = this.pointer.y - this.player.y;
+    const angle = Math.hypot(dx, dy) > 4 ? Math.atan2(dy, dx) : this.player.aimAngle;
+    const speed = Math.max(1380, Math.hypot(this.player.vx, this.player.vy) * 1.35);
+    this.player.aimAngle = angle;
+    this.player.visualAngle = angle;
+    this.player.vx = Math.cos(angle) * speed;
+    this.player.vy = Math.sin(angle) * speed;
+    this.player.bouncesInLaunch = Math.max(0, this.player.bouncesInLaunch - 1);
+    this.player.scaleX = 1.75;
+    this.player.scaleY = 0.55;
+    this.chainCount += 1;
+    this.addDirectionalShake(-Math.cos(angle) * 10, -Math.sin(angle) * 10);
+    this.shockwaves.push({
+      x: this.player.x,
+      y: this.player.y,
+      radius: 10,
+      maxRadius: 95,
+      life: 0.25,
+      maxLife: 0.25,
+      color: "cyan",
+      lineWidth: 3
+    });
+    this.synth.playLaunch(1.2);
+  }
+  executeSnapLaunch() {
+    const p = this.player;
+    p.isCharging = false;
+    p.isLaunching = true;
+    p.bouncesInLaunch = 0;
+    p.usedBoomerangThisFlight = false;
+    this.hasLaunchedEver = true;
+    const power = Math.max(0.22, p.chargeRatio + p.overchargeRatio * 0.65);
+    const launchSpeed = LAUNCH_MIN_SPEED + Math.min(1.35, power) * (LAUNCH_MAX_SPEED - LAUNCH_MIN_SPEED);
+    p.maxBouncesForLaunch = p.overchargeRatio > 0.35 ? 6 : 4;
+    const overchargeChainBonus = p.overchargeRatio >= 0.75 ? 2 : p.overchargeRatio >= 0.25 ? 1 : 0;
+    if (overchargeChainBonus > 0) {
+      this.chainCount += overchargeChainBonus;
+      this.floatingPops.push({
+        x: p.x,
+        y: p.y - 26,
+        vy: -45,
+        text: `OVERCHARGE +${overchargeChainBonus}x!`,
+        life: 0.75,
+        maxLife: 0.75,
+        scale: 1.05,
+        color: "gold"
+      });
+    }
+    p.anchorX = p.x;
+    p.anchorY = p.y;
+    if (this.ownedUpgrades.has("tether_wire")) {
+      p.tetherActiveTimer = 1.65;
+    }
+    const cos = Math.cos(p.aimAngle);
+    const sin = Math.sin(p.aimAngle);
+    p.vx = cos * launchSpeed;
+    p.vy = sin * launchSpeed;
+    p.visualAngle = p.aimAngle;
+    p.scaleX = 1.68;
+    p.scaleY = 0.58;
+    p.scaleVelX = 0;
+    p.scaleVelY = 0;
+    const kickForce = 7 + power * 11;
+    this.addDirectionalShake(-cos * kickForce, -sin * kickForce);
+    this.shockwaves.push({
+      x: p.x,
+      y: p.y,
+      radius: 12,
+      maxRadius: 65 + power * 45,
+      life: 0.22,
+      maxLife: 0.22,
+      color: "cyan",
+      lineWidth: 3
+    });
+    this.emitParticles(p.x, p.y, -cos * 260, -sin * 260, 14, "cyan");
+    if (this.ownedUpgrades.has("prism_split")) {
+      const spread = 24 * Math.PI / 180;
+      for (const sign of [-1, 1]) {
+        const a = p.aimAngle + sign * spread;
+        this.phantomTwins.push({
+          x: p.x,
+          y: p.y,
+          vx: Math.cos(a) * launchSpeed * 0.92,
+          vy: Math.sin(a) * launchSpeed * 0.92,
+          radius: 12,
+          bouncesLeft: 3,
+          trail: []
+        });
+      }
+    }
+    this.synth.updateChargeTone(false, 0, 0);
+    this.synth.playLaunch(power);
+    p.chargeTime = 0;
+    p.chargeRatio = 0;
+    p.overchargeRatio = 0;
+  }
+  selectUpgrade(index) {
+    if (this.phase !== "upgrade_draft") return false;
+    const card = this.draftChoices[index];
+    if (!card) return false;
+    this.ownedUpgrades.add(card.id);
+    this.synth.playUpgradePick();
+    if (this.player.hp < this.player.maxHp) {
+      this.player.hp += 1;
+    }
+    this.phase = "playing";
+    this.draftChoices = [];
+    this.setupWaveArena(this.wave + 1);
+    this.spawnWaveEnemy();
+    this.spawnWaveEnemy();
+    return true;
+  }
+  addDirectionalShake(ix, iy) {
+    this.shakeVx += ix * 18;
+    this.shakeVy += iy * 18;
+    this.shakeX += ix * 0.65;
+    this.shakeY += iy * 0.65;
+  }
+  triggerHitStop(durationSeconds = 0.042) {
+    this.hitStopTimer = Math.max(this.hitStopTimer, Math.min(0.055, Math.max(0.03, durationSeconds)));
+  }
+  update(rawDt) {
+    const dt = Math.min(0.05, Math.max(1e-3, rawDt));
+    this.updateCameraSpring(dt);
+    this.scorePopScale += (1 - this.scorePopScale) * Math.min(1, dt * 14);
+    this.flashIntensity = Math.max(0, this.flashIntensity - dt * 4.5);
+    if (this.phase !== "playing") {
+      this.synth.updateChargeTone(false, 0, 0);
+      return;
+    }
+    if (this.hitStopTimer > 0) {
+      this.hitStopTimer -= dt;
+      return;
+    }
+    const p = this.player;
+    if (p.invulnTimer > 0) p.invulnTimer = Math.max(0, p.invulnTimer - dt);
+    if (p.stunTimer > 0) p.stunTimer = Math.max(0, p.stunTimer - dt);
+    if (p.tetherActiveTimer > 0) p.tetherActiveTimer = Math.max(0, p.tetherActiveTimer - dt);
+    if (this.pointer.usingKeyboard) {
+      const turnDir = (this.pointer.turnRight ? 1 : 0) - (this.pointer.turnLeft ? 1 : 0);
+      p.aimAngle += turnDir * 3.8 * dt;
+      this.pointer.x = p.x + Math.cos(p.aimAngle) * 160;
+      this.pointer.y = p.y + Math.sin(p.aimAngle) * 160;
+    } else {
+      const dx = this.pointer.x - p.x;
+      const dy = this.pointer.y - p.y;
+      if (Math.hypot(dx, dy) > 4) {
+        p.aimAngle = Math.atan2(dy, dx);
+      }
+    }
+    const glaiveSpeed = p.isCharging ? 9.5 : 5.2;
+    p.glaiveAngle = (p.glaiveAngle + glaiveSpeed * dt) % (Math.PI * 2);
+    if (p.isCharging) {
+      p.chargeTime += dt;
+      p.chargeRatio = Math.min(1, p.chargeTime / CHARGE_FULL_TIME);
+      if (p.chargeTime > CHARGE_FULL_TIME) {
+        p.overchargeRatio = Math.min(
+          1,
+          (p.chargeTime - CHARGE_FULL_TIME) / (OVERCHARGE_MAX_TIME - CHARGE_FULL_TIME)
+        );
+      } else {
+        p.overchargeRatio = 0;
+      }
+      if (p.chargeTime >= OVERHEAT_LIMIT_TIME) {
+        this.triggerOverheatBackfire();
+      } else {
+        const targetSx = 0.64 - p.overchargeRatio * 0.12;
+        const targetSy = 1.34 + p.overchargeRatio * 0.16;
+        p.scaleX += (targetSx - p.scaleX) * Math.min(1, dt * 16);
+        p.scaleY += (targetSy - p.scaleY) * Math.min(1, dt * 16);
+        p.visualAngle = p.aimAngle;
+        if (this.ownedUpgrades.has("gravity_coil")) {
+          const focusX = p.x + Math.cos(p.aimAngle) * 135;
+          const focusY = p.y + Math.sin(p.aimAngle) * 135;
+          for (const e of this.enemies) {
+            if (e.spawnTimer > 0) continue;
+            const gx = focusX - e.x;
+            const gy = focusY - e.y;
+            const dist = Math.hypot(gx, gy);
+            if (dist > 12 && dist < 290) {
+              const pull = 360 * dt;
+              e.vx += gx / dist * pull;
+              e.vy += gy / dist * pull;
+            }
+          }
+        }
+      }
+    }
+    this.synth.updateChargeTone(p.isCharging, p.chargeRatio, p.overchargeRatio);
+    this.updatePlayerPhysics(dt);
+    const worldDt = p.isCharging ? dt * 0.55 : dt;
+    this.waveTimer -= dt;
+    if (this.waveTimer <= 0) {
+      this.completeWave();
+      return;
+    }
+    this.spawnCooldown -= worldDt;
+    const maxConcurrentEnemies = Math.min(10, 4 + this.wave);
+    if (this.spawnCooldown <= 0 && this.enemies.length < maxConcurrentEnemies) {
+      this.spawnWaveEnemy();
+      const baseInterval = Math.max(0.85, 2.15 - this.wave * 0.16);
+      this.spawnCooldown = baseInterval * (0.85 + this.rng() * 0.3);
+    }
+    this.updateActiveUpgrades(dt, worldDt);
+    for (const b of this.bumpers) {
+      b.pulse = Math.max(0, b.pulse - dt * 3.5);
+    }
+    this.updateEnemies(worldDt);
+    this.updateEffects(dt);
+  }
+  triggerOverheatBackfire() {
+    const p = this.player;
+    p.isCharging = false;
+    p.isLaunching = false;
+    p.chargeTime = 0;
+    p.chargeRatio = 0;
+    p.overchargeRatio = 0;
+    p.stunTimer = 0.42;
+    p.vx = -Math.cos(p.aimAngle) * 280;
+    p.vy = -Math.sin(p.aimAngle) * 280;
+    p.scaleX = 1.45;
+    p.scaleY = 0.65;
+    if (this.unbankedPoints > 0 || this.chainCount > 0) {
+      this.unbankedPoints = 0;
+      this.chainCount = 0;
+    }
+    this.floatingPops.push({
+      x: p.x,
+      y: p.y - 24,
+      vy: -40,
+      text: "COIL OVERHEAT!",
+      life: 0.85,
+      maxLife: 0.85,
+      scale: 1,
+      color: "crimson"
+    });
+    this.shockwaves.push({
+      x: p.x,
+      y: p.y,
+      radius: 10,
+      maxRadius: 70,
+      life: 0.25,
+      maxLife: 0.25,
+      color: "crimson",
+      lineWidth: 3
+    });
+    this.addDirectionalShake(Math.cos(p.aimAngle) * 9, Math.sin(p.aimAngle) * 9);
+    this.synth.updateChargeTone(false, 0, 0);
+    this.synth.playDamageOrOverheat();
+  }
+  updatePlayerPhysics(dt) {
+    const p = this.player;
+    const speed = Math.hypot(p.vx, p.vy);
+    if (p.isCharging) {
+      const brake = Math.pow(0.015, dt);
+      p.vx *= brake;
+      p.vy *= brake;
+    } else if (p.isLaunching) {
+      const drag = Math.pow(0.58, dt);
+      p.vx *= drag;
+      p.vy *= drag;
+      p.visualAngle = Math.atan2(p.vy, p.vx);
+      if (this.ownedUpgrades.has("plasma_wake")) {
+        this.wakeEmitTimer -= dt;
+        if (this.wakeEmitTimer <= 0) {
+          this.wakeEmitTimer = 0.032;
+          this.plasmaWake.push({
+            x: p.x,
+            y: p.y,
+            radius: 16,
+            life: 2,
+            maxLife: 2
+          });
+        }
+      }
+      if (speed < LETHAL_SPEED_THRESHOLD) {
+        p.isLaunching = false;
+        if (this.ownedUpgrades.has("vortex_finale") && p.bouncesInLaunch >= 3) {
+          this.vortices.push({
+            x: p.x,
+            y: p.y,
+            radius: 115,
+            life: 2.2,
+            maxLife: 2.2
+          });
+          this.shockwaves.push({
+            x: p.x,
+            y: p.y,
+            radius: 12,
+            maxRadius: 115,
+            life: 0.35,
+            maxLife: 0.35,
+            color: "cyan",
+            lineWidth: 4
+          });
+        }
+        this.bankCurrentChain();
+      }
+    } else if (p.stunTimer <= 0) {
+      const dx = this.pointer.x - p.x;
+      const dy = this.pointer.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 14) {
+        const pullAccel = Math.min(620, dist * 4.2);
+        p.vx += dx / dist * pullAccel * dt;
+        p.vy += dy / dist * pullAccel * dt;
+      }
+      const driftDrag = Math.pow(0.06, dt);
+      p.vx *= driftDrag;
+      p.vy *= driftDrag;
+      if (speed > 20) {
+        p.visualAngle = Math.atan2(p.vy, p.vx);
+      } else {
+        p.visualAngle = p.aimAngle;
+      }
+    } else {
+      p.vx *= Math.pow(0.08, dt);
+      p.vy *= Math.pow(0.08, dt);
+    }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (!p.isCharging) {
+      const targetSx = p.isLaunching ? Math.min(1.58, 1 + speed / 2200) : 1 + Math.min(0.18, speed / 1600);
+      const targetSy = 1 / Math.sqrt(targetSx);
+      const stiffness = 260;
+      const damping = 18;
+      p.scaleVelX += ((targetSx - p.scaleX) * stiffness - p.scaleVelX * damping) * dt;
+      p.scaleVelY += ((targetSy - p.scaleY) * stiffness - p.scaleVelY * damping) * dt;
+      p.scaleX = Math.max(0.45, Math.min(1.85, p.scaleX + p.scaleVelX * dt));
+      p.scaleY = Math.max(0.45, Math.min(1.85, p.scaleY + p.scaleVelY * dt));
+    }
+    this.handleArenaWallCollisions();
+    this.handleBumperCollisions();
+    p.trail.unshift({
+      x: p.x,
+      y: p.y,
+      scaleX: p.scaleX,
+      scaleY: p.scaleY,
+      angle: p.visualAngle
+    });
+    if (p.trail.length > 16) {
+      p.trail.pop();
+    }
+  }
+  handleArenaWallCollisions() {
+    const p = this.player;
+    const minX = this.wallPadding + p.radius;
+    const maxX = this.width - this.wallPadding - p.radius;
+    const minY = this.wallPadding + p.radius;
+    const maxY = this.height - this.wallPadding - p.radius;
+    let bounced = false;
+    let normalX = 0;
+    let normalY = 0;
+    let wallSide = null;
+    let wallPos = 0;
+    if (p.x < minX) {
+      p.x = minX;
+      p.vx = Math.abs(p.vx);
+      normalX = 1;
+      bounced = true;
+      wallSide = "left";
+      wallPos = p.y;
+    } else if (p.x > maxX) {
+      p.x = maxX;
+      p.vx = -Math.abs(p.vx);
+      normalX = -1;
+      bounced = true;
+      wallSide = "right";
+      wallPos = p.y;
+    }
+    if (p.y < minY) {
+      p.y = minY;
+      p.vy = Math.abs(p.vy);
+      normalY = 1;
+      bounced = true;
+      wallSide = "top";
+      wallPos = p.x;
+    } else if (p.y > maxY) {
+      p.y = maxY;
+      p.vy = -Math.abs(p.vy);
+      normalY = -1;
+      bounced = true;
+      wallSide = "bottom";
+      wallPos = p.x;
+    }
+    if (!bounced) return;
+    const speed = Math.hypot(p.vx, p.vy);
+    p.visualAngle = Math.atan2(p.vy, p.vx);
+    p.scaleX = 0.52;
+    p.scaleY = 1.54;
+    p.scaleVelX = 6.5;
+    p.scaleVelY = -6.5;
+    const forceRatio = Math.min(1.4, speed / 1100);
+    this.addDirectionalShake(-normalX * 9 * forceRatio, -normalY * 9 * forceRatio);
+    if (wallSide) {
+      this.wallRipples.push({
+        side: wallSide,
+        pos: wallPos,
+        intensity: Math.min(1, 0.35 + forceRatio * 0.65),
+        life: 0.38
+      });
+    }
+    this.emitParticles(p.x, p.y, normalX * 220, normalY * 220, 10, "cyan");
+    if (p.isLaunching) {
+      p.bouncesInLaunch += 1;
+      if (p.bouncesInLaunch <= p.maxBouncesForLaunch) {
+        const boost = Math.max(speed * 0.94, 720);
+        const a = Math.atan2(p.vy, p.vx);
+        p.vx = Math.cos(a) * boost;
+        p.vy = Math.sin(a) * boost;
+      }
+      this.chainCount += 1;
+      this.maxChainReached = Math.max(this.maxChainReached, this.chainCount);
+      this.synth.playBounce(this.chainCount, forceRatio);
+      if (this.ownedUpgrades.has("wall_nova")) {
+        this.triggerRadialNova(p.x, p.y, 155);
+      }
+    } else if (speed > 160) {
+      this.synth.playBounce(1, forceRatio * 0.6);
+    }
+  }
+  handleBumperCollisions() {
+    const p = this.player;
+    for (const b of this.bumpers) {
+      const dx = p.x - b.x;
+      const dy = p.y - b.y;
+      const dist = Math.hypot(dx, dy);
+      const minDist = p.radius + b.radius;
+      if (dist < minDist && dist > 1e-3) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        p.x = b.x + nx * (minDist + 2);
+        p.y = b.y + ny * (minDist + 2);
+        const currentSpeed = Math.hypot(p.vx, p.vy);
+        const newSpeed = Math.max(1180, Math.min(1680, currentSpeed * 1.35));
+        p.vx = nx * newSpeed;
+        p.vy = ny * newSpeed;
+        p.visualAngle = Math.atan2(p.vy, p.vx);
+        p.isLaunching = true;
+        p.bouncesInLaunch += 1;
+        p.scaleX = 0.48;
+        p.scaleY = 1.62;
+        b.pulse = 1;
+        this.chainCount += 2;
+        this.unbankedPoints += 50;
+        this.maxChainReached = Math.max(this.maxChainReached, this.chainCount);
+        this.triggerHitStop(0.036);
+        this.addDirectionalShake(nx * 11, ny * 11);
+        this.shockwaves.push({
+          x: b.x,
+          y: b.y,
+          radius: b.radius,
+          maxRadius: b.radius + 85,
+          life: 0.28,
+          maxLife: 0.28,
+          color: "cyan",
+          lineWidth: 3.5
+        });
+        this.floatingPops.push({
+          x: b.x,
+          y: b.y - 24,
+          vy: -45,
+          text: `BUMPER +2x!`,
+          life: 0.7,
+          maxLife: 0.7,
+          scale: 1.05,
+          color: "cyan"
+        });
+        this.synth.playStreakHit(this.chainCount, 1.1);
+      }
+    }
+  }
+  triggerRadialNova(x, y, radius) {
+    this.shockwaves.push({
+      x,
+      y,
+      radius: 14,
+      maxRadius: radius,
+      life: 0.28,
+      maxLife: 0.28,
+      color: "cyan",
+      lineWidth: 4
+    });
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (e.spawnTimer > 0) continue;
+      const dist = Math.hypot(e.x - x, e.y - y);
+      if (dist <= radius + e.radius) {
+        this.damageOrKillEnemy(i, (e.x - x) / (dist || 1), (e.y - y) / (dist || 1), 2);
+      }
+    }
+  }
+  updateActiveUpgrades(dt, worldDt) {
+    const p = this.player;
+    const minX = this.wallPadding + 10;
+    const maxX = this.width - this.wallPadding - 10;
+    const minY = this.wallPadding + 10;
+    const maxY = this.height - this.wallPadding - 10;
+    for (let i = this.phantomTwins.length - 1; i >= 0; i--) {
+      const twin = this.phantomTwins[i];
+      twin.x += twin.vx * dt;
+      twin.y += twin.vy * dt;
+      twin.trail.unshift({ x: twin.x, y: twin.y });
+      if (twin.trail.length > 9) twin.trail.pop();
+      let hitWall = false;
+      if (twin.x < minX || twin.x > maxX) {
+        twin.vx = -twin.vx;
+        twin.x = Math.max(minX, Math.min(maxX, twin.x));
+        hitWall = true;
+      }
+      if (twin.y < minY || twin.y > maxY) {
+        twin.vy = -twin.vy;
+        twin.y = Math.max(minY, Math.min(maxY, twin.y));
+        hitWall = true;
+      }
+      if (hitWall) {
+        twin.bouncesLeft -= 1;
+        this.emitParticles(twin.x, twin.y, 0, 0, 5, "cyan");
+      }
+      for (let j = this.enemies.length - 1; j >= 0; j--) {
+        const e = this.enemies[j];
+        if (e.spawnTimer > 0) continue;
+        if (Math.hypot(e.x - twin.x, e.y - twin.y) <= e.radius + twin.radius + 4) {
+          const speed = Math.hypot(twin.vx, twin.vy) || 1;
+          this.damageOrKillEnemy(j, twin.vx / speed, twin.vy / speed, 2);
+        }
+      }
+      if (twin.bouncesLeft < 0) {
+        this.phantomTwins.splice(i, 1);
+      }
+    }
+    if (p.tetherActiveTimer > 0 && this.ownedUpgrades.has("tether_wire")) {
+      this.tetherZapCooldown -= dt;
+      if (this.tetherZapCooldown <= 0) {
+        for (let j = this.enemies.length - 1; j >= 0; j--) {
+          const e = this.enemies[j];
+          if (e.spawnTimer > 0) continue;
+          const d = this.pointToSegmentDistance(e.x, e.y, p.anchorX, p.anchorY, p.x, p.y);
+          if (d <= e.radius + 8) {
+            this.tetherZapCooldown = 0.06;
+            this.damageOrKillEnemy(j, 0, -1, 2);
+          }
+        }
+      }
+    }
+    for (let i = this.plasmaWake.length - 1; i >= 0; i--) {
+      const node = this.plasmaWake[i];
+      node.life -= dt;
+      if (node.life <= 0) {
+        this.plasmaWake.splice(i, 1);
+        continue;
+      }
+      for (let j = this.enemies.length - 1; j >= 0; j--) {
+        const e = this.enemies[j];
+        if (e.spawnTimer > 0) continue;
+        if (Math.hypot(e.x - node.x, e.y - node.y) <= e.radius + node.radius) {
+          this.damageOrKillEnemy(j, 0, -1, 2);
+          node.life = 0;
+          break;
+        }
+      }
+    }
+    if (this.ownedUpgrades.has("orbital_glaives")) {
+      const orbitR = p.isCharging ? 66 + p.overchargeRatio * 24 : 44;
+      for (let g = 0; g < 2; g++) {
+        const a = p.glaiveAngle + g * Math.PI;
+        const gx = p.x + Math.cos(a) * orbitR;
+        const gy = p.y + Math.sin(a) * orbitR;
+        for (let j = this.enemies.length - 1; j >= 0; j--) {
+          const e = this.enemies[j];
+          if (e.spawnTimer > 0) continue;
+          if (Math.hypot(e.x - gx, e.y - gy) <= e.radius + 13) {
+            this.damageOrKillEnemy(j, -Math.sin(a), Math.cos(a), 2);
+          }
+        }
+      }
+    }
+    for (let i = this.vortices.length - 1; i >= 0; i--) {
+      const v = this.vortices[i];
+      v.life -= worldDt;
+      if (v.life <= 0) {
+        this.vortices.splice(i, 1);
+        continue;
+      }
+      for (let j = this.enemies.length - 1; j >= 0; j--) {
+        const e = this.enemies[j];
+        if (e.spawnTimer > 0) continue;
+        const dx = v.x - e.x;
+        const dy = v.y - e.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < v.radius && dist > 1) {
+          e.vx += dx / dist * 520 * worldDt;
+          e.vy += dy / dist * 520 * worldDt;
+          if (dist < 26 && v.life < 0.35) {
+            this.damageOrKillEnemy(j, dx / dist, dy / dist, 3);
+          }
+        }
+      }
+    }
+  }
+  updateEnemies(dt) {
+    const p = this.player;
+    const playerSpeed = Math.hypot(p.vx, p.vy);
+    const playerIsLethal = p.isLaunching && playerSpeed >= LETHAL_SPEED_THRESHOLD;
+    const strikeRadius = p.radius * (1.28 + (p.isLaunching ? 0.15 : 0));
+    const hurtRadius = p.radius * 0.72;
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 5);
+      e.scaleX += (1 - e.scaleX) * Math.min(1, dt * 12);
+      e.scaleY += (1 - e.scaleY) * Math.min(1, dt * 12);
+      if (e.spawnTimer > 0) {
+        e.spawnTimer = Math.max(0, e.spawnTimer - dt);
+        continue;
+      }
+      const toPlayerX = p.x - e.x;
+      const toPlayerY = p.y - e.y;
+      const distToPlayer = Math.hypot(toPlayerX, toPlayerY) || 1;
+      const dirX = toPlayerX / distToPlayer;
+      const dirY = toPlayerY / distToPlayer;
+      if (e.kind === "drifter") {
+        const moveSpeed = 105 + Math.min(60, this.wave * 8);
+        e.vx += (dirX * moveSpeed - e.vx) * Math.min(1, dt * 4);
+        e.vy += (dirY * moveSpeed - e.vy) * Math.min(1, dt * 4);
+        e.angle += 1.4 * dt;
+      } else if (e.kind === "dasher") {
+        if (e.isDashing) {
+          e.dashTimer -= dt;
+          if (e.dashTimer <= 0) {
+            e.isDashing = false;
+            e.dashCooldown = 1.35;
+            e.vx *= 0.25;
+            e.vy *= 0.25;
+          }
+        } else if (e.telegraphTimer > 0) {
+          e.vx *= Math.pow(0.02, dt);
+          e.vy *= Math.pow(0.02, dt);
+          e.telegraphTimer -= dt;
+          if (e.telegraphTimer > 0.22) {
+            e.angle = Math.atan2(toPlayerY, toPlayerX);
+          }
+          if (e.telegraphTimer <= 0) {
+            e.isDashing = true;
+            e.dashTimer = 0.36;
+            const dashSpeed = 590;
+            e.vx = Math.cos(e.angle) * dashSpeed;
+            e.vy = Math.sin(e.angle) * dashSpeed;
+            e.scaleX = 1.45;
+            e.scaleY = 0.68;
+          }
+        } else {
+          e.dashCooldown -= dt;
+          const stalkSpeed = 125;
+          e.vx += (dirX * stalkSpeed - e.vx) * Math.min(1, dt * 4);
+          e.vy += (dirY * stalkSpeed - e.vy) * Math.min(1, dt * 4);
+          e.angle = Math.atan2(toPlayerY, toPlayerX);
+          if (e.dashCooldown <= 0 && distToPlayer < 360) {
+            e.telegraphTimer = 0.85;
+          }
+        }
+      } else if (e.kind === "shielded") {
+        const targetAngle = Math.atan2(toPlayerY, toPlayerX);
+        const diff = Math.atan2(Math.sin(targetAngle - e.angle), Math.cos(targetAngle - e.angle));
+        e.angle += Math.sign(diff) * Math.min(Math.abs(diff), 1.35 * dt);
+        const marchSpeed = 78;
+        e.vx += (dirX * marchSpeed - e.vx) * Math.min(1, dt * 3);
+        e.vy += (dirY * marchSpeed - e.vy) * Math.min(1, dt * 3);
+      } else if (e.kind === "pulse_orb") {
+        e.vx *= Math.pow(0.4, dt);
+        e.vy *= Math.pow(0.4, dt);
+        if (e.telegraphTimer > 0) {
+          e.telegraphTimer -= dt;
+          if (e.telegraphTimer <= 0) {
+            const ox = e.x;
+            const oy = e.y;
+            this.enemies.splice(i, 1);
+            this.triggerHitStop(0.045);
+            this.addDirectionalShake(0, -12);
+            this.triggerRadialNova(ox, oy, 175);
+            continue;
+          }
+        }
+      }
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      const minX = this.wallPadding + e.radius;
+      const maxX = this.width - this.wallPadding - e.radius;
+      const minY = this.wallPadding + e.radius;
+      const maxY = this.height - this.wallPadding - e.radius;
+      if (e.x < minX || e.x > maxX) {
+        e.vx = -e.vx;
+        e.x = Math.max(minX, Math.min(maxX, e.x));
+      }
+      if (e.y < minY || e.y > maxY) {
+        e.vy = -e.vy;
+        e.y = Math.max(minY, Math.min(maxY, e.y));
+      }
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (playerIsLethal && dist <= strikeRadius + e.radius) {
+        const nx = dx / (dist || 1);
+        const ny = dy / (dist || 1);
+        if (e.kind === "pulse_orb") {
+          e.vx = p.vx * 1.15;
+          e.vy = p.vy * 1.15;
+          e.telegraphTimer = 0.55;
+          e.scaleX = 1.4;
+          e.scaleY = 0.7;
+          this.triggerHitStop(0.035);
+          this.synth.playBounce(this.chainCount + 1, 1.1);
+          continue;
+        }
+        if (e.kind === "shielded") {
+          const hitFromAngle = Math.atan2(-dy, -dx);
+          const angleDiff = Math.abs(
+            Math.atan2(Math.sin(hitFromAngle - e.angle), Math.cos(hitFromAngle - e.angle))
+          );
+          if (angleDiff < 0.85 && e.hp > 1) {
+            p.vx = -nx * Math.max(780, playerSpeed * 0.9);
+            p.vy = -ny * Math.max(780, playerSpeed * 0.9);
+            p.visualAngle = Math.atan2(p.vy, p.vx);
+            p.scaleX = 0.52;
+            p.scaleY = 1.52;
+            e.hp -= 1;
+            e.hitFlash = 1;
+            e.vx = nx * 240;
+            e.vy = ny * 240;
+            this.triggerHitStop(0.035);
+            this.addDirectionalShake(-nx * 10, -ny * 10);
+            this.emitParticles(e.x, e.y, -nx * 200, -ny * 200, 10, "gold");
+            this.synth.playBounce(this.chainCount + 1, 1);
+            continue;
+          }
+        }
+        this.damageOrKillEnemy(i, nx, ny, 99);
+        p.scaleX = 0.54;
+        p.scaleY = 1.52;
+        p.scaleVelX = 8;
+        p.scaleVelY = -8;
+        if (this.ownedUpgrades.has("pinball_seeker") && this.enemies.length > 0) {
+          const nextTarget = this.findNearestEnemy(p.x, p.y);
+          if (nextTarget) {
+            const ta = Math.atan2(nextTarget.y - p.y, nextTarget.x - p.x);
+            const boostSpeed = Math.max(1150, playerSpeed);
+            p.vx = Math.cos(ta) * boostSpeed;
+            p.vy = Math.sin(ta) * boostSpeed;
+            p.visualAngle = ta;
+          }
+        } else {
+          const boostSpeed = Math.min(1620, playerSpeed + 185);
+          const a = Math.atan2(p.vy, p.vx);
+          p.vx = Math.cos(a) * boostSpeed;
+          p.vy = Math.sin(a) * boostSpeed;
+        }
+      } else if (!playerIsLethal && e.kind !== "pulse_orb" && dist <= hurtRadius + e.radius * 0.85) {
+        this.handlePlayerHit(e.x, e.y);
+      }
+    }
+  }
+  findNearestEnemy(x, y) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const e of this.enemies) {
+      if (e.spawnTimer > 0) continue;
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d < bestDist) {
+        bestDist = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+  damageOrKillEnemy(index, impactDirX, impactDirY, dmg) {
+    const e = this.enemies[index];
+    if (!e) return;
+    e.hp -= dmg;
+    e.hitFlash = 1;
+    if (e.hp > 0) {
+      e.vx += impactDirX * 220;
+      e.vy += impactDirY * 220;
+      e.scaleX = 0.65;
+      e.scaleY = 1.38;
+      return;
+    }
+    this.enemies.splice(index, 1);
+    this.totalKills += 1;
+    this.chainCount += 1;
+    this.maxChainReached = Math.max(this.maxChainReached, this.chainCount);
+    const basePts = e.kind === "shielded" ? 200 : e.kind === "dasher" ? 150 : 100;
+    this.unbankedPoints += basePts;
+    const hitStopDuration = Math.min(0.05, 0.034 + this.chainCount * 2e-3);
+    this.triggerHitStop(hitStopDuration);
+    this.addDirectionalShake(impactDirX * (9 + Math.min(8, this.chainCount)), impactDirY * (9 + Math.min(8, this.chainCount)));
+    this.flashIntensity = Math.min(0.35, 0.12 + this.chainCount * 0.025);
+    this.shockwaves.push({
+      x: e.x,
+      y: e.y,
+      radius: e.radius * 0.6,
+      maxRadius: e.radius * 3.4 + Math.min(40, this.chainCount * 5),
+      life: 0.26,
+      maxLife: 0.26,
+      color: "white",
+      lineWidth: 3.5
+    });
+    this.emitParticles(e.x, e.y, impactDirX * 320, impactDirY * 320, 16, "crimson");
+    this.emitParticles(e.x, e.y, impactDirX * 180, impactDirY * 180, 8, "cyan");
+    this.floatingPops.push({
+      x: e.x,
+      y: e.y - 12,
+      vy: -52,
+      text: `+${basePts} \xD7${this.chainCount}`,
+      life: 0.72,
+      maxLife: 0.72,
+      scale: Math.min(1.55, 0.95 + this.chainCount * 0.08),
+      color: this.chainCount >= 4 ? "gold" : "cyan"
+    });
+    this.synth.playStreakHit(this.chainCount, 1);
+    if (!this.player.isLaunching) {
+      this.bankCurrentChain();
+    }
+  }
+  bankCurrentChain() {
+    if (this.unbankedPoints <= 0) {
+      this.chainCount = 0;
+      return;
+    }
+    const mult = Math.max(1, this.chainCount);
+    const total = this.unbankedPoints * mult;
+    this.score += total;
+    this.scorePopScale = Math.min(1.65, 1.18 + mult * 0.06);
+    if (mult >= 2) {
+      this.floatingPops.push({
+        x: this.player.x,
+        y: this.player.y - 30,
+        vy: -48,
+        text: `BANKED +${total.toLocaleString()}!`,
+        life: 0.95,
+        maxLife: 0.95,
+        scale: 1.2,
+        color: "gold"
+      });
+      this.synth.playBankCombo(mult);
+    }
+    this.unbankedPoints = 0;
+    this.chainCount = 0;
+  }
+  handlePlayerHit(threatX, threatY) {
+    const p = this.player;
+    if (p.invulnTimer > 0) return;
+    p.hp -= 1;
+    p.invulnTimer = 1.35;
+    p.isCharging = false;
+    p.isLaunching = false;
+    p.chargeTime = 0;
+    p.chargeRatio = 0;
+    p.overchargeRatio = 0;
+    if (this.unbankedPoints > 0) {
+      this.floatingPops.push({
+        x: p.x,
+        y: p.y - 28,
+        vy: -42,
+        text: "CHAIN LOST!",
+        life: 0.9,
+        maxLife: 0.9,
+        scale: 1.1,
+        color: "crimson"
+      });
+    }
+    this.unbankedPoints = 0;
+    this.chainCount = 0;
+    const nx = (p.x - threatX) / (Math.hypot(p.x - threatX, p.y - threatY) || 1);
+    const ny = (p.y - threatY) / (Math.hypot(p.x - threatX, p.y - threatY) || 1);
+    p.vx = nx * 460;
+    p.vy = ny * 460;
+    p.scaleX = 0.52;
+    p.scaleY = 1.52;
+    this.triggerHitStop(0.05);
+    this.addDirectionalShake(nx * 16, ny * 16);
+    this.flashIntensity = 0.45;
+    this.shockwaves.push({
+      x: p.x,
+      y: p.y,
+      radius: 14,
+      maxRadius: 110,
+      life: 0.32,
+      maxLife: 0.32,
+      color: "crimson",
+      lineWidth: 4
+    });
+    this.emitParticles(p.x, p.y, nx * 240, ny * 240, 18, "crimson");
+    this.synth.updateChargeTone(false, 0, 0);
+    this.synth.playDamageOrOverheat();
+    for (const e of this.enemies) {
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 180 && d > 0.1) {
+        e.vx += dx / d * 340;
+        e.vy += dy / d * 340;
+      }
+    }
+    if (p.hp <= 0) {
+      this.phase = "gameover";
+    }
+  }
+  completeWave() {
+    this.bankCurrentChain();
+    for (const e of this.enemies) {
+      this.emitParticles(e.x, e.y, 0, 0, 8, "crimson");
+    }
+    this.enemies = [];
+    this.phantomTwins = [];
+    this.player.isCharging = false;
+    this.player.isLaunching = false;
+    this.player.vx *= 0.2;
+    this.player.vy *= 0.2;
+    this.synth.updateChargeTone(false, 0, 0);
+    this.phase = "upgrade_draft";
+    this.draftChoices = rollUpgradeChoices(this.ownedUpgrades, this.rng, 3);
+  }
+  spawnWaveEnemy(forcedKind) {
+    let kind = forcedKind ?? "drifter";
+    if (!forcedKind) {
+      const r = this.rng();
+      if (this.wave === 1) {
+        kind = "drifter";
+      } else if (this.wave === 2 || this.wave === 3) {
+        kind = r < 0.42 ? "dasher" : "drifter";
+      } else if (this.wave === 4) {
+        kind = r < 0.28 ? "shielded" : r < 0.62 ? "dasher" : "drifter";
+      } else {
+        kind = r < 0.18 ? "pulse_orb" : r < 0.42 ? "shielded" : r < 0.72 ? "dasher" : "drifter";
+      }
+    }
+    const margin = this.wallPadding + 42;
+    let x = margin;
+    let y = margin;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      x = margin + this.rng() * (this.width - margin * 2);
+      y = margin + this.rng() * (this.height - margin * 2);
+      if (Math.hypot(x - this.player.x, y - this.player.y) > 200) {
+        break;
+      }
+    }
+    const radius = kind === "shielded" ? 23 : kind === "dasher" ? 17 : kind === "pulse_orb" ? 19 : 18;
+    const hp = kind === "shielded" ? 2 : 1;
+    const entity = {
+      id: this.nextEnemyId++,
+      kind,
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      radius,
+      hp,
+      maxHp: hp,
+      angle: Math.atan2(this.player.y - y, this.player.x - x),
+      spawnTimer: 0.65,
+      telegraphTimer: 0,
+      dashCooldown: 0.9 + this.rng() * 0.6,
+      isDashing: false,
+      dashTimer: 0,
+      scaleX: 1,
+      scaleY: 1,
+      hitFlash: 0
+    };
+    this.enemies.push(entity);
+    return entity;
+  }
+  emitParticles(x, y, baseVx, baseVy, count, color) {
+    for (let i = 0; i < count; i++) {
+      const spreadAngle = (this.rng() - 0.5) * 1.9;
+      const baseAngle = Math.atan2(baseVy, baseVx);
+      const speed = (80 + this.rng() * 260) * (Math.hypot(baseVx, baseVy) > 1 ? 1 : 0.8);
+      const a = Math.hypot(baseVx, baseVy) > 1 ? baseAngle + spreadAngle : this.rng() * Math.PI * 2;
+      const life = 0.22 + this.rng() * 0.26;
+      this.particles.push({
+        x,
+        y,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        size: 2.5 + this.rng() * 3.5,
+        life,
+        maxLife: life,
+        color
+      });
+    }
+  }
+  updateCameraSpring(dt) {
+    const stiffness = 320;
+    const damping = 19;
+    this.shakeVx += (-this.shakeX * stiffness - this.shakeVx * damping) * dt;
+    this.shakeVy += (-this.shakeY * stiffness - this.shakeVy * damping) * dt;
+    this.shakeX += this.shakeVx * dt;
+    this.shakeY += this.shakeVy * dt;
+  }
+  updateEffects(dt) {
+    for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+      const s = this.shockwaves[i];
+      s.life -= dt;
+      if (s.life <= 0) {
+        this.shockwaves.splice(i, 1);
+      }
+    }
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const pt = this.particles[i];
+      pt.life -= dt;
+      if (pt.life <= 0) {
+        this.particles.splice(i, 1);
+        continue;
+      }
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vx *= Math.pow(0.08, dt);
+      pt.vy *= Math.pow(0.08, dt);
+    }
+    for (let i = this.floatingPops.length - 1; i >= 0; i--) {
+      const pop = this.floatingPops[i];
+      pop.life -= dt;
+      if (pop.life <= 0) {
+        this.floatingPops.splice(i, 1);
+        continue;
+      }
+      pop.y += pop.vy * dt;
+      pop.vy *= Math.pow(0.18, dt);
+    }
+    for (let i = this.wallRipples.length - 1; i >= 0; i--) {
+      const r = this.wallRipples[i];
+      r.life -= dt;
+      if (r.life <= 0) {
+        this.wallRipples.splice(i, 1);
+      }
+    }
+  }
+  pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+  // Computes predicted trajectory segments with wall bounce previews while aiming (Rule 1 & Rule 5)
+  computeAimPreviewSegments() {
+    const p = this.player;
+    const segments = [];
+    const minX = this.wallPadding + p.radius;
+    const maxX = this.width - this.wallPadding - p.radius;
+    const minY = this.wallPadding + p.radius;
+    const maxY = this.height - this.wallPadding - p.radius;
+    let cx = p.x;
+    let cy = p.y;
+    let dx = Math.cos(p.aimAngle);
+    let dy = Math.sin(p.aimAngle);
+    let remainingDist = 260 + p.chargeRatio * 480 + p.overchargeRatio * 420;
+    const maxBounces = p.overchargeRatio > 0.3 ? 3 : 2;
+    for (let b = 0; b < maxBounces && remainingDist > 5; b++) {
+      let tx = Infinity;
+      let ty = Infinity;
+      if (dx > 1e-4) tx = (maxX - cx) / dx;
+      else if (dx < -1e-4) tx = (minX - cx) / dx;
+      if (dy > 1e-4) ty = (maxY - cy) / dy;
+      else if (dy < -1e-4) ty = (minY - cy) / dy;
+      const hitDist = Math.min(tx, ty);
+      const stepDist = Math.min(remainingDist, hitDist);
+      const nx = cx + dx * stepDist;
+      const ny = cy + dy * stepDist;
+      segments.push({ x1: cx, y1: cy, x2: nx, y2: ny });
+      remainingDist -= stepDist;
+      cx = nx;
+      cy = ny;
+      if (hitDist === tx) dx = -dx;
+      else dy = -dy;
+    }
+    return segments;
+  }
+};
+
+// games/13-slingcore/src/renderer.ts
+var COLOR_BG = "#090d16";
+var COLOR_GRID = "#111827";
+var COLOR_WALL = "#1e293b";
+var COLOR_PLAYER = "#00f2fe";
+var COLOR_DANGER = "#ff2a6d";
+var COLOR_WARNING = "#ffbe0b";
+var COLOR_WHITE = "#f8fafc";
+var SlingCoreRenderer = class {
+  render(ctx, engine) {
+    const { width, height, wallPadding } = engine;
+    ctx.save();
+    ctx.fillStyle = COLOR_BG;
+    ctx.fillRect(0, 0, width, height);
+    ctx.translate(engine.shakeX, engine.shakeY);
+    this.drawArenaBackdrop(ctx, engine);
+    this.drawUpgradeUnderlays(ctx, engine);
+    this.drawBumpers(ctx, engine);
+    if (engine.player.isCharging && engine.phase === "playing") {
+      this.drawChargeAimSight(ctx, engine);
+    } else if (!engine.hasLaunchedEver && engine.phase === "playing") {
+      this.drawInitialInviteCue(ctx, engine);
+    }
+    this.drawEnemies(ctx, engine);
+    this.drawPhantomTwins(ctx, engine);
+    this.drawPlayerCore(ctx, engine);
+    this.drawShockwavesAndParticles(ctx, engine);
+    this.drawFloatingPops(ctx, engine);
+    if (engine.flashIntensity > 0.01) {
+      ctx.fillStyle = `rgba(0, 242, 254, ${engine.flashIntensity * 0.16})`;
+      ctx.fillRect(-32, -32, width + 64, height + 64);
+    }
+    ctx.restore();
+    const waveProgress = Math.max(0, Math.min(1, 1 - engine.waveTimer / WAVE_DURATION));
+    ctx.fillStyle = COLOR_PLAYER;
+    ctx.fillRect(
+      wallPadding,
+      wallPadding - 2,
+      (width - wallPadding * 2) * waveProgress,
+      3
+    );
+  }
+  drawArenaBackdrop(ctx, engine) {
+    const { width, height, wallPadding } = engine;
+    const innerW = width - wallPadding * 2;
+    const innerH = height - wallPadding * 2;
+    ctx.strokeStyle = COLOR_GRID;
+    ctx.lineWidth = 1;
+    const step = 64;
+    ctx.beginPath();
+    for (let x = wallPadding + step; x < width - wallPadding; x += step) {
+      ctx.moveTo(x, wallPadding);
+      ctx.lineTo(x, height - wallPadding);
+    }
+    for (let y = wallPadding + step; y < height - wallPadding; y += step) {
+      ctx.moveTo(wallPadding, y);
+      ctx.lineTo(width - wallPadding, y);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = engine.player.isLaunching ? "rgba(0, 242, 254, 0.45)" : COLOR_WALL;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(wallPadding, wallPadding, innerW, innerH);
+    for (const r of engine.wallRipples) {
+      const alpha = Math.max(0, r.life / 0.38) * r.intensity;
+      const spread = (1 - r.life / 0.38) * 90 + 24;
+      ctx.strokeStyle = `rgba(0, 242, 254, ${alpha})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      if (r.side === "left") {
+        ctx.moveTo(wallPadding, Math.max(wallPadding, r.pos - spread));
+        ctx.lineTo(wallPadding, Math.min(height - wallPadding, r.pos + spread));
+      } else if (r.side === "right") {
+        ctx.moveTo(width - wallPadding, Math.max(wallPadding, r.pos - spread));
+        ctx.lineTo(width - wallPadding, Math.min(height - wallPadding, r.pos + spread));
+      } else if (r.side === "top") {
+        ctx.moveTo(Math.max(wallPadding, r.pos - spread), wallPadding);
+        ctx.lineTo(Math.min(width - wallPadding, r.pos + spread), wallPadding);
+      } else {
+        ctx.moveTo(Math.max(wallPadding, r.pos - spread), height - wallPadding);
+        ctx.lineTo(Math.min(width - wallPadding, r.pos + spread), height - wallPadding);
+      }
+      ctx.stroke();
+    }
+  }
+  drawUpgradeUnderlays(ctx, engine) {
+    const p = engine.player;
+    if (p.isCharging && engine.ownedUpgrades.has("gravity_coil")) {
+      const fx = p.x + Math.cos(p.aimAngle) * 135;
+      const fy = p.y + Math.sin(p.aimAngle) * 135;
+      ctx.strokeStyle = "rgba(0, 242, 254, 0.25)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.arc(fx, fy, 110 - p.chargeRatio * 35, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    for (const v of engine.vortices) {
+      const alpha = Math.min(1, v.life / 0.5) * 0.45;
+      ctx.strokeStyle = `rgba(0, 242, 254, ${alpha})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(v.x, v.y, v.radius * (0.35 + 0.65 * (v.life / v.maxLife)), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(0, 242, 254, ${alpha * 0.35})`;
+      ctx.beginPath();
+      ctx.arc(v.x, v.y, 22, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const node of engine.plasmaWake) {
+      const alpha = node.life / node.maxLife * 0.55;
+      ctx.fillStyle = `rgba(0, 242, 254, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, node.radius * (0.5 + 0.5 * (node.life / node.maxLife)), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (p.tetherActiveTimer > 0 && engine.ownedUpgrades.has("tether_wire")) {
+      const alpha = Math.min(1, p.tetherActiveTimer / 0.4);
+      ctx.strokeStyle = `rgba(0, 242, 254, ${alpha * 0.9})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(p.anchorX, p.anchorY);
+      const midX = (p.anchorX + p.x) * 0.5 + (Math.random() - 0.5) * 10;
+      const midY = (p.anchorY + p.y) * 0.5 + (Math.random() - 0.5) * 10;
+      ctx.lineTo(midX, midY);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      ctx.fillStyle = COLOR_PLAYER;
+      ctx.beginPath();
+      ctx.arc(p.anchorX, p.anchorY, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  drawBumpers(ctx, engine) {
+    for (const b of engine.bumpers) {
+      const r = b.radius + b.pulse * 7;
+      ctx.fillStyle = "rgba(0, 242, 254, 0.10)";
+      ctx.strokeStyle = COLOR_PLAYER;
+      ctx.lineWidth = 2.5 + b.pulse * 2;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = COLOR_PLAYER;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 6 + b.pulse * 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  drawInitialInviteCue(ctx, engine) {
+    const p = engine.player;
+    ctx.strokeStyle = "rgba(0, 242, 254, 0.28)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 6]);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(engine.pointer.x, engine.pointer.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(0, 242, 254, 0.45)";
+    ctx.beginPath();
+    ctx.arc(engine.pointer.x, engine.pointer.y, 10, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  drawChargeAimSight(ctx, engine) {
+    const p = engine.player;
+    const segments = engine.computeAimPreviewSegments();
+    segments.forEach((seg, idx) => {
+      const alpha = Math.max(0.18, 0.78 - idx * 0.25);
+      ctx.strokeStyle = p.overchargeRatio > 0 ? COLOR_WHITE : `rgba(0, 242, 254, ${alpha})`;
+      ctx.lineWidth = idx === 0 ? 2.5 + p.overchargeRatio * 2 : 1.5;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(seg.x1, seg.y1);
+      ctx.lineTo(seg.x2, seg.y2);
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    const ringRadius = p.radius + 14;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, ringRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = COLOR_PLAYER;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(
+      p.x,
+      p.y,
+      ringRadius,
+      -Math.PI * 0.5,
+      -Math.PI * 0.5 + Math.PI * 2 * p.chargeRatio
+    );
+    ctx.stroke();
+    if (p.overchargeRatio > 0) {
+      ctx.strokeStyle = p.overchargeRatio > 0.78 ? COLOR_DANGER : COLOR_WARNING;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(
+        p.x,
+        p.y,
+        ringRadius + 5,
+        -Math.PI * 0.5,
+        -Math.PI * 0.5 + Math.PI * 2 * p.overchargeRatio
+      );
+      ctx.stroke();
+    }
+  }
+  drawEnemies(ctx, engine) {
+    for (const e of engine.enemies) {
+      if (e.spawnTimer > 0) {
+        const progress = 1 - e.spawnTimer / 0.65;
+        ctx.strokeStyle = `rgba(255, 42, 109, ${0.25 + progress * 0.6})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.radius * (1.8 - progress * 0.8), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        continue;
+      }
+      if (e.kind === "dasher" && e.telegraphTimer > 0) {
+        const urgency = 1 - e.telegraphTimer / 0.85;
+        ctx.strokeStyle = urgency > 0.72 ? COLOR_WARNING : `rgba(255, 42, 109, ${0.35 + urgency * 0.65})`;
+        ctx.lineWidth = 1.5 + urgency * 2.5;
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(e.x + Math.cos(e.angle) * 340, e.y + Math.sin(e.angle) * 340);
+        ctx.stroke();
+      }
+      if (e.kind === "pulse_orb" && e.telegraphTimer > 0) {
+        const pRatio = 1 - e.telegraphTimer / 0.55;
+        ctx.strokeStyle = COLOR_WARNING;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, 175 * pRatio, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(e.angle);
+      ctx.scale(e.scaleX, e.scaleY);
+      const fillColor = e.hitFlash > 0.2 ? COLOR_WHITE : e.kind === "pulse_orb" ? COLOR_WARNING : COLOR_DANGER;
+      ctx.fillStyle = fillColor;
+      ctx.strokeStyle = COLOR_WHITE;
+      ctx.lineWidth = 1.5;
+      if (e.kind === "drifter") {
+        this.tracePolygon(ctx, 6, e.radius);
+        ctx.fill();
+        ctx.stroke();
+      } else if (e.kind === "dasher") {
+        ctx.beginPath();
+        ctx.moveTo(e.radius * 1.25, 0);
+        ctx.lineTo(-e.radius * 0.9, -e.radius * 0.85);
+        ctx.lineTo(-e.radius * 0.45, 0);
+        ctx.lineTo(-e.radius * 0.9, e.radius * 0.85);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (e.kind === "shielded") {
+        this.tracePolygon(ctx, 8, e.radius * 0.88);
+        ctx.fill();
+        ctx.stroke();
+        if (e.hp > 1) {
+          ctx.strokeStyle = COLOR_WARNING;
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.arc(0, 0, e.radius + 5, -0.85, 0.85);
+          ctx.stroke();
+        }
+      } else if (e.kind === "pulse_orb") {
+        ctx.beginPath();
+        ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+  drawPhantomTwins(ctx, engine) {
+    for (const twin of engine.phantomTwins) {
+      for (let i = 0; i < twin.trail.length; i++) {
+        const pt = twin.trail[i];
+        const alpha = (1 - i / twin.trail.length) * 0.4;
+        ctx.fillStyle = `rgba(0, 242, 254, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, twin.radius * (1 - i / (twin.trail.length * 1.3)), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = COLOR_PLAYER;
+      ctx.beginPath();
+      ctx.arc(twin.x, twin.y, twin.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  drawPlayerCore(ctx, engine) {
+    const p = engine.player;
+    for (let i = p.trail.length - 1; i >= 1; i--) {
+      const node = p.trail[i];
+      const ratio = 1 - i / p.trail.length;
+      const alpha = (p.isLaunching ? 0.48 : 0.2) * ratio;
+      ctx.save();
+      ctx.translate(node.x, node.y);
+      ctx.rotate(node.angle);
+      ctx.scale(node.scaleX, node.scaleY);
+      ctx.fillStyle = `rgba(0, 242, 254, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, p.radius * (0.45 + 0.55 * ratio), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    if (engine.ownedUpgrades.has("orbital_glaives")) {
+      const orbitR = p.isCharging ? 66 + p.overchargeRatio * 24 : 44;
+      for (let g = 0; g < 2; g++) {
+        const a = p.glaiveAngle + g * Math.PI;
+        const gx = p.x + Math.cos(a) * orbitR;
+        const gy = p.y + Math.sin(a) * orbitR;
+        ctx.save();
+        ctx.translate(gx, gy);
+        ctx.rotate(a + Math.PI * 0.5);
+        ctx.fillStyle = COLOR_PLAYER;
+        ctx.beginPath();
+        ctx.moveTo(14, 0);
+        ctx.lineTo(-8, -7);
+        ctx.lineTo(-4, 0);
+        ctx.lineTo(-8, 7);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    const jitterX = p.overchargeRatio > 0 ? (Math.random() - 0.5) * 4 * p.overchargeRatio : 0;
+    const jitterY = p.overchargeRatio > 0 ? (Math.random() - 0.5) * 4 * p.overchargeRatio : 0;
+    ctx.save();
+    ctx.translate(p.x + jitterX, p.y + jitterY);
+    for (let i = 0; i < p.hp; i++) {
+      const segAngle = Math.PI * 2 / p.maxHp;
+      const start = i * segAngle + p.glaiveAngle * 0.35 + 0.14;
+      const end = (i + 1) * segAngle + p.glaiveAngle * 0.35 - 0.14;
+      ctx.strokeStyle = p.invulnTimer > 0 && Math.floor(p.invulnTimer * 16) % 2 === 0 ? COLOR_WHITE : "rgba(0, 242, 254, 0.75)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, p.radius + 7, start, end);
+      ctx.stroke();
+    }
+    ctx.rotate(p.visualAngle);
+    ctx.scale(p.scaleX, p.scaleY);
+    ctx.fillStyle = p.stunTimer > 0 ? COLOR_DANGER : COLOR_PLAYER;
+    ctx.beginPath();
+    ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COLOR_WHITE;
+    ctx.beginPath();
+    ctx.moveTo(p.radius * 0.85, 0);
+    ctx.lineTo(-p.radius * 0.45, -p.radius * 0.5);
+    ctx.lineTo(-p.radius * 0.2, 0);
+    ctx.lineTo(-p.radius * 0.45, p.radius * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    if (engine.chainCount >= 2 || engine.unbankedPoints > 0) {
+      ctx.font = '800 14px "Inter", system-ui, sans-serif';
+      ctx.textAlign = "center";
+      ctx.fillStyle = engine.chainCount >= 4 ? COLOR_WARNING : COLOR_PLAYER;
+      ctx.fillText(
+        `\xD7${Math.max(1, engine.chainCount)} CHAIN (${(engine.unbankedPoints * Math.max(1, engine.chainCount)).toLocaleString()})`,
+        p.x,
+        p.y + p.radius + 26
+      );
+    }
+  }
+  drawShockwavesAndParticles(ctx, engine) {
+    for (const s of engine.shockwaves) {
+      const progress = 1 - s.life / s.maxLife;
+      const curR = s.radius + (s.maxRadius - s.radius) * progress;
+      const alpha = Math.max(0, 1 - progress);
+      const rgb = s.color === "crimson" ? "255, 42, 109" : s.color === "white" ? "248, 250, 252" : "0, 242, 254";
+      ctx.strokeStyle = `rgba(${rgb}, ${alpha * 0.85})`;
+      ctx.lineWidth = s.lineWidth * (1 - progress * 0.5);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, curR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (const pt of engine.particles) {
+      const alpha = Math.max(0, pt.life / pt.maxLife);
+      ctx.fillStyle = pt.color === "crimson" ? `rgba(255, 42, 109, ${alpha})` : pt.color === "gold" ? `rgba(255, 190, 11, ${alpha})` : pt.color === "white" ? `rgba(248, 250, 252, ${alpha})` : `rgba(0, 242, 254, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.size * alpha, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  drawFloatingPops(ctx, engine) {
+    ctx.textAlign = "center";
+    for (const pop of engine.floatingPops) {
+      const alpha = Math.min(1, pop.life / pop.maxLife * 1.4);
+      ctx.save();
+      ctx.translate(pop.x, pop.y);
+      ctx.scale(pop.scale, pop.scale);
+      ctx.font = '900 18px "Inter", system-ui, sans-serif';
+      ctx.fillStyle = pop.color === "crimson" ? `rgba(255, 42, 109, ${alpha})` : pop.color === "gold" ? `rgba(255, 190, 11, ${alpha})` : `rgba(0, 242, 254, ${alpha})`;
+      ctx.fillText(pop.text, 0, 0);
+      if (pop.subtext) {
+        ctx.font = '700 12px "Inter", system-ui, sans-serif';
+        ctx.fillStyle = `rgba(248, 250, 252, ${alpha * 0.9})`;
+        ctx.fillText(pop.subtext, 0, 20);
+      }
+      ctx.restore();
+    }
+  }
+  tracePolygon(ctx, sides, radius) {
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const a = i / sides * Math.PI * 2;
+      const x = Math.cos(a) * radius;
+      const y = Math.sin(a) * radius;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+};
+
+// games/13-slingcore/src/index.ts
+function mountGame(container, options = {}) {
+  container.innerHTML = "";
+  const style = document.createElement("style");
+  style.textContent = `
+    .slingcore-stage {
+      position: relative;
+      width: 100%;
+      height: 100dvh;
+      min-height: 480px;
+      background: #090d16;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      content-visibility: auto;
+      contain-intrinsic-size: auto none auto 600px;
+    }
+    .slingcore-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    /* Strictly 2 HUD numbers: Score (top-left) and Wave (top-right) \u2014 Rule 2 */
+    .slingcore-hud {
+      position: absolute;
+      top: 34px;
+      left: 42px;
+      right: 42px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .slingcore-hud-num {
+      font-variant-numeric: tabular-nums;
+      font-weight: 900;
+      font-size: clamp(1.75rem, 3.2vw, 2.6rem);
+      letter-spacing: -0.03em;
+      color: #f8fafc;
+      text-shadow: 0 2px 16px rgba(0, 242, 254, 0.28);
+      line-height: 1;
+      transition: transform 0.08s ease-out;
+    }
+    .slingcore-hud-wave {
+      color: #00f2fe;
+    }
+    /* Minimal Between-Wave 3-Card Upgrade Picker (Rule 7) */
+    .slingcore-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: rgba(9, 13, 22, 0.84);
+      backdrop-filter: blur(6px);
+      z-index: 5;
+      padding: 24px;
+    }
+    .slingcore-overlay[hidden] {
+      display: none !important;
+    }
+    .slingcore-draft-title {
+      color: #00f2fe;
+      font-size: 0.9rem;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      margin: 0 0 20px 0;
+    }
+    .slingcore-cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(200px, 270px));
+      gap: 18px;
+      max-width: 860px;
+      width: 100%;
+    }
+    @media (max-width: 720px) {
+      .slingcore-cards {
+        grid-template-columns: 1fr;
+      }
+    }
+    .slingcore-card {
+      background: #0f172a;
+      border: 2px solid #1e293b;
+      border-radius: 14px;
+      padding: 22px 18px;
+      color: #f8fafc;
+      text-align: left;
+      cursor: pointer;
+      transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .slingcore-card:hover,
+    .slingcore-card:focus-visible {
+      border-color: #00f2fe;
+      transform: translateY(-4px);
+      box-shadow: 0 12px 30px rgba(0, 242, 254, 0.18);
+      outline: none;
+    }
+    .slingcore-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .slingcore-card-glyph {
+      font-size: 1.5rem;
+      color: #00f2fe;
+    }
+    .slingcore-card-key {
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: #64748b;
+    }
+    .slingcore-card-name {
+      font-size: 1.05rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      color: #f8fafc;
+      margin: 0;
+    }
+    .slingcore-card-desc {
+      font-size: 0.88rem;
+      line-height: 1.45;
+      color: #cbd5e1;
+      margin: 0;
+    }
+  `;
+  container.appendChild(style);
+  const stage = document.createElement("div");
+  stage.className = "slingcore-stage";
+  stage.innerHTML = `
+    <div class="slingcore-hud" aria-hidden="true">
+      <span id="sling-hud-score" class="slingcore-hud-num">0</span>
+      <span id="sling-hud-wave" class="slingcore-hud-num slingcore-hud-wave">1</span>
+    </div>
+    <canvas class="slingcore-canvas"></canvas>
+    <div id="sling-draft-overlay" class="slingcore-overlay" hidden>
+      <p id="sling-overlay-heading" class="slingcore-draft-title">WAVE CLEARED \u2014 PICK 1 UPGRADE</p>
+      <div id="sling-draft-cards" class="slingcore-cards"></div>
+    </div>
+  `;
+  container.appendChild(stage);
+  const canvas = stage.querySelector(".slingcore-canvas");
+  const ctx = canvas.getContext("2d");
+  const scoreEl = stage.querySelector("#sling-hud-score");
+  const waveEl = stage.querySelector("#sling-hud-wave");
+  const overlayEl = stage.querySelector("#sling-draft-overlay");
+  const overlayHeadingEl = stage.querySelector("#sling-overlay-heading");
+  const cardsContainerEl = stage.querySelector("#sling-draft-cards");
+  const synth = new SlingSynth();
+  const engine = new SlingCoreEngine(options.initialSeed ?? 20261108, synth);
+  const renderer = new SlingCoreRenderer();
+  let lastRenderedPhase = engine.phase;
+  let lastScore = -1;
+  let lastWave = -1;
+  function syncCanvasSize() {
+    const rect = stage.getBoundingClientRect();
+    const w = Math.max(640, Math.floor(rect.width || window.innerWidth || 960));
+    const h = Math.max(420, Math.floor(rect.height || window.innerHeight || 600));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      engine.resize(w, h);
+    }
+  }
+  syncCanvasSize();
+  function syncUI() {
+    if (engine.score !== lastScore) {
+      lastScore = engine.score;
+      scoreEl.textContent = engine.score.toLocaleString();
+    }
+    scoreEl.style.transform = `scale(${engine.scorePopScale.toFixed(3)})`;
+    if (engine.wave !== lastWave) {
+      lastWave = engine.wave;
+      waveEl.textContent = String(engine.wave);
+    }
+    if (engine.phase !== lastRenderedPhase) {
+      lastRenderedPhase = engine.phase;
+      if (engine.phase === "upgrade_draft") {
+        overlayHeadingEl.textContent = `WAVE ${engine.wave} CLEARED \u2014 PICK 1 UPGRADE`;
+        cardsContainerEl.innerHTML = engine.draftChoices.map(
+          (c, idx) => `
+            <button type="button" class="slingcore-card" data-upgrade-idx="${idx}">
+              <div class="slingcore-card-header">
+                <span class="slingcore-card-glyph">${c.glyph}</span>
+                <span class="slingcore-card-key">[${idx + 1}]</span>
+              </div>
+              <h3 class="slingcore-card-name">${c.title}</h3>
+              <p class="slingcore-card-desc">${c.description}</p>
+            </button>
+          `
+        ).join("");
+        overlayEl.hidden = false;
+      } else if (engine.phase === "gameover") {
+        overlayHeadingEl.textContent = `CORE SHATTERED \u2014 CLICK OR PRESS SPACE TO LAUNCH AGAIN`;
+        cardsContainerEl.innerHTML = "";
+        overlayEl.hidden = false;
+      } else {
+        overlayEl.hidden = true;
+      }
+    }
+  }
+  const onPointerMove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / (rect.width || canvas.width);
+    const scaleY = canvas.height / (rect.height || canvas.height);
+    engine.setPointerPosition((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+  };
+  const onPointerDown = (e) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    onPointerMove(e);
+    engine.beginPrimaryAction();
+  };
+  const onPointerUp = () => {
+    engine.releasePrimaryAction();
+  };
+  const onOverlayClick = (e) => {
+    if (engine.phase === "gameover") {
+      engine.resetRun();
+      syncUI();
+      return;
+    }
+    const target = e.target?.closest("[data-upgrade-idx]");
+    if (target) {
+      const idx = Number(target.dataset.upgradeIdx);
+      engine.selectUpgrade(idx);
+      syncUI();
+    }
+  };
+  const onKeyDown = (e) => {
+    if (engine.phase === "upgrade_draft") {
+      if (e.key === "1" || e.key === "2" || e.key === "3") {
+        e.preventDefault();
+        engine.selectUpgrade(Number(e.key) - 1);
+        syncUI();
+      }
+      return;
+    }
+    if (engine.phase === "gameover" && (e.code === "Space" || e.code === "Enter")) {
+      e.preventDefault();
+      engine.resetRun();
+      syncUI();
+      return;
+    }
+    if (e.code === "ArrowLeft" || e.code === "KeyA") {
+      engine.pointer.usingKeyboard = true;
+      engine.pointer.turnLeft = true;
+    } else if (e.code === "ArrowRight" || e.code === "KeyD") {
+      engine.pointer.usingKeyboard = true;
+      engine.pointer.turnRight = true;
+    } else if (e.code === "Space") {
+      e.preventDefault();
+      if (!engine.pointer.isDown) {
+        engine.beginPrimaryAction();
+      }
+    }
+  };
+  const onKeyUp = (e) => {
+    if (e.code === "ArrowLeft" || e.code === "KeyA") {
+      engine.pointer.turnLeft = false;
+    } else if (e.code === "ArrowRight" || e.code === "KeyD") {
+      engine.pointer.turnRight = false;
+    } else if (e.code === "Space") {
+      e.preventDefault();
+      engine.releasePrimaryAction();
+    }
+  };
+  const onResize = () => syncCanvasSize();
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerdown", onPointerDown);
+  window.addEventListener("pointerup", onPointerUp);
+  overlayEl.addEventListener("click", onOverlayClick);
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("resize", onResize);
+  let rafId = 0;
+  let running = true;
+  let lastTime = performance.now();
+  function frame(now) {
+    if (!running) return;
+    const dt = (now - lastTime) / 1e3;
+    lastTime = now;
+    engine.update(dt);
+    renderer.render(ctx, engine);
+    syncUI();
+    rafId = requestAnimationFrame(frame);
+  }
+  function startLoop() {
+    if (running && rafId !== 0) return;
+    running = true;
+    lastTime = performance.now();
+    rafId = requestAnimationFrame(frame);
+  }
+  function stopLoop() {
+    running = false;
+    if (rafId !== 0) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    synth.updateChargeTone(false, 0, 0);
+  }
+  stage.addEventListener("contentvisibilityautostatechange", (event) => {
+    const cvEvent = event;
+    if (cvEvent.skipped) {
+      stopLoop();
+    } else {
+      startLoop();
+    }
+  });
+  let intersectionObserver = null;
+  if (typeof document !== "undefined" && !("contentVisibility" in document.documentElement.style) && typeof IntersectionObserver !== "undefined") {
+    intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) startLoop();
+          else stopLoop();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    intersectionObserver.observe(stage);
+  }
+  renderer.render(ctx, engine);
+  syncUI();
+  startLoop();
+  return {
+    engine,
+    destroy() {
+      stopLoop();
+      intersectionObserver?.disconnect();
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      overlayEl.removeEventListener("click", onOverlayClick);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("resize", onResize);
+      synth.destroy();
+      container.innerHTML = "";
+    },
+    restartWithSeed(seed) {
+      engine.resetRun(seed);
+      lastRenderedPhase = "playing";
+      overlayEl.hidden = true;
+      syncUI();
+    },
+    toggleDebug() {
+    },
+    getStateSnapshot() {
+      return {
+        wave: engine.wave,
+        score: engine.score,
+        chainCount: engine.chainCount,
+        unbankedPoints: engine.unbankedPoints,
+        hp: engine.player.hp,
+        phase: engine.phase,
+        upgrades: Array.from(engine.ownedUpgrades)
+      };
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_13-slingcore.ts
+var root = document.getElementById("game-root");
+if (root) {
+  mountGame(root);
+}
+
+</script>
+  </body>
+</html>

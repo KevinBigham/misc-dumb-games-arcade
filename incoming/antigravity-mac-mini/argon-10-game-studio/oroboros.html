@@ -1,0 +1,4732 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Oroboros: The Pinball Singularity — Flagship Game #12</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        min-height: 100dvh;
+        background: #04060e;
+        color: #f8fafc;
+      }
+      #game-root {
+        padding: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="game-root"></main>
+    <script type="module">
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+
+// node_modules/invokers-polyfill/invoker.js
+function isSupported() {
+  return typeof HTMLButtonElement !== "undefined" && "command" in HTMLButtonElement.prototype && "source" in ((globalThis.CommandEvent || {}).prototype || {});
+}
+function apply() {
+  document.addEventListener(
+    "invoke",
+    (e) => {
+      if (e.type == "invoke" && e.isTrusted) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }
+    },
+    true
+  );
+  document.addEventListener(
+    "command",
+    (e) => {
+      if (e.type == "command" && e.isTrusted) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }
+    },
+    true
+  );
+  function enumerate(obj, key, enumerable = true) {
+    Object.defineProperty(obj, key, {
+      ...Object.getOwnPropertyDescriptor(obj, key),
+      enumerable
+    });
+  }
+  function getRootNode2(node) {
+    if (node && typeof node.getRootNode === "function") {
+      return node.getRootNode();
+    }
+    if (node && node.parentNode) return getRootNode2(node.parentNode);
+    return node;
+  }
+  const commandEventSourceElements = /* @__PURE__ */ new WeakMap();
+  const commandEventActions = /* @__PURE__ */ new WeakMap();
+  class CommandEvent extends Event {
+    constructor(type, invokeEventInit = {}) {
+      super(type, invokeEventInit);
+      const { source, command } = invokeEventInit;
+      if (source != null && !(source instanceof Element)) {
+        throw new TypeError(`source must be an element`);
+      }
+      commandEventSourceElements.set(this, source || null);
+      commandEventActions.set(
+        this,
+        command !== void 0 ? String(command) : ""
+      );
+    }
+    get [Symbol.toStringTag]() {
+      return "CommandEvent";
+    }
+    get source() {
+      if (!commandEventSourceElements.has(this)) {
+        throw new TypeError("illegal invocation");
+      }
+      const source = commandEventSourceElements.get(this);
+      if (!(source instanceof Element)) return null;
+      const invokerRoot = getRootNode2(source);
+      if (invokerRoot !== getRootNode2(this.target || document)) {
+        return invokerRoot.host;
+      }
+      return source;
+    }
+    get command() {
+      if (!commandEventActions.has(this)) {
+        throw new TypeError("illegal invocation");
+      }
+      return commandEventActions.get(this);
+    }
+    get action() {
+      throw new Error(
+        "CommandEvent#action was renamed to CommandEvent#command"
+      );
+    }
+    get invoker() {
+      throw new Error(
+        "CommandEvent#invoker was renamed to CommandEvent#source"
+      );
+    }
+  }
+  enumerate(CommandEvent.prototype, "source");
+  enumerate(CommandEvent.prototype, "command");
+  class InvokeEvent extends Event {
+    constructor(type, invokeEventInit = {}) {
+      super(type, invokeEventInit);
+      throw new Error(
+        "InvokeEvent has been deprecated, it has been renamed to `CommandEvent`"
+      );
+    }
+  }
+  const invokerAssociatedElements = /* @__PURE__ */ new WeakMap();
+  function applyInvokerMixin(ElementClass) {
+    Object.defineProperties(ElementClass.prototype, {
+      commandForElement: {
+        enumerable: true,
+        configurable: true,
+        set(targetElement) {
+          if (this.hasAttribute("invokeaction")) {
+            throw new TypeError(
+              "Element has deprecated `invokeaction` attribute, replace with `command`"
+            );
+          } else if (this.hasAttribute("invoketarget")) {
+            throw new TypeError(
+              "Element has deprecated `invoketarget` attribute, replace with `commandfor`"
+            );
+          } else if (targetElement === null) {
+            this.removeAttribute("commandfor");
+            invokerAssociatedElements.delete(this);
+          } else if (!(targetElement instanceof Element)) {
+            throw new TypeError(`commandForElement must be an element or null`);
+          } else {
+            this.setAttribute("commandfor", "");
+            const targetRootNode = getRootNode2(targetElement);
+            const thisRootNode = getRootNode2(this);
+            if (thisRootNode === targetRootNode || targetRootNode === this.ownerDocument) {
+              invokerAssociatedElements.set(this, targetElement);
+            } else {
+              invokerAssociatedElements.delete(this);
+            }
+          }
+        },
+        get() {
+          if (this.localName !== "button") {
+            return null;
+          }
+          if (this.hasAttribute("invokeaction") || this.hasAttribute("invoketarget")) {
+            console.warn(
+              "Element has deprecated `invoketarget` or `invokeaction` attribute, use `commandfor` and `command` instead"
+            );
+            return null;
+          }
+          if (this.disabled) {
+            return null;
+          }
+          if (this.form && this.getAttribute("type") !== "button") {
+            console.warn(
+              "Element with `commandFor` is a form participant. It should explicitly set `type=button` in order for `commandFor` to work"
+            );
+            return null;
+          }
+          const targetElement = invokerAssociatedElements.get(this);
+          if (targetElement) {
+            if (targetElement.isConnected) {
+              return targetElement;
+            } else {
+              invokerAssociatedElements.delete(this);
+              return null;
+            }
+          }
+          const root2 = getRootNode2(this);
+          const idref = this.getAttribute("commandfor");
+          if ((root2 instanceof Document || root2 instanceof ShadowRoot) && idref) {
+            return root2.getElementById(idref) || null;
+          }
+          return null;
+        }
+      },
+      command: {
+        enumerable: true,
+        configurable: true,
+        get() {
+          const value = this.getAttribute("command") || "";
+          if (value.startsWith("--")) return value;
+          const valueLower = value.toLowerCase();
+          switch (valueLower) {
+            case "show-modal":
+            case "close":
+            case "toggle-popover":
+            case "hide-popover":
+            case "show-popover":
+              return valueLower;
+          }
+          return "";
+        },
+        set(value) {
+          this.setAttribute("command", value);
+        }
+      },
+      invokeAction: {
+        enumerable: false,
+        configurable: true,
+        get() {
+          throw new Error(
+            `invokeAction is deprecated. It has been renamed to command`
+          );
+        },
+        set(value) {
+          throw new Error(
+            `invokeAction is deprecated. It has been renamed to command`
+          );
+        }
+      },
+      invokeTargetElement: {
+        enumerable: false,
+        configurable: true,
+        get() {
+          throw new Error(
+            `invokeTargetElement is deprecated. It has been renamed to command`
+          );
+        },
+        set(value) {
+          throw new Error(
+            `invokeTargetElement is deprecated. It has been renamed to command`
+          );
+        }
+      }
+    });
+  }
+  const onHandlers = /* @__PURE__ */ new WeakMap();
+  Object.defineProperties(HTMLElement.prototype, {
+    oncommand: {
+      enumerable: true,
+      configurable: true,
+      get() {
+        oncommandObserver.takeRecords();
+        return onHandlers.get(this) || null;
+      },
+      set(handler) {
+        const existing = onHandlers.get(this) || null;
+        if (existing) {
+          this.removeEventListener("command", existing);
+        }
+        onHandlers.set(
+          this,
+          typeof handler === "object" || typeof handler === "function" ? handler : null
+        );
+        if (typeof handler == "function") {
+          this.addEventListener("command", handler);
+        }
+      }
+    }
+  });
+  function applyOnCommandHandler(els) {
+    for (const el of els) {
+      el.oncommand = new Function("event", el.getAttribute("oncommand"));
+    }
+  }
+  const oncommandObserver = new MutationObserver((records) => {
+    for (const record of records) {
+      const { target } = record;
+      if (record.type === "childList") {
+        applyOnCommandHandler(target.querySelectorAll("[oncommand]"));
+      } else {
+        applyOnCommandHandler([target]);
+      }
+    }
+  });
+  oncommandObserver.observe(document, {
+    subtree: true,
+    childList: true,
+    attributeFilter: ["oncommand"]
+  });
+  applyOnCommandHandler(document.querySelectorAll("[oncommand]"));
+  function handleInvokerActivation(event) {
+    if (event.defaultPrevented) return;
+    if (event.type !== "click") return;
+    const oldInvoker = event.target.closest(
+      "button[invoketarget], button[invokeaction], input[invoketarget], input[invokeaction]"
+    );
+    if (oldInvoker) {
+      console.warn(
+        "Elements with `invoketarget` or `invokeaction` are deprecated and should be renamed to use `commandfor` and `command` respectively"
+      );
+      if (oldInvoker.matches("input")) {
+        throw new Error("Input elements no longer support `commandfor`");
+      }
+    }
+    const source = event.target.closest("button[commandfor], button[command]");
+    if (!source) return;
+    if (source.form && source.getAttribute("type") !== "button") {
+      event.preventDefault();
+      throw new Error(
+        "Element with `commandFor` is a form participant. It should explicitly set `type=button` in order for `commandFor` to work. In order for it to act as a Submit button, it must not have command or commandfor attributes"
+      );
+    }
+    if (source.hasAttribute("command") !== source.hasAttribute("commandfor")) {
+      const attr = source.hasAttribute("command") ? "command" : "commandfor";
+      const missing = source.hasAttribute("command") ? "commandfor" : "command";
+      throw new Error(
+        `Element with ${attr} attribute must also have a ${missing} attribute to function.`
+      );
+    }
+    if (source.command !== "show-popover" && source.command !== "hide-popover" && source.command !== "toggle-popover" && source.command !== "show-modal" && source.command !== "close" && !source.command.startsWith("--")) {
+      console.warn(
+        `"${source.command}" is not a valid command value. Custom commands must begin with --`
+      );
+      return;
+    }
+    const invokee = source.commandForElement;
+    if (!invokee) return;
+    const invokeEvent = new CommandEvent("command", {
+      command: source.command,
+      source,
+      cancelable: true
+    });
+    invokee.dispatchEvent(invokeEvent);
+    if (invokeEvent.defaultPrevented)
+      return;
+    const command = invokeEvent.command.toLowerCase();
+    if (invokee.popover) {
+      const canShow = !invokee.matches(":popover-open");
+      const shouldShow = canShow && (command === "toggle-popover" || command === "show-popover");
+      const shouldHide = !canShow && command === "hide-popover";
+      if (shouldShow) {
+        invokee.showPopover({ source });
+      } else if (shouldHide) {
+        invokee.hidePopover();
+      }
+    } else if (invokee.localName === "dialog") {
+      const canShow = !invokee.hasAttribute("open");
+      const shouldShow = canShow && command === "show-modal";
+      const shouldHide = !canShow && command === "close";
+      if (shouldShow) {
+        invokee.showModal();
+      } else if (shouldHide) {
+        invokee.close();
+      }
+    }
+  }
+  function setupInvokeListeners(target) {
+    target.addEventListener("click", handleInvokerActivation, true);
+  }
+  function observeShadowRoots(ElementClass, callback) {
+    const attachShadow = ElementClass.prototype.attachShadow;
+    ElementClass.prototype.attachShadow = function(init) {
+      const shadow = attachShadow.call(this, init);
+      callback(shadow);
+      return shadow;
+    };
+    const attachInternals = ElementClass.prototype.attachInternals;
+    ElementClass.prototype.attachInternals = function() {
+      const internals = attachInternals.call(this);
+      if (internals.shadowRoot) callback(internals.shadowRoot);
+      return internals;
+    };
+  }
+  applyInvokerMixin(HTMLButtonElement);
+  observeShadowRoots(HTMLElement, (shadow) => {
+    setupInvokeListeners(shadow);
+    oncommandObserver.observe(shadow, { attributeFilter: ["oncommand"] });
+    applyOnCommandHandler(shadow.querySelectorAll("[oncommand]"));
+  });
+  setupInvokeListeners(document);
+  Object.assign(globalThis, { CommandEvent, InvokeEvent });
+}
+var init_invoker = __esm({
+  "node_modules/invokers-polyfill/invoker.js"() {
+  }
+});
+
+// node_modules/invokers-polyfill/index.js
+var invokers_polyfill_exports = {};
+var init_invokers_polyfill = __esm({
+  "node_modules/invokers-polyfill/index.js"() {
+    init_invoker();
+    if (!isSupported()) apply();
+  }
+});
+
+// node_modules/@oddbird/popover-polyfill/dist/popover.js
+var popover_exports = {};
+function queuePopoverToggleEventTask(element, oldState, newState) {
+  popoverToggleTaskQueue.set(
+    element,
+    setTimeout(() => {
+      if (!popoverToggleTaskQueue.has(element)) return;
+      element.dispatchEvent(
+        new ToggleEvent("toggle", {
+          cancelable: false,
+          oldState,
+          newState
+        })
+      );
+    }, 0)
+  );
+}
+function getPopoverVisibilityState(popover) {
+  return visibilityState.get(popover) || "hidden";
+}
+function lastSetElement(set) {
+  return [...set].pop();
+}
+function popoverTargetAttributeActivationBehavior(element) {
+  const popover = element.popoverTargetElement;
+  if (!(popover instanceof HTMLElement)) {
+    return;
+  }
+  const visibility = getPopoverVisibilityState(popover);
+  if (element.popoverTargetAction === "show" && visibility === "showing") {
+    return;
+  }
+  if (element.popoverTargetAction === "hide" && visibility === "hidden") return;
+  if (visibility === "showing") {
+    hidePopover(popover, true, true);
+  } else if (checkPopoverValidity(popover, false)) {
+    popoverInvoker.set(popover, element);
+    showPopover(popover);
+  }
+}
+function checkPopoverValidity(element, expectedToBeShowing) {
+  if (element.popover !== "auto" && element.popover !== "manual" && element.popover !== "hint") {
+    return false;
+  }
+  if (!element.isConnected) return false;
+  if (expectedToBeShowing && getPopoverVisibilityState(element) !== "showing") {
+    return false;
+  }
+  if (!expectedToBeShowing && getPopoverVisibilityState(element) !== "hidden") {
+    return false;
+  }
+  if (element instanceof HTMLDialogElement2 && element.hasAttribute("open")) {
+    return false;
+  }
+  if (document.fullscreenElement === element) return false;
+  return true;
+}
+function getStackPosition(popover) {
+  if (!popover) return 0;
+  const autoPopovers = autoPopoverList.get(document) || /* @__PURE__ */ new Set();
+  const hintPopovers = hintPopoverList.get(document) || /* @__PURE__ */ new Set();
+  if (hintPopovers.has(popover)) {
+    return [...hintPopovers].indexOf(popover) + autoPopovers.size + 1;
+  }
+  if (autoPopovers.has(popover)) {
+    return [...autoPopovers].indexOf(popover) + 1;
+  }
+  return 0;
+}
+function topMostClickedPopover(target) {
+  const clickedPopover = nearestInclusiveOpenPopover(target);
+  const invokerPopover = nearestInclusiveTargetPopoverForInvoker(target);
+  if (getStackPosition(clickedPopover) > getStackPosition(invokerPopover)) {
+    return clickedPopover;
+  }
+  return invokerPopover;
+}
+function topmostAutoOrHintPopover(document2) {
+  let topmostPopover;
+  const hintPopovers = hintPopoverList.get(document2) || /* @__PURE__ */ new Set();
+  const autoPopovers = autoPopoverList.get(document2) || /* @__PURE__ */ new Set();
+  const usedStack = hintPopovers.size > 0 ? hintPopovers : autoPopovers.size > 0 ? autoPopovers : null;
+  if (usedStack) {
+    topmostPopover = lastSetElement(usedStack);
+    if (!topmostPopover.isConnected) {
+      usedStack.delete(topmostPopover);
+      return topmostAutoOrHintPopover(document2);
+    }
+    return topmostPopover;
+  }
+  return null;
+}
+function topMostPopoverInList(list) {
+  for (const popover of list || []) {
+    if (!popover.isConnected) {
+      list.delete(popover);
+    } else {
+      return popover;
+    }
+  }
+  return null;
+}
+function getRootNode(node) {
+  if (typeof node.getRootNode === "function") {
+    return node.getRootNode();
+  }
+  if (node.parentNode) return getRootNode(node.parentNode);
+  return node;
+}
+function nearestInclusiveOpenPopover(node) {
+  while (node) {
+    if (node instanceof HTMLElement && node.popover === "auto" && visibilityState.get(node) === "showing") {
+      return node;
+    }
+    node = node instanceof Element && node.assignedSlot || node.parentElement || getRootNode(node);
+    if (node instanceof ShadowRoot2) node = node.host;
+    if (node instanceof Document) return;
+  }
+}
+function nearestInclusiveTargetPopoverForInvoker(node) {
+  while (node) {
+    const nodePopover = node.popoverTargetElement;
+    if (nodePopover instanceof HTMLElement) return nodePopover;
+    node = node.parentElement || getRootNode(node);
+    if (node instanceof ShadowRoot2) node = node.host;
+    if (node instanceof Document) return;
+  }
+}
+function topMostPopoverAncestor(newPopover, list) {
+  const popoverPositions = /* @__PURE__ */ new Map();
+  let i = 0;
+  for (const popover of list || []) {
+    popoverPositions.set(popover, i);
+    i += 1;
+  }
+  popoverPositions.set(newPopover, i);
+  i += 1;
+  let topMostPopoverAncestor2 = null;
+  function checkAncestor(candidate) {
+    if (!candidate) return;
+    let okNesting = false;
+    let candidateAncestor = null;
+    let candidatePosition = null;
+    while (!okNesting) {
+      candidateAncestor = nearestInclusiveOpenPopover(candidate) || null;
+      if (candidateAncestor === null) return;
+      if (!popoverPositions.has(candidateAncestor)) return;
+      if (newPopover.popover === "hint" || candidateAncestor.popover === "auto") {
+        okNesting = true;
+      }
+      if (!okNesting) {
+        candidate = candidateAncestor.parentElement;
+      }
+    }
+    candidatePosition = popoverPositions.get(candidateAncestor);
+    if (topMostPopoverAncestor2 === null || popoverPositions.get(topMostPopoverAncestor2) < candidatePosition) {
+      topMostPopoverAncestor2 = candidateAncestor;
+    }
+  }
+  checkAncestor(newPopover.parentElement || getRootNode(newPopover));
+  return topMostPopoverAncestor2;
+}
+function isFocusable(focusTarget) {
+  if (focusTarget.hidden || focusTarget instanceof ShadowRoot2) return false;
+  if (focusTarget instanceof HTMLButtonElement || focusTarget instanceof HTMLInputElement || focusTarget instanceof HTMLSelectElement || focusTarget instanceof HTMLTextAreaElement || focusTarget instanceof HTMLOptGroupElement || focusTarget instanceof HTMLOptionElement || focusTarget instanceof HTMLFieldSetElement) {
+    if (focusTarget.disabled) return false;
+  }
+  if (focusTarget instanceof HTMLInputElement && focusTarget.type === "hidden") {
+    return false;
+  }
+  if (focusTarget instanceof HTMLAnchorElement && focusTarget.href === "") {
+    return false;
+  }
+  return typeof focusTarget.tabIndex === "number" && focusTarget.tabIndex !== -1;
+}
+function focusDelegate(focusTarget) {
+  if (focusTarget.shadowRoot && focusTarget.shadowRoot.delegatesFocus !== true) {
+    return null;
+  }
+  let whereToLook = focusTarget;
+  if (whereToLook.shadowRoot) {
+    whereToLook = whereToLook.shadowRoot;
+  }
+  let autoFocusDelegate = whereToLook.querySelector("[autofocus]");
+  if (autoFocusDelegate) {
+    return autoFocusDelegate;
+  } else {
+    const slots = whereToLook.querySelectorAll("slot");
+    for (const slot of slots) {
+      const assignedElements = slot.assignedElements({ flatten: true });
+      for (const el of assignedElements) {
+        if (el.hasAttribute("autofocus")) {
+          return el;
+        } else {
+          autoFocusDelegate = el.querySelector("[autofocus]");
+          if (autoFocusDelegate) {
+            return autoFocusDelegate;
+          }
+        }
+      }
+    }
+  }
+  const walker = focusTarget.ownerDocument.createTreeWalker(
+    whereToLook,
+    NodeFilter.SHOW_ELEMENT
+  );
+  let descendant = walker.currentNode;
+  while (descendant) {
+    if (isFocusable(descendant)) {
+      return descendant;
+    }
+    descendant = walker.nextNode();
+  }
+}
+function popoverFocusingSteps(subject) {
+  var _a;
+  (_a = focusDelegate(subject)) == null ? void 0 : _a.focus();
+}
+function showPopover(element) {
+  if (!checkPopoverValidity(element, false)) {
+    return;
+  }
+  const document2 = element.ownerDocument;
+  if (!element.dispatchEvent(
+    new ToggleEvent("beforetoggle", {
+      cancelable: true,
+      oldState: "closed",
+      newState: "open"
+    })
+  )) {
+    return;
+  }
+  if (!checkPopoverValidity(element, false)) {
+    return;
+  }
+  let shouldRestoreFocus = false;
+  const originalType = element.popover;
+  let stackToAppendTo = null;
+  const autoAncestor = topMostPopoverAncestor(
+    element,
+    autoPopoverList.get(document2) || /* @__PURE__ */ new Set()
+  );
+  const hintAncestor = topMostPopoverAncestor(
+    element,
+    hintPopoverList.get(document2) || /* @__PURE__ */ new Set()
+  );
+  if (originalType === "auto") {
+    closeAllOpenPopoversInList(
+      hintPopoverList.get(document2) || /* @__PURE__ */ new Set(),
+      shouldRestoreFocus,
+      true
+    );
+    const ancestor = autoAncestor || document2;
+    hideAllPopoversUntil(ancestor, shouldRestoreFocus, true);
+    stackToAppendTo = "auto";
+  }
+  if (originalType === "hint") {
+    if (hintAncestor) {
+      hideAllPopoversUntil(hintAncestor, shouldRestoreFocus, true);
+      stackToAppendTo = "hint";
+    } else {
+      closeAllOpenPopoversInList(
+        hintPopoverList.get(document2) || /* @__PURE__ */ new Set(),
+        shouldRestoreFocus,
+        true
+      );
+      if (autoAncestor) {
+        hideAllPopoversUntil(autoAncestor, shouldRestoreFocus, true);
+        stackToAppendTo = "auto";
+      } else {
+        stackToAppendTo = "hint";
+      }
+    }
+  }
+  if (originalType === "auto" || originalType === "hint") {
+    if (originalType !== element.popover || !checkPopoverValidity(element, false)) {
+      return;
+    }
+    if (!topmostAutoOrHintPopover(document2)) {
+      shouldRestoreFocus = true;
+    }
+    if (stackToAppendTo === "auto") {
+      if (!autoPopoverList.has(document2)) {
+        autoPopoverList.set(document2, /* @__PURE__ */ new Set());
+      }
+      autoPopoverList.get(document2).add(element);
+    } else if (stackToAppendTo === "hint") {
+      if (!hintPopoverList.has(document2)) {
+        hintPopoverList.set(document2, /* @__PURE__ */ new Set());
+      }
+      hintPopoverList.get(document2).add(element);
+    }
+  }
+  previouslyFocusedElements.delete(element);
+  const originallyFocusedElement = document2.activeElement;
+  element.classList.add(":popover-open");
+  visibilityState.set(element, "showing");
+  if (!topLayerElements.has(document2)) {
+    topLayerElements.set(document2, /* @__PURE__ */ new Set());
+  }
+  topLayerElements.get(document2).add(element);
+  setInvokerAriaExpanded(popoverInvoker.get(element), true);
+  popoverFocusingSteps(element);
+  if (shouldRestoreFocus && originallyFocusedElement && element.popover === "auto") {
+    previouslyFocusedElements.set(element, originallyFocusedElement);
+  }
+  queuePopoverToggleEventTask(element, "closed", "open");
+}
+function hidePopover(element, focusPreviousElement = false, fireEvents = false) {
+  var _a, _b;
+  if (!checkPopoverValidity(element, true)) {
+    return;
+  }
+  const document2 = element.ownerDocument;
+  if (["auto", "hint"].includes(element.popover)) {
+    hideAllPopoversUntil(element, focusPreviousElement, fireEvents);
+    if (!checkPopoverValidity(element, true)) {
+      return;
+    }
+  }
+  const autoList = autoPopoverList.get(document2) || /* @__PURE__ */ new Set();
+  const autoPopoverListContainsElement = autoList.has(element) && lastSetElement(autoList) === element;
+  setInvokerAriaExpanded(popoverInvoker.get(element), false);
+  popoverInvoker.delete(element);
+  if (fireEvents) {
+    element.dispatchEvent(
+      new ToggleEvent("beforetoggle", {
+        oldState: "open",
+        newState: "closed"
+      })
+    );
+    if (autoPopoverListContainsElement && lastSetElement(autoList) !== element) {
+      hideAllPopoversUntil(element, focusPreviousElement, fireEvents);
+    }
+    if (!checkPopoverValidity(element, true)) {
+      return;
+    }
+  }
+  (_a = topLayerElements.get(document2)) == null ? void 0 : _a.delete(element);
+  autoList.delete(element);
+  (_b = hintPopoverList.get(document2)) == null ? void 0 : _b.delete(element);
+  element.classList.remove(":popover-open");
+  visibilityState.set(element, "hidden");
+  if (fireEvents) {
+    queuePopoverToggleEventTask(element, "open", "closed");
+  }
+  const previouslyFocusedElement = previouslyFocusedElements.get(element);
+  if (previouslyFocusedElement) {
+    previouslyFocusedElements.delete(element);
+    if (focusPreviousElement) {
+      previouslyFocusedElement.focus();
+    }
+  }
+}
+function closeAllOpenPopovers(document2, focusPreviousElement = false, fireEvents = false) {
+  let popover = topmostAutoOrHintPopover(document2);
+  while (popover) {
+    hidePopover(popover, focusPreviousElement, fireEvents);
+    popover = topmostAutoOrHintPopover(document2);
+  }
+}
+function closeAllOpenPopoversInList(list, focusPreviousElement = false, fireEvents = false) {
+  let popover = topMostPopoverInList(list);
+  while (popover) {
+    hidePopover(popover, focusPreviousElement, fireEvents);
+    popover = topMostPopoverInList(list);
+  }
+}
+function hidePopoverStackUntil(endpoint, set, focusPreviousElement, fireEvents) {
+  let repeatingHide = false;
+  let hasRunOnce = false;
+  while (repeatingHide || !hasRunOnce) {
+    hasRunOnce = true;
+    let lastToHide = null;
+    let foundEndpoint = false;
+    for (const popover of set) {
+      if (popover === endpoint) {
+        foundEndpoint = true;
+      } else if (foundEndpoint) {
+        lastToHide = popover;
+        break;
+      }
+    }
+    if (!lastToHide) return;
+    while (getPopoverVisibilityState(lastToHide) === "showing" && set.size) {
+      hidePopover(lastSetElement(set), focusPreviousElement, fireEvents);
+    }
+    if (set.has(endpoint) && lastSetElement(set) !== endpoint) {
+      repeatingHide = true;
+    }
+    if (repeatingHide) {
+      fireEvents = false;
+    }
+  }
+}
+function hideAllPopoversUntil(endpoint, focusPreviousElement, fireEvents) {
+  var _a, _b;
+  const document2 = endpoint.ownerDocument || endpoint;
+  if (endpoint instanceof Document) {
+    return closeAllOpenPopovers(document2, focusPreviousElement, fireEvents);
+  }
+  if ((_a = hintPopoverList.get(document2)) == null ? void 0 : _a.has(endpoint)) {
+    hidePopoverStackUntil(
+      endpoint,
+      hintPopoverList.get(document2),
+      focusPreviousElement,
+      fireEvents
+    );
+    return;
+  }
+  closeAllOpenPopoversInList(
+    hintPopoverList.get(document2) || /* @__PURE__ */ new Set(),
+    focusPreviousElement,
+    fireEvents
+  );
+  if (!((_b = autoPopoverList.get(document2)) == null ? void 0 : _b.has(endpoint))) {
+    return;
+  }
+  hidePopoverStackUntil(
+    endpoint,
+    autoPopoverList.get(document2),
+    focusPreviousElement,
+    fireEvents
+  );
+}
+function lightDismissOpenPopovers(event) {
+  if (!event.isTrusted) return;
+  const target = event.composedPath()[0];
+  if (!target) return;
+  const document2 = target.ownerDocument;
+  const topMostPopover = topmostAutoOrHintPopover(document2);
+  if (!topMostPopover) return;
+  const ancestor = topMostClickedPopover(target);
+  if (ancestor && event.type === "pointerdown") {
+    popoverPointerDownTargets.set(document2, ancestor);
+  } else if (event.type === "pointerup") {
+    const sameTarget = popoverPointerDownTargets.get(document2) === ancestor;
+    popoverPointerDownTargets.delete(document2);
+    if (sameTarget) {
+      hideAllPopoversUntil(ancestor || document2, false, true);
+    }
+  }
+}
+function setInvokerAriaExpanded(el, force = false) {
+  if (!el) return;
+  if (!initialAriaExpandedValue.has(el)) {
+    initialAriaExpandedValue.set(el, el.getAttribute("aria-expanded"));
+  }
+  const popover = el.popoverTargetElement;
+  if (popover instanceof HTMLElement && popover.popover === "auto") {
+    el.setAttribute("aria-expanded", String(force));
+  } else {
+    const initialValue = initialAriaExpandedValue.get(el);
+    if (!initialValue) {
+      el.removeAttribute("aria-expanded");
+    } else {
+      el.setAttribute("aria-expanded", initialValue);
+    }
+  }
+}
+function isSupported2() {
+  return typeof HTMLElement !== "undefined" && typeof HTMLElement.prototype === "object" && "popover" in HTMLElement.prototype;
+}
+function patchSelectorFn(object, name, mapper) {
+  const original = object[name];
+  Object.defineProperty(object, name, {
+    value(selector) {
+      return original.call(this, mapper(selector));
+    }
+  });
+}
+function hasLayerSupport() {
+  return typeof globalThis.CSSLayerBlockRule === "function";
+}
+function getStyles() {
+  const useLayer = hasLayerSupport();
+  return `
+${useLayer ? "@layer popover-polyfill {" : ""}
+  :where([popover]) {
+    position: fixed;
+    z-index: 2147483647;
+    inset: 0;
+    padding: 0.25em;
+    width: fit-content;
+    height: fit-content;
+    border-width: initial;
+    border-color: initial;
+    border-image: initial;
+    border-style: solid;
+    background-color: canvas;
+    color: canvastext;
+    overflow: auto;
+    margin: auto;
+  }
+
+  :where([popover]:not(.\\:popover-open)) {
+    display: none;
+  }
+
+  :where(dialog[popover].\\:popover-open) {
+    display: block;
+  }
+
+  :where(dialog[popover][open]) {
+    display: revert;
+  }
+
+  :where([anchor].\\:popover-open) {
+    inset: auto;
+  }
+
+  :where([anchor]:popover-open) {
+    inset: auto;
+  }
+
+  @supports not (background-color: canvas) {
+    :where([popover]) {
+      background-color: white;
+      color: black;
+    }
+  }
+
+  @supports (width: -moz-fit-content) {
+    :where([popover]) {
+      width: -moz-fit-content;
+      height: -moz-fit-content;
+    }
+  }
+
+  @supports not (inset: 0) {
+    :where([popover]) {
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+  }
+${useLayer ? "}" : ""}
+`;
+}
+function injectStyles(root2) {
+  const styles = getStyles();
+  if (popoverStyleSheet === null) {
+    try {
+      popoverStyleSheet = new CSSStyleSheet();
+      popoverStyleSheet.replaceSync(styles);
+    } catch {
+      popoverStyleSheet = false;
+    }
+  }
+  if (popoverStyleSheet === false) {
+    const sheet = document.createElement("style");
+    sheet.textContent = styles;
+    if (root2 instanceof Document) {
+      root2.head.prepend(sheet);
+    } else {
+      root2.prepend(sheet);
+    }
+  } else {
+    root2.adoptedStyleSheets = [popoverStyleSheet, ...root2.adoptedStyleSheets];
+  }
+}
+function apply2() {
+  if (typeof window === "undefined") return;
+  window.ToggleEvent = window.ToggleEvent || ToggleEvent;
+  function rewriteSelector(selector) {
+    if (selector == null ? void 0 : selector.includes(":popover-open")) {
+      selector = selector.replace(
+        nonEscapedPopoverSelector,
+        "$1.\\:popover-open"
+      );
+    }
+    return selector;
+  }
+  patchSelectorFn(Document.prototype, "querySelector", rewriteSelector);
+  patchSelectorFn(Document.prototype, "querySelectorAll", rewriteSelector);
+  patchSelectorFn(Element.prototype, "querySelector", rewriteSelector);
+  patchSelectorFn(Element.prototype, "querySelectorAll", rewriteSelector);
+  patchSelectorFn(Element.prototype, "matches", rewriteSelector);
+  patchSelectorFn(Element.prototype, "closest", rewriteSelector);
+  patchSelectorFn(
+    DocumentFragment.prototype,
+    "querySelectorAll",
+    rewriteSelector
+  );
+  Object.defineProperties(HTMLElement.prototype, {
+    popover: {
+      enumerable: true,
+      configurable: true,
+      get() {
+        if (!this.hasAttribute("popover")) return null;
+        const value = (this.getAttribute("popover") || "").toLowerCase();
+        if (value === "" || value == "auto") return "auto";
+        if (value == "hint") return "hint";
+        return "manual";
+      },
+      set(value) {
+        if (value === null) {
+          this.removeAttribute("popover");
+        } else {
+          this.setAttribute("popover", value);
+        }
+      }
+    },
+    showPopover: {
+      enumerable: true,
+      configurable: true,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      value(options = {}) {
+        showPopover(this);
+      }
+    },
+    hidePopover: {
+      enumerable: true,
+      configurable: true,
+      value() {
+        hidePopover(this, true, true);
+      }
+    },
+    togglePopover: {
+      enumerable: true,
+      configurable: true,
+      value(options = {}) {
+        if (typeof options === "boolean") {
+          options = { force: options };
+        }
+        if (visibilityState.get(this) === "showing" && options.force === void 0 || options.force === false) {
+          hidePopover(this, true, true);
+        } else if (options.force === void 0 || options.force === true) {
+          showPopover(this);
+        }
+        return visibilityState.get(this) === "showing";
+      }
+    }
+  });
+  const originalAttachShadow = Element.prototype.attachShadow;
+  if (originalAttachShadow) {
+    Object.defineProperties(Element.prototype, {
+      attachShadow: {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value(options) {
+          const shadowRoot = originalAttachShadow.call(this, options);
+          injectStyles(shadowRoot);
+          return shadowRoot;
+        }
+      }
+    });
+  }
+  const originalAttachInternals = HTMLElement.prototype.attachInternals;
+  if (originalAttachInternals) {
+    Object.defineProperties(HTMLElement.prototype, {
+      attachInternals: {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value() {
+          const internals = originalAttachInternals.call(this);
+          if (internals.shadowRoot) {
+            injectStyles(internals.shadowRoot);
+          }
+          return internals;
+        }
+      }
+    });
+  }
+  const popoverTargetAssociatedElements = /* @__PURE__ */ new WeakMap();
+  function applyPopoverInvokerElementMixin(ElementClass) {
+    Object.defineProperties(ElementClass.prototype, {
+      popoverTargetElement: {
+        enumerable: true,
+        configurable: true,
+        set(targetElement) {
+          if (targetElement === null) {
+            this.removeAttribute("popovertarget");
+            popoverTargetAssociatedElements.delete(this);
+          } else if (!(targetElement instanceof Element)) {
+            throw new TypeError(
+              `popoverTargetElement must be an element or null`
+            );
+          } else {
+            this.setAttribute("popovertarget", "");
+            popoverTargetAssociatedElements.set(this, targetElement);
+          }
+        },
+        get() {
+          if (this.localName !== "button" && this.localName !== "input") {
+            return null;
+          }
+          if (this.localName === "input" && this.type !== "reset" && this.type !== "image" && this.type !== "button") {
+            return null;
+          }
+          if (this.disabled) {
+            return null;
+          }
+          if (this.form && this.type === "submit") {
+            return null;
+          }
+          const targetElement = popoverTargetAssociatedElements.get(this);
+          if (targetElement && targetElement.isConnected) {
+            return targetElement;
+          } else if (targetElement && !targetElement.isConnected) {
+            popoverTargetAssociatedElements.delete(this);
+            return null;
+          }
+          const root2 = getRootNode(this);
+          const idref = this.getAttribute("popovertarget");
+          if ((root2 instanceof Document || root2 instanceof ShadowRoot22) && idref) {
+            return root2.getElementById(idref) || null;
+          }
+          return null;
+        }
+      },
+      popoverTargetAction: {
+        enumerable: true,
+        configurable: true,
+        get() {
+          const value = (this.getAttribute("popovertargetaction") || "").toLowerCase();
+          if (value === "show" || value === "hide") return value;
+          return "toggle";
+        },
+        set(value) {
+          this.setAttribute("popovertargetaction", value);
+        }
+      }
+    });
+  }
+  applyPopoverInvokerElementMixin(HTMLButtonElement);
+  applyPopoverInvokerElementMixin(HTMLInputElement);
+  const handleInvokerActivation = (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    const composedPath = event.composedPath();
+    const target = composedPath[0];
+    if (!(target instanceof Element) || (target == null ? void 0 : target.shadowRoot)) {
+      return;
+    }
+    const root2 = getRootNode(target);
+    if (!(root2 instanceof ShadowRoot22 || root2 instanceof Document)) {
+      return;
+    }
+    const invoker = composedPath.find(
+      (el) => {
+        var _a;
+        return (_a = el.matches) == null ? void 0 : _a.call(el, "[popovertargetaction],[popovertarget]");
+      }
+    );
+    if (invoker) {
+      popoverTargetAttributeActivationBehavior(invoker);
+      event.preventDefault();
+      return;
+    }
+  };
+  const onKeydown = (event) => {
+    const key = event.key;
+    const target = event.target;
+    if (!event.defaultPrevented && target && (key === "Escape" || key === "Esc")) {
+      hideAllPopoversUntil(target.ownerDocument, true, true);
+    }
+  };
+  const addEventListeners = (root2) => {
+    root2.addEventListener("click", handleInvokerActivation);
+    root2.addEventListener("keydown", onKeydown);
+    root2.addEventListener("pointerdown", lightDismissOpenPopovers);
+    root2.addEventListener("pointerup", lightDismissOpenPopovers);
+  };
+  addEventListeners(document);
+  injectStyles(document);
+}
+var ToggleEvent, popoverToggleTaskQueue, ShadowRoot2, HTMLDialogElement2, topLayerElements, autoPopoverList, hintPopoverList, visibilityState, popoverInvoker, previouslyFocusedElements, popoverPointerDownTargets, initialAriaExpandedValue, ShadowRoot22, nonEscapedPopoverSelector, popoverStyleSheet;
+var init_popover = __esm({
+  "node_modules/@oddbird/popover-polyfill/dist/popover.js"() {
+    ToggleEvent = class extends Event {
+      oldState;
+      newState;
+      constructor(type, { oldState = "", newState = "", ...init } = {}) {
+        super(type, init);
+        this.oldState = String(oldState || "");
+        this.newState = String(newState || "");
+      }
+    };
+    popoverToggleTaskQueue = /* @__PURE__ */ new WeakMap();
+    ShadowRoot2 = globalThis.ShadowRoot || function() {
+    };
+    HTMLDialogElement2 = globalThis.HTMLDialogElement || function() {
+    };
+    topLayerElements = /* @__PURE__ */ new WeakMap();
+    autoPopoverList = /* @__PURE__ */ new WeakMap();
+    hintPopoverList = /* @__PURE__ */ new WeakMap();
+    visibilityState = /* @__PURE__ */ new WeakMap();
+    popoverInvoker = /* @__PURE__ */ new WeakMap();
+    previouslyFocusedElements = /* @__PURE__ */ new WeakMap();
+    popoverPointerDownTargets = /* @__PURE__ */ new WeakMap();
+    initialAriaExpandedValue = /* @__PURE__ */ new WeakMap();
+    ShadowRoot22 = globalThis.ShadowRoot || function() {
+    };
+    nonEscapedPopoverSelector = /(^|[^\\]):popover-open\b/g;
+    popoverStyleSheet = null;
+    if (!isSupported2()) apply2();
+  }
+});
+
+// games/12-astral-pinball/src/audio.ts
+var LYDIAN_FREQUENCIES = [
+  261.63,
+  293.66,
+  329.63,
+  369.99,
+  392,
+  440,
+  493.88,
+  523.25,
+  587.33,
+  659.25,
+  739.99,
+  783.99,
+  880,
+  987.77,
+  1046.5
+];
+var AstralAudioEngine = class {
+  ctx = null;
+  muted = false;
+  ensureContext() {
+    if (this.muted) return null;
+    if (typeof window === "undefined") return null;
+    if (!this.ctx) {
+      const AudioCtor = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtor) {
+        try {
+          this.ctx = new AudioCtor();
+        } catch {
+          this.ctx = null;
+        }
+      }
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      void this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  isMuted() {
+    return this.muted;
+  }
+  setMuted(mute) {
+    this.muted = mute;
+  }
+  toggleMute() {
+    this.muted = !this.muted;
+    return this.muted;
+  }
+  playTone(freq, durationSec, type = "sine", gainPeak = 0.08, slideToFreq) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now);
+      if (slideToFreq) {
+        osc.frequency.exponentialRampToValueAtTime(
+          Math.max(40, slideToFreq),
+          now + durationSec
+        );
+      }
+      gain.gain.setValueAtTime(1e-3, now);
+      gain.gain.linearRampToValueAtTime(gainPeak, now + 0.012);
+      gain.gain.exponentialRampToValueAtTime(8e-4, now + durationSec);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + durationSec + 0.02);
+    } catch {
+    }
+  }
+  playEvents(events) {
+    if (this.muted || events.length === 0) return;
+    for (const ev of events.slice(0, 5)) {
+      switch (ev.type) {
+        case "COMET_LAUNCHED":
+          this.playTone(220, 0.18, "triangle", 0.09, 587.33);
+          break;
+        case "SOCKET_HIT": {
+          const idx = Math.min(
+            LYDIAN_FREQUENCIES.length - 1,
+            Math.max(0, (ev.comboCount ?? 1) - 1)
+          );
+          const f = LYDIAN_FREQUENCIES[idx];
+          this.playTone(f, 0.14, "triangle", 0.075);
+          break;
+        }
+        case "PRISM_SPLIT":
+          this.playTone(523.25, 0.2, "sine", 0.08, 1046.5);
+          this.playTone(659.25, 0.22, "triangle", 0.07, 1318.5);
+          break;
+        case "LIGHTNING_ARC":
+          this.playTone(740, 0.09, "sawtooth", 0.045, 370);
+          break;
+        case "PERFECT_PARRY":
+          this.playTone(440, 0.22, "triangle", 0.1, 880);
+          this.playTone(659.25, 0.25, "sine", 0.08, 1318.5);
+          break;
+        case "FLIPPER_BOUNCE":
+          this.playTone(196, 0.1, "triangle", 0.07, 392);
+          break;
+        case "SONIC_NOVA":
+          this.playTone(261.63, 0.45, "sine", 0.1);
+          this.playTone(392, 0.45, "triangle", 0.08);
+          this.playTone(659.25, 0.45, "sine", 0.08);
+          break;
+        case "BOSS_HIT":
+          this.playTone(146.83, 0.12, "sawtooth", 0.06, 98);
+          break;
+        case "SECTOR_VICTORY":
+        case "GAME_VICTORY":
+          this.playTone(523.25, 0.45, "triangle", 0.1);
+          this.playTone(659.25, 0.45, "triangle", 0.09);
+          this.playTone(783.99, 0.55, "sine", 0.1);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  destroy() {
+    if (this.ctx) {
+      try {
+        void this.ctx.close();
+      } catch {
+      }
+      this.ctx = null;
+    }
+  }
+};
+
+// games/12-astral-pinball/src/config.ts
+var ASTRAL_CONFIG = {
+  GAME_ID: "12-astral-pinball",
+  GAME_NUMBER: 12,
+  TITLE: "Oroboros: The Pinball Singularity",
+  SUBTITLE: "Relativistic Pinball Roguelike, Orbital Gravity Wells & Multiplicative Chip\xD7Mult Alchemy",
+  ACCENT_COLOR: "#f59e0b",
+  DEFAULT_SEED: 20261108,
+  TABLE_WIDTH: 920,
+  TABLE_HEIGHT: 600,
+  FIXED_STEP_MS: 16,
+  // Physics constants (px and seconds)
+  GRAVITY_Y: 165,
+  MAX_COMET_SPEED: 680,
+  MIN_COMET_SPEED: 145,
+  COMET_RADIUS: 10,
+  MAX_ACTIVE_COMETS: 14,
+  LAUNCH_ORIGIN_X: 460,
+  LAUNCH_ORIGIN_Y: 538,
+  LAUNCH_SPEED: 470,
+  // Flippers & Aegis Paddle
+  PADDLE_Y: 556,
+  PADDLE_HALF_WIDTH: 84,
+  FLIPPER_SWING_DURATION_MS: 160,
+  PARRY_WINDOW_MS: 150,
+  // Economy & Resources
+  STARTING_VOLLEYS: 5,
+  STARTING_AEGIS_HULL: 100,
+  MAX_AEGIS_HULL: 100,
+  STARTING_STARDUST: 110,
+  STARTING_FLUX: 60,
+  MAX_FLUX: 100,
+  FLUX_COST_MAGNET: 25,
+  FLUX_COST_CHRONO: 30,
+  FLUX_COST_SUPERNOVA: 45,
+  BASE_COMET_CHIPS: 30,
+  MAX_SECTORS: 5
+};
+
+// games/12-astral-pinball/src/content.ts
+var ASTRAL_SOCKET_BLUEPRINTS = {
+  PRISM_SPLITTER: {
+    type: "PRISM_SPLITTER",
+    name: "Bifrost Prism Gate",
+    shortLabel: "Prism Gate",
+    symbol: "\u2756",
+    costStardust: 45,
+    radius: 24,
+    elasticity: 1.08,
+    baseChipsBonus: 18,
+    comboMultBonus: 0.35,
+    color: "#ec4899",
+    glowColor: "rgba(236, 72, 153, 0.45)",
+    summary: "Splits a striking comet into 2 chromatic twin comets (+18 Chips, +0.35\xD7 Mult).",
+    synergyTip: "Place in upper-mid sockets so split comets cascade through Tesla Pylons below."
+  },
+  TESLA_PYLON: {
+    type: "TESLA_PYLON",
+    name: "Tesla Resonance Pylon",
+    shortLabel: "Tesla Pylon",
+    symbol: "\u26A1",
+    costStardust: 40,
+    radius: 22,
+    elasticity: 1.15,
+    baseChipsBonus: 26,
+    comboMultBonus: 0.5,
+    color: "#38bdf8",
+    glowColor: "rgba(56, 189, 248, 0.45)",
+    summary: "Arcs chain-lightning to up to 3 Boss Nodes/Meteors on hit (+26 Chips, +0.50\xD7 Mult).",
+    synergyTip: "Pairs explosively with Bifrost Prisms\u2014multiball hits trigger rapid-fire lightning storms."
+  },
+  GRAVITY_WELL: {
+    type: "GRAVITY_WELL",
+    name: "Kerr Micro-Singularity",
+    shortLabel: "Gravity Well",
+    symbol: "\u{1F300}",
+    costStardust: 50,
+    radius: 26,
+    elasticity: 1.22,
+    baseChipsBonus: 22,
+    comboMultBonus: 0.65,
+    color: "#a855f7",
+    glowColor: "rgba(168, 85, 247, 0.48)",
+    summary: "Curves nearby comets into a relativistic orbital slingshot (+32% speed, +0.65\xD7 Mult).",
+    synergyTip: "Bends trajectories around Boss shield rings to snipe exposed rear weak points."
+  },
+  FORGE_ANVIL: {
+    type: "FORGE_ANVIL",
+    name: "Solar Forge Anvil",
+    shortLabel: "Forge Anvil",
+    symbol: "\u{1F525}",
+    costStardust: 35,
+    radius: 25,
+    elasticity: 1.32,
+    baseChipsBonus: 38,
+    comboMultBonus: 0.25,
+    color: "#f59e0b",
+    glowColor: "rgba(245, 158, 11, 0.45)",
+    summary: "High-impulse kinetic anvil that permanently temper-forges the comet (+14 permanent Comet Chips).",
+    synergyTip: "Hit early in a volley so every subsequent bounce multiplies a higher Base Chip value."
+  },
+  WORMHOLE_RELAY: {
+    type: "WORMHOLE_RELAY",
+    name: "Ouroboros Wormhole Portal",
+    shortLabel: "Wormhole",
+    symbol: "\u23F3",
+    costStardust: 55,
+    radius: 24,
+    elasticity: 1.18,
+    baseChipsBonus: 20,
+    comboMultBonus: 0.85,
+    color: "#10b981",
+    glowColor: "rgba(16, 185, 129, 0.45)",
+    summary: "Teleports comets straight back to the Zenith Crown above the Boss (+0.85\xD7 Combo Mult).",
+    synergyTip: "Wire into lower flank sockets to rescue draining comets and sustain 50+ bounce loops!"
+  },
+  HARMONIC_BELL: {
+    type: "HARMONIC_BELL",
+    name: "Celestial Bell Condenser",
+    shortLabel: "Harmonic Bell",
+    symbol: "\u{1F514}",
+    costStardust: 50,
+    radius: 24,
+    elasticity: 1.2,
+    baseChipsBonus: 30,
+    comboMultBonus: 0.55,
+    color: "#fde047",
+    glowColor: "rgba(253, 224, 71, 0.45)",
+    summary: "Rings a Lydian chord; every 3rd hit unleashes a full-table Sonic Nova (240 AoE damage + clears hazards).",
+    synergyTip: "Essential against Sector III Drone Swarms and Sector IV Hawking Lances."
+  }
+};
+var ASTRAL_SOCKET_SLOTS = [
+  { slotIndex: 0, label: "NW Crown", x: 205, y: 175, zone: "UPPER_CROWN", defaultType: "FORGE_ANVIL" },
+  { slotIndex: 1, label: "NE Crown", x: 715, y: 175, zone: "UPPER_CROWN", defaultType: "TESLA_PYLON" },
+  { slotIndex: 2, label: "West Crucible", x: 265, y: 278, zone: "MID_CRUCIBLE", defaultType: "PRISM_SPLITTER" },
+  { slotIndex: 3, label: "Center Singularity", x: 460, y: 295, zone: "MID_CRUCIBLE", defaultType: "GRAVITY_WELL" },
+  { slotIndex: 4, label: "East Crucible", x: 655, y: 278, zone: "MID_CRUCIBLE", defaultType: "TESLA_PYLON" },
+  { slotIndex: 5, label: "Far West Wing", x: 145, y: 315, zone: "MID_CRUCIBLE", defaultType: null },
+  { slotIndex: 6, label: "Far East Wing", x: 775, y: 315, zone: "MID_CRUCIBLE", defaultType: null },
+  { slotIndex: 7, label: "SW Sling Gate", x: 235, y: 412, zone: "LOWER_SLING", defaultType: "HARMONIC_BELL" },
+  { slotIndex: 8, label: "SE Sling Gate", x: 685, y: 412, zone: "LOWER_SLING", defaultType: "WORMHOLE_RELAY" },
+  { slotIndex: 9, label: "Aegis Keystone", x: 460, y: 428, zone: "LOWER_SLING", defaultType: null }
+];
+var ASTRAL_RELICS = [
+  {
+    id: "NEWTON_THIRD_LAW",
+    name: "Newton's Principia Anvil",
+    symbol: "\u2696\uFE0F",
+    rarity: "COMMON",
+    relicMultFactor: 1.2,
+    description: "+15 Base Chips on every socket bumper bounce and +12% bounce elasticity.",
+    flavor: "For every action, an equal and multiplicative over-reaction."
+  },
+  {
+    id: "MAXWELL_COIL",
+    name: "Maxwell's Demon Induction",
+    symbol: "\u26A1",
+    rarity: "RARE",
+    relicMultFactor: 1.25,
+    description: "Tesla Pylons strike +2 additional targets, deal +45% arc damage, and restore +5 Aether Flux.",
+    flavor: "Sorting hot electrons from cold vacuum without spending entropy."
+  },
+  {
+    id: "CHROMATIC_PRISM",
+    name: "Newtonian Spectral Crown",
+    symbol: "\u{1F308}",
+    rarity: "LEGENDARY",
+    relicMultFactor: 1.35,
+    description: "Bifrost Prism Gates grant +0.75\xD7 Combo Mult on split and twin comets inherit 100% of parent Chips.",
+    flavor: "White light broken into seven lethal vectors."
+  },
+  {
+    id: "HAWKING_MIRROR",
+    name: "Hawking Reflection Foil",
+    symbol: "\u{1F6E1}\uFE0F",
+    rarity: "RARE",
+    relicMultFactor: 1.25,
+    description: "Perfect Flipper Parries fire a 260-damage Antimatter Lance directly into the Boss Core.",
+    flavor: "What falls toward the horizon can be reflected at relativistic interest."
+  },
+  {
+    id: "KEPLER_PERIHELION",
+    name: "Kepler's Perihelion Spur",
+    symbol: "\u2604\uFE0F",
+    rarity: "COMMON",
+    relicMultFactor: 1.2,
+    description: "Comets traveling above 380 px/s gain +22 Chips per hit and \xD71.20 Relic Mult.",
+    flavor: "Equal areas swept in unequal violence."
+  },
+  {
+    id: "OUROBOROS_TAIL",
+    name: "Ouroboros Eternal Loop",
+    symbol: "\u{1F40D}",
+    rarity: "LEGENDARY",
+    relicMultFactor: 1.4,
+    description: "The first comet to drain each volley automatically respawns at the Zenith Crown in Supernova State!",
+    flavor: "The end of the table is merely the jaws of the launcher."
+  },
+  {
+    id: "LAPLACE_PENDULUM",
+    name: "Laplace's Escapement",
+    symbol: "\u23F1\uFE0F",
+    rarity: "COMMON",
+    relicMultFactor: 1.2,
+    description: "Every Flipper or Aegis Paddle deflection adds +0.85\xD7 Combo Mult and +12 Aether Flux.",
+    flavor: "Give me the position and momentum of every flipper."
+  },
+  {
+    id: "PHILOSOPHER_STONE",
+    name: "Alchemical Prima Materia",
+    symbol: "\u{1F71A}",
+    rarity: "RARE",
+    relicMultFactor: 1.3,
+    description: "Every 8th bounce in a volley spawns a Golden Comet and mints +18 Stardust immediately.",
+    flavor: "Lead trajectories transmuted into solar gold."
+  },
+  {
+    id: "EVENT_HORIZON_LENS",
+    name: "Schwarzschild Gravity Lens",
+    symbol: "\u{1F573}\uFE0F",
+    rarity: "RARE",
+    relicMultFactor: 1.25,
+    description: "Gravity Wells pull in nearby enemy Void Meteors, vaporizing them into +30 Volley Chips.",
+    flavor: "Even hostile fire bends to curvature."
+  },
+  {
+    id: "PYTHAGOREAN_CHORD",
+    name: "Pythagorean Sphere Resonator",
+    symbol: "\u{1F3B5}",
+    rarity: "RARE",
+    relicMultFactor: 1.28,
+    description: "Harmonic Bells trigger Sonic Nova every 2 hits instead of 3 and grant +0.5\xD7 Combo Mult.",
+    flavor: "There is geometry in the humming of the strings."
+  },
+  {
+    id: "SUPERNOVA_IGNITER",
+    name: "Chandrasekhar Limit Core",
+    symbol: "\u2600\uFE0F",
+    rarity: "LEGENDARY",
+    relicMultFactor: 1.38,
+    description: "All launched comets start in Supernova State (+35 starting Base Chips and +0.6\xD7 starting Mult).",
+    flavor: "1.44 solar masses compressed into a 10-millimeter pinball."
+  },
+  {
+    id: "COMPOUND_LEDGER",
+    name: "Medici Star-Bank Astrolabe",
+    symbol: "\u{1F48E}",
+    rarity: "COMMON",
+    relicMultFactor: 1.18,
+    description: "End-of-volley Stardust rewards and Flux interest are increased by +40%.",
+    flavor: "Compound interest is the eighth force of the cosmos."
+  }
+];
+var BOSS_SECTORS = [
+  {
+    sector: 1,
+    id: "clockwork-astrolabe",
+    name: "The Clockwork Astrolabe",
+    title: "SECTOR I // BRASS CELESTIAL AUTOMATON",
+    maxHp: 1600,
+    coreX: 460,
+    coreY: 132,
+    coreRadius: 34,
+    orbitSpeedRadPerSec: 0.75,
+    hazardIntervalMs: 4200,
+    hazardSpeed: 135,
+    stardustReward: 95,
+    color: "#38bdf8",
+    secondaryColor: "#f59e0b",
+    loreQuote: '"Before the stars burned hydrogen, they turned on brass teeth."',
+    mechanicSummary: "3 rotating Astrolabe Shield Nodes orbit the core. Curve comets through the Mid Crucible or shatter the nodes for +150 bonus Chips!",
+    nodes: [
+      { offsetAngleDeg: 0, orbitRadius: 74, nodeRadius: 16, hpRatio: 0.22, label: "Vernal Gear" },
+      { offsetAngleDeg: 120, orbitRadius: 74, nodeRadius: 16, hpRatio: 0.22, label: "Solstice Gear" },
+      { offsetAngleDeg: 240, orbitRadius: 74, nodeRadius: 16, hpRatio: 0.22, label: "Equinox Gear" }
+    ]
+  },
+  {
+    sector: 2,
+    id: "gemini-pulsar",
+    name: "The Gemini Binary Pulsar",
+    title: "SECTOR II // TWIN MAGNETAR RESONANCE",
+    maxHp: 3600,
+    coreX: 460,
+    coreY: 134,
+    coreRadius: 36,
+    orbitSpeedRadPerSec: -1.05,
+    hazardIntervalMs: 3600,
+    hazardSpeed: 155,
+    stardustReward: 125,
+    color: "#ec4899",
+    secondaryColor: "#38bdf8",
+    loreQuote: '"Two hearts beating at 700 revolutions per second; strike one alone and the other remembers."',
+    mechanicSummary: "Protected by 4 rapid Binary Satellites. Split your comet through a Bifrost Prism Gate to overwhelm both flanks simultaneously!",
+    nodes: [
+      { offsetAngleDeg: 0, orbitRadius: 82, nodeRadius: 17, hpRatio: 0.2, label: "Castor Lobe" },
+      { offsetAngleDeg: 90, orbitRadius: 82, nodeRadius: 15, hpRatio: 0.18, label: "Pollux Lobe" },
+      { offsetAngleDeg: 180, orbitRadius: 82, nodeRadius: 17, hpRatio: 0.2, label: "Castor Mirror" },
+      { offsetAngleDeg: 270, orbitRadius: 82, nodeRadius: 15, hpRatio: 0.18, label: "Pollux Mirror" }
+    ]
+  },
+  {
+    sector: 3,
+    id: "hydra-dyson-swarm",
+    name: "The Hydra Dyson Swarm",
+    title: "SECTOR III // SELF-REPLICATING SOLAR LATTICE",
+    maxHp: 7200,
+    coreX: 460,
+    coreY: 136,
+    coreRadius: 38,
+    orbitSpeedRadPerSec: 1.2,
+    hazardIntervalMs: 3e3,
+    hazardSpeed: 170,
+    stardustReward: 160,
+    color: "#10b981",
+    secondaryColor: "#fde047",
+    loreQuote: '"A billion hexagonal mirrors drinking the sun drop by drop."',
+    mechanicSummary: "5 Dyson Collector Nodes fire Void Meteors toward your Aegis rail. Use Tesla Pylons and Harmonic Bells to clear the swarm!",
+    nodes: [
+      { offsetAngleDeg: 0, orbitRadius: 86, nodeRadius: 15, hpRatio: 0.18, label: "Hex Array \u03B1" },
+      { offsetAngleDeg: 72, orbitRadius: 86, nodeRadius: 15, hpRatio: 0.18, label: "Hex Array \u03B2" },
+      { offsetAngleDeg: 144, orbitRadius: 86, nodeRadius: 15, hpRatio: 0.18, label: "Hex Array \u03B3" },
+      { offsetAngleDeg: 216, orbitRadius: 86, nodeRadius: 15, hpRatio: 0.18, label: "Hex Array \u03B4" },
+      { offsetAngleDeg: 288, orbitRadius: 86, nodeRadius: 15, hpRatio: 0.18, label: "Hex Array \u03B5" }
+    ]
+  },
+  {
+    sector: 4,
+    id: "event-horizon-leviathan",
+    name: "The Event Horizon Leviathan",
+    title: "SECTOR IV // GRAVITATIONAL ABYSS SOVEREIGN",
+    maxHp: 13500,
+    coreX: 460,
+    coreY: 138,
+    coreRadius: 40,
+    orbitSpeedRadPerSec: -1.35,
+    hazardIntervalMs: 2600,
+    hazardSpeed: 190,
+    stardustReward: 210,
+    color: "#a855f7",
+    secondaryColor: "#f43f5e",
+    loreQuote: '"Look into the accretion disk: every comet you ever lost is still falling."',
+    mechanicSummary: "Warps upper-table trajectories and launches Hawking Lances. Parry Lances with your Flippers and wire Ouroboros Wormholes for infinite zenith drops!",
+    nodes: [
+      { offsetAngleDeg: 30, orbitRadius: 90, nodeRadius: 16, hpRatio: 0.17, label: "Accretion Fang I" },
+      { offsetAngleDeg: 90, orbitRadius: 90, nodeRadius: 16, hpRatio: 0.17, label: "Accretion Fang II" },
+      { offsetAngleDeg: 150, orbitRadius: 90, nodeRadius: 16, hpRatio: 0.17, label: "Accretion Fang III" },
+      { offsetAngleDeg: 210, orbitRadius: 90, nodeRadius: 16, hpRatio: 0.17, label: "Accretion Fang IV" },
+      { offsetAngleDeg: 270, orbitRadius: 90, nodeRadius: 16, hpRatio: 0.17, label: "Accretion Fang V" },
+      { offsetAngleDeg: 330, orbitRadius: 90, nodeRadius: 16, hpRatio: 0.17, label: "Accretion Fang VI" }
+    ]
+  },
+  {
+    sector: 5,
+    id: "oroboros-grand-architect",
+    name: "OROBOROS, THE SINGULARITY ENGINE",
+    title: "SECTOR V // OMEGA ARCHITECT OF ETERNAL RETURN",
+    maxHp: 25e3,
+    coreX: 460,
+    coreY: 140,
+    coreRadius: 44,
+    orbitSpeedRadPerSec: 1.55,
+    hazardIntervalMs: 2200,
+    hazardSpeed: 210,
+    stardustReward: 350,
+    color: "#f59e0b",
+    secondaryColor: "#ec4899",
+    loreQuote: '"The universe is a pinball table that builds its own bumpers out of dead stars."',
+    mechanicSummary: "6 Celestial Seals guard the Omega Core. Combine Multiball Splits, Wormhole Loops, Magnet Pulses, and Flipper Parries for a 10,000+ damage Singularity Volley!",
+    nodes: [
+      { offsetAngleDeg: 0, orbitRadius: 94, nodeRadius: 17, hpRatio: 0.16, label: "Seal of Chronos" },
+      { offsetAngleDeg: 60, orbitRadius: 94, nodeRadius: 17, hpRatio: 0.16, label: "Seal of Aether" },
+      { offsetAngleDeg: 120, orbitRadius: 94, nodeRadius: 17, hpRatio: 0.16, label: "Seal of Prism" },
+      { offsetAngleDeg: 180, orbitRadius: 94, nodeRadius: 17, hpRatio: 0.16, label: "Seal of Volt" },
+      { offsetAngleDeg: 240, orbitRadius: 94, nodeRadius: 17, hpRatio: 0.16, label: "Seal of Mass" },
+      { offsetAngleDeg: 300, orbitRadius: 94, nodeRadius: 17, hpRatio: 0.16, label: "Seal of Return" }
+    ]
+  }
+];
+var ASTRAL_VERDICTS = {
+  SINGULARITY_SOVEREIGN: {
+    id: "SINGULARITY_SOVEREIGN",
+    title: "Grand Architect of the Singularity",
+    badge: "\u{1F451} OMEGA ARCHITECT",
+    description: "You shattered all 5 Cosmic Boss Constellations and engineered a self-sustaining relativistic pinball engine."
+  },
+  MULTIBALL_ALCHEMIST: {
+    id: "MULTIBALL_ALCHEMIST",
+    title: "Chromatic Multiball Alchemist",
+    badge: "\u{1F308} PRISM SAVANT",
+    description: "Your Bifrost Prism cascades and Tesla lightning chains turned single comets into exponential storms."
+  },
+  PARRY_VIRTUOSO: {
+    id: "PARRY_VIRTUOSO",
+    title: "Relativistic Flipper Virtuoso",
+    badge: "\u26A1 PARRY MASTER",
+    description: "With razor-sharp Perfect Parries and Magnet Pulses, you reflected the cosmos back upon itself."
+  },
+  ENTROPY_PILGRIM: {
+    id: "ENTROPY_PILGRIM",
+    title: "Initiate of the Astral Table",
+    badge: "\u2604\uFE0F STARFORGE INITIATE",
+    description: "Every drained comet teaches the geometry of the stars. Re-wire your upper sockets and launch again!"
+  }
+};
+
+// games/12-astral-pinball/src/rng.ts
+var SeededRng = class {
+  state;
+  constructor(seed) {
+    const clean = Number.isFinite(seed) ? Math.floor(Math.abs(seed)) : 20261108;
+    this.state = (clean === 0 ? 1831565813 : clean) >>> 0;
+  }
+  getState() {
+    return this.state >>> 0;
+  }
+  setState(state) {
+    this.state = (state === 0 ? 1831565813 : state) >>> 0;
+  }
+  nextUint32() {
+    let t = this.state += 1831565813;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return (t ^ t >>> 14) >>> 0;
+  }
+  nextFloat() {
+    return this.nextUint32() / 4294967296;
+  }
+  nextRange(min, max) {
+    return min + this.nextFloat() * (max - min);
+  }
+  nextInt(minInclusive, maxInclusive) {
+    if (maxInclusive <= minInclusive) return minInclusive;
+    const span = maxInclusive - minInclusive + 1;
+    return minInclusive + this.nextUint32() % span;
+  }
+  pick(items) {
+    if (items.length === 0) {
+      throw new Error("Cannot pick from empty array");
+    }
+    return items[this.nextInt(0, items.length - 1)];
+  }
+  shuffle(items) {
+    const copy = [...items];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = this.nextInt(0, i);
+      const tmp = copy[i];
+      copy[i] = copy[j];
+      copy[j] = tmp;
+    }
+    return copy;
+  }
+};
+
+// games/12-astral-pinball/src/simulation.ts
+function clamp(val, min, max) {
+  return Math.max(min, Math.min(max, val));
+}
+function pushLog(state, message) {
+  state.recentLog.unshift(message);
+  if (state.recentLog.length > 18) {
+    state.recentLog.length = 18;
+  }
+}
+function computeRelicMultiplier(relics) {
+  let mult = 1;
+  for (const rId of relics) {
+    const bp = ASTRAL_RELICS.find((r) => r.id === rId);
+    if (bp) {
+      mult *= bp.relicMultFactor;
+    }
+  }
+  return Number(mult.toFixed(2));
+}
+function createBossForSector(sectorNum) {
+  const index = clamp(sectorNum - 1, 0, BOSS_SECTORS.length - 1);
+  const bp = BOSS_SECTORS[index];
+  const nodes = bp.nodes.map((n, idx) => {
+    const angleRad = n.offsetAngleDeg * Math.PI / 180;
+    const nodeHp = Math.round(bp.maxHp * n.hpRatio);
+    return {
+      id: idx + 1,
+      label: n.label,
+      angleOffsetRad: angleRad,
+      orbitRadius: n.orbitRadius,
+      x: bp.coreX + Math.cos(angleRad) * n.orbitRadius,
+      y: bp.coreY + Math.sin(angleRad) * n.orbitRadius,
+      radius: n.nodeRadius,
+      hp: nodeHp,
+      maxHp: nodeHp,
+      alive: true
+    };
+  });
+  return {
+    sector: bp.sector,
+    id: bp.id,
+    name: bp.name,
+    title: bp.title,
+    hp: bp.maxHp,
+    maxHp: bp.maxHp,
+    coreX: bp.coreX,
+    coreY: bp.coreY,
+    coreRadius: bp.coreRadius,
+    orbitAngleRad: 0,
+    orbitSpeedRadPerSec: bp.orbitSpeedRadPerSec,
+    hazardIntervalMs: bp.hazardIntervalMs,
+    hazardTimerMs: bp.hazardIntervalMs,
+    hazardSpeed: bp.hazardSpeed,
+    stardustReward: bp.stardustReward,
+    color: bp.color,
+    secondaryColor: bp.secondaryColor,
+    loreQuote: bp.loreQuote,
+    mechanicSummary: bp.mechanicSummary,
+    hitFlashMs: 0,
+    nodes
+  };
+}
+function rollRelicDraftChoices(rng, ownedRelics) {
+  const available = ASTRAL_RELICS.map((r) => r.id).filter((id) => !ownedRelics.includes(id));
+  if (available.length === 0) return [];
+  const shuffled = rng.shuffle(available);
+  return shuffled.slice(0, 3);
+}
+function createInitialAstralState(seed = ASTRAL_CONFIG.DEFAULT_SEED, mode = "CAMPAIGN") {
+  const rng = new SeededRng(seed);
+  const sockets = ASTRAL_SOCKET_SLOTS.map((slot) => ({
+    slotIndex: slot.slotIndex,
+    label: slot.label,
+    x: slot.x,
+    y: slot.y,
+    zone: slot.zone,
+    nodeType: slot.defaultType,
+    level: 1,
+    chargeCount: 0,
+    pulseAnimMs: 0,
+    totalHits: 0,
+    totalDamageGenerated: 0
+  }));
+  const starterRelic = mode === "SANDBOX" ? "CHROMATIC_PRISM" : "NEWTON_THIRD_LAW";
+  const initialRelics = [starterRelic];
+  const state = {
+    seed: rng.getState(),
+    rngState: rng.getState(),
+    runId: `astral-${seed}-${mode}-${rng.nextUint32()}`,
+    mode,
+    status: "AIMING",
+    sector: 1,
+    tick: 0,
+    elapsedMs: 0,
+    sectorElapsedMs: 0,
+    volleysRemaining: mode === "SANDBOX" ? 99 : ASTRAL_CONFIG.STARTING_VOLLEYS,
+    volleysFired: 0,
+    aegisHull: ASTRAL_CONFIG.STARTING_AEGIS_HULL,
+    maxAegisHull: ASTRAL_CONFIG.MAX_AEGIS_HULL,
+    stardust: mode === "SANDBOX" ? 999 : ASTRAL_CONFIG.STARTING_STARDUST,
+    flux: ASTRAL_CONFIG.STARTING_FLUX,
+    maxFlux: ASTRAL_CONFIG.MAX_FLUX,
+    totalScore: 0,
+    bestVolleyScore: 0,
+    currentVolleyScore: 0,
+    currentVolleyChips: 0,
+    currentComboMult: 1,
+    currentRelicMult: computeRelicMultiplier(initialRelics),
+    currentVolleyBounces: 0,
+    maxComboBounces: 0,
+    totalSplitsTriggered: 0,
+    totalPerfectParries: 0,
+    totalLightningChains: 0,
+    totalBossDamageDealt: 0,
+    aimAngleDeg: -14,
+    paddleX: ASTRAL_CONFIG.LAUNCH_ORIGIN_X,
+    leftFlipperSwingMs: 0,
+    rightFlipperSwingMs: 0,
+    parryWindowMs: 0,
+    chronoOverdriveMs: 0,
+    hitStopMs: 0,
+    ouroborosSaveUsedThisVolley: false,
+    selectedBuildType: "PRISM_SPLITTER",
+    nextEntityId: 100,
+    comets: [],
+    sockets,
+    boss: createBossForSector(1),
+    hazards: [],
+    relics: initialRelics,
+    relicChoices: [],
+    events: [],
+    recentLog: [
+      "\u2604\uFE0F Star-Comet chambered in the Aegis Slingshot. Aim and press [SPACE] or Click to launch!"
+    ]
+  };
+  state.rngState = rng.getState();
+  return state;
+}
+function cloneAstralState(state) {
+  return structuredClone(state);
+}
+function dealBossDamage(state, rawDamage, sourceLabel, hitX, hitY) {
+  if (state.boss.hp <= 0) return 0;
+  const dmg = Math.max(1, Math.round(rawDamage));
+  state.boss.hp = Math.max(0, state.boss.hp - dmg);
+  state.boss.hitFlashMs = 140;
+  state.totalBossDamageDealt += dmg;
+  state.currentVolleyScore += dmg;
+  state.totalScore += dmg;
+  if (state.currentVolleyScore > state.bestVolleyScore) {
+    state.bestVolleyScore = state.currentVolleyScore;
+  }
+  state.events.push({
+    type: "BOSS_HIT",
+    x: hitX,
+    y: hitY,
+    value: dmg,
+    label: `${sourceLabel} -${dmg}`,
+    color: "#f59e0b",
+    comboCount: state.currentVolleyBounces
+  });
+  if (state.boss.hp <= 0) {
+    handleSectorCleared(state);
+  }
+  return dmg;
+}
+function handleSectorCleared(state) {
+  if (state.status === "SECTOR_CLEARED" || state.status === "VICTORY") return;
+  const fluxBonusStardust = Math.floor(state.flux / 5);
+  const ledgerMultiplier = state.relics.includes("COMPOUND_LEDGER") ? 1.4 : 1;
+  const rewardStardust = Math.round(
+    (state.boss.stardustReward + fluxBonusStardust * 4) * ledgerMultiplier
+  );
+  state.stardust += rewardStardust;
+  state.comets = [];
+  state.hazards = [];
+  if (state.sector >= ASTRAL_CONFIG.MAX_SECTORS && state.mode === "CAMPAIGN") {
+    state.status = "VICTORY";
+    const clearBonus = state.volleysRemaining * 2500 + state.aegisHull * 50;
+    state.totalScore += clearBonus;
+    state.events.push({
+      type: "GAME_VICTORY",
+      x: state.boss.coreX,
+      y: state.boss.coreY,
+      value: state.totalScore,
+      label: "OROBOROS SINGULARITY CONQUERED!",
+      color: "#fde047"
+    });
+    pushLog(
+      state,
+      `\u{1F451} OMEGA VICTORY! Shattered ${state.boss.name} (+${rewardStardust}\u2726 Stardust, +${clearBonus} Mastery Score)!`
+    );
+    return;
+  }
+  const rng = new SeededRng(state.rngState);
+  state.relicChoices = rollRelicDraftChoices(rng, state.relics);
+  state.rngState = rng.getState();
+  state.status = "SECTOR_CLEARED";
+  state.events.push({
+    type: "SECTOR_VICTORY",
+    x: state.boss.coreX,
+    y: state.boss.coreY,
+    value: rewardStardust,
+    label: `${state.boss.name} Shattered! +${rewardStardust}\u2726`,
+    color: "#10b981"
+  });
+  pushLog(
+    state,
+    `\u{1F31F} SECTOR ${state.sector} CLEARED! Earned +${rewardStardust}\u2726 Stardust. Draft a Relic to ascend!`
+  );
+}
+function triggerTeslaChain(state, socket, comet) {
+  const hasMaxwell = state.relics.includes("MAXWELL_COIL");
+  const maxTargets = (hasMaxwell ? 4 : 2) + (socket.level - 1);
+  const arcBaseDamage = (comet.baseChips + 28 * socket.level) * state.currentComboMult * state.currentRelicMult * (hasMaxwell ? 1.45 : 1);
+  if (hasMaxwell) {
+    state.flux = Math.min(state.maxFlux, state.flux + 5);
+  }
+  const candidates = [];
+  for (const node of state.boss.nodes) {
+    if (node.alive) {
+      const d = Math.hypot(node.x - socket.x, node.y - socket.y);
+      candidates.push({ kind: "NODE", x: node.x, y: node.y, dist: d, refId: node.id });
+    }
+  }
+  for (const haz of state.hazards) {
+    if (!haz.reflected) {
+      const d = Math.hypot(haz.x - socket.x, haz.y - socket.y);
+      candidates.push({ kind: "HAZARD", x: haz.x, y: haz.y, dist: d, refId: haz.id });
+    }
+  }
+  candidates.push({
+    kind: "CORE",
+    x: state.boss.coreX,
+    y: state.boss.coreY,
+    dist: Math.hypot(state.boss.coreX - socket.x, state.boss.coreY - socket.y),
+    refId: 0
+  });
+  candidates.sort((a, b) => a.dist - b.dist);
+  const chosen = candidates.slice(0, maxTargets);
+  for (const target of chosen) {
+    state.totalLightningChains += 1;
+    state.events.push({
+      type: "LIGHTNING_ARC",
+      x: socket.x,
+      y: socket.y,
+      targetX: target.x,
+      targetY: target.y,
+      value: Math.round(arcBaseDamage),
+      color: "#38bdf8"
+    });
+    if (target.kind === "HAZARD") {
+      state.hazards = state.hazards.filter((h) => h.id !== target.refId);
+      state.currentVolleyChips += 25;
+    } else if (target.kind === "NODE") {
+      const node = state.boss.nodes.find((n) => n.id === target.refId);
+      if (node && node.alive) {
+        const dmg = Math.round(arcBaseDamage * 0.75);
+        node.hp -= dmg;
+        socket.totalDamageGenerated += dmg;
+        dealBossDamage(state, dmg * 0.55, "\u26A1 Tesla Arc", node.x, node.y);
+        if (node.hp <= 0) {
+          node.alive = false;
+          state.stardust += 12;
+          state.currentVolleyChips += 120;
+          state.events.push({
+            type: "NODE_DESTROYED",
+            x: node.x,
+            y: node.y,
+            label: `${node.label} Broken!`,
+            color: "#38bdf8"
+          });
+        }
+      }
+    } else {
+      const dmg = dealBossDamage(state, arcBaseDamage * 0.85, "\u26A1 Tesla Core Arc", target.x, target.y);
+      socket.totalDamageGenerated += dmg;
+    }
+    if (state.status !== "IN_VOLLEY") break;
+  }
+}
+function triggerSonicNova(state, socket) {
+  const novaDamage = Math.round(
+    (220 * socket.level + state.currentVolleyChips * 0.5) * state.currentComboMult * state.currentRelicMult
+  );
+  const clearedHazards = state.hazards.length;
+  state.hazards = [];
+  state.currentVolleyChips += clearedHazards * 35;
+  for (const node of state.boss.nodes) {
+    if (node.alive) {
+      node.hp -= Math.round(novaDamage * 0.5);
+      if (node.hp <= 0) {
+        node.alive = false;
+        state.stardust += 12;
+      }
+    }
+  }
+  state.events.push({
+    type: "SONIC_NOVA",
+    x: socket.x,
+    y: socket.y,
+    value: novaDamage,
+    label: `\u{1F514} SONIC NOVA! ${novaDamage}`,
+    color: "#fde047"
+  });
+  const dealt = dealBossDamage(
+    state,
+    novaDamage,
+    "\u{1F514} Sonic Nova",
+    state.boss.coreX,
+    state.boss.coreY
+  );
+  socket.totalDamageGenerated += dealt;
+  pushLog(
+    state,
+    `\u{1F514} Harmonic Bell unleashed a Sonic Nova for ${dealt} Boss Damage and cleared ${clearedHazards} hazards!`
+  );
+}
+function handleSocketCollision(state, comet, socket, rng) {
+  if (!socket.nodeType) return;
+  const bp = ASTRAL_SOCKET_BLUEPRINTS[socket.nodeType];
+  let nx = comet.x - socket.x;
+  let ny = comet.y - socket.y;
+  const dist = Math.hypot(nx, ny) || 1;
+  nx /= dist;
+  ny /= dist;
+  const overlap = comet.radius + bp.radius + 2 - dist;
+  if (overlap > 0) {
+    comet.x += nx * overlap;
+    comet.y += ny * overlap;
+  }
+  const speed = Math.hypot(comet.vx, comet.vy);
+  const dot = comet.vx * nx + comet.vy * ny;
+  const newtonBonus = state.relics.includes("NEWTON_THIRD_LAW") ? 1.12 : 1;
+  const targetSpeed = clamp(
+    speed * bp.elasticity * newtonBonus,
+    ASTRAL_CONFIG.MIN_COMET_SPEED + 40,
+    ASTRAL_CONFIG.MAX_COMET_SPEED
+  );
+  let rvx = comet.vx - 2 * dot * nx;
+  let rvy = comet.vy - 2 * dot * ny;
+  const jitter = (rng.nextFloat() - 0.5) * 0.14;
+  const cosJ = Math.cos(jitter);
+  const sinJ = Math.sin(jitter);
+  const jvx = rvx * cosJ - rvy * sinJ;
+  const jvy = rvx * sinJ + rvy * cosJ;
+  const rMag = Math.hypot(jvx, jvy) || 1;
+  comet.vx = jvx / rMag * targetSpeed;
+  comet.vy = jvy / rMag * targetSpeed;
+  comet.lastSocketHitId = socket.slotIndex;
+  comet.socketCooldownMs = 110;
+  const levelScale = 1 + (socket.level - 1) * 0.35;
+  const newtonChipBonus = state.relics.includes("NEWTON_THIRD_LAW") ? 15 : 0;
+  const keplerChipBonus = state.relics.includes("KEPLER_PERIHELION") && targetSpeed > 380 ? 22 : 0;
+  const chipsGained = Math.round(
+    (bp.baseChipsBonus * levelScale + newtonChipBonus + keplerChipBonus) * (comet.isSupernova ? 1.3 : 1)
+  );
+  const multGained = Number((bp.comboMultBonus * levelScale).toFixed(2));
+  comet.baseChips += Math.round(chipsGained * 0.35);
+  state.currentVolleyChips += chipsGained;
+  state.currentComboMult = Number((state.currentComboMult + multGained).toFixed(2));
+  state.currentVolleyBounces += 1;
+  if (state.currentVolleyBounces > state.maxComboBounces) {
+    state.maxComboBounces = state.currentVolleyBounces;
+  }
+  state.flux = Math.min(state.maxFlux, state.flux + 4);
+  socket.pulseAnimMs = 220;
+  socket.totalHits += 1;
+  const bounceScore = Math.round(
+    chipsGained * state.currentComboMult * state.currentRelicMult
+  );
+  state.currentVolleyScore += bounceScore;
+  state.totalScore += bounceScore;
+  if (state.currentVolleyScore > state.bestVolleyScore) {
+    state.bestVolleyScore = state.currentVolleyScore;
+  }
+  state.events.push({
+    type: "SOCKET_HIT",
+    x: socket.x,
+    y: socket.y,
+    value: bounceScore,
+    label: `${bp.symbol} +${chipsGained} Chips \xB7 ${state.currentComboMult.toFixed(1)}\xD7`,
+    color: bp.color,
+    comboCount: state.currentVolleyBounces
+  });
+  if (state.relics.includes("PHILOSOPHER_STONE") && state.currentVolleyBounces % 8 === 0 && state.comets.length < ASTRAL_CONFIG.MAX_ACTIVE_COMETS) {
+    state.stardust += 18;
+    state.comets.push({
+      id: state.nextEntityId++,
+      x: socket.x,
+      y: socket.y - 16,
+      vx: -comet.vx * 0.95,
+      vy: -Math.abs(comet.vy),
+      radius: ASTRAL_CONFIG.COMET_RADIUS,
+      baseChips: comet.baseChips + 25,
+      isSupernova: true,
+      splitGeneration: comet.splitGeneration + 1,
+      color: "#fde047",
+      lastSocketHitId: socket.slotIndex,
+      socketCooldownMs: 140,
+      trail: []
+    });
+  }
+  switch (socket.nodeType) {
+    case "PRISM_SPLITTER": {
+      const hasCrown = state.relics.includes("CHROMATIC_PRISM");
+      if (hasCrown) {
+        state.currentComboMult = Number((state.currentComboMult + 0.75).toFixed(2));
+      }
+      if (state.comets.length < ASTRAL_CONFIG.MAX_ACTIVE_COMETS && comet.splitGeneration < 3) {
+        const angle = Math.atan2(comet.vy, comet.vx);
+        const spread = 0.38;
+        const cSpeed = Math.hypot(comet.vx, comet.vy);
+        comet.vx = Math.cos(angle - spread) * cSpeed;
+        comet.vy = Math.sin(angle - spread) * cSpeed;
+        comet.splitGeneration += 1;
+        const twinChips = hasCrown ? comet.baseChips : Math.round(comet.baseChips * 0.85);
+        state.comets.push({
+          id: state.nextEntityId++,
+          x: comet.x,
+          y: comet.y,
+          vx: Math.cos(angle + spread) * cSpeed,
+          vy: Math.sin(angle + spread) * cSpeed,
+          radius: ASTRAL_CONFIG.COMET_RADIUS,
+          baseChips: twinChips,
+          isSupernova: comet.isSupernova,
+          splitGeneration: comet.splitGeneration,
+          color: "#f472b6",
+          lastSocketHitId: socket.slotIndex,
+          socketCooldownMs: 140,
+          trail: []
+        });
+        state.totalSplitsTriggered += 1;
+        state.events.push({
+          type: "PRISM_SPLIT",
+          x: socket.x,
+          y: socket.y,
+          label: "\u2756 PRISM MULTIBALL SPLIT!",
+          color: "#ec4899"
+        });
+      }
+      break;
+    }
+    case "TESLA_PYLON": {
+      triggerTeslaChain(state, socket, comet);
+      break;
+    }
+    case "GRAVITY_WELL": {
+      const toCoreX = state.boss.coreX - comet.x;
+      const toCoreY = state.boss.coreY - comet.y;
+      const dCore = Math.hypot(toCoreX, toCoreY) || 1;
+      const slingSpeed = clamp(targetSpeed * 1.32, 320, ASTRAL_CONFIG.MAX_COMET_SPEED);
+      comet.vx = toCoreX / dCore * slingSpeed;
+      comet.vy = toCoreY / dCore * slingSpeed;
+      break;
+    }
+    case "FORGE_ANVIL": {
+      const forgedBonus = 14 * socket.level;
+      comet.baseChips += forgedBonus;
+      comet.isSupernova = true;
+      comet.color = "#fb923c";
+      break;
+    }
+    case "WORMHOLE_RELAY": {
+      comet.x = state.boss.coreX + (rng.nextFloat() - 0.5) * 90;
+      comet.y = 66;
+      const aimX = state.boss.coreX - comet.x;
+      const aimY = state.boss.coreY - comet.y;
+      const aimMag = Math.hypot(aimX, aimY) || 1;
+      const warpSpeed = clamp(targetSpeed * 1.15, 340, ASTRAL_CONFIG.MAX_COMET_SPEED);
+      comet.vx = aimX / aimMag * warpSpeed;
+      comet.vy = aimY / aimMag * warpSpeed;
+      comet.isSupernova = true;
+      state.events.push({
+        type: "WORMHOLE_WARP",
+        x: socket.x,
+        y: socket.y,
+        targetX: comet.x,
+        targetY: comet.y,
+        label: "\u23F3 ZENITH WARP!",
+        color: "#10b981"
+      });
+      break;
+    }
+    case "HARMONIC_BELL": {
+      socket.chargeCount += 1;
+      const threshold = state.relics.includes("PYTHAGOREAN_CHORD") ? 2 : 3;
+      if (state.relics.includes("PYTHAGOREAN_CHORD")) {
+        state.currentComboMult = Number((state.currentComboMult + 0.5).toFixed(2));
+      }
+      if (socket.chargeCount >= threshold) {
+        socket.chargeCount = 0;
+        triggerSonicNova(state, socket);
+      }
+      break;
+    }
+  }
+}
+function applyAstralInput(state, action) {
+  const rng = new SeededRng(state.rngState);
+  switch (action.type) {
+    case "SET_AIM_ANGLE": {
+      state.aimAngleDeg = clamp(action.angleDeg, -72, 72);
+      break;
+    }
+    case "ADJUST_AIM_ANGLE": {
+      state.aimAngleDeg = clamp(state.aimAngleDeg + action.deltaDeg, -72, 72);
+      break;
+    }
+    case "MOVE_PADDLE": {
+      state.paddleX = clamp(action.x, 140, ASTRAL_CONFIG.TABLE_WIDTH - 140);
+      break;
+    }
+    case "NUDGE_PADDLE": {
+      state.paddleX = clamp(
+        state.paddleX + action.dx,
+        140,
+        ASTRAL_CONFIG.TABLE_WIDTH - 140
+      );
+      break;
+    }
+    case "SELECT_BUILD_TYPE": {
+      state.selectedBuildType = action.nodeType;
+      break;
+    }
+    case "BUILD_OR_UPGRADE_SOCKET": {
+      const socket = state.sockets.find((s) => s.slotIndex === action.slotIndex);
+      if (!socket) break;
+      const targetType = action.nodeType ?? state.selectedBuildType;
+      const bp = ASTRAL_SOCKET_BLUEPRINTS[targetType];
+      if (socket.nodeType === targetType) {
+        if (socket.level >= 3) break;
+        const upgradeCost = Math.round(bp.costStardust * 0.85 * socket.level);
+        if (state.stardust < upgradeCost && state.mode !== "SANDBOX") break;
+        if (state.mode !== "SANDBOX") state.stardust -= upgradeCost;
+        socket.level += 1;
+        socket.pulseAnimMs = 260;
+        pushLog(
+          state,
+          `\u{1F528} Upgraded ${bp.name} at ${socket.label} to Lv.${socket.level}!`
+        );
+      } else {
+        const cost = bp.costStardust;
+        if (state.stardust < cost && state.mode !== "SANDBOX") break;
+        if (state.mode !== "SANDBOX") state.stardust -= cost;
+        socket.nodeType = targetType;
+        socket.level = 1;
+        socket.chargeCount = 0;
+        socket.pulseAnimMs = 260;
+        pushLog(state, `\u2728 Wired ${bp.name} (${bp.symbol}) into ${socket.label}!`);
+      }
+      break;
+    }
+    case "SELL_SOCKET": {
+      const socket = state.sockets.find((s) => s.slotIndex === action.slotIndex);
+      if (!socket || !socket.nodeType) break;
+      const bp = ASTRAL_SOCKET_BLUEPRINTS[socket.nodeType];
+      const refund = Math.round(bp.costStardust * 0.65 * socket.level);
+      if (state.mode !== "SANDBOX") {
+        state.stardust += refund;
+      }
+      pushLog(
+        state,
+        `\u267B\uFE0F Salvaged ${bp.name} from ${socket.label} for +${refund}\u2726 Stardust.`
+      );
+      socket.nodeType = null;
+      socket.level = 1;
+      socket.chargeCount = 0;
+      break;
+    }
+    case "LAUNCH_COMET": {
+      if (state.status !== "AIMING" && state.comets.length > 0) break;
+      if (state.volleysRemaining <= 0 && state.mode !== "SANDBOX") break;
+      if (typeof action.angleDeg === "number") {
+        state.aimAngleDeg = clamp(action.angleDeg, -72, 72);
+      }
+      if (state.mode !== "SANDBOX") {
+        state.volleysRemaining -= 1;
+      }
+      state.volleysFired += 1;
+      state.status = "IN_VOLLEY";
+      state.ouroborosSaveUsedThisVolley = false;
+      const hasSupernovaCore = state.relics.includes("SUPERNOVA_IGNITER");
+      const startChips = ASTRAL_CONFIG.BASE_COMET_CHIPS + (hasSupernovaCore ? 35 : 0);
+      state.currentVolleyScore = 0;
+      state.currentVolleyChips = startChips;
+      state.currentComboMult = hasSupernovaCore ? 1.6 : 1;
+      state.currentRelicMult = computeRelicMultiplier(state.relics);
+      state.currentVolleyBounces = 0;
+      const rad = (state.aimAngleDeg - 90) * Math.PI / 180;
+      const vx = Math.cos(rad) * ASTRAL_CONFIG.LAUNCH_SPEED;
+      const vy = Math.sin(rad) * ASTRAL_CONFIG.LAUNCH_SPEED;
+      const launchX = clamp(state.paddleX, 160, ASTRAL_CONFIG.TABLE_WIDTH - 160);
+      const launchY = ASTRAL_CONFIG.LAUNCH_ORIGIN_Y;
+      state.comets.push({
+        id: state.nextEntityId++,
+        x: launchX,
+        y: launchY,
+        vx,
+        vy,
+        radius: ASTRAL_CONFIG.COMET_RADIUS,
+        baseChips: startChips,
+        isSupernova: hasSupernovaCore,
+        splitGeneration: 0,
+        color: hasSupernovaCore ? "#fde047" : "#38bdf8",
+        lastSocketHitId: null,
+        socketCooldownMs: 0,
+        trail: []
+      });
+      state.events.push({
+        type: "COMET_LAUNCHED",
+        x: launchX,
+        y: launchY,
+        label: `\u2604\uFE0F Volley Launched (${state.aimAngleDeg.toFixed(0)}\xB0)`,
+        color: "#38bdf8"
+      });
+      pushLog(
+        state,
+        `\u2604\uFE0F Launched Star-Comet at ${state.aimAngleDeg.toFixed(0)}\xB0 (${startChips} Base Chips \xD7 ${state.currentRelicMult}\xD7 Relic Mult).`
+      );
+      break;
+    }
+    case "FLIP_SWING": {
+      const side = action.side ?? "BOTH";
+      if (side === "LEFT" || side === "BOTH") {
+        state.leftFlipperSwingMs = ASTRAL_CONFIG.FLIPPER_SWING_DURATION_MS;
+      }
+      if (side === "RIGHT" || side === "BOTH") {
+        state.rightFlipperSwingMs = ASTRAL_CONFIG.FLIPPER_SWING_DURATION_MS;
+      }
+      state.parryWindowMs = ASTRAL_CONFIG.PARRY_WINDOW_MS;
+      for (const comet of state.comets) {
+        const dy = Math.abs(comet.y - ASTRAL_CONFIG.PADDLE_Y);
+        const dx = comet.x - state.paddleX;
+        if (dy <= 68 && Math.abs(dx) <= ASTRAL_CONFIG.PADDLE_HALF_WIDTH + 48 && comet.vy > -60) {
+          executeFlipperDeflection(state, comet, true);
+        }
+      }
+      for (const haz of state.hazards) {
+        const dy = Math.abs(haz.y - ASTRAL_CONFIG.PADDLE_Y);
+        const dx = haz.x - state.paddleX;
+        if (dy <= 72 && Math.abs(dx) <= ASTRAL_CONFIG.PADDLE_HALF_WIDTH + 50 && !haz.reflected) {
+          reflectHazardWithParry(state, haz);
+        }
+      }
+      break;
+    }
+    case "CAST_MAGNET_PULSE": {
+      if (state.status !== "IN_VOLLEY" || state.comets.length === 0) break;
+      if (state.flux < ASTRAL_CONFIG.FLUX_COST_MAGNET && state.mode !== "SANDBOX") break;
+      if (state.mode !== "SANDBOX") {
+        state.flux -= ASTRAL_CONFIG.FLUX_COST_MAGNET;
+      }
+      state.currentComboMult = Number((state.currentComboMult + 0.8).toFixed(2));
+      for (const comet of state.comets) {
+        const speed = clamp(
+          Math.hypot(comet.vx, comet.vy) * 1.22,
+          360,
+          ASTRAL_CONFIG.MAX_COMET_SPEED
+        );
+        const dx = state.boss.coreX - comet.x;
+        const dy = state.boss.coreY - comet.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        comet.vx = dx / dist * speed;
+        comet.vy = dy / dist * speed;
+        comet.isSupernova = true;
+        comet.lastSocketHitId = null;
+      }
+      state.events.push({
+        type: "MAGNET_PULSE",
+        x: state.boss.coreX,
+        y: state.boss.coreY,
+        label: "\u{1F9F2} SINGULARITY MAGNET PULSE (+0.8\xD7 Mult)",
+        color: "#a855f7"
+      });
+      pushLog(
+        state,
+        `\u{1F9F2} Cast Singularity Magnet Pulse! Comets locked onto ${state.boss.name} (+0.8\xD7 Combo Mult).`
+      );
+      break;
+    }
+    case "CAST_CHRONO_OVERDRIVE": {
+      if (state.flux < ASTRAL_CONFIG.FLUX_COST_CHRONO && state.mode !== "SANDBOX") break;
+      if (state.mode !== "SANDBOX") {
+        state.flux -= ASTRAL_CONFIG.FLUX_COST_CHRONO;
+      }
+      state.chronoOverdriveMs = 4e3;
+      state.currentVolleyChips += 35;
+      for (const comet of state.comets) {
+        comet.baseChips += 25;
+      }
+      state.events.push({
+        type: "CHRONO_OVERDRIVE",
+        x: state.paddleX,
+        y: ASTRAL_CONFIG.PADDLE_Y,
+        label: "\u23F1\uFE0F CHRONO-DILATION OVERDRIVE (+25 Comet Chips)",
+        color: "#38bdf8"
+      });
+      pushLog(
+        state,
+        "\u23F1\uFE0F Activated Chrono-Dilation! Hazards slowed to 35% and Aegis auto-tracks incoming comets!"
+      );
+      break;
+    }
+    case "CAST_SUPERNOVA_MULTIBALL": {
+      if (state.status !== "IN_VOLLEY" || state.comets.length === 0) break;
+      if (state.flux < ASTRAL_CONFIG.FLUX_COST_SUPERNOVA && state.mode !== "SANDBOX") break;
+      if (state.mode !== "SANDBOX") {
+        state.flux -= ASTRAL_CONFIG.FLUX_COST_SUPERNOVA;
+      }
+      state.currentComboMult = Number((state.currentComboMult + 1.1).toFixed(2));
+      const primary = state.comets[0];
+      for (const c of state.comets) {
+        c.isSupernova = true;
+        c.baseChips += 20;
+        c.color = "#fde047";
+      }
+      if (state.comets.length < ASTRAL_CONFIG.MAX_ACTIVE_COMETS && primary) {
+        state.comets.push({
+          id: state.nextEntityId++,
+          x: primary.x,
+          y: primary.y,
+          vx: -primary.vx || 240,
+          vy: -Math.abs(primary.vy) || -360,
+          radius: ASTRAL_CONFIG.COMET_RADIUS,
+          baseChips: primary.baseChips,
+          isSupernova: true,
+          splitGeneration: primary.splitGeneration + 1,
+          color: "#fde047",
+          lastSocketHitId: null,
+          socketCooldownMs: 0,
+          trail: []
+        });
+        state.totalSplitsTriggered += 1;
+      }
+      state.events.push({
+        type: "SUPERNOVA_CAST",
+        x: primary.x,
+        y: primary.y,
+        label: "\u2600\uFE0F SUPERNOVA MULTIBALL OVERCHARGE!",
+        color: "#fde047"
+      });
+      pushLog(
+        state,
+        "\u2600\uFE0F Ignited Supernova Multiball Overcharge! All comets empowered and cloned (+1.1\xD7 Mult)!"
+      );
+      break;
+    }
+    case "DRAFT_RELIC": {
+      if (!state.relics.includes(action.relicId)) {
+        state.relics.push(action.relicId);
+        state.currentRelicMult = computeRelicMultiplier(state.relics);
+        const bp = ASTRAL_RELICS.find((r) => r.id === action.relicId);
+        if (bp) {
+          pushLog(
+            state,
+            `\u{1F3FA} Bound Astral Relic: ${bp.symbol} ${bp.name} (Relic Mult now ${state.currentRelicMult.toFixed(2)}\xD7)!`
+          );
+        }
+      }
+      state.relicChoices = [];
+      if (state.status === "SECTOR_CLEARED") {
+        advanceToNextSector(state);
+      }
+      break;
+    }
+    case "ADVANCE_NEXT_SECTOR": {
+      if (state.status === "SECTOR_CLEARED") {
+        if (state.relicChoices.length > 0 && !state.relics.includes(state.relicChoices[0])) {
+          state.relics.push(state.relicChoices[0]);
+          state.currentRelicMult = computeRelicMultiplier(state.relics);
+          state.relicChoices = [];
+        }
+        advanceToNextSector(state);
+      }
+      break;
+    }
+    case "SWITCH_MODE": {
+      const nextSeed = action.seed ?? state.seed;
+      const fresh = createInitialAstralState(nextSeed, action.mode);
+      Object.assign(state, fresh);
+      return;
+    }
+  }
+  state.rngState = rng.getState();
+}
+function advanceToNextSector(state) {
+  state.sector = Math.min(ASTRAL_CONFIG.MAX_SECTORS, state.sector + 1);
+  state.boss = createBossForSector(state.sector);
+  state.status = "AIMING";
+  state.sectorElapsedMs = 0;
+  state.volleysRemaining = Math.min(9, state.volleysRemaining + 3);
+  state.aegisHull = Math.min(state.maxAegisHull, state.aegisHull + 25);
+  state.flux = Math.min(state.maxFlux, state.flux + 30);
+  pushLog(
+    state,
+    `\u{1F30C} Arrived at Sector ${state.sector}: ${state.boss.name} (+3 Volleys, +25 Hull repaired).`
+  );
+}
+function executeFlipperDeflection(state, comet, forcePerfectParry) {
+  const isParry = forcePerfectParry || state.parryWindowMs > 0;
+  const offsetRatio = clamp(
+    (comet.x - state.paddleX) / ASTRAL_CONFIG.PADDLE_HALF_WIDTH,
+    -0.85,
+    0.85
+  );
+  const bounceAngleRad = (offsetRatio * 55 - 90) * (Math.PI / 180);
+  const currentSpeed = Math.hypot(comet.vx, comet.vy);
+  const boost = isParry ? 1.28 : 1.08;
+  const newSpeed = clamp(
+    Math.max(currentSpeed * boost, 430),
+    400,
+    ASTRAL_CONFIG.MAX_COMET_SPEED
+  );
+  comet.y = ASTRAL_CONFIG.PADDLE_Y - comet.radius - 6;
+  comet.vx = Math.cos(bounceAngleRad) * newSpeed;
+  comet.vy = Math.sin(bounceAngleRad) * newSpeed;
+  comet.lastSocketHitId = null;
+  const hasLaplace = state.relics.includes("LAPLACE_PENDULUM");
+  if (hasLaplace) {
+    state.currentComboMult = Number((state.currentComboMult + 0.85).toFixed(2));
+    state.flux = Math.min(state.maxFlux, state.flux + 12);
+  } else {
+    state.currentComboMult = Number((state.currentComboMult + 0.3).toFixed(2));
+    state.flux = Math.min(state.maxFlux, state.flux + 5);
+  }
+  if (isParry) {
+    comet.isSupernova = true;
+    comet.baseChips += 22;
+    comet.color = "#fde047";
+    state.currentComboMult = Number((state.currentComboMult * 1.22 + 0.4).toFixed(2));
+    state.totalPerfectParries += 1;
+    state.hitStopMs = 32;
+    state.flux = Math.min(state.maxFlux, state.flux + 12);
+    state.events.push({
+      type: "PERFECT_PARRY",
+      x: comet.x,
+      y: ASTRAL_CONFIG.PADDLE_Y,
+      value: Math.round(comet.baseChips * state.currentComboMult),
+      label: `\u26A1 PERFECT PARRY! (${state.currentComboMult.toFixed(1)}\xD7 Mult)`,
+      color: "#fde047"
+    });
+    if (state.relics.includes("HAWKING_MIRROR")) {
+      const lanceDmg = Math.round(260 * state.currentRelicMult);
+      dealBossDamage(
+        state,
+        lanceDmg,
+        "\u{1F6E1}\uFE0F Hawking Parry Lance",
+        state.boss.coreX,
+        state.boss.coreY
+      );
+    }
+  } else {
+    state.events.push({
+      type: "FLIPPER_BOUNCE",
+      x: comet.x,
+      y: ASTRAL_CONFIG.PADDLE_Y,
+      label: "Flipper Return",
+      color: "#38bdf8"
+    });
+  }
+}
+function reflectHazardWithParry(state, haz) {
+  haz.reflected = true;
+  const dx = state.boss.coreX - haz.x;
+  const dy = state.boss.coreY - haz.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  haz.vx = dx / dist * 520;
+  haz.vy = dy / dist * 520;
+  state.totalPerfectParries += 1;
+  state.currentComboMult = Number((state.currentComboMult + 0.6).toFixed(2));
+  state.flux = Math.min(state.maxFlux, state.flux + 10);
+  state.events.push({
+    type: "PERFECT_PARRY",
+    x: haz.x,
+    y: haz.y,
+    label: "\u{1F6E1}\uFE0F HAZARD PARRIED TO BOSS!",
+    color: "#10b981"
+  });
+}
+function stepAstralState(state, dtMs) {
+  if (state.status === "VICTORY" || state.status === "GAME_OVER" || state.status === "SECTOR_CLEARED") {
+    return;
+  }
+  if (state.hitStopMs > 0) {
+    state.hitStopMs = Math.max(0, state.hitStopMs - dtMs);
+    return;
+  }
+  const rng = new SeededRng(state.rngState);
+  const dtSec = dtMs / 1e3;
+  state.tick += 1;
+  state.elapsedMs += dtMs;
+  state.sectorElapsedMs += dtMs;
+  if (state.leftFlipperSwingMs > 0) {
+    state.leftFlipperSwingMs = Math.max(0, state.leftFlipperSwingMs - dtMs);
+  }
+  if (state.rightFlipperSwingMs > 0) {
+    state.rightFlipperSwingMs = Math.max(0, state.rightFlipperSwingMs - dtMs);
+  }
+  if (state.parryWindowMs > 0) {
+    state.parryWindowMs = Math.max(0, state.parryWindowMs - dtMs);
+  }
+  if (state.chronoOverdriveMs > 0) {
+    state.chronoOverdriveMs = Math.max(0, state.chronoOverdriveMs - dtMs);
+  }
+  if (state.boss.hitFlashMs > 0) {
+    state.boss.hitFlashMs = Math.max(0, state.boss.hitFlashMs - dtMs);
+  }
+  for (const sock of state.sockets) {
+    if (sock.pulseAnimMs > 0) {
+      sock.pulseAnimMs = Math.max(0, sock.pulseAnimMs - dtMs);
+    }
+  }
+  const timeScale = state.chronoOverdriveMs > 0 ? 0.35 : 1;
+  state.boss.orbitAngleRad += state.boss.orbitSpeedRadPerSec * dtSec * timeScale;
+  for (const node of state.boss.nodes) {
+    if (!node.alive) continue;
+    const totalAngle = state.boss.orbitAngleRad + node.angleOffsetRad;
+    node.x = state.boss.coreX + Math.cos(totalAngle) * node.orbitRadius;
+    node.y = state.boss.coreY + Math.sin(totalAngle) * node.orbitRadius;
+  }
+  if (state.status !== "IN_VOLLEY") {
+    state.rngState = rng.getState();
+    return;
+  }
+  if (state.chronoOverdriveMs > 0 && state.comets.length > 0) {
+    let lowestComet = state.comets[0];
+    for (const c of state.comets) {
+      if (c.y > lowestComet.y) lowestComet = c;
+    }
+    const dx = lowestComet.x - state.paddleX;
+    state.paddleX = clamp(
+      state.paddleX + clamp(dx, -420 * dtSec, 420 * dtSec),
+      140,
+      ASTRAL_CONFIG.TABLE_WIDTH - 140
+    );
+  }
+  state.boss.hazardTimerMs -= dtMs * timeScale;
+  if (state.boss.hazardTimerMs <= 0 && state.hazards.length < 5) {
+    state.boss.hazardTimerMs = state.boss.hazardIntervalMs;
+    const targetX = state.paddleX + (rng.nextFloat() - 0.5) * 140;
+    const dx = targetX - state.boss.coreX;
+    const dy = ASTRAL_CONFIG.PADDLE_Y - state.boss.coreY;
+    const dist = Math.hypot(dx, dy) || 1;
+    state.hazards.push({
+      id: state.nextEntityId++,
+      x: state.boss.coreX,
+      y: state.boss.coreY + state.boss.coreRadius,
+      vx: dx / dist * state.boss.hazardSpeed,
+      vy: dy / dist * state.boss.hazardSpeed,
+      radius: 11,
+      kind: state.sector >= 4 ? "HAWKING_LANCE" : "VOID_METEOR",
+      reflected: false
+    });
+  }
+  const survivingHazards = [];
+  for (const haz of state.hazards) {
+    const hScale = haz.reflected ? 1 : timeScale;
+    haz.x += haz.vx * dtSec * hScale;
+    haz.y += haz.vy * dtSec * hScale;
+    if (!haz.reflected && state.relics.includes("EVENT_HORIZON_LENS")) {
+      let absorbed = false;
+      for (const sock of state.sockets) {
+        if (sock.nodeType === "GRAVITY_WELL") {
+          const d = Math.hypot(haz.x - sock.x, haz.y - sock.y);
+          if (d < 95) {
+            state.currentVolleyChips += 30;
+            absorbed = true;
+            break;
+          }
+        }
+      }
+      if (absorbed) continue;
+    }
+    if (haz.reflected) {
+      const dBoss = Math.hypot(haz.x - state.boss.coreX, haz.y - state.boss.coreY);
+      if (dBoss <= state.boss.coreRadius + haz.radius + 8) {
+        dealBossDamage(
+          state,
+          185 * state.currentRelicMult,
+          "\u2604\uFE0F Reflected Lance",
+          haz.x,
+          haz.y
+        );
+        continue;
+      }
+    }
+    let smashedByComet = false;
+    for (const comet of state.comets) {
+      if (Math.hypot(comet.x - haz.x, comet.y - haz.y) <= comet.radius + haz.radius + 4) {
+        state.currentVolleyChips += 28;
+        smashedByComet = true;
+        break;
+      }
+    }
+    if (smashedByComet) continue;
+    if (haz.y >= ASTRAL_CONFIG.PADDLE_Y - 14 && !haz.reflected) {
+      const withinPaddle = Math.abs(haz.x - state.paddleX) <= ASTRAL_CONFIG.PADDLE_HALF_WIDTH + 24;
+      if (withinPaddle && state.parryWindowMs > 0) {
+        reflectHazardWithParry(state, haz);
+        survivingHazards.push(haz);
+        continue;
+      } else if (withinPaddle) {
+        state.aegisHull = Math.max(0, state.aegisHull - 10);
+        state.events.push({
+          type: "HULL_DAMAGED",
+          x: haz.x,
+          y: ASTRAL_CONFIG.PADDLE_Y,
+          value: 10,
+          label: "-10 Aegis Hull",
+          color: "#f43f5e"
+        });
+        if (state.aegisHull <= 0 && state.mode !== "SANDBOX") {
+          state.status = "GAME_OVER";
+          state.events.push({
+            type: "GAME_OVER",
+            x: state.paddleX,
+            y: ASTRAL_CONFIG.PADDLE_Y,
+            label: "AEGIS HULL BREACHED",
+            color: "#f43f5e"
+          });
+          pushLog(state, "\u{1F4A5} Aegis Hull breached by Void Fire! Run concluded.");
+          state.rngState = rng.getState();
+          return;
+        }
+        continue;
+      }
+    }
+    if (haz.y > ASTRAL_CONFIG.TABLE_HEIGHT + 20 || haz.y < -20) {
+      continue;
+    }
+    survivingHazards.push(haz);
+  }
+  state.hazards = survivingHazards;
+  const survivingComets = [];
+  for (const comet of state.comets) {
+    if (comet.socketCooldownMs > 0) {
+      comet.socketCooldownMs = Math.max(0, comet.socketCooldownMs - dtMs);
+      if (comet.socketCooldownMs === 0) {
+        comet.lastSocketHitId = null;
+      }
+    }
+    comet.vy += ASTRAL_CONFIG.GRAVITY_Y * dtSec;
+    for (const sock of state.sockets) {
+      if (sock.nodeType === "GRAVITY_WELL") {
+        const dx = sock.x - comet.x;
+        const dy = sock.y - comet.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 24 && dist < 145) {
+          const pullStrength = 210 * sock.level / Math.max(45, dist);
+          const nx = dx / dist;
+          const ny = dy / dist;
+          comet.vx += (nx * 0.82 - ny * 0.35) * pullStrength * dtSec * 60;
+          comet.vy += (ny * 0.82 + nx * 0.35) * pullStrength * dtSec * 60;
+        }
+      }
+    }
+    const curSpeed = Math.hypot(comet.vx, comet.vy);
+    if (curSpeed > ASTRAL_CONFIG.MAX_COMET_SPEED) {
+      comet.vx = comet.vx / curSpeed * ASTRAL_CONFIG.MAX_COMET_SPEED;
+      comet.vy = comet.vy / curSpeed * ASTRAL_CONFIG.MAX_COMET_SPEED;
+    } else if (curSpeed < ASTRAL_CONFIG.MIN_COMET_SPEED) {
+      const safeMag = curSpeed || 1;
+      comet.vx = comet.vx / safeMag * ASTRAL_CONFIG.MIN_COMET_SPEED;
+      comet.vy = comet.vy / safeMag * ASTRAL_CONFIG.MIN_COMET_SPEED;
+    }
+    comet.x += comet.vx * dtSec;
+    comet.y += comet.vy * dtSec;
+    comet.trail.unshift({ x: comet.x, y: comet.y });
+    if (comet.trail.length > 14) {
+      comet.trail.length = 14;
+    }
+    const leftWall = 68 + comet.radius;
+    const rightWall = ASTRAL_CONFIG.TABLE_WIDTH - 68 - comet.radius;
+    const topWall = 46 + comet.radius;
+    if (comet.x < leftWall) {
+      comet.x = leftWall;
+      comet.vx = Math.abs(comet.vx) * 0.98;
+    } else if (comet.x > rightWall) {
+      comet.x = rightWall;
+      comet.vx = -Math.abs(comet.vx) * 0.98;
+    }
+    if (comet.y < topWall) {
+      comet.y = topWall;
+      comet.vy = Math.abs(comet.vy) * 0.98;
+    }
+    if (comet.x < 155 && comet.y < 125 && comet.x + comet.y < 235) {
+      const sp = Math.hypot(comet.vx, comet.vy);
+      comet.vx = Math.abs(sp * 0.72);
+      comet.vy = Math.abs(sp * 0.68);
+    } else if (comet.x > ASTRAL_CONFIG.TABLE_WIDTH - 155 && comet.y < 125 && ASTRAL_CONFIG.TABLE_WIDTH - comet.x + comet.y < 235) {
+      const sp = Math.hypot(comet.vx, comet.vy);
+      comet.vx = -Math.abs(sp * 0.72);
+      comet.vy = Math.abs(sp * 0.68);
+    }
+    if (comet.y > 430 && comet.y < 548) {
+      const railRatio = (comet.y - 430) / (548 - 430);
+      const leftRailX = 68 + railRatio * 145;
+      const rightRailX = ASTRAL_CONFIG.TABLE_WIDTH - 68 - railRatio * 145;
+      if (comet.x < leftRailX + comet.radius) {
+        comet.x = leftRailX + comet.radius;
+        const sp = Math.hypot(comet.vx, comet.vy);
+        comet.vx = Math.abs(sp * 0.75);
+        comet.vy = -Math.abs(sp * 0.55);
+      } else if (comet.x > rightRailX - comet.radius) {
+        comet.x = rightRailX - comet.radius;
+        const sp = Math.hypot(comet.vx, comet.vy);
+        comet.vx = -Math.abs(sp * 0.75);
+        comet.vy = -Math.abs(sp * 0.55);
+      }
+    }
+    for (const sock of state.sockets) {
+      if (!sock.nodeType) continue;
+      if (comet.lastSocketHitId === sock.slotIndex && comet.socketCooldownMs > 0) {
+        continue;
+      }
+      const bp = ASTRAL_SOCKET_BLUEPRINTS[sock.nodeType];
+      const dist = Math.hypot(comet.x - sock.x, comet.y - sock.y);
+      if (dist <= comet.radius + bp.radius) {
+        handleSocketCollision(state, comet, sock, rng);
+        break;
+      }
+    }
+    if (state.status !== "IN_VOLLEY") break;
+    for (const node of state.boss.nodes) {
+      if (!node.alive) continue;
+      const dist = Math.hypot(comet.x - node.x, comet.y - node.y);
+      if (dist <= comet.radius + node.radius) {
+        let nx = (comet.x - node.x) / (dist || 1);
+        let ny = (comet.y - node.y) / (dist || 1);
+        comet.x = node.x + nx * (comet.radius + node.radius + 2);
+        comet.y = node.y + ny * (comet.radius + node.radius + 2);
+        const dot = comet.vx * nx + comet.vy * ny;
+        comet.vx = (comet.vx - 2 * dot * nx) * 1.08;
+        comet.vy = (comet.vy - 2 * dot * ny) * 1.08;
+        state.currentComboMult = Number((state.currentComboMult + 0.4).toFixed(2));
+        state.currentVolleyBounces += 1;
+        if (state.currentVolleyBounces > state.maxComboBounces) {
+          state.maxComboBounces = state.currentVolleyBounces;
+        }
+        const nodeHitDmg = Math.round(
+          (comet.baseChips + 30) * state.currentComboMult * state.currentRelicMult * (comet.isSupernova ? 1.35 : 1)
+        );
+        node.hp -= nodeHitDmg;
+        dealBossDamage(
+          state,
+          nodeHitDmg * 0.5,
+          `\u2699\uFE0F ${node.label}`,
+          node.x,
+          node.y
+        );
+        if (node.hp <= 0) {
+          node.alive = false;
+          state.stardust += 15;
+          state.currentVolleyChips += 150;
+          state.currentComboMult = Number((state.currentComboMult + 0.75).toFixed(2));
+          state.events.push({
+            type: "NODE_DESTROYED",
+            x: node.x,
+            y: node.y,
+            value: 150,
+            label: `\u{1F4A5} ${node.label} Shattered! (+15\u2726)`,
+            color: "#f59e0b"
+          });
+        }
+        break;
+      }
+    }
+    if (state.status !== "IN_VOLLEY") break;
+    const distCore = Math.hypot(
+      comet.x - state.boss.coreX,
+      comet.y - state.boss.coreY
+    );
+    if (distCore <= comet.radius + state.boss.coreRadius) {
+      const nx = (comet.x - state.boss.coreX) / (distCore || 1);
+      const ny = (comet.y - state.boss.coreY) / (distCore || 1);
+      comet.x = state.boss.coreX + nx * (comet.radius + state.boss.coreRadius + 3);
+      comet.y = state.boss.coreY + ny * (comet.radius + state.boss.coreRadius + 3);
+      const dot = comet.vx * nx + comet.vy * ny;
+      comet.vx = (comet.vx - 2 * dot * nx) * 1.12;
+      comet.vy = (comet.vy - 2 * dot * ny) * 1.12;
+      state.currentComboMult = Number((state.currentComboMult + 0.6).toFixed(2));
+      state.currentVolleyBounces += 1;
+      if (state.currentVolleyBounces > state.maxComboBounces) {
+        state.maxComboBounces = state.currentVolleyBounces;
+      }
+      state.flux = Math.min(state.maxFlux, state.flux + 8);
+      const coreHitDmg = Math.round(
+        (comet.baseChips + 48) * state.currentComboMult * state.currentRelicMult * (comet.isSupernova ? 1.5 : 1)
+      );
+      dealBossDamage(state, coreHitDmg, "\u2604\uFE0F Core Impact", comet.x, comet.y);
+      if (state.status !== "IN_VOLLEY") break;
+    }
+    if (comet.vy > 0 && comet.y >= ASTRAL_CONFIG.PADDLE_Y - comet.radius - 10 && comet.y <= ASTRAL_CONFIG.PADDLE_Y + 22) {
+      const paddleReach = ASTRAL_CONFIG.PADDLE_HALF_WIDTH + (state.chronoOverdriveMs > 0 ? 28 : 12);
+      if (Math.abs(comet.x - state.paddleX) <= paddleReach) {
+        executeFlipperDeflection(state, comet, false);
+      }
+    }
+    if (comet.y > ASTRAL_CONFIG.TABLE_HEIGHT + 16) {
+      if (state.relics.includes("OUROBOROS_TAIL") && !state.ouroborosSaveUsedThisVolley) {
+        state.ouroborosSaveUsedThisVolley = true;
+        comet.x = state.boss.coreX;
+        comet.y = 66;
+        comet.vx = (rng.nextFloat() - 0.5) * 160;
+        comet.vy = 380;
+        comet.isSupernova = true;
+        comet.color = "#10b981";
+        state.currentComboMult = Number((state.currentComboMult + 1).toFixed(2));
+        state.events.push({
+          type: "WORMHOLE_WARP",
+          x: state.paddleX,
+          y: ASTRAL_CONFIG.PADDLE_Y,
+          targetX: comet.x,
+          targetY: comet.y,
+          label: "\u{1F40D} OUROBOROS ETERNAL RESCUE!",
+          color: "#10b981"
+        });
+        survivingComets.push(comet);
+      }
+      continue;
+    }
+    survivingComets.push(comet);
+  }
+  if (state.status === "IN_VOLLEY") {
+    state.comets = survivingComets;
+    if (state.comets.length === 0) {
+      const interestStardust = Math.floor(state.flux / 5) * 3;
+      const ledgerMult = state.relics.includes("COMPOUND_LEDGER") ? 1.4 : 1;
+      const totalStardustEarned = Math.round((15 + interestStardust) * ledgerMult);
+      state.stardust += totalStardustEarned;
+      state.hazards = [];
+      if (state.volleysRemaining <= 0 && state.mode !== "SANDBOX") {
+        state.status = "GAME_OVER";
+        state.events.push({
+          type: "GAME_OVER",
+          x: state.boss.coreX,
+          y: state.boss.coreY,
+          label: "ALL STAR-COMETS EXPENDED",
+          color: "#f43f5e"
+        });
+        pushLog(
+          state,
+          `\u{1F311} All volleys expended against ${state.boss.name}. Final Score: ${state.totalScore.toLocaleString()}.`
+        );
+      } else {
+        state.status = "AIMING";
+        pushLog(
+          state,
+          `\u2728 Volley Complete! Dealt ${state.currentVolleyScore.toLocaleString()} pts (${state.currentVolleyBounces} bounces) & banked +${totalStardustEarned}\u2726 Stardust.`
+        );
+      }
+    }
+  }
+  state.rngState = rng.getState();
+}
+function computeTrajectoryPreview(state, overrideAngleDeg, maxSteps = 95) {
+  const sim = cloneAstralState(state);
+  sim.status = "AIMING";
+  sim.comets = [];
+  const angle = overrideAngleDeg ?? state.aimAngleDeg;
+  applyAstralInput(sim, { type: "LAUNCH_COMET", angleDeg: angle });
+  const points = [];
+  let prevBounces = 0;
+  for (let i = 0; i < maxSteps; i++) {
+    stepAstralState(sim, ASTRAL_CONFIG.FIXED_STEP_MS);
+    const primary = sim.comets[0];
+    if (!primary) break;
+    if (i % 2 === 0 || sim.currentVolleyBounces !== prevBounces) {
+      points.push({
+        x: primary.x,
+        y: primary.y,
+        isBounce: sim.currentVolleyBounces !== prevBounces
+      });
+      prevBounces = sim.currentVolleyBounces;
+    }
+  }
+  return points;
+}
+function computeOptimalLaunchHint(state) {
+  let bestAngleDeg = state.aimAngleDeg;
+  let bestDamage = -1;
+  let bestBounces = 0;
+  for (let angle = -60; angle <= 60; angle += 6) {
+    const sim = cloneAstralState(state);
+    sim.status = "AIMING";
+    sim.comets = [];
+    applyAstralInput(sim, { type: "LAUNCH_COMET", angleDeg: angle });
+    for (let step = 0; step < 140; step++) {
+      stepAstralState(sim, ASTRAL_CONFIG.FIXED_STEP_MS);
+      if (sim.status !== "IN_VOLLEY") break;
+    }
+    const scoreMetric = sim.currentVolleyScore + sim.currentVolleyBounces * 120 + sim.totalSplitsTriggered * 450;
+    if (scoreMetric > bestDamage) {
+      bestDamage = scoreMetric;
+      bestAngleDeg = angle;
+      bestBounces = sim.currentVolleyBounces;
+    }
+  }
+  const previewPoints = computeTrajectoryPreview(state, bestAngleDeg, 95);
+  return {
+    bestAngleDeg,
+    expectedDamage: Math.max(150, Math.round(bestDamage)),
+    expectedBounces: Math.max(2, bestBounces),
+    rationale: `Launching at ${bestAngleDeg}\xB0 routes through high-value sockets for ~${Math.max(2, bestBounces)} rapid bounces and maximum Chips \xD7 Mult cascade.`,
+    previewPoints
+  };
+}
+function evaluateAstralVerdict(state) {
+  if (state.status === "VICTORY" || state.sector >= 5) {
+    return ASTRAL_VERDICTS.SINGULARITY_SOVEREIGN;
+  }
+  if (state.totalSplitsTriggered >= 4) {
+    return ASTRAL_VERDICTS.MULTIBALL_ALCHEMIST;
+  }
+  if (state.totalPerfectParries >= 3) {
+    return ASTRAL_VERDICTS.PARRY_VIRTUOSO;
+  }
+  return ASTRAL_VERDICTS.ENTROPY_PILGRIM;
+}
+function runAstralCounterfactuals(seed) {
+  const archetypes = [
+    {
+      id: "SNIPER_PHYSICIST",
+      title: "Kepler Trajectory Sniper",
+      summary: "Prioritizes Forge Anvils & Gravity Wells, banking Flux for compound Stardust interest.",
+      buildType: "FORGE_ANVIL",
+      preferredSlot: 5,
+      angleSweep: [-18, 18, -8, 12],
+      useMagnet: false,
+      useParry: false
+    },
+    {
+      id: "PRISM_ALCHEMIST",
+      title: "Bifrost Multiball Alchemist",
+      summary: "Wires Prism Splitters & Tesla Pylons, casting Supernova Multiball to flood the crucible.",
+      buildType: "PRISM_SPLITTER",
+      preferredSlot: 6,
+      angleSweep: [-26, 24, -14, 16],
+      useMagnet: true,
+      useParry: true
+    },
+    {
+      id: "PARRY_VIRTUOSO",
+      title: "Hawking Flipper Virtuoso",
+      summary: "Chains timed Flipper Parries and Ouroboros Wormholes for high Combo Multiplier volleys.",
+      buildType: "WORMHOLE_RELAY",
+      preferredSlot: 9,
+      angleSweep: [0, -22, 22, -10],
+      useMagnet: true,
+      useParry: true
+    }
+  ];
+  return archetypes.map((arc) => {
+    const sim = createInitialAstralState(seed, "CAMPAIGN");
+    applyAstralInput(sim, {
+      type: "BUILD_OR_UPGRADE_SOCKET",
+      slotIndex: arc.preferredSlot,
+      nodeType: arc.buildType
+    });
+    for (let v = 0; v < 4; v++) {
+      if (sim.status === "SECTOR_CLEARED") {
+        applyAstralInput(sim, { type: "ADVANCE_NEXT_SECTOR" });
+      }
+      if (sim.status !== "AIMING") break;
+      const angle = arc.angleSweep[v % arc.angleSweep.length];
+      applyAstralInput(sim, { type: "LAUNCH_COMET", angleDeg: angle });
+      for (let step = 0; step < 190; step++) {
+        if (arc.useMagnet && step === 45 && sim.flux >= ASTRAL_CONFIG.FLUX_COST_MAGNET) {
+          applyAstralInput(sim, { type: "CAST_MAGNET_PULSE" });
+        }
+        if (arc.useParry && step % 32 === 0 && sim.comets[0]) {
+          applyAstralInput(sim, { type: "MOVE_PADDLE", x: sim.comets[0].x });
+          applyAstralInput(sim, { type: "FLIP_SWING", side: "BOTH" });
+        }
+        stepAstralState(sim, ASTRAL_CONFIG.FIXED_STEP_MS);
+        if (sim.status !== "IN_VOLLEY") break;
+      }
+    }
+    const verdict = evaluateAstralVerdict(sim);
+    return {
+      archetypeId: arc.id,
+      title: arc.title,
+      strategySummary: arc.summary,
+      sectorsCleared: sim.status === "VICTORY" ? 5 : Math.max(0, sim.sector - (sim.boss.hp > 0 ? 1 : 0)),
+      totalScore: sim.totalScore,
+      bestVolleyScore: sim.bestVolleyScore,
+      maxComboBounces: sim.maxComboBounces,
+      verdictTitle: verdict.title
+    };
+  });
+}
+
+// games/12-astral-pinball/src/persistence.ts
+var ASTRAL_SAVE_KEY = "argon_game12_astral_pinball_v1";
+function createDefaultAstralCareer() {
+  return {
+    version: 1,
+    highScore: 0,
+    bestVolleyScore: 0,
+    maxSectorReached: 1,
+    totalSectorsCleared: 0,
+    totalRunsCompleted: 0,
+    totalVictories: 0,
+    totalSplits: 0,
+    totalPerfectParries: 0,
+    unlockedRelics: ["NEWTON_THIRD_LAW"],
+    completedRunIds: []
+  };
+}
+function loadAstralSave() {
+  try {
+    if (typeof localStorage === "undefined") {
+      return { version: 1, career: createDefaultAstralCareer(), activeRun: null };
+    }
+    const raw = localStorage.getItem(ASTRAL_SAVE_KEY);
+    if (!raw) {
+      return { version: 1, career: createDefaultAstralCareer(), activeRun: null };
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== 1 || !parsed.career) {
+      return { version: 1, career: createDefaultAstralCareer(), activeRun: null };
+    }
+    const career = {
+      ...createDefaultAstralCareer(),
+      ...parsed.career,
+      unlockedRelics: Array.isArray(parsed.career.unlockedRelics) ? parsed.career.unlockedRelics : ["NEWTON_THIRD_LAW"],
+      completedRunIds: Array.isArray(parsed.career.completedRunIds) ? parsed.career.completedRunIds.slice(-30) : []
+    };
+    return {
+      version: 1,
+      career,
+      activeRun: parsed.activeRun ? cloneAstralState(parsed.activeRun) : null
+    };
+  } catch {
+    return { version: 1, career: createDefaultAstralCareer(), activeRun: null };
+  }
+}
+function saveAstralState(careerInput, state) {
+  const career = {
+    ...careerInput,
+    highScore: Math.max(careerInput.highScore, state.totalScore),
+    bestVolleyScore: Math.max(careerInput.bestVolleyScore, state.bestVolleyScore),
+    maxSectorReached: Math.max(careerInput.maxSectorReached, state.sector),
+    unlockedRelics: Array.from(/* @__PURE__ */ new Set([...careerInput.unlockedRelics, ...state.relics])),
+    completedRunIds: [...careerInput.completedRunIds]
+  };
+  const isTerminal = state.status === "VICTORY" || state.status === "GAME_OVER";
+  if (isTerminal && !career.completedRunIds.includes(state.runId)) {
+    career.completedRunIds.push(state.runId);
+    if (career.completedRunIds.length > 30) {
+      career.completedRunIds.shift();
+    }
+    career.totalRunsCompleted += 1;
+    if (state.status === "VICTORY") {
+      career.totalVictories += 1;
+      career.totalSectorsCleared += 5;
+    } else {
+      career.totalSectorsCleared += Math.max(0, state.sector - 1);
+    }
+    career.totalSplits += state.totalSplitsTriggered;
+    career.totalPerfectParries += state.totalPerfectParries;
+  }
+  const envelope = {
+    version: 1,
+    career,
+    activeRun: cloneAstralState(state)
+  };
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(ASTRAL_SAVE_KEY, JSON.stringify(envelope));
+    }
+  } catch {
+  }
+  return envelope;
+}
+
+// games/12-astral-pinball/src/ui.ts
+if (typeof HTMLButtonElement !== "undefined" && !("commandForElement" in HTMLButtonElement.prototype)) {
+  void Promise.resolve().then(() => (init_invokers_polyfill(), invokers_polyfill_exports));
+}
+if (typeof HTMLElement !== "undefined" && !("popover" in HTMLElement.prototype)) {
+  void Promise.resolve().then(() => (init_popover(), popover_exports));
+}
+var NODE_TYPES_ORDER = [
+  "PRISM_SPLITTER",
+  "TESLA_PYLON",
+  "GRAVITY_WELL",
+  "FORGE_ANVIL",
+  "WORMHOLE_RELAY",
+  "HARMONIC_BELL"
+];
+var AstralUIController = class {
+  container;
+  audio;
+  callbacks;
+  debugVisible;
+  canvas;
+  ctx = null;
+  popups = [];
+  rings = [];
+  beams = [];
+  coachHint = null;
+  showCoachOverlay = false;
+  keydownHandler;
+  intersectionObserver = null;
+  constructor(container, audio, callbacks, initialDebug = false) {
+    this.container = container;
+    this.audio = audio;
+    this.callbacks = callbacks;
+    this.debugVisible = initialDebug;
+    this.buildDOM();
+    this.bindEvents();
+  }
+  isDebugVisible() {
+    return this.debugVisible;
+  }
+  setDebugVisible(visible) {
+    this.debugVisible = visible;
+    const dbgEl = this.container.querySelector("#ap-debug-panel");
+    if (dbgEl) {
+      dbgEl.hidden = !this.debugVisible;
+    }
+  }
+  resetVisuals() {
+    this.popups = [];
+    this.rings = [];
+    this.beams = [];
+    this.coachHint = null;
+  }
+  buildDOM() {
+    const uid = Math.random().toString(36).slice(2, 7);
+    const popoverId = `ap-almanac-popover-${uid}`;
+    const dialogId = `ap-audit-dialog-${uid}`;
+    const dialogTitleId = `ap-audit-title-${uid}`;
+    this.container.innerHTML = `
+      <style>
+        .ap-root {
+          /* Defer rendering work when off-screen per efficient-background-processing */
+          content-visibility: auto;
+          contain-intrinsic-size: auto none auto 680px;
+          background: radial-gradient(circle at 50% 12%, #131b38 0%, #070a17 65%, #04060e 100%);
+          color: #f8fafc;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+          border: 1px solid #334155;
+          border-radius: 14px;
+          padding: 14px;
+          max-width: 1380px;
+          margin: 0 auto;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75);
+        }
+
+        .ap-top-bar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid #1e293b;
+          margin-bottom: 10px;
+        }
+
+        .ap-brand-title {
+          margin: 0;
+          font-size: 1.2rem;
+          font-weight: 900;
+          letter-spacing: -0.02em;
+          background: linear-gradient(90deg, #fde047, #f59e0b, #ec4899, #38bdf8);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .ap-brand-sub {
+          margin: 2px 0 0;
+          font-size: 0.76rem;
+          color: #94a3b8;
+        }
+
+        .ap-toolbar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .ap-btn {
+          background: #1e293b;
+          color: #f8fafc;
+          border: 1px solid #475569;
+          border-radius: 7px;
+          padding: 5px 10px;
+          font-size: 0.76rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.14s ease;
+        }
+
+        .ap-btn:hover {
+          background: #334155;
+          border-color: #38bdf8;
+        }
+
+        .ap-btn-gold {
+          background: linear-gradient(135deg, #f59e0b, #d97706);
+          color: #020617;
+          border-color: #fde047;
+        }
+
+        .ap-btn-gold:hover {
+          background: linear-gradient(135deg, #fde047, #f59e0b);
+        }
+
+        /* Balatro-Style Multiplicative Equation Ribbon */
+        .ap-equation-ribbon {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          background: rgba(9, 13, 28, 0.92);
+          border: 1px solid #334155;
+          border-radius: 10px;
+          padding: 8px 12px;
+          margin-bottom: 12px;
+        }
+
+        .ap-eq-formula {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.85rem;
+          font-weight: 800;
+        }
+
+        .ap-pill-chips {
+          background: rgba(56, 189, 248, 0.18);
+          border: 1px solid #38bdf8;
+          color: #7dd3fc;
+          padding: 3px 9px;
+          border-radius: 6px;
+        }
+
+        .ap-pill-mult {
+          background: rgba(236, 72, 153, 0.2);
+          border: 1px solid #ec4899;
+          color: #f472b6;
+          padding: 3px 9px;
+          border-radius: 6px;
+        }
+
+        .ap-pill-relic {
+          background: rgba(168, 85, 247, 0.2);
+          border: 1px solid #a855f7;
+          color: #d8b4fe;
+          padding: 3px 9px;
+          border-radius: 6px;
+        }
+
+        .ap-pill-total {
+          background: rgba(245, 158, 11, 0.22);
+          border: 1px solid #f59e0b;
+          color: #fde047;
+          padding: 3px 10px;
+          border-radius: 6px;
+        }
+
+        .ap-stats-strip {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.78rem;
+        }
+
+        .ap-stat-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        /* Main 2-Column Layout */
+        .ap-workspace {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 14px;
+          align-items: start;
+        }
+
+        @media (min-width: 1080px) {
+          .ap-workspace {
+            grid-template-columns: minmax(580px, 920px) 1fr;
+          }
+        }
+
+        .ap-canvas-stage {
+          position: relative;
+          width: 100%;
+          background: #050814;
+          border: 1px solid #334155;
+          border-radius: 12px;
+          overflow: hidden;
+        }
+
+        .ap-canvas {
+          display: block;
+          width: 100%;
+          height: auto;
+          aspect-ratio: 920 / 600;
+          cursor: crosshair;
+          touch-action: none;
+        }
+
+        .ap-overlay-card {
+          position: absolute;
+          inset: 14% 10%;
+          background: rgba(10, 15, 32, 0.96);
+          border: 2px solid #f59e0b;
+          border-radius: 14px;
+          padding: 18px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          gap: 12px;
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.9);
+          z-index: 15;
+        }
+
+        .ap-overlay-card[hidden] {
+          display: none !important;
+        }
+
+        .ap-relic-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+          gap: 10px;
+        }
+
+        .ap-relic-choice {
+          background: #131c36;
+          border: 1px solid #475569;
+          border-radius: 9px;
+          padding: 10px;
+          text-align: left;
+          color: #f8fafc;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .ap-relic-choice:hover {
+          border-color: #fde047;
+          background: #1e293b;
+        }
+
+        /* Right Sidebar Architect & Tactical Controls */
+        .ap-sidebar {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .ap-panel {
+          background: rgba(15, 23, 42, 0.85);
+          border: 1px solid #334155;
+          border-radius: 10px;
+          padding: 10px 12px;
+        }
+
+        .ap-panel-title {
+          margin: 0 0 8px 0;
+          font-size: 0.78rem;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: #38bdf8;
+          font-family: 'JetBrains Mono', monospace;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .ap-verbs-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 6px;
+        }
+
+        .ap-node-palette {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 6px;
+        }
+
+        .ap-node-btn {
+          background: #0f172a;
+          border: 1px solid #334155;
+          border-radius: 7px;
+          padding: 6px 8px;
+          color: #e2e8f0;
+          text-align: left;
+          font-size: 0.74rem;
+          cursor: pointer;
+        }
+
+        .ap-node-btn[aria-pressed="true"] {
+          border-color: #fde047;
+          background: rgba(245, 158, 11, 0.16);
+          box-shadow: 0 0 0 1px #fde047;
+        }
+
+        .ap-sockets-quickgrid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 5px;
+          margin-top: 8px;
+        }
+
+        .ap-socket-pill {
+          background: #090d1a;
+          border: 1px solid #334155;
+          border-radius: 6px;
+          padding: 4px 7px;
+          font-size: 0.71rem;
+          color: #cbd5e1;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          cursor: pointer;
+        }
+
+        .ap-socket-pill:hover {
+          border-color: #38bdf8;
+        }
+
+        .ap-log-list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          max-height: 125px;
+          overflow-y: auto;
+          font-size: 0.73rem;
+          color: #cbd5e1;
+          display: grid;
+          gap: 4px;
+        }
+
+        /* Native Dialog & Popover per declarative-dialog-popover-control & light-dismiss-a-dialog */
+        dialog.ap-dialog {
+          background: #0f172a;
+          color: #f8fafc;
+          border: 1px solid #38bdf8;
+          border-radius: 12px;
+          padding: 18px;
+          max-width: min(760px, 94vw);
+          box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85);
+        }
+
+        dialog.ap-dialog::backdrop {
+          background-color: rgba(0, 0, 0, 0.65);
+          backdrop-filter: blur(3px);
+        }
+
+        [popover].ap-popover {
+          background: #0f172a;
+          color: #f8fafc;
+          border: 1px solid #f59e0b;
+          border-radius: 10px;
+          padding: 14px;
+          max-width: 430px;
+          box-shadow: 0 18px 40px rgba(0, 0, 0, 0.8);
+        }
+
+        [popover].ap-popover:is(:popover-open, .\\:popover-open) {
+          display: block;
+        }
+
+        .ap-cf-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 0.76rem;
+          margin-top: 10px;
+        }
+
+        .ap-cf-table th,
+        .ap-cf-table td {
+          border: 1px solid #334155;
+          padding: 6px 8px;
+          text-align: left;
+        }
+
+        .ap-cf-table th {
+          background: #1e293b;
+          color: #fde047;
+        }
+      </style>
+
+      <div class="ap-root" id="ap-simulation-root">
+        <div class="ap-top-bar">
+          <div>
+            <h2 class="ap-brand-title">\u2604\uFE0F OROBOROS: THE PINBALL SINGULARITY</h2>
+            <p class="ap-brand-sub" id="ap-sector-subtitle">
+              SECTOR I // THE CLOCKWORK ASTROLABE \u2014 Wire Astral Sockets, Launch Star-Comets &amp; Parry with Twin Plasma Flippers
+            </p>
+          </div>
+
+          <div class="ap-toolbar">
+            <button type="button" class="ap-btn ap-btn-gold" id="ap-btn-launch">
+              \u2604\uFE0F Launch Volley [Space]
+            </button>
+            <button type="button" class="ap-btn" id="ap-btn-coach">
+              \u{1F52E} Oracle Shot Hint [H]
+            </button>
+            <button type="button" class="ap-btn" id="ap-btn-mode">
+              Mode: Campaign
+            </button>
+            <button
+              type="button"
+              class="ap-btn"
+              commandfor="${popoverId}"
+              command="toggle-popover"
+            >
+              \u{1F4D6} Synergy Almanac
+            </button>
+            <button
+              type="button"
+              class="ap-btn"
+              id="ap-btn-open-audit"
+              commandfor="${dialogId}"
+              command="show-modal"
+            >
+              \u{1F4CA} Counterfactual Audit
+            </button>
+            <button type="button" class="ap-btn" id="ap-btn-mute">
+              \u{1F50A} Audio: ON [M]
+            </button>
+            <button type="button" class="ap-btn" id="ap-btn-restart">
+              \u21BB New Run [R]
+            </button>
+          </div>
+        </div>
+
+        <div class="ap-equation-ribbon">
+          <div class="ap-eq-formula">
+            <span class="ap-pill-chips" id="ap-eq-chips">CHIPS: 30</span>
+            <span>\xD7</span>
+            <span class="ap-pill-mult" id="ap-eq-mult">COMBO MULT: 1.00\xD7</span>
+            <span>\xD7</span>
+            <span class="ap-pill-relic" id="ap-eq-relic">RELIC MULT: 1.20\xD7</span>
+            <span>=</span>
+            <span class="ap-pill-total" id="ap-eq-volley">VOLLEY: 0 PTS</span>
+          </div>
+
+          <div class="ap-stats-strip">
+            <span class="ap-stat-item" id="ap-stat-boss">\u{1F451} Boss HP: 1,600/1,600</span>
+            <span class="ap-stat-item" id="ap-stat-volleys">\u2604\uFE0F Volleys: 5</span>
+            <span class="ap-stat-item" id="ap-stat-hull">\u{1F6E1}\uFE0F Aegis Hull: 100%</span>
+            <span class="ap-stat-item" id="ap-stat-stardust">\u2726 Stardust: 110</span>
+            <span class="ap-stat-item" id="ap-stat-flux">\u26A1 Aether Flux: 60/100</span>
+            <span class="ap-stat-item" id="ap-stat-score">\u{1F3C6} Total: 0</span>
+          </div>
+        </div>
+
+        <div class="ap-workspace">
+          <div class="ap-canvas-stage">
+            <canvas
+              id="ap-canvas"
+              class="ap-canvas"
+              width="${ASTRAL_CONFIG.TABLE_WIDTH}"
+              height="${ASTRAL_CONFIG.TABLE_HEIGHT}"
+              aria-label="Oroboros Pinball Singularity Cosmos Table"
+            ></canvas>
+
+            <!-- Sector Cleared / Relic Draft Overlay -->
+            <div class="ap-overlay-card" id="ap-relic-overlay" hidden>
+              <div>
+                <h3 style="margin:0 0 4px; color:#fde047;" id="ap-overlay-title">
+                  \u{1F31F} SECTOR CLEARED! CHOOSE AN ASTRAL RELIC
+                </h3>
+                <p style="margin:0; font-size:0.82rem; color:#cbd5e1;" id="ap-overlay-sub">
+                  Bind 1 Relic to permanently multiply your Chips \xD7 Mult engine and advance to the next Boss Constellation.
+                </p>
+              </div>
+              <div class="ap-relic-grid" id="ap-relic-choices-grid"></div>
+              <div style="display:flex; justify-content:flex-end; gap:8px;">
+                <button type="button" class="ap-btn ap-btn-gold" id="ap-btn-skip-relic">
+                  Ascend to Next Sector \u2192
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <aside class="ap-sidebar">
+            <!-- Active Tactical Pinball & Flux Verbs -->
+            <div class="ap-panel">
+              <h3 class="ap-panel-title">
+                <span>\u26A1 Active Tactical Controls</span>
+                <span id="ap-aim-readout">Aim: -14\xB0</span>
+              </h3>
+              <div class="ap-verbs-grid">
+                <button type="button" class="ap-btn ap-btn-gold" id="ap-verb-flip">
+                  \u{1F6E1}\uFE0F Flipper Parry [Space/Click]
+                </button>
+                <button type="button" class="ap-btn" id="ap-verb-magnet">
+                  \u{1F9F2} Magnet Pulse [E] (25\u26A1)
+                </button>
+                <button type="button" class="ap-btn" id="ap-verb-chrono">
+                  \u23F1\uFE0F Chrono-Dilation [Q] (30\u26A1)
+                </button>
+                <button type="button" class="ap-btn" id="ap-verb-supernova">
+                  \u2600\uFE0F Supernova Split [F] (45\u26A1)
+                </button>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px; margin-top:8px; font-size:0.74rem;">
+                <label for="ap-aim-slider">Launch Angle:</label>
+                <input
+                  type="range"
+                  id="ap-aim-slider"
+                  min="-72"
+                  max="72"
+                  step="1"
+                  value="-14"
+                  style="flex:1;"
+                />
+              </div>
+            </div>
+
+            <!-- Live Socket Architect Palette -->
+            <div class="ap-panel">
+              <h3 class="ap-panel-title">
+                <span>\u{1F6E0}\uFE0F Socket Architect Forge</span>
+                <span id="ap-stardust-badge">\u2726 110 Stardust</span>
+              </h3>
+              <p style="margin:0 0 6px; font-size:0.72rem; color:#94a3b8;">
+                Select an Astral Node below, then click any Socket on the table (or a slot pill) to wire or upgrade it:
+              </p>
+              <div class="ap-node-palette" id="ap-node-palette"></div>
+              <div class="ap-sockets-quickgrid" id="ap-sockets-quickgrid"></div>
+            </div>
+
+            <!-- Bound Relics & Career -->
+            <div class="ap-panel">
+              <h3 class="ap-panel-title">
+                <span>\u{1F3FA} Bound Relics &amp; Telemetry</span>
+                <span id="ap-career-best">Best: 0</span>
+              </h3>
+              <div id="ap-owned-relics" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px; font-size:0.73rem;"></div>
+              <ul class="ap-log-list" id="ap-log-list"></ul>
+            </div>
+
+            <div class="ap-panel" id="ap-debug-panel" ${this.debugVisible ? "" : "hidden"}>
+              <h3 class="ap-panel-title"><span>\u{1F52C} Deterministic Debug State</span></h3>
+              <pre id="ap-debug-pre" style="margin:0; font-size:0.7rem; color:#38bdf8; overflow-x:auto;"></pre>
+            </div>
+          </aside>
+        </div>
+
+        <!-- Declarative Popover Almanac -->
+        <div id="${popoverId}" class="ap-popover" popover>
+          <h3 style="margin:0 0 6px; color:#fde047;">\u{1F4D6} Astral Pinball Synergy Almanac</h3>
+          <p style="margin:0 0 8px; font-size:0.78rem; color:#cbd5e1;">
+            Every socket bounce increases both <strong>Base Chips</strong> and <strong>Combo Mult</strong>. Total Damage = <code>Chips \xD7 Combo Mult \xD7 Relic Mult</code>.
+          </p>
+          <ul style="margin:0; padding-left:16px; font-size:0.75rem; color:#e2e8f0; display:grid; gap:4px;">
+            <li><strong>\u2756 Bifrost Prism Gate (45\u2726):</strong> Splits 1 comet into 2 chromatic twin comets!</li>
+            <li><strong>\u26A1 Tesla Resonance Pylon (40\u2726):</strong> Chains arc-lightning to up to 3 Boss Nodes/Hazards.</li>
+            <li><strong>\u{1F300} Kerr Gravity Well (50\u2726):</strong> Curves comets into an orbital slingshot toward the Boss Core.</li>
+            <li><strong>\u{1F525} Solar Forge Anvil (35\u2726):</strong> Permanently tempers the comet (+14 Base Chips + Supernova).</li>
+            <li><strong>\u23F3 Ouroboros Wormhole (55\u2726):</strong> Warps lower-table comets back to the Zenith Crown!</li>
+            <li><strong>\u{1F514} Harmonic Bell (50\u2726):</strong> Every 3rd chime unleashes a full-screen 240-dmg Sonic Nova!</li>
+          </ul>
+        </div>
+
+        <!-- Light-Dismiss Counterfactual Audit Modal Dialog -->
+        <dialog
+          id="${dialogId}"
+          class="ap-dialog"
+          closedby="any"
+          aria-labelledby="${dialogTitleId}"
+        >
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; border-bottom:1px solid #334155; padding-bottom:8px;">
+            <h3 id="${dialogTitleId}" style="margin:0; color:#38bdf8;">
+              \u{1F4CA} Seeded Counterfactual Archetype Benchmark
+            </h3>
+            <button
+              type="button"
+              class="ap-btn"
+              commandfor="${dialogId}"
+              command="close"
+            >
+              Close [Esc]
+            </button>
+          </div>
+          <div id="ap-audit-dialog-body" style="margin-top:10px; font-size:0.82rem;"></div>
+        </dialog>
+      </div>
+    `;
+    const canvasEl = this.container.querySelector("#ap-canvas");
+    if (canvasEl) {
+      this.canvas = canvasEl;
+      this.ctx = canvasEl.getContext("2d");
+    }
+    const dialogEl = this.container.querySelector(`#${dialogId}`);
+    if (dialogEl && typeof HTMLDialogElement !== "undefined" && !("closedBy" in HTMLDialogElement.prototype)) {
+      dialogEl.addEventListener("click", (event) => {
+        if (event.target !== dialogEl) return;
+        const rect = dialogEl.getBoundingClientRect();
+        const isDialogContent = rect.top <= event.clientY && event.clientY <= rect.top + rect.height && rect.left <= event.clientX && event.clientX <= rect.left + rect.width;
+        if (isDialogContent) return;
+        dialogEl.close();
+      });
+    }
+    const rootEl = this.container.querySelector("#ap-simulation-root");
+    if (rootEl) {
+      rootEl.addEventListener("contentvisibilityautostatechange", (event) => {
+        const cvEvent = event;
+        this.callbacks.onVisibilityPausedChange?.(Boolean(cvEvent.skipped));
+      });
+      if (typeof document !== "undefined" && !("contentVisibility" in document.documentElement.style) && typeof IntersectionObserver !== "undefined") {
+        this.intersectionObserver = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              this.callbacks.onVisibilityPausedChange?.(!entry.isIntersecting);
+            }
+          },
+          { rootMargin: "200px" }
+        );
+        this.intersectionObserver.observe(rootEl);
+      }
+    }
+    this.renderNodePalette("PRISM_SPLITTER");
+  }
+  renderNodePalette(selected) {
+    const paletteEl = this.container.querySelector("#ap-node-palette");
+    if (!paletteEl) return;
+    paletteEl.innerHTML = "";
+    for (const nType of NODE_TYPES_ORDER) {
+      const bp = ASTRAL_SOCKET_BLUEPRINTS[nType];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ap-node-btn";
+      btn.setAttribute("data-node-type", nType);
+      btn.setAttribute("aria-pressed", String(nType === selected));
+      btn.innerHTML = `
+        <div style="display:flex; justify-content:space-between; font-weight:800; color:${bp.color};">
+          <span>${bp.symbol} ${bp.shortLabel}</span>
+          <span>${bp.costStardust}\u2726</span>
+        </div>
+        <div style="font-size:0.67rem; color:#94a3b8; margin-top:2px;">
+          +${bp.baseChipsBonus} Chips \xB7 +${bp.comboMultBonus.toFixed(2)}\xD7
+        </div>
+      `;
+      btn.addEventListener("click", () => {
+        this.callbacks.onAction({ type: "SELECT_BUILD_TYPE", nodeType: nType });
+      });
+      paletteEl.appendChild(btn);
+    }
+  }
+  bindEvents() {
+    const btnLaunch = this.container.querySelector("#ap-btn-launch");
+    btnLaunch?.addEventListener("click", () => {
+      this.callbacks.onAction({ type: "LAUNCH_COMET" });
+    });
+    const btnCoach = this.container.querySelector("#ap-btn-coach");
+    btnCoach?.addEventListener("click", () => {
+      this.showCoachOverlay = !this.showCoachOverlay;
+      this.coachHint = null;
+    });
+    const btnMode = this.container.querySelector("#ap-btn-mode");
+    btnMode?.addEventListener("click", () => {
+      const currentText = btnMode.textContent ?? "";
+      const nextMode = currentText.includes("Campaign") ? "SANDBOX" : "CAMPAIGN";
+      this.callbacks.onAction({ type: "SWITCH_MODE", mode: nextMode });
+    });
+    const btnMute = this.container.querySelector("#ap-btn-mute");
+    btnMute?.addEventListener("click", () => {
+      const muted = this.audio.toggleMute();
+      btnMute.textContent = muted ? "\u{1F507} Audio: OFF [M]" : "\u{1F50A} Audio: ON [M]";
+    });
+    const btnRestart = this.container.querySelector("#ap-btn-restart");
+    btnRestart?.addEventListener("click", () => {
+      this.callbacks.onRestart();
+    });
+    const btnSkipRelic = this.container.querySelector("#ap-btn-skip-relic");
+    btnSkipRelic?.addEventListener("click", () => {
+      this.callbacks.onAction({ type: "ADVANCE_NEXT_SECTOR" });
+    });
+    const aimSlider = this.container.querySelector("#ap-aim-slider");
+    aimSlider?.addEventListener("input", () => {
+      this.callbacks.onAction({
+        type: "SET_AIM_ANGLE",
+        angleDeg: Number(aimSlider.value)
+      });
+    });
+    this.container.querySelector("#ap-verb-flip")?.addEventListener("click", () => {
+      this.callbacks.onAction({ type: "FLIP_SWING", side: "BOTH" });
+    });
+    this.container.querySelector("#ap-verb-magnet")?.addEventListener("click", () => {
+      this.callbacks.onAction({ type: "CAST_MAGNET_PULSE" });
+    });
+    this.container.querySelector("#ap-verb-chrono")?.addEventListener("click", () => {
+      this.callbacks.onAction({ type: "CAST_CHRONO_OVERDRIVE" });
+    });
+    this.container.querySelector("#ap-verb-supernova")?.addEventListener("click", () => {
+      this.callbacks.onAction({ type: "CAST_SUPERNOVA_MULTIBALL" });
+    });
+    if (this.canvas) {
+      this.canvas.addEventListener("pointermove", (e) => {
+        const rect = this.canvas.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const scaleX = ASTRAL_CONFIG.TABLE_WIDTH / rect.width;
+        const scaleY = ASTRAL_CONFIG.TABLE_HEIGHT / rect.height;
+        const cx = (e.clientX - rect.left) * scaleX;
+        const cy = (e.clientY - rect.top) * scaleY;
+        this.callbacks.onAction({ type: "MOVE_PADDLE", x: cx });
+        if (cy < ASTRAL_CONFIG.LAUNCH_ORIGIN_Y - 25) {
+          const dx = cx - ASTRAL_CONFIG.LAUNCH_ORIGIN_X;
+          const dy = ASTRAL_CONFIG.LAUNCH_ORIGIN_Y - cy;
+          const deg = Math.atan2(dx, dy) * 180 / Math.PI;
+          this.callbacks.onAction({ type: "SET_AIM_ANGLE", angleDeg: deg });
+        }
+      });
+      this.canvas.addEventListener("pointerdown", (e) => {
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = rect.width > 0 ? ASTRAL_CONFIG.TABLE_WIDTH / rect.width : 1;
+        const scaleY = rect.height > 0 ? ASTRAL_CONFIG.TABLE_HEIGHT / rect.height : 1;
+        const cx = (e.clientX - rect.left) * scaleX;
+        const cy = (e.clientY - rect.top) * scaleY;
+        const clickedSlot = this.findSocketAtPoint(cx, cy);
+        if (clickedSlot !== null) {
+          if (e.button === 2 || e.shiftKey) {
+            this.callbacks.onAction({ type: "SELL_SOCKET", slotIndex: clickedSlot });
+          } else {
+            this.callbacks.onAction({
+              type: "BUILD_OR_UPGRADE_SOCKET",
+              slotIndex: clickedSlot
+            });
+          }
+          return;
+        }
+        this.callbacks.onAction({ type: "FLIP_SWING", side: "BOTH" });
+        this.callbacks.onAction({ type: "LAUNCH_COMET" });
+      });
+    }
+    this.keydownHandler = (e) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      switch (e.key.toLowerCase()) {
+        case " ":
+          e.preventDefault();
+          this.callbacks.onAction({ type: "FLIP_SWING", side: "BOTH" });
+          this.callbacks.onAction({ type: "LAUNCH_COMET" });
+          break;
+        case "arrowleft":
+        case "a":
+          this.callbacks.onAction({ type: "NUDGE_PADDLE", dx: -28 });
+          this.callbacks.onAction({ type: "ADJUST_AIM_ANGLE", deltaDeg: -4 });
+          this.callbacks.onAction({ type: "FLIP_SWING", side: "LEFT" });
+          break;
+        case "arrowright":
+        case "d":
+          this.callbacks.onAction({ type: "NUDGE_PADDLE", dx: 28 });
+          this.callbacks.onAction({ type: "ADJUST_AIM_ANGLE", deltaDeg: 4 });
+          this.callbacks.onAction({ type: "FLIP_SWING", side: "RIGHT" });
+          break;
+        case "e":
+          this.callbacks.onAction({ type: "CAST_MAGNET_PULSE" });
+          break;
+        case "q":
+          this.callbacks.onAction({ type: "CAST_CHRONO_OVERDRIVE" });
+          break;
+        case "f":
+          this.callbacks.onAction({ type: "CAST_SUPERNOVA_MULTIBALL" });
+          break;
+        case "h":
+          this.showCoachOverlay = !this.showCoachOverlay;
+          this.coachHint = null;
+          break;
+        case "m": {
+          const muted = this.audio.toggleMute();
+          const btnMuteEl = this.container.querySelector("#ap-btn-mute");
+          if (btnMuteEl) {
+            btnMuteEl.textContent = muted ? "\u{1F507} Audio: OFF [M]" : "\u{1F50A} Audio: ON [M]";
+          }
+          break;
+        }
+        case "r":
+          this.callbacks.onRestart();
+          break;
+      }
+    };
+    window.addEventListener("keydown", this.keydownHandler);
+  }
+  lastStateSockets = [];
+  findSocketAtPoint(x, y) {
+    for (const sock of this.lastStateSockets) {
+      if (Math.hypot(x - sock.x, y - sock.y) <= 28) {
+        return sock.slotIndex;
+      }
+    }
+    return null;
+  }
+  consumeEvents(_state, events) {
+    this.audio.playEvents(events);
+    for (const ev of events) {
+      if (ev.label) {
+        this.popups.push({
+          x: ev.x,
+          y: ev.y - 10,
+          vy: -38,
+          text: ev.label,
+          color: ev.color ?? "#fde047",
+          lifeMs: 950,
+          maxLifeMs: 950
+        });
+      }
+      if (ev.type === "LIGHTNING_ARC" && ev.targetX !== void 0 && ev.targetY !== void 0) {
+        this.beams.push({
+          x1: ev.x,
+          y1: ev.y,
+          x2: ev.targetX,
+          y2: ev.targetY,
+          color: ev.color ?? "#38bdf8",
+          lifeMs: 180
+        });
+      }
+      if (ev.type === "PRISM_SPLIT" || ev.type === "SONIC_NOVA" || ev.type === "PERFECT_PARRY" || ev.type === "WORMHOLE_WARP" || ev.type === "SECTOR_VICTORY") {
+        this.rings.push({
+          x: ev.x,
+          y: ev.y,
+          radius: 12,
+          maxRadius: ev.type === "SONIC_NOVA" ? 380 : 95,
+          color: ev.color ?? "#fde047",
+          lifeMs: 420,
+          maxLifeMs: 420
+        });
+      }
+    }
+  }
+  render(state, career, dtMs) {
+    this.lastStateSockets = state.sockets;
+    this.stepVisualParticles(dtMs);
+    this.updateHUD(state, career);
+    this.drawCanvas(state);
+  }
+  stepVisualParticles(dtMs) {
+    const dtSec = dtMs / 1e3;
+    this.popups = this.popups.filter((p) => {
+      p.y += p.vy * dtSec;
+      p.lifeMs -= dtMs;
+      return p.lifeMs > 0;
+    });
+    this.rings = this.rings.filter((r) => {
+      r.lifeMs -= dtMs;
+      const progress = 1 - Math.max(0, r.lifeMs) / r.maxLifeMs;
+      r.radius = 12 + progress * (r.maxRadius - 12);
+      return r.lifeMs > 0;
+    });
+    this.beams = this.beams.filter((b) => {
+      b.lifeMs -= dtMs;
+      return b.lifeMs > 0;
+    });
+  }
+  updateHUD(state, career) {
+    const setText = (selector, text) => {
+      const el = this.container.querySelector(selector);
+      if (el && el.textContent !== text) el.textContent = text;
+    };
+    setText(
+      "#ap-sector-subtitle",
+      `${state.boss.title} \u2014 ${state.boss.mechanicSummary}`
+    );
+    setText("#ap-eq-chips", `CHIPS: ${state.currentVolleyChips}`);
+    setText("#ap-eq-mult", `COMBO MULT: ${state.currentComboMult.toFixed(2)}\xD7`);
+    setText("#ap-eq-relic", `RELIC MULT: ${state.currentRelicMult.toFixed(2)}\xD7`);
+    setText("#ap-eq-volley", `VOLLEY: ${state.currentVolleyScore.toLocaleString()} PTS`);
+    setText(
+      "#ap-stat-boss",
+      `\u{1F451} ${state.boss.name}: ${state.boss.hp.toLocaleString()}/${state.boss.maxHp.toLocaleString()} HP`
+    );
+    setText(
+      "#ap-stat-volleys",
+      `\u2604\uFE0F Volleys: ${state.mode === "SANDBOX" ? "\u221E" : state.volleysRemaining}`
+    );
+    setText("#ap-stat-hull", `\u{1F6E1}\uFE0F Aegis Hull: ${state.aegisHull}%`);
+    setText("#ap-stat-stardust", `\u2726 Stardust: ${state.stardust}`);
+    setText("#ap-stat-flux", `\u26A1 Flux: ${state.flux}/${state.maxFlux}`);
+    setText("#ap-stat-score", `\u{1F3C6} Score: ${state.totalScore.toLocaleString()}`);
+    setText("#ap-aim-readout", `Aim: ${state.aimAngleDeg.toFixed(0)}\xB0`);
+    setText("#ap-stardust-badge", `\u2726 ${state.stardust} Stardust`);
+    setText(
+      "#ap-career-best",
+      `Best: ${Math.max(career.highScore, state.totalScore).toLocaleString()}`
+    );
+    const btnMode = this.container.querySelector("#ap-btn-mode");
+    if (btnMode) {
+      btnMode.textContent = state.mode === "SANDBOX" ? "Mode: Architect Sandbox" : "Mode: Campaign";
+    }
+    const aimSlider = this.container.querySelector("#ap-aim-slider");
+    if (aimSlider && document.activeElement !== aimSlider) {
+      aimSlider.value = String(Math.round(state.aimAngleDeg));
+    }
+    for (const btn of this.container.querySelectorAll(
+      ".ap-node-btn[data-node-type]"
+    )) {
+      const nType = btn.getAttribute("data-node-type");
+      btn.setAttribute("aria-pressed", String(nType === state.selectedBuildType));
+    }
+    const quickGrid = this.container.querySelector("#ap-sockets-quickgrid");
+    if (quickGrid) {
+      quickGrid.innerHTML = state.sockets.map((s) => {
+        const bp = s.nodeType ? ASTRAL_SOCKET_BLUEPRINTS[s.nodeType] : null;
+        return `
+            <button type="button" class="ap-socket-pill" data-slot-idx="${s.slotIndex}">
+              <span>#${s.slotIndex + 1} ${s.label}</span>
+              <strong style="color:${bp ? bp.color : "#64748b"};">
+                ${bp ? `${bp.symbol} Lv.${s.level}` : "+ Wire"}
+              </strong>
+            </button>
+          `;
+      }).join("");
+      for (const pill of quickGrid.querySelectorAll(
+        "button[data-slot-idx]"
+      )) {
+        pill.addEventListener("click", () => {
+          const idx = Number(pill.getAttribute("data-slot-idx"));
+          this.callbacks.onAction({ type: "BUILD_OR_UPGRADE_SOCKET", slotIndex: idx });
+        });
+      }
+    }
+    const ownedEl = this.container.querySelector("#ap-owned-relics");
+    if (ownedEl) {
+      ownedEl.innerHTML = state.relics.map((rId) => {
+        const r = ASTRAL_RELICS.find((x) => x.id === rId);
+        if (!r) return "";
+        return `<span style="background:#1e293b; border:1px solid #475569; border-radius:5px; padding:2px 6px;" title="${r.description}">${r.symbol} ${r.name}</span>`;
+      }).join("");
+    }
+    const logList = this.container.querySelector("#ap-log-list");
+    if (logList) {
+      logList.innerHTML = state.recentLog.slice(0, 7).map((msg) => `<li>${msg}</li>`).join("");
+    }
+    const overlay = this.container.querySelector("#ap-relic-overlay");
+    const overlayTitle = this.container.querySelector("#ap-overlay-title");
+    const overlaySub = this.container.querySelector("#ap-overlay-sub");
+    const choicesGrid = this.container.querySelector("#ap-relic-choices-grid");
+    const skipBtn = this.container.querySelector("#ap-btn-skip-relic");
+    if (overlay && overlayTitle && overlaySub && choicesGrid && skipBtn) {
+      if (state.status === "SECTOR_CLEARED") {
+        overlay.hidden = false;
+        overlayTitle.textContent = `\u{1F31F} SECTOR ${state.sector} SHATTERED! DRAFT AN ASTRAL RELIC`;
+        overlaySub.textContent = "Select 1 Relic to permanently compound your Chips \xD7 Mult alchemy before ascending:";
+        skipBtn.textContent = "Ascend to Next Sector \u2192";
+        choicesGrid.innerHTML = state.relicChoices.map((rId) => {
+          const r = ASTRAL_RELICS.find((x) => x.id === rId);
+          if (!r) return "";
+          return `
+              <button type="button" class="ap-relic-choice" data-draft-relic="${r.id}">
+                <div style="font-weight:800; color:#fde047;">${r.symbol} ${r.name} (\xD7${r.relicMultFactor.toFixed(2)})</div>
+                <div style="font-size:0.75rem; color:#e2e8f0;">${r.description}</div>
+                <div style="font-size:0.68rem; color:#94a3b8; font-style:italic;">${r.flavor}</div>
+              </button>
+            `;
+        }).join("");
+        for (const btn of choicesGrid.querySelectorAll(
+          "button[data-draft-relic]"
+        )) {
+          btn.addEventListener("click", () => {
+            const rId = btn.getAttribute("data-draft-relic");
+            this.callbacks.onAction({ type: "DRAFT_RELIC", relicId: rId });
+          });
+        }
+      } else if (state.status === "VICTORY" || state.status === "GAME_OVER") {
+        overlay.hidden = false;
+        const verdict = evaluateAstralVerdict(state);
+        overlayTitle.textContent = state.status === "VICTORY" ? `\u{1F451} OMEGA SINGULARITY VICTORY \u2014 ${verdict.title}` : `\u{1F311} RUN CONCLUDED \u2014 ${verdict.title}`;
+        overlaySub.textContent = `${verdict.description} Final Score: ${state.totalScore.toLocaleString()} \xB7 Best Volley: ${state.bestVolleyScore.toLocaleString()} \xB7 Max Combo: ${state.maxComboBounces} bounces.`;
+        choicesGrid.innerHTML = "";
+        skipBtn.textContent = "\u21BB Launch New Seeded Run";
+        skipBtn.onclick = () => this.callbacks.onRestart();
+      } else {
+        overlay.hidden = true;
+      }
+    }
+    const auditBody = this.container.querySelector("#ap-audit-dialog-body");
+    if (auditBody && auditBody.innerHTML === "") {
+      const cfResults = runAstralCounterfactuals(state.seed);
+      auditBody.innerHTML = `
+        <p style="margin:0 0 8px; color:#cbd5e1;">
+          Deterministic simulation of 3 philosophical &amp; tactical pinball archetypes on Seed <code>${state.seed}</code>:
+        </p>
+        <table class="ap-cf-table">
+          <thead>
+            <tr>
+              <th>Archetype</th>
+              <th>Strategy</th>
+              <th>Total Score</th>
+              <th>Best Volley</th>
+              <th>Max Bounces</th>
+              <th>Verdict</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cfResults.map(
+        (r) => `
+              <tr>
+                <td><strong>${r.title}</strong></td>
+                <td>${r.strategySummary}</td>
+                <td>${r.totalScore.toLocaleString()}</td>
+                <td>${r.bestVolleyScore.toLocaleString()}</td>
+                <td>${r.maxComboBounces}</td>
+                <td>${r.verdictTitle}</td>
+              </tr>
+            `
+      ).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+    if (this.debugVisible) {
+      const dbgPre = this.container.querySelector("#ap-debug-pre");
+      if (dbgPre) {
+        dbgPre.textContent = JSON.stringify(
+          {
+            seed: state.seed,
+            rngState: state.rngState,
+            tick: state.tick,
+            status: state.status,
+            sector: state.sector,
+            comets: state.comets.length,
+            bossHp: state.boss.hp,
+            comboMult: state.currentComboMult,
+            relicMult: state.currentRelicMult
+          },
+          null,
+          2
+        );
+      }
+    }
+  }
+  drawCanvas(state) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const W = ASTRAL_CONFIG.TABLE_WIDTH;
+    const H = ASTRAL_CONFIG.TABLE_HEIGHT;
+    ctx.clearRect(0, 0, W, H);
+    const bgGrad = ctx.createRadialGradient(
+      state.boss.coreX,
+      state.boss.coreY,
+      20,
+      W / 2,
+      H / 2,
+      540
+    );
+    bgGrad.addColorStop(0, "rgba(88, 28, 135, 0.32)");
+    bgGrad.addColorStop(0.5, "rgba(15, 23, 42, 0.92)");
+    bgGrad.addColorStop(1, "#04060e");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.08)";
+    ctx.lineWidth = 1;
+    for (const r of [120, 220, 330, 440]) {
+      ctx.beginPath();
+      ctx.arc(state.boss.coreX, state.boss.coreY, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(213, 548);
+    ctx.lineTo(68, 430);
+    ctx.lineTo(68, 125);
+    ctx.lineTo(155, 46);
+    ctx.lineTo(W - 155, 46);
+    ctx.lineTo(W - 68, 125);
+    ctx.lineTo(W - 68, 430);
+    ctx.lineTo(W - 213, 548);
+    ctx.stroke();
+    ctx.restore();
+    if (state.status === "AIMING" || this.showCoachOverlay) {
+      const previewPts = computeTrajectoryPreview(state, state.aimAngleDeg, 85);
+      ctx.save();
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.65)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 6]);
+      ctx.beginPath();
+      ctx.moveTo(state.paddleX, ASTRAL_CONFIG.LAUNCH_ORIGIN_Y);
+      for (const pt of previewPts) {
+        ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (const pt of previewPts) {
+        if (pt.isBounce) {
+          ctx.fillStyle = "#fde047";
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+      if (this.showCoachOverlay) {
+        if (!this.coachHint) {
+          this.coachHint = computeOptimalLaunchHint(state);
+        }
+        ctx.save();
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.85)";
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(state.paddleX, ASTRAL_CONFIG.LAUNCH_ORIGIN_Y);
+        for (const pt of this.coachHint.previewPoints) {
+          ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#10b981";
+        ctx.font = "bold 12px Inter, sans-serif";
+        ctx.fillText(
+          `\u{1F52E} Oracle Optimal Angle: ${this.coachHint.bestAngleDeg}\xB0 (~${this.coachHint.expectedBounces} bounces)`,
+          180,
+          34
+        );
+        ctx.restore();
+      }
+    }
+    for (const sock of state.sockets) {
+      ctx.save();
+      if (!sock.nodeType) {
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(sock.x, sock.y, 20, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(148, 163, 184, 0.55)";
+        ctx.font = "10px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`+${sock.label}`, sock.x, sock.y + 4);
+      } else {
+        const bp = ASTRAL_SOCKET_BLUEPRINTS[sock.nodeType];
+        const pulseBoost = sock.pulseAnimMs > 0 ? sock.pulseAnimMs / 220 * 7 : 0;
+        const r = bp.radius + pulseBoost;
+        if (sock.nodeType === "GRAVITY_WELL") {
+          ctx.strokeStyle = "rgba(168, 85, 247, 0.22)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(sock.x, sock.y, 85, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.fillStyle = bp.glowColor;
+        ctx.beginPath();
+        ctx.arc(sock.x, sock.y, r + 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#090d1a";
+        ctx.strokeStyle = bp.color;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(sock.x, sock.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "bold 14px Inter, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(bp.symbol, sock.x, sock.y + 4);
+        ctx.fillStyle = bp.color;
+        ctx.font = "bold 9px JetBrains Mono, monospace";
+        ctx.fillText(`Lv.${sock.level}`, sock.x, sock.y + r + 12);
+      }
+      ctx.restore();
+    }
+    const boss = state.boss;
+    ctx.save();
+    ctx.strokeStyle = "rgba(245, 158, 11, 0.22)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(boss.coreX, boss.coreY, 82, 0, Math.PI * 2);
+    ctx.stroke();
+    const coreColor = boss.hitFlashMs > 0 ? "#ffffff" : boss.color;
+    ctx.fillStyle = "rgba(245, 158, 11, 0.2)";
+    ctx.beginPath();
+    ctx.arc(boss.coreX, boss.coreY, boss.coreRadius + 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#0f172a";
+    ctx.strokeStyle = coreColor;
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(boss.coreX, boss.coreY, boss.coreRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    const hpPct = Math.max(0, Math.round(boss.hp / boss.maxHp * 100));
+    ctx.fillStyle = "#fde047";
+    ctx.font = "bold 12px JetBrains Mono, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(`${hpPct}%`, boss.coreX, boss.coreY + 4);
+    for (const node of boss.nodes) {
+      if (!node.alive) continue;
+      ctx.fillStyle = "#1e293b";
+      ctx.strokeStyle = boss.secondaryColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+    for (const haz of state.hazards) {
+      ctx.save();
+      ctx.fillStyle = haz.reflected ? "#10b981" : "#f43f5e";
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(haz.x, haz.y, haz.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.save();
+    const py = ASTRAL_CONFIG.PADDLE_Y;
+    const px = state.paddleX;
+    const hw = ASTRAL_CONFIG.PADDLE_HALF_WIDTH + (state.chronoOverdriveMs > 0 ? 24 : 0);
+    const isParryActive = state.parryWindowMs > 0 || state.leftFlipperSwingMs > 0 || state.rightFlipperSwingMs > 0;
+    ctx.strokeStyle = isParryActive ? "#fde047" : "#38bdf8";
+    ctx.fillStyle = isParryActive ? "rgba(253, 224, 71, 0.35)" : "rgba(56, 189, 248, 0.22)";
+    ctx.lineWidth = isParryActive ? 4 : 3;
+    ctx.beginPath();
+    ctx.roundRect(px - hw, py - 8, hw * 2, 16, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "bold 10px JetBrains Mono, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(
+      isParryActive ? "\u26A1 PARRY OVERDRIVE \u26A1" : "AEGIS FLIPPER ARRAY [SPACE]",
+      px,
+      py + 4
+    );
+    ctx.restore();
+    for (const comet of state.comets) {
+      ctx.save();
+      if (comet.trail.length > 1) {
+        ctx.strokeStyle = comet.isSupernova ? "rgba(253, 224, 71, 0.55)" : "rgba(56, 189, 248, 0.45)";
+        ctx.lineWidth = comet.isSupernova ? 6 : 4;
+        ctx.beginPath();
+        ctx.moveTo(comet.x, comet.y);
+        for (const t of comet.trail) {
+          ctx.lineTo(t.x, t.y);
+        }
+        ctx.stroke();
+      }
+      ctx.fillStyle = comet.isSupernova ? "#fde047" : comet.color;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(comet.x, comet.y, comet.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (state.status === "AIMING") {
+      ctx.save();
+      ctx.fillStyle = "#fde047";
+      ctx.beginPath();
+      ctx.arc(
+        state.paddleX,
+        ASTRAL_CONFIG.LAUNCH_ORIGIN_Y,
+        ASTRAL_CONFIG.COMET_RADIUS,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      ctx.restore();
+    }
+    for (const beam of this.beams) {
+      ctx.save();
+      ctx.strokeStyle = beam.color;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(beam.x1, beam.y1);
+      const midX = (beam.x1 + beam.x2) / 2 + Math.sin(beam.lifeMs) * 14;
+      const midY = (beam.y1 + beam.y2) / 2 - Math.cos(beam.lifeMs) * 14;
+      ctx.lineTo(midX, midY);
+      ctx.lineTo(beam.x2, beam.y2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (const ring of this.rings) {
+      ctx.save();
+      ctx.strokeStyle = ring.color;
+      ctx.lineWidth = 2.5;
+      ctx.globalAlpha = Math.max(0.1, ring.lifeMs / ring.maxLifeMs);
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (const pop of this.popups) {
+      ctx.save();
+      ctx.fillStyle = pop.color;
+      ctx.font = "bold 12px JetBrains Mono, monospace";
+      ctx.textAlign = "center";
+      ctx.globalAlpha = Math.max(0.15, pop.lifeMs / pop.maxLifeMs);
+      ctx.fillText(pop.text, pop.x, pop.y);
+      ctx.restore();
+    }
+  }
+  destroy() {
+    window.removeEventListener("keydown", this.keydownHandler);
+    if (this.intersectionObserver) {
+      this.intersectionObserver.disconnect();
+      this.intersectionObserver = null;
+    }
+    this.container.innerHTML = "";
+  }
+};
+
+// games/12-astral-pinball/src/index.ts
+var metadata = {
+  id: ASTRAL_CONFIG.GAME_ID,
+  number: ASTRAL_CONFIG.GAME_NUMBER,
+  title: ASTRAL_CONFIG.TITLE,
+  subtitle: ASTRAL_CONFIG.SUBTITLE,
+  genre: "Relativistic Pinball-Roguelike \xD7 Orbital Alchemist \xD7 Multiplicative Synergy Engine",
+  primaryReference: "Space Cadet 3D Pinball \xB7 Balatro (Chips \xD7 Mult \xD7 Relic Synergy)",
+  supportingReference: "Peglin \xB7 Into the Breach (Trajectory Oracle) \xB7 Arkanoid (Parry Flipper)",
+  oneSentenceLoop: "Launch relativistic star-comets into a customizable cosmos of prism splitters, gravity wells, and Tesla bumpers, actively deflecting them with twin plasma flippers and magnetic pulses to shatter 5 Cosmic Boss Constellations in multiplicative Chips \xD7 Mult chain reactions.",
+  shortGoal: "Shatter Sector I (The Clockwork Astrolabe) and wire a Bifrost Prism + Tesla Pylon multiball chain.",
+  longGoal: "Conquer all 5 Cosmic Boss Constellations (up to OROBOROS, The Grand Architect), bind 5+ Astral Relics, and benchmark your trajectory efficiency against the 3-Archetype Counterfactual Simulator.",
+  controlsSummary: "Mouse / A-D / \u2190-\u2192: Aim & Move Flipper Array \xB7 Space / Click: Launch & Flipper Parry \xB7 [E]: Magnet Pulse \xB7 [Q]: Chrono-Dilation \xB7 [F]: Supernova Split \xB7 [H]: Oracle Hint",
+  accentColor: ASTRAL_CONFIG.ACCENT_COLOR
+};
+function mountGame(container, options) {
+  const savedEnvelope = loadAstralSave();
+  let career = { ...savedEnvelope.career };
+  const initialSeed = options?.initialSeed ?? ASTRAL_CONFIG.DEFAULT_SEED;
+  let state = options?.initialSeed === void 0 && savedEnvelope.activeRun && savedEnvelope.activeRun.status !== "VICTORY" && savedEnvelope.activeRun.status !== "GAME_OVER" ? cloneAstralState(savedEnvelope.activeRun) : createInitialAstralState(initialSeed, "CAMPAIGN");
+  const audio = new AstralAudioEngine();
+  let visibilityPaused = false;
+  const handleAction = (action) => {
+    applyAstralInput(state, action);
+    if (state.events.length > 0) {
+      ui.consumeEvents(state, state.events);
+      state.events = [];
+    }
+    const env = saveAstralState(career, state);
+    career = env.career;
+    ui.render(state, career, ASTRAL_CONFIG.FIXED_STEP_MS);
+  };
+  const handleRestart = (newSeed) => {
+    const seedToUse = typeof newSeed === "number" ? newSeed : state.seed + 104729 >>> 0;
+    state = createInitialAstralState(seedToUse, state.mode);
+    ui.resetVisuals();
+    const env = saveAstralState(career, state);
+    career = env.career;
+    ui.render(state, career, ASTRAL_CONFIG.FIXED_STEP_MS);
+  };
+  const handleToggleDebug = (force) => {
+    const next = typeof force === "boolean" ? force : !ui.isDebugVisible();
+    ui.setDebugVisible(next);
+  };
+  const ui = new AstralUIController(
+    container,
+    audio,
+    {
+      onAction: handleAction,
+      onRestart: handleRestart,
+      onToggleDebug: () => handleToggleDebug(),
+      onVisibilityPausedChange: (paused) => {
+        visibilityPaused = paused;
+        lastTimeMs = performance.now();
+      }
+    },
+    Boolean(options?.debug)
+  );
+  let rafId = 0;
+  let lastTimeMs = performance.now();
+  let accumulatorMs = 0;
+  let destroyed = false;
+  const loop = (nowMs) => {
+    if (destroyed) return;
+    if (visibilityPaused) {
+      lastTimeMs = nowMs;
+      rafId = window.requestAnimationFrame(loop);
+      return;
+    }
+    const rawDt = Math.min(100, Math.max(0, nowMs - lastTimeMs));
+    lastTimeMs = nowMs;
+    accumulatorMs += rawDt;
+    const prevStatus = state.status;
+    const prevSector = state.sector;
+    while (accumulatorMs >= ASTRAL_CONFIG.FIXED_STEP_MS) {
+      stepAstralState(state, ASTRAL_CONFIG.FIXED_STEP_MS);
+      if (state.events.length > 0) {
+        ui.consumeEvents(state, state.events);
+        state.events = [];
+      }
+      accumulatorMs -= ASTRAL_CONFIG.FIXED_STEP_MS;
+    }
+    if (state.status !== prevStatus || state.sector !== prevSector || state.totalScore > career.highScore) {
+      const env = saveAstralState(career, state);
+      career = env.career;
+    }
+    ui.render(state, career, rawDt || ASTRAL_CONFIG.FIXED_STEP_MS);
+    rafId = window.requestAnimationFrame(loop);
+  };
+  ui.render(state, career, ASTRAL_CONFIG.FIXED_STEP_MS);
+  rafId = window.requestAnimationFrame(loop);
+  return {
+    destroy() {
+      destroyed = true;
+      window.cancelAnimationFrame(rafId);
+      saveAstralState(career, state);
+      audio.destroy();
+      ui.destroy();
+    },
+    getStateSnapshot() {
+      return cloneAstralState(state);
+    },
+    restartWithSeed(seed) {
+      handleRestart(seed);
+    },
+    toggleDebug(force) {
+      handleToggleDebug(force);
+      ui.render(state, career, ASTRAL_CONFIG.FIXED_STEP_MS);
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_12-astral-pinball.ts
+var root = document.getElementById("game-root");
+if (root) {
+  mountGame(root);
+}
+
+</script>
+  </body>
+</html>
