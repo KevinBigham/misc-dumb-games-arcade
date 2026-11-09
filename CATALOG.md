@@ -50,7 +50,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Kilnshot | physics puzzle | batch 2 | cloud PR #2 | [play](games/kilnshot/) |  |
 | Kinetic Chain | arcade dasher | Claude (Cowork, MacBook) | MacBook Cowork PR #14 | [play](games/kinetic-chain/) |  |
 | Lagoon Flip | pinball | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/lagoon-flip/) |  |
-| Lane Four | swim racer | Claude (Cowork, MacBook) | MacBook Cowork PR #14 | [play](games/lane-four/) | Replaces Negative Split |
+| Lane Four | swim racer | Claude (Cowork, MacBook) | MacBook Cowork PR #14 | [play](games/lane-four/) | Replaces Negative Split. Newest build (Nov 9): career from Conference to the Trials, 50/200/500, phone touch pads |
 | Lanewake | swim | batch 2 | cloud PR #2 | [play](games/lanewake/) |  |
 | Lantern Drum | rhythm | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/lantern-drum/) | A newer kit build exists in the project folder, not yet published |
 | Lastlight Run | racer | overnight research batch | cloud PR #2 | [play](games/lastlight-run/) |  |
