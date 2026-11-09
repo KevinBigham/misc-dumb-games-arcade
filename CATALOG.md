@@ -2,7 +2,7 @@
 
 Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the MacBook, Antigravity on the Mac mini, and Antigravity and Claude Cowork on the MacBook Air. Games marked "In the arcade" are in `games/<slug>/` and linked from the arcade page; everything else stays in its incoming PR so nothing is lost.
 
-- In the arcade: 89
+- In the arcade: 94
 - Held: 1
 - Source only or own repo: 4
 - Archived older versions and extras: 7
@@ -13,6 +13,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 |---|---|---|---|---|---|
 | 26: Doing My Best | life sim | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/twenty-six/) |  |
 | Accordion Courtroom // Honk at Law | courtroom physics brawler | Antigravity (MacBook Air) | Antigravity MacBook Air PR #12 | [play](games/accordion-courtroom/) |  |
+| Aegis: Volt-Lash | tether-parry arena roguelite | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/volt-lash/) |  |
 | Argon Studio Collection | game launcher | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/argon-studio/) | Launcher for the 13 Argon games; borrowed game names and inspiration credits removed. Same games are also listed one by one |
 | Baseline Empire '05 | basketball franchise sim | unknown (Nov 5) | cloud PR #2 | [play](games/baseline-empire/) | Formerly Hardwood Franchise; league, teams, colleges, papers and name pools are now fictional |
 | Beatline Salvage | rhythm | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/beatline-salvage/) |  |
@@ -72,11 +73,15 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Please Feed the Moon | arcade shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/please-feed-the-moon/) |  |
 | PRISM PRESS | reactor-grid puzzle | Kimi (MacBook) | Kimi Work PR #7 | [play](games/prism-press/) | Newest build from the Kimi Work collection (Nov 8) |
 | Prismwheel | ring arcade | overnight research batch | cloud PR #2 | [play](games/prismwheel/) |  |
+| Ricochet Vault // Greed Breaker | slingshot pinball-breaker | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/ricochet-vault/) |  |
 | Roommate Republic | game-theory sim | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/roommate-republic/) |  |
 | Shardstorm Depths | match-3 RPG | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/shardstorm-depths/) |  |
 | SIDELINE — Franchise Football | football franchise sim | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/sideline/) | Seven team nicknames that matched real teams in other leagues were renamed |
 | Skybloom | merge | overnight research batch | cloud PR #2 | [play](games/skybloom/) |  |
+| SLINGCORE | ricochet arena roguelite | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/slingcore/) |  |
 | Slipstreak | drift racer | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/slipstreak/) |  |
+| SNAP-LANCE | ricochet arena | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/snap-lance/) |  |
+| SNAPBACK: Kinetic Tether | slingshot billiards arena | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/snapback/) |  |
 | Snapthread | deckbuilder | batch 2 | cloud PR #2 | [play](games/snapthread/) |  |
 | Songmill | quota factory | overnight research batch | cloud PR #2 | [play](games/songmill/) |  |
 | SOUPERMARKET SWEEP: Aisles of the Damned | supermarket action | Kimi (MacBook) | Kimi Work PR #7 | [play](games/soupermarket-sweep/) | Newest build from the Kimi Work collection (Nov 8) |
@@ -145,6 +150,8 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 - Claude Cowork MacBook Air PR #14 brought Kinetic Chain, The Moon Wants a Sandwich and Lane Four. The Lane Four swim racer replaces Negative Split and is a different piece from the Lane Four water toy kept in cloud PR #2.
 - PR #15 brought 5 new Argon games (Oroboros, Chrono-Syndicate, Chrono-Vortex, Event Horizon, Hypernova); its bundled copies of Argon 01–11, Paradox, Metaphysical Deli and Voidbreaker were already here and were not added twice.
 - Kimi Work PR #7 was updated on Nov 9 with three new games (Stamp Duty: Executive Disorder, Stamp Duty: Overqualified and Piñata Panic). Its other copies were already here. The two Stamp Duty games are different games that share a name. Piñata Panic had an upgrade named after a real candy brand, renamed Sour Bait.
+- Claude Cowork MacBook Air brought Emberward on Nov 9, and Lane Four was updated to its newest build.
+- PR #20 brought 5 more new Argon games (Aegis: Volt-Lash, Ricochet Vault, SLINGCORE, SNAP-LANCE, SNAPBACK). A sixth, Aegis-Zero: Graze Overclock, was held back on the Mac mini because players can see real game names in it (NEEDS RENAME).
 - Cloud copies newer than the arcade's first PR (#1): 20 of its 22 games are older; this PR uses the live versions.
 
 ## Checks
