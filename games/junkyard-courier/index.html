@@ -1,0 +1,3311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game 04: Junkyard Courier — The Rustwater Shallows</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0b1317;
+        color: #e6edf0;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="game-root"></main>
+    <script type="module">
+// games/04-junkyard-courier/src/config.ts
+var GAME_CONFIG = {
+  gameId: "04-junkyard-courier",
+  saveStorageKey: "argon_game04_junkyard_courier_save_v1",
+  saveVersion: 1,
+  defaultSeed: 404,
+  maxHoldSlots: 8,
+  baseMaxHull: 40,
+  baseMaxFuel: 10,
+  auxTankFuelBonus: 4,
+  startingCredits: 60,
+  startingFuelDrums: 1,
+  startingRepairKits: 1,
+  maxActiveContracts: 2,
+  offersPerPort: 3,
+  deliveriesToWin: 3,
+  fuelPerDrum: 4,
+  baseRepairAmount: 10,
+  bilgeRigRepairAmount: 15,
+  portFuelUnitCost: 3,
+  portHullPointCost: 2,
+  fuelDrumCost: 14,
+  fuelDrumResell: 10,
+  repairKitCost: 16,
+  repairKitResell: 11,
+  startNodeId: "node-01-anchorhead"
+};
+var LOADOUT_PRESETS = {
+  hauler: {
+    id: "hauler",
+    name: "Light High-Capacity Hauler",
+    tagline: "Max cargo slots & extended internal fuel tank for multi-contract outer routes.",
+    moduleIds: ["mod-aux-tank", "mod-gyro-cradle"],
+    fuelDrums: 1,
+    repairKits: 1,
+    preferredStrategy: "Leaves 4 Hold Slots open for bulky/dual contracts (3+1 Slots). Takes longer low-hazard outer channels using +4 Aux Tank fuel."
+  },
+  armored_runner: {
+    id: "armored_runner",
+    name: "Armored Storm-Runner",
+    tagline: "Heavy icebreaker prow & twin-prop outrigger to punch straight through hazardous shortcuts.",
+    moduleIds: ["mod-icebreaker-prow", "mod-twin-prop", "mod-bilge-rig"],
+    fuelDrums: 1,
+    repairKits: 1,
+    preferredStrategy: "Commits 4 Hold Slots to armor & propulsion modules, leaving 2 Slots for single high-margin contracts across Scrap Reef & Riptide shortcuts."
+  }
+};
+
+// games/04-junkyard-courier/src/content.ts
+var BOAT_MODULES = [
+  {
+    id: "mod-twin-prop",
+    name: "Twin-Prop Outrigger",
+    slotCost: 1,
+    creditCost: 38,
+    shortTag: "OUTRIGGER",
+    description: "Negates Cross-Current Riptide extra fuel burn (+2 Fuel -> 0) and hull shear.",
+    counteredHazards: ["cross_current_riptide", "rogue_wake"]
+  },
+  {
+    id: "mod-icebreaker-prow",
+    name: "Reinforced Icebreaker Prow",
+    slotCost: 2,
+    creditCost: 52,
+    shortTag: "ARMOR PROW",
+    description: "Negates Scrap Reef hull damage (-10 -> 0) and cuts Floating Minefield damage by 67%.",
+    counteredHazards: ["scrap_reef", "floating_minefield"]
+  },
+  {
+    id: "mod-gyro-cradle",
+    name: "Gyro-Shock Cradle",
+    slotCost: 1,
+    creditCost: 40,
+    shortTag: "GYRO CRADLE",
+    description: "Protects Fragile cargo from Acid Squall & Rogue Wake shock penalties and reduces wave hull damage.",
+    counteredHazards: ["acid_squall", "rogue_wake"]
+  },
+  {
+    id: "mod-aux-tank",
+    name: "Auxiliary Reserve Tank",
+    slotCost: 1,
+    creditCost: 36,
+    shortTag: "AUX TANK",
+    description: "Adds +4 Max Internal Fuel capacity (10 -> 14) for long low-hazard outer detours.",
+    counteredHazards: ["silt_fogbank"]
+  },
+  {
+    id: "mod-salvage-winch",
+    name: "Salvage Magnet Winch",
+    slotCost: 1,
+    creditCost: 42,
+    shortTag: "MAG WINCH",
+    description: "Dredges +12\xA2 to +18\xA2 bonus scrap credits whenever pressing through Scrap Reef, Minefield, or Silt Fogbank.",
+    counteredHazards: ["scrap_reef", "floating_minefield", "silt_fogbank"]
+  },
+  {
+    id: "mod-bilge-rig",
+    name: "Bilge Pump & Patch Rig",
+    slotCost: 1,
+    creditCost: 34,
+    shortTag: "BILGE RIG",
+    description: "Boosts every Repair Kit from +10 Hull to +15 Hull and reduces Acid Squall corrosion by 3 Hull.",
+    counteredHazards: ["acid_squall"]
+  }
+];
+var HAZARDS = {
+  scrap_reef: {
+    id: "scrap_reef",
+    name: "Scrap Reef",
+    severity: "HIGH",
+    badgeColor: "#e05a47",
+    shortCode: "REEF",
+    description: "Jagged submerged rebar and collapsed gantry cranes just beneath the waterline.",
+    consequenceSummary: "-10 Hull (0 Hull with Reinforced Icebreaker Prow) | Evade: +2 Fuel",
+    counterModuleId: "mod-icebreaker-prow",
+    baseHullDamage: 10,
+    baseExtraFuel: 0,
+    threatensFragileCargo: true,
+    isDebrisField: true,
+    choices: [
+      {
+        id: "press_on",
+        label: "Crunch Through Reef",
+        summary: "-10 Hull (0 with Icebreaker Prow). +14\xA2 scrap if Magnet Winch installed."
+      },
+      {
+        id: "evade_burn",
+        label: "Full-Throttle Channel Swing",
+        summary: "+2 extra Fuel burn, 0 Hull damage, keeps Fragile cargo safe."
+      },
+      {
+        id: "patch_brace",
+        label: "Spend Repair Kit on Fenders",
+        summary: "Consumes 1 Repair Kit to absorb impact (0 Hull damage, cargo safe)."
+      }
+    ]
+  },
+  cross_current_riptide: {
+    id: "cross_current_riptide",
+    name: "Cross-Current Riptide",
+    severity: "HIGH",
+    badgeColor: "#d9822b",
+    shortCode: "RIPTIDE",
+    description: "Roaring tidal race pouring through breached industrial cofferdams.",
+    consequenceSummary: "+2 Fuel & -4 Hull (0 penalty with Twin-Prop Outrigger)",
+    counterModuleId: "mod-twin-prop",
+    baseHullDamage: 4,
+    baseExtraFuel: 2,
+    threatensFragileCargo: false,
+    isDebrisField: false,
+    choices: [
+      {
+        id: "press_on",
+        label: "Hold Heading Against Current",
+        summary: "+2 extra Fuel & -4 Hull (0 extra Fuel & 0 Hull with Twin-Prop Outrigger)."
+      },
+      {
+        id: "evade_burn",
+        label: "High-RPM Ferry Glide",
+        summary: "+1 extra Fuel burn, 0 Hull damage."
+      },
+      {
+        id: "patch_brace",
+        label: "Spend Repair Kit on Rudder Strut",
+        summary: "Consumes 1 Repair Kit, 0 extra Fuel, 0 Hull damage."
+      }
+    ]
+  },
+  acid_squall: {
+    id: "acid_squall",
+    name: "Acid Squall",
+    severity: "MEDIUM",
+    badgeColor: "#b8c93a",
+    shortCode: "SQUALL",
+    description: "Blistering sulfur rain and violent cross-chop rolling off the condenser stacks.",
+    consequenceSummary: "-7 Hull & damages Fragile cargo (-16\xA2) unless Gyro-Shock Cradle installed",
+    counterModuleId: "mod-gyro-cradle",
+    baseHullDamage: 7,
+    baseExtraFuel: 0,
+    threatensFragileCargo: true,
+    isDebrisField: false,
+    choices: [
+      {
+        id: "press_on",
+        label: "Weather the Squall",
+        summary: "-7 Hull (-3 with Gyro Cradle/Bilge Rig). Fragile cargo loses 16\xA2 without Gyro Cradle."
+      },
+      {
+        id: "evade_burn",
+        label: "Outrun Squall Curtain",
+        summary: "+2 extra Fuel burn, 0 Hull damage, Fragile cargo protected."
+      },
+      {
+        id: "patch_brace",
+        label: "Seal Hatches with Repair Kit",
+        summary: "Consumes 1 Repair Kit, 0 Hull damage, Fragile cargo protected."
+      }
+    ]
+  },
+  floating_minefield: {
+    id: "floating_minefield",
+    name: "Floating Minefield",
+    severity: "HIGH",
+    badgeColor: "#cf3c5c",
+    shortCode: "MINES",
+    description: "Drifting tethered sea-mines and tangled buoyancy chains in deep water.",
+    consequenceSummary: "-12 Hull (-4 Hull with Icebreaker Prow) | +18\xA2 with Magnet Winch",
+    counterModuleId: "mod-icebreaker-prow",
+    baseHullDamage: 12,
+    baseExtraFuel: 0,
+    threatensFragileCargo: true,
+    isDebrisField: true,
+    choices: [
+      {
+        id: "press_on",
+        label: "Thread the Mine Tethers",
+        summary: "-12 Hull (-4 with Icebreaker Prow). +18\xA2 scrap if Magnet Winch installed."
+      },
+      {
+        id: "evade_burn",
+        label: "Sonar Slalom Burn",
+        summary: "+2 extra Fuel burn, -2 Hull, Fragile cargo safe."
+      },
+      {
+        id: "patch_brace",
+        label: "Cut Cable & Patch Plating",
+        summary: "Consumes 1 Repair Kit, 0 Hull damage, Fragile cargo safe."
+      }
+    ]
+  },
+  silt_fogbank: {
+    id: "silt_fogbank",
+    name: "Silt Fogbank",
+    severity: "LOW",
+    badgeColor: "#5da7b8",
+    shortCode: "FOG",
+    description: "Dense yellow dredge-mist hiding shifting mudbanks along the outer perimeter.",
+    consequenceSummary: "+1 Fuel drift & -3 Hull (0 Hull on Radar Burn)",
+    counterModuleId: "mod-aux-tank",
+    baseHullDamage: 3,
+    baseExtraFuel: 1,
+    threatensFragileCargo: false,
+    isDebrisField: true,
+    choices: [
+      {
+        id: "press_on",
+        label: "Dead-Reckoning Crawl",
+        summary: "+1 extra Fuel & -3 Hull. +12\xA2 flotsam if Magnet Winch installed."
+      },
+      {
+        id: "evade_burn",
+        label: "Radar Sweep & Trim",
+        summary: "+1 extra Fuel burn, 0 Hull damage."
+      },
+      {
+        id: "patch_brace",
+        label: "Pole Off Mudbar with Kit",
+        summary: "Consumes 1 Repair Kit, 0 extra Fuel, 0 Hull damage."
+      }
+    ]
+  },
+  rogue_wake: {
+    id: "rogue_wake",
+    name: "Rogue Wake",
+    severity: "LOW",
+    badgeColor: "#4c91d1",
+    shortCode: "WAKE",
+    description: "Steep rolling displacement swells rebounding off sunken drydock walls.",
+    consequenceSummary: "-5 Hull & jolts Fragile cargo (-12\xA2) unless Gyro-Shock Cradle installed",
+    counterModuleId: "mod-gyro-cradle",
+    baseHullDamage: 5,
+    baseExtraFuel: 0,
+    threatensFragileCargo: true,
+    isDebrisField: false,
+    choices: [
+      {
+        id: "press_on",
+        label: "Punch Through the Crest",
+        summary: "-5 Hull (-1 with Gyro Cradle or Twin-Prop). Protects Fragile cargo with Gyro Cradle."
+      },
+      {
+        id: "evade_burn",
+        label: "Quarter the Swell",
+        summary: "+1 extra Fuel burn, 0 Hull damage, Fragile cargo safe."
+      },
+      {
+        id: "patch_brace",
+        label: "Shoring Struts (1 Repair Kit)",
+        summary: "Consumes 1 Repair Kit, 0 Hull damage, Fragile cargo safe."
+      }
+    ]
+  }
+};
+var ARCHIPELAGO_NODES = [
+  {
+    id: "node-01-anchorhead",
+    code: "N01",
+    name: "Anchorhead Drydock",
+    zone: "WEST_BAY",
+    x: 88,
+    y: 245,
+    isPort: true,
+    flavor: "Main salvage guild slipway and diesel bunkering pier."
+  },
+  {
+    id: "node-02-siltgate",
+    code: "N02",
+    name: "Siltgate Lock",
+    zone: "NORTH_REACH",
+    x: 195,
+    y: 105,
+    isPort: true,
+    flavor: "Flooded canal lock guarding the calm northern dredge channel."
+  },
+  {
+    id: "node-03-slag-reef",
+    code: "N03",
+    name: "Slag-Toothed Narrows",
+    zone: "CENTRAL_SPINE",
+    x: 245,
+    y: 248,
+    isPort: true,
+    flavor: "Collapsed steelworks causeway offering a treacherous shortcut east."
+  },
+  {
+    id: "node-04-brine-pumps",
+    code: "N04",
+    name: "Brine-Pump Station 4",
+    zone: "SOUTH_SHOALS",
+    x: 205,
+    y: 390,
+    isPort: true,
+    flavor: "Half-sunken desalination rig along the southern shoal loop."
+  },
+  {
+    id: "node-05-cinder-wharf",
+    code: "N05",
+    name: "Cinder-Barge Wharf",
+    zone: "NORTH_REACH",
+    x: 370,
+    y: 90,
+    isPort: true,
+    flavor: "Floating coal-and-isotope transfer depot anchored to refinery pilings."
+  },
+  {
+    id: "node-06-maelstrom-spillway",
+    code: "N06",
+    name: "Spillway Weir",
+    zone: "CENTRAL_SPINE",
+    x: 400,
+    y: 245,
+    isPort: true,
+    flavor: "High-velocity turbine sluice where four tidal channels collide."
+  },
+  {
+    id: "node-07-rust-atoll",
+    code: "N07",
+    name: "Rust-Chain Atoll",
+    zone: "SOUTH_SHOALS",
+    x: 385,
+    y: 395,
+    isPort: true,
+    flavor: "Ring oflashed tanker hulls serving as a bustling scrap market."
+  },
+  {
+    id: "node-08-sulfur-stacks",
+    code: "N08",
+    name: "Sulfur Condenser Stacks",
+    zone: "NORTH_REACH",
+    x: 545,
+    y: 100,
+    isPort: true,
+    flavor: "Smoking chemical distillation towers paying top credit for optics and valves."
+  },
+  {
+    id: "node-09-mine-channel",
+    code: "N09",
+    name: "Chain-Boom Trench",
+    zone: "CENTRAL_SPINE",
+    x: 555,
+    y: 250,
+    isPort: true,
+    flavor: "Old naval cordon bristling with tethered mines and high-grade alloy scrap."
+  },
+  {
+    id: "node-10-dredge-harbor",
+    code: "N10",
+    name: "Dredge-Bucket Harbor",
+    zone: "SOUTH_SHOALS",
+    x: 560,
+    y: 395,
+    isPort: true,
+    flavor: "Sheltered basin beneath a mammoth bucket-wheel excavator."
+  },
+  {
+    id: "node-11-beacon-spindle",
+    code: "N11",
+    name: "Beacon Spindle Relay",
+    zone: "EAST_TERMINUS",
+    x: 700,
+    y: 160,
+    isPort: true,
+    flavor: "Radio telemetry spire guiding convoys around the eastern fogbanks."
+  },
+  {
+    id: "node-12-iron-citadel",
+    code: "N12",
+    name: "Iron Foundry Citadel",
+    zone: "EAST_TERMINUS",
+    x: 710,
+    y: 335,
+    isPort: true,
+    flavor: "Offshore blast-furnace fortress that smelts heavy salvage for the archipelago."
+  }
+];
+var ARCHIPELAGO_EDGES = [
+  // Outer North Calm Corridor
+  {
+    id: "edge-01-02",
+    from: "node-01-anchorhead",
+    to: "node-02-siltgate",
+    baseFuelCost: 2,
+    defaultHazard: "silt_fogbank",
+    channelType: "OUTER_SAFE"
+  },
+  {
+    id: "edge-02-05",
+    from: "node-02-siltgate",
+    to: "node-05-cinder-wharf",
+    baseFuelCost: 2,
+    defaultHazard: "silt_fogbank",
+    channelType: "OUTER_SAFE"
+  },
+  {
+    id: "edge-05-08",
+    from: "node-05-cinder-wharf",
+    to: "node-08-sulfur-stacks",
+    baseFuelCost: 2,
+    defaultHazard: "rogue_wake",
+    channelType: "OUTER_SAFE"
+  },
+  {
+    id: "edge-08-11",
+    from: "node-08-sulfur-stacks",
+    to: "node-11-beacon-spindle",
+    baseFuelCost: 2,
+    defaultHazard: "silt_fogbank",
+    channelType: "OUTER_SAFE"
+  },
+  // Outer South Calm Corridor
+  {
+    id: "edge-01-04",
+    from: "node-01-anchorhead",
+    to: "node-04-brine-pumps",
+    baseFuelCost: 2,
+    defaultHazard: "rogue_wake",
+    channelType: "OUTER_SAFE"
+  },
+  {
+    id: "edge-04-07",
+    from: "node-04-brine-pumps",
+    to: "node-07-rust-atoll",
+    baseFuelCost: 2,
+    defaultHazard: "silt_fogbank",
+    channelType: "OUTER_SAFE"
+  },
+  {
+    id: "edge-07-10",
+    from: "node-07-rust-atoll",
+    to: "node-10-dredge-harbor",
+    baseFuelCost: 2,
+    defaultHazard: "silt_fogbank",
+    channelType: "OUTER_SAFE"
+  },
+  {
+    id: "edge-10-12",
+    from: "node-10-dredge-harbor",
+    to: "node-12-iron-citadel",
+    baseFuelCost: 2,
+    defaultHazard: "rogue_wake",
+    channelType: "OUTER_SAFE"
+  },
+  {
+    id: "edge-11-12",
+    from: "node-11-beacon-spindle",
+    to: "node-12-iron-citadel",
+    baseFuelCost: 2,
+    defaultHazard: "silt_fogbank",
+    channelType: "OUTER_SAFE"
+  },
+  // Inner Direct High-Hazard Shortcuts
+  {
+    id: "edge-01-03",
+    from: "node-01-anchorhead",
+    to: "node-03-slag-reef",
+    baseFuelCost: 1,
+    defaultHazard: "scrap_reef",
+    channelType: "INNER_SHORTCUT"
+  },
+  {
+    id: "edge-03-05",
+    from: "node-03-slag-reef",
+    to: "node-05-cinder-wharf",
+    baseFuelCost: 1,
+    defaultHazard: "scrap_reef",
+    channelType: "INNER_SHORTCUT"
+  },
+  {
+    id: "edge-03-06",
+    from: "node-03-slag-reef",
+    to: "node-06-maelstrom-spillway",
+    baseFuelCost: 1,
+    defaultHazard: "cross_current_riptide",
+    channelType: "INNER_SHORTCUT"
+  },
+  {
+    id: "edge-03-07",
+    from: "node-03-slag-reef",
+    to: "node-07-rust-atoll",
+    baseFuelCost: 1,
+    defaultHazard: "scrap_reef",
+    channelType: "INNER_SHORTCUT"
+  },
+  {
+    id: "edge-06-08",
+    from: "node-06-maelstrom-spillway",
+    to: "node-08-sulfur-stacks",
+    baseFuelCost: 1,
+    defaultHazard: "acid_squall",
+    channelType: "INNER_SHORTCUT"
+  },
+  {
+    id: "edge-06-09",
+    from: "node-06-maelstrom-spillway",
+    to: "node-09-mine-channel",
+    baseFuelCost: 1,
+    defaultHazard: "floating_minefield",
+    channelType: "INNER_SHORTCUT"
+  },
+  {
+    id: "edge-06-10",
+    from: "node-06-maelstrom-spillway",
+    to: "node-10-dredge-harbor",
+    baseFuelCost: 1,
+    defaultHazard: "cross_current_riptide",
+    channelType: "INNER_SHORTCUT"
+  },
+  {
+    id: "edge-09-11",
+    from: "node-09-mine-channel",
+    to: "node-11-beacon-spindle",
+    baseFuelCost: 1,
+    defaultHazard: "scrap_reef",
+    channelType: "INNER_SHORTCUT"
+  },
+  {
+    id: "edge-09-12",
+    from: "node-09-mine-channel",
+    to: "node-12-iron-citadel",
+    baseFuelCost: 1,
+    defaultHazard: "floating_minefield",
+    channelType: "INNER_SHORTCUT"
+  },
+  // Cross-Link Connectors
+  {
+    id: "edge-02-03",
+    from: "node-02-siltgate",
+    to: "node-03-slag-reef",
+    baseFuelCost: 2,
+    defaultHazard: "rogue_wake",
+    channelType: "CROSS_LINK"
+  },
+  {
+    id: "edge-04-03",
+    from: "node-04-brine-pumps",
+    to: "node-03-slag-reef",
+    baseFuelCost: 2,
+    defaultHazard: "rogue_wake",
+    channelType: "CROSS_LINK"
+  },
+  {
+    id: "edge-05-06",
+    from: "node-05-cinder-wharf",
+    to: "node-06-maelstrom-spillway",
+    baseFuelCost: 2,
+    defaultHazard: "cross_current_riptide",
+    channelType: "CROSS_LINK"
+  },
+  {
+    id: "edge-06-07",
+    from: "node-06-maelstrom-spillway",
+    to: "node-07-rust-atoll",
+    baseFuelCost: 2,
+    defaultHazard: "rogue_wake",
+    channelType: "CROSS_LINK"
+  },
+  {
+    id: "edge-08-09",
+    from: "node-08-sulfur-stacks",
+    to: "node-09-mine-channel",
+    baseFuelCost: 2,
+    defaultHazard: "acid_squall",
+    channelType: "CROSS_LINK"
+  },
+  {
+    id: "edge-09-10",
+    from: "node-09-mine-channel",
+    to: "node-10-dredge-harbor",
+    baseFuelCost: 2,
+    defaultHazard: "scrap_reef",
+    channelType: "CROSS_LINK"
+  }
+];
+var CONTRACT_TEMPLATES = [
+  {
+    id: "ctype-safe-ballast",
+    categoryName: "Safe Modest Freight",
+    cargoName: "Sealed Ballast Bearings",
+    cargoSlots: 1,
+    basePayout: 44,
+    fragile: false,
+    bulky: false,
+    urgentMaxHops: null,
+    description: "Compact waterproof crate of cast-iron bearings. Fits in a single Hold Slot and shrugs off spray."
+  },
+  {
+    id: "ctype-fragile-isotopes",
+    categoryName: "Fragile Isotope Consignment",
+    cargoName: "Volatile Isotope Cores",
+    cargoSlots: 3,
+    basePayout: 96,
+    fragile: true,
+    bulky: true,
+    urgentMaxHops: null,
+    description: "Bulky 3-Slot lead-glass containment rack. Pays double, but shocks in Acid Squalls or Reefs without a Gyro-Shock Cradle."
+  },
+  {
+    id: "ctype-bulky-turbine",
+    categoryName: "Bulky Heavy Salvage",
+    cargoName: "Submerged Turbine Rotor",
+    cargoSlots: 3,
+    basePayout: 88,
+    fragile: false,
+    bulky: true,
+    urgentMaxHops: null,
+    description: "Massive 3-Slot bronze rotor assembly. Crowds out modules and spare fuel drums, forcing strict hold budgeting."
+  },
+  {
+    id: "ctype-precision-optics",
+    categoryName: "Fragile Precision Optics",
+    cargoName: "Sonar Gyro-Lens Array",
+    cargoSlots: 2,
+    basePayout: 74,
+    fragile: true,
+    bulky: false,
+    urgentMaxHops: null,
+    description: "Delicate 2-Slot quartz rangefinder mirrors. Vulnerable to Acid Squalls and Rogue Wakes unless cradled."
+  },
+  {
+    id: "ctype-tide-express",
+    categoryName: "Urgent Tide-Window Express",
+    cargoName: "Lock-Gate Hydraulic Valves",
+    cargoSlots: 1,
+    basePayout: 64,
+    fragile: false,
+    bulky: false,
+    urgentMaxHops: 4,
+    description: "Light 1-Slot priority parts with a +15\xA2 tide-window bonus if delivered within 4 hops."
+  },
+  {
+    id: "ctype-corrosive-sludge",
+    categoryName: "Fragile Chemical Freight",
+    cargoName: "Pressurized Sulfur Slurry",
+    cargoSlots: 2,
+    basePayout: 70,
+    fragile: true,
+    bulky: false,
+    urgentMaxHops: null,
+    description: "Glass-lined carboys occupying 2 Slots. High industrial payout if kept dry and level."
+  },
+  {
+    id: "ctype-salvage-plate",
+    categoryName: "Standard Industrial Freight",
+    cargoName: "Riveted Boiler Plating",
+    cargoSlots: 2,
+    basePayout: 58,
+    fragile: false,
+    bulky: false,
+    urgentMaxHops: null,
+    description: "Reliable 2-Slot stack of salvaged hull plates. Weatherproof and steady profit."
+  },
+  {
+    id: "ctype-cryo-meds",
+    categoryName: "Urgent Medical Relay",
+    cargoName: "Cryo-Sealed Plasma Packs",
+    cargoSlots: 1,
+    basePayout: 54,
+    fragile: true,
+    bulky: false,
+    urgentMaxHops: 5,
+    description: "Compact 1-Slot cold-chain canister for outlying rigs."
+  }
+];
+function getNodeById(nodeId) {
+  const found = ARCHIPELAGO_NODES.find((n) => n.id === nodeId);
+  if (!found) {
+    throw new Error(`Unknown archipelago node: ${nodeId}`);
+  }
+  return found;
+}
+function getModuleById(moduleId) {
+  const found = BOAT_MODULES.find((m) => m.id === moduleId);
+  if (!found) {
+    throw new Error(`Unknown boat module: ${moduleId}`);
+  }
+  return found;
+}
+
+// games/04-junkyard-courier/src/rng.ts
+var SeededRng = class {
+  state;
+  constructor(seed) {
+    this.state = seed >>> 0 || 1;
+  }
+  next() {
+    let t = this.state += 1831565813;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+  nextInt(minInclusive, maxInclusive) {
+    if (maxInclusive <= minInclusive) return minInclusive;
+    return minInclusive + Math.floor(this.next() * (maxInclusive - minInclusive + 1));
+  }
+  pick(items) {
+    if (items.length === 0) {
+      throw new Error("Cannot pick from empty array");
+    }
+    return items[this.nextInt(0, items.length - 1)];
+  }
+  shuffle(items) {
+    const copy = [...items];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = this.nextInt(0, i);
+      const tmp = copy[i];
+      copy[i] = copy[j];
+      copy[j] = tmp;
+    }
+    return copy;
+  }
+  getState() {
+    return this.state >>> 0;
+  }
+  setState(state) {
+    this.state = state >>> 0 || 1;
+  }
+};
+
+// games/04-junkyard-courier/src/simulation.ts
+function computeHoldSlotBreakdown(params) {
+  const maxSlots = params.maxHoldSlots ?? GAME_CONFIG.maxHoldSlots;
+  const cargoSlots = params.acceptedContracts.reduce((sum, c) => sum + Math.max(0, c.cargoSlots), 0);
+  const moduleSlots = params.installedModules.reduce((sum, modId) => sum + getModuleById(modId).slotCost, 0);
+  const fuelDrumSlots = Math.max(0, params.fuelDrums);
+  const repairKitSlots = Math.max(0, params.repairKits);
+  const usedSlots = cargoSlots + moduleSlots + fuelDrumSlots + repairKitSlots;
+  return {
+    cargoSlots,
+    moduleSlots,
+    fuelDrumSlots,
+    repairKitSlots,
+    usedSlots,
+    maxSlots,
+    freeSlots: maxSlots - usedSlots
+  };
+}
+function validateLoadout(params) {
+  if (params.fuelDrums < 0 || params.repairKits < 0) {
+    const breakdown2 = computeHoldSlotBreakdown(params);
+    return {
+      valid: false,
+      usedSlots: breakdown2.usedSlots,
+      maxSlots: breakdown2.maxSlots,
+      breakdown: breakdown2,
+      reason: "Supply counts cannot be negative."
+    };
+  }
+  const breakdown = computeHoldSlotBreakdown(params);
+  if (breakdown.usedSlots > breakdown.maxSlots) {
+    return {
+      valid: false,
+      usedSlots: breakdown.usedSlots,
+      maxSlots: breakdown.maxSlots,
+      breakdown,
+      reason: `Hold capacity exceeded: requires ${breakdown.usedSlots}/${breakdown.maxSlots} Hold Slots (Cargo ${breakdown.cargoSlots} + Modules ${breakdown.moduleSlots} + Drums ${breakdown.fuelDrumSlots} + Kits ${breakdown.repairKitSlots}).`
+    };
+  }
+  return {
+    valid: true,
+    usedSlots: breakdown.usedSlots,
+    maxSlots: breakdown.maxSlots,
+    breakdown
+  };
+}
+function validateStateHoldCapacity(state) {
+  const accepted = state.contracts.filter((c) => c.status === "ACCEPTED");
+  return validateLoadout({
+    installedModules: state.installedModules,
+    acceptedContracts: accepted,
+    fuelDrums: state.fuelDrums,
+    repairKits: state.repairKits,
+    maxHoldSlots: state.maxHoldSlots
+  });
+}
+function getMaxFuelForModules(installedModules) {
+  const hasAux = installedModules.includes("mod-aux-tank");
+  return GAME_CONFIG.baseMaxFuel + (hasAux ? GAME_CONFIG.auxTankFuelBonus : 0);
+}
+function buildSeededArchipelagoEdges(rng) {
+  const outerPool = ["silt_fogbank", "rogue_wake"];
+  const innerShortcutPool = [
+    "scrap_reef",
+    "cross_current_riptide",
+    "acid_squall",
+    "floating_minefield"
+  ];
+  return ARCHIPELAGO_EDGES.map((edgeDef) => {
+    let hazardId = edgeDef.defaultHazard;
+    const lockedOpeningEdges = /* @__PURE__ */ new Set([
+      "edge-01-02",
+      "edge-02-05",
+      "edge-01-04",
+      "edge-04-07",
+      "edge-01-03",
+      "edge-03-05",
+      "edge-03-06",
+      "edge-03-07"
+    ]);
+    if (!lockedOpeningEdges.has(edgeDef.id)) {
+      if (edgeDef.channelType === "OUTER_SAFE") {
+        hazardId = rng.pick(outerPool);
+      } else if (edgeDef.channelType === "INNER_SHORTCUT") {
+        if (rng.next() > 0.65) {
+          hazardId = rng.pick(innerShortcutPool);
+        }
+      }
+    }
+    return {
+      id: edgeDef.id,
+      from: edgeDef.from,
+      to: edgeDef.to,
+      baseFuelCost: edgeDef.baseFuelCost,
+      hazardId,
+      channelType: edgeDef.channelType,
+      timesTraversed: 0,
+      lastResolvedChoice: null
+    };
+  });
+}
+function getConnectedEdges(state, nodeId) {
+  return state.edges.filter((e) => e.from === nodeId || e.to === nodeId);
+}
+function getEdgeBetween(state, nodeA, nodeB) {
+  return state.edges.find(
+    (e) => e.from === nodeA && e.to === nodeB || e.from === nodeB && e.to === nodeA
+  );
+}
+function getNeighborNodeId(edge, currentNodeId) {
+  return edge.from === currentNodeId ? edge.to : edge.from;
+}
+function createContractInstance(seq, templateId, originNodeId, destinationNodeId, payoutBonus = 0) {
+  const tpl = CONTRACT_TEMPLATES.find((t) => t.id === templateId);
+  return {
+    id: `contract-${seq}`,
+    templateId: tpl.id,
+    categoryName: tpl.categoryName,
+    cargoName: tpl.cargoName,
+    originNodeId,
+    destinationNodeId,
+    cargoSlots: tpl.cargoSlots,
+    basePayout: tpl.basePayout + payoutBonus,
+    accumulatedPenalty: 0,
+    fragile: tpl.fragile,
+    bulky: tpl.bulky,
+    urgentMaxHops: tpl.urgentMaxHops,
+    hopsTaken: 0,
+    status: "OFFERED",
+    paidOut: false,
+    description: tpl.description
+  };
+}
+function computeHopDistances(state, startNodeId) {
+  const dist = /* @__PURE__ */ new Map();
+  dist.set(startNodeId, 0);
+  const queue = [startNodeId];
+  while (queue.length > 0) {
+    const curr = queue.shift();
+    const currDist = dist.get(curr);
+    for (const edge of getConnectedEdges(state, curr)) {
+      const next = getNeighborNodeId(edge, curr);
+      if (!dist.has(next)) {
+        dist.set(next, currDist + 1);
+        queue.push(next);
+      }
+    }
+  }
+  return dist;
+}
+function ensurePortContractOffers(state) {
+  const currentOffers = state.contracts.filter(
+    (c) => c.status === "OFFERED" && c.originNodeId === state.currentNodeId
+  );
+  if (currentOffers.length >= GAME_CONFIG.offersPerPort) {
+    return;
+  }
+  const rng = new SeededRng(state.rngState);
+  const hopMap = computeHopDistances(state, state.currentNodeId);
+  const candidateTargets = ARCHIPELAGO_NODES.filter((n) => {
+    const d = hopMap.get(n.id) ?? 0;
+    return n.id !== state.currentNodeId && d >= 2 && d <= 3;
+  });
+  const fallbackTargets = ARCHIPELAGO_NODES.filter((n) => n.id !== state.currentNodeId);
+  const pool = candidateTargets.length > 0 ? candidateTargets : fallbackTargets;
+  const needed = GAME_CONFIG.offersPerPort - currentOffers.length;
+  for (let i = 0; i < needed; i++) {
+    const slotIndex = currentOffers.length + i;
+    let templateId;
+    if (slotIndex === 0) {
+      templateId = "ctype-safe-ballast";
+    } else if (slotIndex === 1) {
+      templateId = rng.pick(["ctype-fragile-isotopes", "ctype-bulky-turbine"]);
+    } else {
+      templateId = rng.pick([
+        "ctype-precision-optics",
+        "ctype-tide-express",
+        "ctype-corrosive-sludge",
+        "ctype-salvage-plate",
+        "ctype-cryo-meds"
+      ]);
+    }
+    const dest = rng.pick(pool);
+    const hops = hopMap.get(dest.id) ?? 2;
+    const distanceBonus = Math.max(0, (hops - 2) * 10);
+    const contract = createContractInstance(
+      state.nextContractSeq++,
+      templateId,
+      state.currentNodeId,
+      dest.id,
+      distanceBonus
+    );
+    state.contracts.push(contract);
+  }
+  state.rngState = rng.getState();
+}
+function createInitialRunState(seed = GAME_CONFIG.defaultSeed) {
+  const rng = new SeededRng(seed);
+  const edges = buildSeededArchipelagoEdges(rng);
+  const openingContracts = [
+    createContractInstance(1, "ctype-safe-ballast", "node-01-anchorhead", "node-05-cinder-wharf", 0),
+    createContractInstance(2, "ctype-fragile-isotopes", "node-01-anchorhead", "node-05-cinder-wharf", 0),
+    createContractInstance(3, "ctype-tide-express", "node-01-anchorhead", "node-07-rust-atoll", 0)
+  ];
+  const state = {
+    version: GAME_CONFIG.saveVersion,
+    seed,
+    rngState: rng.getState(),
+    turn: 1,
+    runStatus: "IN_PROGRESS",
+    currentNodeId: GAME_CONFIG.startNodeId,
+    hull: GAME_CONFIG.baseMaxHull,
+    maxHull: GAME_CONFIG.baseMaxHull,
+    fuel: GAME_CONFIG.baseMaxFuel,
+    maxFuel: GAME_CONFIG.baseMaxFuel,
+    credits: GAME_CONFIG.startingCredits,
+    fuelDrums: GAME_CONFIG.startingFuelDrums,
+    repairKits: GAME_CONFIG.startingRepairKits,
+    maxHoldSlots: GAME_CONFIG.maxHoldSlots,
+    installedModules: [],
+    contracts: openingContracts,
+    deliveredContractIds: [],
+    deliveriesCompleted: 0,
+    edges,
+    pendingEncounter: null,
+    pendingUpgradeChoices: [],
+    selectedNodeId: "node-05-cinder-wharf",
+    failureDiagnostic: null,
+    log: [
+      {
+        turn: 1,
+        nodeId: GAME_CONFIG.startNodeId,
+        edgeId: null,
+        hazardId: null,
+        choiceId: null,
+        fuelDelta: 0,
+        hullDelta: 0,
+        creditsDelta: 0,
+        message: "Moored at Anchorhead Drydock. Inspect the 8-Slot Hold Grid, accept up to 2 contracts, and chart your route."
+      }
+    ],
+    nextContractSeq: 4
+  };
+  return state;
+}
+function previewHazardOutcome(state, hazardId, choiceId) {
+  const mods = new Set(state.installedModules);
+  const hasProw = mods.has("mod-icebreaker-prow");
+  const hasTwinProp = mods.has("mod-twin-prop");
+  const hasGyro = mods.has("mod-gyro-cradle");
+  const hasWinch = mods.has("mod-salvage-winch");
+  const hasBilge = mods.has("mod-bilge-rig");
+  if (choiceId === "patch_brace") {
+    if (state.repairKits > 0) {
+      return {
+        extraFuel: 0,
+        hullDamage: 0,
+        cargoPenaltyPerFragile: 0,
+        scrapCreditBonus: 0,
+        repairKitsSpent: 1,
+        summaryNote: "Used 1 Repair Kit to brace bulkheads & fenders (0 Hull damage, cargo safe)."
+      };
+    }
+  }
+  if (choiceId === "evade_burn") {
+    switch (hazardId) {
+      case "scrap_reef":
+        return {
+          extraFuel: 2,
+          hullDamage: 0,
+          cargoPenaltyPerFragile: 0,
+          scrapCreditBonus: 0,
+          repairKitsSpent: 0,
+          summaryNote: "Swung wide around the Scrap Reef (+2 Fuel burn, 0 Hull damage)."
+        };
+      case "cross_current_riptide":
+        return {
+          extraFuel: hasTwinProp ? 0 : 1,
+          hullDamage: 0,
+          cargoPenaltyPerFragile: 0,
+          scrapCreditBonus: 0,
+          repairKitsSpent: 0,
+          summaryNote: "High-RPM ferry glide across Riptide (+1 Fuel burn, 0 Hull damage)."
+        };
+      case "acid_squall":
+        return {
+          extraFuel: 2,
+          hullDamage: 0,
+          cargoPenaltyPerFragile: 0,
+          scrapCreditBonus: 0,
+          repairKitsSpent: 0,
+          summaryNote: "Outran the Acid Squall curtain (+2 Fuel burn, 0 Hull damage)."
+        };
+      case "floating_minefield":
+        return {
+          extraFuel: 2,
+          hullDamage: hasProw ? 0 : 2,
+          cargoPenaltyPerFragile: 0,
+          scrapCreditBonus: 0,
+          repairKitsSpent: 0,
+          summaryNote: "Sonar slalom through Minefield (+2 Fuel burn, minimal grazing)."
+        };
+      case "silt_fogbank":
+        return {
+          extraFuel: 1,
+          hullDamage: 0,
+          cargoPenaltyPerFragile: 0,
+          scrapCreditBonus: 0,
+          repairKitsSpent: 0,
+          summaryNote: "Radar sweep guided the skiff cleanly through the Silt Fogbank (+1 Fuel)."
+        };
+      case "rogue_wake":
+        return {
+          extraFuel: 1,
+          hullDamage: 0,
+          cargoPenaltyPerFragile: 0,
+          scrapCreditBonus: 0,
+          repairKitsSpent: 0,
+          summaryNote: "Quartered into the Rogue Wake (+1 Fuel burn, 0 Hull damage)."
+        };
+    }
+  }
+  switch (hazardId) {
+    case "scrap_reef": {
+      const hullDamage = hasProw ? 0 : 10;
+      const cargoPenaltyPerFragile = hasProw || hasGyro ? 0 : 14;
+      const scrapCreditBonus = hasWinch ? 14 : 0;
+      return {
+        extraFuel: 0,
+        hullDamage,
+        cargoPenaltyPerFragile,
+        scrapCreditBonus,
+        repairKitsSpent: 0,
+        summaryNote: hasProw ? "Reinforced Icebreaker Prow crushed through the Scrap Reef with 0 Hull damage!" : "Scraped across submerged rebar (-10 Hull)."
+      };
+    }
+    case "cross_current_riptide": {
+      const extraFuel = hasTwinProp ? 0 : 2;
+      const hullDamage = hasTwinProp ? 0 : 4;
+      return {
+        extraFuel,
+        hullDamage,
+        cargoPenaltyPerFragile: 0,
+        scrapCreditBonus: 0,
+        repairKitsSpent: 0,
+        summaryNote: hasTwinProp ? "Twin-Prop Outrigger held course effortlessly through the Riptide (0 extra Fuel, 0 Hull)!" : "Cross-Current Riptide dragged the skiff (+2 Fuel burn, -4 Hull)."
+      };
+    }
+    case "acid_squall": {
+      let hullDamage = 7;
+      if (hasGyro) hullDamage -= 3;
+      if (hasBilge) hullDamage -= 3;
+      hullDamage = Math.max(1, hullDamage);
+      const cargoPenaltyPerFragile = hasGyro ? 0 : 16;
+      return {
+        extraFuel: 0,
+        hullDamage,
+        cargoPenaltyPerFragile,
+        scrapCreditBonus: 0,
+        repairKitsSpent: 0,
+        summaryNote: hasGyro ? `Gyro-Shock Cradle stabilized fragile cargo through the Acid Squall (-${hullDamage} Hull).` : `Acid Squall corroded plating (-${hullDamage} Hull) and jolted uncradled fragile crates.`
+      };
+    }
+    case "floating_minefield": {
+      const hullDamage = hasProw ? 4 : 12;
+      const cargoPenaltyPerFragile = hasGyro || hasProw ? 0 : 18;
+      const scrapCreditBonus = hasWinch ? 18 : 0;
+      return {
+        extraFuel: 0,
+        hullDamage,
+        cargoPenaltyPerFragile,
+        scrapCreditBonus,
+        repairKitsSpent: 0,
+        summaryNote: hasProw ? "Icebreaker Prow deflected mine tethers (-4 Hull)." : "Mine tether detonation scorched the hull (-12 Hull)!"
+      };
+    }
+    case "silt_fogbank": {
+      const extraFuel = 1;
+      const hullDamage = 3;
+      const scrapCreditBonus = hasWinch ? 12 : 0;
+      return {
+        extraFuel,
+        hullDamage,
+        cargoPenaltyPerFragile: 0,
+        scrapCreditBonus,
+        repairKitsSpent: 0,
+        summaryNote: "Crawled through Silt Fogbank (+1 Fuel drift, -3 Hull)."
+      };
+    }
+    case "rogue_wake": {
+      const hullDamage = hasGyro || hasTwinProp ? 1 : 5;
+      const cargoPenaltyPerFragile = hasGyro ? 0 : 12;
+      return {
+        extraFuel: 0,
+        hullDamage,
+        cargoPenaltyPerFragile,
+        scrapCreditBonus: 0,
+        repairKitsSpent: 0,
+        summaryNote: hasGyro ? "Gyro-Shock Cradle absorbed the Rogue Wake (-1 Hull, cargo untouched)." : "Slammed into Rogue Wake crest (-5 Hull)."
+      };
+    }
+  }
+}
+function evaluateRouteForLoadout(state, pathNodeIds, choicePolicy = "press_on") {
+  const edgeIds = [];
+  let totalBaseFuel = 0;
+  let expectedExtraFuel = 0;
+  let expectedHullDamage = 0;
+  let expectedCargoPenalty = 0;
+  let expectedScrapBonus = 0;
+  const fragileCount = state.contracts.filter((c) => c.status === "ACCEPTED" && c.fragile).length;
+  for (let i = 0; i < pathNodeIds.length - 1; i++) {
+    const from = pathNodeIds[i];
+    const to = pathNodeIds[i + 1];
+    const edge = getEdgeBetween(state, from, to);
+    if (!edge) {
+      throw new Error(`No edge connecting ${from} and ${to}`);
+    }
+    edgeIds.push(edge.id);
+    totalBaseFuel += edge.baseFuelCost;
+    const pressPreview = previewHazardOutcome(state, edge.hazardId, "press_on");
+    let chosenPreview = pressPreview;
+    if (choicePolicy === "smart") {
+      const evadePreview = previewHazardOutcome(state, edge.hazardId, "evade_burn");
+      const pressCost = pressPreview.hullDamage * 3.5 + pressPreview.extraFuel * 4 + pressPreview.cargoPenaltyPerFragile * fragileCount * 1.2 - pressPreview.scrapCreditBonus;
+      const evadeCost = evadePreview.hullDamage * 3.5 + evadePreview.extraFuel * 4 + evadePreview.cargoPenaltyPerFragile * fragileCount * 1.2;
+      if (evadeCost < pressCost && state.maxFuel >= 12) {
+        chosenPreview = evadePreview;
+      }
+    }
+    expectedExtraFuel += chosenPreview.extraFuel;
+    expectedHullDamage += chosenPreview.hullDamage;
+    expectedCargoPenalty += chosenPreview.cargoPenaltyPerFragile * fragileCount;
+    expectedScrapBonus += chosenPreview.scrapCreditBonus;
+  }
+  const totalExpectedFuel = totalBaseFuel + expectedExtraFuel;
+  const fuelWeight = state.installedModules.includes("mod-aux-tank") ? 2.2 : 4.2;
+  const score = expectedHullDamage * 3.8 + totalExpectedFuel * fuelWeight + expectedCargoPenalty * 1.5 - expectedScrapBonus * 0.5;
+  return {
+    pathNodeIds: [...pathNodeIds],
+    edgeIds,
+    totalBaseFuel,
+    expectedExtraFuel,
+    totalExpectedFuel,
+    expectedHullDamage,
+    expectedCargoPenalty,
+    expectedScrapBonus,
+    score
+  };
+}
+function findOptimalRouteForLoadout(state, startNodeId, targetNodeId, maxHops = 5) {
+  const candidates = [];
+  function dfs(current, path) {
+    if (path.length - 1 > maxHops) return;
+    if (current === targetNodeId) {
+      candidates.push(evaluateRouteForLoadout(state, path, "press_on"));
+      return;
+    }
+    for (const edge of getConnectedEdges(state, current)) {
+      const next = getNeighborNodeId(edge, current);
+      if (!path.includes(next)) {
+        path.push(next);
+        dfs(next, path);
+        path.pop();
+      }
+    }
+  }
+  dfs(startNodeId, [startNodeId]);
+  if (candidates.length === 0) {
+    throw new Error(`No route found between ${startNodeId} and ${targetNodeId}`);
+  }
+  candidates.sort((a, b) => a.score - b.score);
+  return candidates[0];
+}
+function acceptContract(state, contractId) {
+  if (state.runStatus !== "IN_PROGRESS") {
+    return { ok: false, error: "Run has already ended." };
+  }
+  if (state.pendingEncounter) {
+    return { ok: false, error: "Resolve the current sea hazard encounter first." };
+  }
+  const contract = state.contracts.find((c) => c.id === contractId);
+  if (!contract) {
+    return { ok: false, error: "Contract not found." };
+  }
+  if (contract.status !== "OFFERED") {
+    return { ok: false, error: `Contract is ${contract.status}, not OFFERED.` };
+  }
+  if (contract.originNodeId !== state.currentNodeId) {
+    return { ok: false, error: "Must be moored at the contract origin port to load cargo." };
+  }
+  const activeContracts = state.contracts.filter((c) => c.status === "ACCEPTED");
+  if (activeContracts.length >= GAME_CONFIG.maxActiveContracts) {
+    return {
+      ok: false,
+      error: `Cannot carry more than ${GAME_CONFIG.maxActiveContracts} active contracts at once.`
+    };
+  }
+  const check = validateLoadout({
+    installedModules: state.installedModules,
+    acceptedContracts: [...activeContracts, contract],
+    fuelDrums: state.fuelDrums,
+    repairKits: state.repairKits,
+    maxHoldSlots: state.maxHoldSlots
+  });
+  if (!check.valid) {
+    return { ok: false, error: check.reason };
+  }
+  contract.status = "ACCEPTED";
+  state.selectedNodeId = contract.destinationNodeId;
+  state.log.push({
+    turn: state.turn,
+    nodeId: state.currentNodeId,
+    edgeId: null,
+    hazardId: null,
+    choiceId: null,
+    fuelDelta: 0,
+    hullDelta: 0,
+    creditsDelta: 0,
+    message: `Loaded "${contract.cargoName}" (${contract.cargoSlots} Hold Slot${contract.cargoSlots > 1 ? "s" : ""}) bound for ${getNodeById(contract.destinationNodeId).name}.`
+  });
+  return { ok: true };
+}
+function abandonContract(state, contractId) {
+  const contract = state.contracts.find((c) => c.id === contractId);
+  if (!contract || contract.status !== "ACCEPTED") {
+    return { ok: false, error: "Only accepted contracts can be jettisoned/abandoned." };
+  }
+  contract.status = "FAILED";
+  state.log.push({
+    turn: state.turn,
+    nodeId: state.currentNodeId,
+    edgeId: null,
+    hazardId: null,
+    choiceId: null,
+    fuelDelta: 0,
+    hullDelta: 0,
+    creditsDelta: 0,
+    message: `Jettisoned "${contract.cargoName}" (${contract.cargoSlots} Slots freed). Contract marked FAILED.`
+  });
+  ensurePortContractOffers(state);
+  return { ok: true };
+}
+function deliverContract(state, contractId) {
+  if (state.pendingEncounter) {
+    return { ok: false, payout: 0, error: "Cannot deliver while resolving an encounter." };
+  }
+  const contract = state.contracts.find((c) => c.id === contractId);
+  if (!contract) {
+    return { ok: false, payout: 0, error: "Contract does not exist." };
+  }
+  if (contract.paidOut || contract.status === "DELIVERED" || state.deliveredContractIds.includes(contract.id)) {
+    return {
+      ok: false,
+      payout: 0,
+      error: "Contract has already been delivered and paid out."
+    };
+  }
+  if (contract.status !== "ACCEPTED") {
+    return {
+      ok: false,
+      payout: 0,
+      error: `Contract cannot be delivered from status ${contract.status}.`
+    };
+  }
+  if (state.currentNodeId !== contract.destinationNodeId) {
+    return {
+      ok: false,
+      payout: 0,
+      error: `Must reach destination port (${getNodeById(contract.destinationNodeId).name}) to deliver.`
+    };
+  }
+  const urgentBonus = contract.urgentMaxHops !== null && contract.hopsTaken <= contract.urgentMaxHops ? 15 : 0;
+  const finalPayout = Math.max(10, contract.basePayout - contract.accumulatedPenalty + urgentBonus);
+  contract.status = "DELIVERED";
+  contract.paidOut = true;
+  state.deliveredContractIds.push(contract.id);
+  state.credits += finalPayout;
+  state.deliveriesCompleted += 1;
+  const unownedModules = BOAT_MODULES.map((m) => m.id).filter(
+    (id) => !state.installedModules.includes(id)
+  );
+  state.pendingUpgradeChoices = unownedModules.slice(0, 3);
+  state.log.push({
+    turn: state.turn,
+    nodeId: state.currentNodeId,
+    edgeId: null,
+    hazardId: null,
+    choiceId: null,
+    fuelDelta: 0,
+    hullDelta: 0,
+    creditsDelta: finalPayout,
+    message: `Delivered "${contract.cargoName}" at ${getNodeById(state.currentNodeId).name} for +${finalPayout}\xA2! (${state.deliveriesCompleted}/${GAME_CONFIG.deliveriesToWin} Deliveries)`
+  });
+  if (state.deliveriesCompleted >= GAME_CONFIG.deliveriesToWin) {
+    state.runStatus = "VICTORY";
+    state.log.push({
+      turn: state.turn,
+      nodeId: state.currentNodeId,
+      edgeId: null,
+      hazardId: null,
+      choiceId: null,
+      fuelDelta: 0,
+      hullDelta: 0,
+      creditsDelta: 0,
+      message: `VICTORY! Completed ${state.deliveriesCompleted} salvage deliveries across The Rustwater Shallows with ${state.credits}\xA2 in the guild vault!`
+    });
+  } else {
+    ensurePortContractOffers(state);
+  }
+  return { ok: true, payout: finalPayout };
+}
+function selectDeliveryUpgradeModule(state, moduleId) {
+  if (state.pendingUpgradeChoices.length === 0) {
+    return { ok: false, error: "No pending delivery upgrade available." };
+  }
+  if (moduleId === "skip_for_credits") {
+    state.pendingUpgradeChoices = [];
+    state.credits += 20;
+    state.log.push({
+      turn: state.turn,
+      nodeId: state.currentNodeId,
+      edgeId: null,
+      hazardId: null,
+      choiceId: null,
+      fuelDelta: 0,
+      hullDelta: 0,
+      creditsDelta: 20,
+      message: "Declined module refit and claimed +20\xA2 guild salvage stipend."
+    });
+    return { ok: true };
+  }
+  if (!state.pendingUpgradeChoices.includes(moduleId)) {
+    return { ok: false, error: "Module is not in the current upgrade offer." };
+  }
+  const installRes = installModule(state, moduleId, { freeUpgrade: true });
+  if (!installRes.ok) {
+    return installRes;
+  }
+  state.pendingUpgradeChoices = [];
+  return { ok: true };
+}
+function installModule(state, moduleId, options) {
+  if (state.pendingEncounter) {
+    return { ok: false, error: "Cannot refit modules at sea during an encounter." };
+  }
+  if (state.installedModules.includes(moduleId)) {
+    return { ok: false, error: "Module is already installed." };
+  }
+  const modDef = getModuleById(moduleId);
+  const cost = options?.freeUpgrade ? 0 : modDef.creditCost;
+  if (state.credits < cost) {
+    return { ok: false, error: `Insufficient credits: need ${cost}\xA2, have ${state.credits}\xA2.` };
+  }
+  const nextModules = [...state.installedModules, moduleId];
+  const accepted = state.contracts.filter((c) => c.status === "ACCEPTED");
+  const check = validateLoadout({
+    installedModules: nextModules,
+    acceptedContracts: accepted,
+    fuelDrums: state.fuelDrums,
+    repairKits: state.repairKits,
+    maxHoldSlots: state.maxHoldSlots
+  });
+  if (!check.valid) {
+    return { ok: false, error: check.reason };
+  }
+  state.credits -= cost;
+  state.installedModules = nextModules;
+  state.maxFuel = getMaxFuelForModules(state.installedModules);
+  if (moduleId === "mod-aux-tank") {
+    state.fuel = Math.min(state.maxFuel, state.fuel + GAME_CONFIG.auxTankFuelBonus);
+  }
+  state.log.push({
+    turn: state.turn,
+    nodeId: state.currentNodeId,
+    edgeId: null,
+    hazardId: null,
+    choiceId: null,
+    fuelDelta: moduleId === "mod-aux-tank" ? GAME_CONFIG.auxTankFuelBonus : 0,
+    hullDelta: 0,
+    creditsDelta: -cost,
+    message: `Installed ${modDef.name} (${modDef.slotCost} Hold Slot${modDef.slotCost > 1 ? "s" : ""}).`
+  });
+  return { ok: true };
+}
+function uninstallModule(state, moduleId) {
+  if (state.pendingEncounter) {
+    return { ok: false, error: "Cannot uninstall modules during an encounter." };
+  }
+  if (!state.installedModules.includes(moduleId)) {
+    return { ok: false, error: "Module is not installed." };
+  }
+  const modDef = getModuleById(moduleId);
+  const refund = Math.floor(modDef.creditCost * 0.65);
+  state.installedModules = state.installedModules.filter((id) => id !== moduleId);
+  state.maxFuel = getMaxFuelForModules(state.installedModules);
+  state.fuel = Math.min(state.fuel, state.maxFuel);
+  state.credits += refund;
+  state.log.push({
+    turn: state.turn,
+    nodeId: state.currentNodeId,
+    edgeId: null,
+    hazardId: null,
+    choiceId: null,
+    fuelDelta: 0,
+    hullDelta: 0,
+    creditsDelta: refund,
+    message: `Removed ${modDef.name} (+${refund}\xA2 salvage refund, freed ${modDef.slotCost} Slot${modDef.slotCost > 1 ? "s" : ""}).`
+  });
+  return { ok: true };
+}
+function applyLoadoutPreset(state, presetId) {
+  if (state.pendingEncounter) {
+    return { ok: false, error: "Cannot swap loadout presets during a hazard encounter." };
+  }
+  const preset = LOADOUT_PRESETS[presetId];
+  const targetModules = preset.moduleIds;
+  const accepted = state.contracts.filter((c) => c.status === "ACCEPTED");
+  const check = validateLoadout({
+    installedModules: targetModules,
+    acceptedContracts: accepted,
+    fuelDrums: preset.fuelDrums,
+    repairKits: preset.repairKits,
+    maxHoldSlots: state.maxHoldSlots
+  });
+  if (!check.valid) {
+    return { ok: false, error: check.reason };
+  }
+  state.installedModules = [...targetModules];
+  state.fuelDrums = preset.fuelDrums;
+  state.repairKits = preset.repairKits;
+  state.maxFuel = getMaxFuelForModules(state.installedModules);
+  state.fuel = state.maxFuel;
+  state.log.push({
+    turn: state.turn,
+    nodeId: state.currentNodeId,
+    edgeId: null,
+    hazardId: null,
+    choiceId: null,
+    fuelDelta: 0,
+    hullDelta: 0,
+    creditsDelta: 0,
+    message: `Configured "${preset.name}" preset (${check.usedSlots}/${check.maxSlots} Hold Slots used).`
+  });
+  return { ok: true };
+}
+function buyFuelDrum(state) {
+  if (state.credits < GAME_CONFIG.fuelDrumCost) {
+    return { ok: false, error: `Need ${GAME_CONFIG.fuelDrumCost}\xA2 to buy a Spare Fuel Drum.` };
+  }
+  const accepted = state.contracts.filter((c) => c.status === "ACCEPTED");
+  const check = validateLoadout({
+    installedModules: state.installedModules,
+    acceptedContracts: accepted,
+    fuelDrums: state.fuelDrums + 1,
+    repairKits: state.repairKits,
+    maxHoldSlots: state.maxHoldSlots
+  });
+  if (!check.valid) {
+    return { ok: false, error: check.reason };
+  }
+  state.credits -= GAME_CONFIG.fuelDrumCost;
+  state.fuelDrums += 1;
+  return { ok: true };
+}
+function sellFuelDrum(state) {
+  if (state.fuelDrums <= 0) {
+    return { ok: false, error: "No Fuel Drums in hold to unload." };
+  }
+  state.fuelDrums -= 1;
+  state.credits += GAME_CONFIG.fuelDrumResell;
+  return { ok: true };
+}
+function crackFuelDrumIntoTank(state) {
+  if (state.fuelDrums <= 0) {
+    return { ok: false, error: "No Spare Fuel Drums in hold." };
+  }
+  if (state.fuel >= state.maxFuel) {
+    return { ok: false, error: "Internal fuel tank is already full." };
+  }
+  const gained = Math.min(GAME_CONFIG.fuelPerDrum, state.maxFuel - state.fuel);
+  state.fuelDrums -= 1;
+  state.fuel += gained;
+  state.log.push({
+    turn: state.turn,
+    nodeId: state.currentNodeId,
+    edgeId: null,
+    hazardId: null,
+    choiceId: null,
+    fuelDelta: gained,
+    hullDelta: 0,
+    creditsDelta: 0,
+    message: `Cracked open 1 Spare Fuel Drum (+${gained} Fuel, freed 1 Hold Slot).`
+  });
+  return { ok: true };
+}
+function buyRepairKit(state) {
+  if (state.credits < GAME_CONFIG.repairKitCost) {
+    return { ok: false, error: `Need ${GAME_CONFIG.repairKitCost}\xA2 to buy a Repair Kit.` };
+  }
+  const accepted = state.contracts.filter((c) => c.status === "ACCEPTED");
+  const check = validateLoadout({
+    installedModules: state.installedModules,
+    acceptedContracts: accepted,
+    fuelDrums: state.fuelDrums,
+    repairKits: state.repairKits + 1,
+    maxHoldSlots: state.maxHoldSlots
+  });
+  if (!check.valid) {
+    return { ok: false, error: check.reason };
+  }
+  state.credits -= GAME_CONFIG.repairKitCost;
+  state.repairKits += 1;
+  return { ok: true };
+}
+function sellRepairKit(state) {
+  if (state.repairKits <= 0) {
+    return { ok: false, error: "No Repair Kits in hold to unload." };
+  }
+  state.repairKits -= 1;
+  state.credits += GAME_CONFIG.repairKitResell;
+  return { ok: true };
+}
+function useRepairKitOnHull(state) {
+  if (state.repairKits <= 0) {
+    return { ok: false, restored: 0, error: "No Repair Kits in hold." };
+  }
+  if (state.hull >= state.maxHull) {
+    return { ok: false, restored: 0, error: "Hull is already at maximum integrity." };
+  }
+  const perKit = state.installedModules.includes("mod-bilge-rig") ? GAME_CONFIG.bilgeRigRepairAmount : GAME_CONFIG.baseRepairAmount;
+  const restored = Math.min(perKit, state.maxHull - state.hull);
+  state.repairKits -= 1;
+  state.hull += restored;
+  state.log.push({
+    turn: state.turn,
+    nodeId: state.currentNodeId,
+    edgeId: null,
+    hazardId: null,
+    choiceId: null,
+    fuelDelta: 0,
+    hullDelta: restored,
+    creditsDelta: 0,
+    message: `Patched hull plating with Repair Kit (+${restored} Hull, freed 1 Hold Slot).`
+  });
+  return { ok: true, restored };
+}
+function refuelAtPort(state, amount) {
+  const missing = state.maxFuel - state.fuel;
+  if (missing <= 0) {
+    return { ok: false, added: 0, error: "Tank is already topped off." };
+  }
+  const affordable = Math.floor(state.credits / GAME_CONFIG.portFuelUnitCost);
+  if (affordable <= 0) {
+    return { ok: false, added: 0, error: "Insufficient credits to refuel at port." };
+  }
+  const target = amount ? Math.min(amount, missing, affordable) : Math.min(missing, affordable);
+  const cost = target * GAME_CONFIG.portFuelUnitCost;
+  state.fuel += target;
+  state.credits -= cost;
+  return { ok: true, added: target };
+}
+function repairHullAtPort(state, points) {
+  const missing = state.maxHull - state.hull;
+  if (missing <= 0) {
+    return { ok: false, restored: 0, error: "Hull is already at 100%." };
+  }
+  const affordable = Math.floor(state.credits / GAME_CONFIG.portHullPointCost);
+  if (affordable <= 0) {
+    return { ok: false, restored: 0, error: "Insufficient credits for drydock hull repair." };
+  }
+  const target = points ? Math.min(points, missing, affordable) : Math.min(missing, affordable);
+  const cost = target * GAME_CONFIG.portHullPointCost;
+  state.hull += target;
+  state.credits -= cost;
+  return { ok: true, restored: target };
+}
+function analyzeFailure(state, cause, lastEdge) {
+  const nodeName = getNodeById(state.currentNodeId).name;
+  const hazardDef = lastEdge ? HAZARDS[lastEdge.hazardId] : null;
+  if (cause === "HULL_ZERO") {
+    if (lastEdge && hazardDef?.counterModuleId && !state.installedModules.includes(hazardDef.counterModuleId)) {
+      const counterMod = getModuleById(hazardDef.counterModuleId);
+      return {
+        cause: "HULL_ZERO",
+        title: `Hull Breached in ${hazardDef.name} near ${nodeName}`,
+        summary: `The Iron Skiff broke apart after taking unmitigated ${hazardDef.name} damage on leg ${lastEdge.id} without ${counterMod.name} installed.`,
+        mistakeCategory: "UNCOUNTERED_HAZARD",
+        failedNodeId: state.currentNodeId,
+        lastEdgeId: lastEdge.id,
+        lastHazardId: lastEdge.hazardId,
+        recommendation: `Equip ${counterMod.name} before entering ${hazardDef.name} shortcuts, or route around via the outer Silt Fogbank channels.`
+      };
+    }
+    return {
+      cause: "HULL_ZERO",
+      title: `Sunk by Cumulative Hull Fatigue at ${nodeName}`,
+      summary: state.repairKits > 0 ? `Sank with ${state.repairKits} unused Repair Kit(s) still sitting in the hold instead of patching before traversal.` : `Pushed into ${hazardDef ? hazardDef.name : "hazardous waters"} on critically low hull without a Repair Kit in reserve.`,
+      mistakeCategory: "SKIPPED_REPAIR",
+      failedNodeId: state.currentNodeId,
+      lastEdgeId: lastEdge ? lastEdge.id : null,
+      lastHazardId: lastEdge ? lastEdge.hazardId : null,
+      recommendation: "Keep at least 15 Hull buffer before entering medium/high hazards or spend a Repair Kit to brace during the encounter."
+    };
+  }
+  const acceptedSlots = state.contracts.filter((c) => c.status === "ACCEPTED").reduce((s, c) => s + c.cargoSlots, 0);
+  if (acceptedSlots >= 3 && state.fuelDrums === 0 && !state.installedModules.includes("mod-aux-tank")) {
+    return {
+      cause: "FUEL_STRANDED",
+      title: `Out of Diesel at ${nodeName} (Overloaded Cargo Detour)`,
+      summary: `Carried ${acceptedSlots} Hold Slots of cargo without an Auxiliary Reserve Tank or Spare Fuel Drum, running dry after ${hazardDef ? hazardDef.name : "channel"} fuel burn.`,
+      mistakeCategory: "OVERLOADED_DETOUR",
+      failedNodeId: state.currentNodeId,
+      lastEdgeId: lastEdge ? lastEdge.id : null,
+      lastHazardId: lastEdge ? lastEdge.hazardId : null,
+      recommendation: "When hauling 3+ Slots of cargo on outer routes, install the Auxiliary Reserve Tank (+4 Max Fuel) or pack at least 1 Spare Fuel Drum."
+    };
+  }
+  return {
+    cause: "FUEL_STRANDED",
+    title: `Stranded Dead-in-Water at ${nodeName}`,
+    summary: `Depleted all internal fuel (0/${state.maxFuel}) and 0 Spare Fuel Drums after traversing ${lastEdge ? lastEdge.id : "the channel"}.`,
+    mistakeCategory: "FUEL_MISCALCULATION",
+    failedNodeId: state.currentNodeId,
+    lastEdgeId: lastEdge ? lastEdge.id : null,
+    lastHazardId: lastEdge ? lastEdge.hazardId : null,
+    recommendation: "Check each route leg\u2019s base fuel + hazard drift cost before departure, or equip Twin-Prop Outrigger to negate Cross-Current Riptide fuel burn."
+  };
+}
+function beginTravelToNode(state, targetNodeId, immediateChoice) {
+  if (state.runStatus !== "IN_PROGRESS") {
+    return { ok: false, error: "Cannot travel: run has already concluded." };
+  }
+  if (state.pendingEncounter) {
+    return { ok: false, error: "Must resolve current hazard encounter before moving again." };
+  }
+  const holdCheck = validateStateHoldCapacity(state);
+  if (!holdCheck.valid) {
+    return { ok: false, error: holdCheck.reason };
+  }
+  const edge = getEdgeBetween(state, state.currentNodeId, targetNodeId);
+  if (!edge) {
+    return { ok: false, error: `No direct channel connects ${state.currentNodeId} to ${targetNodeId}.` };
+  }
+  while (state.fuel < edge.baseFuelCost && state.fuelDrums > 0) {
+    crackFuelDrumIntoTank(state);
+  }
+  if (state.fuel < edge.baseFuelCost) {
+    state.runStatus = "LOSS";
+    state.failureDiagnostic = analyzeFailure(state, "FUEL_STRANDED", edge);
+    return {
+      ok: false,
+      error: `Insufficient fuel: edge requires ${edge.baseFuelCost} Fuel, have ${state.fuel}.`
+    };
+  }
+  state.fuel -= edge.baseFuelCost;
+  state.pendingEncounter = {
+    edgeId: edge.id,
+    fromNodeId: state.currentNodeId,
+    toNodeId: targetNodeId,
+    baseFuelPaid: edge.baseFuelCost,
+    hazardId: edge.hazardId
+  };
+  if (immediateChoice) {
+    return resolvePendingEncounter(state, immediateChoice);
+  }
+  return { ok: true };
+}
+function resolvePendingEncounter(state, choiceId) {
+  const enc = state.pendingEncounter;
+  if (!enc) {
+    return { ok: false, error: "No pending encounter to resolve." };
+  }
+  const edge = state.edges.find((e) => e.id === enc.edgeId);
+  const outcome = previewHazardOutcome(state, enc.hazardId, choiceId);
+  if (outcome.repairKitsSpent > 0) {
+    state.repairKits = Math.max(0, state.repairKits - outcome.repairKitsSpent);
+  }
+  let extraFuelNeeded = outcome.extraFuel;
+  while (state.fuel < extraFuelNeeded && state.fuelDrums > 0) {
+    crackFuelDrumIntoTank(state);
+  }
+  const actualExtraFuelPaid = Math.min(state.fuel, extraFuelNeeded);
+  state.fuel -= actualExtraFuelPaid;
+  const unpaidFuelShortfall = extraFuelNeeded - actualExtraFuelPaid;
+  const totalHullLoss = outcome.hullDamage + unpaidFuelShortfall * 4;
+  state.hull = Math.max(0, state.hull - totalHullLoss);
+  if (outcome.cargoPenaltyPerFragile > 0) {
+    for (const c of state.contracts) {
+      if (c.status === "ACCEPTED" && c.fragile) {
+        c.accumulatedPenalty += outcome.cargoPenaltyPerFragile;
+      }
+    }
+  }
+  if (outcome.scrapCreditBonus > 0) {
+    state.credits += outcome.scrapCreditBonus;
+  }
+  state.currentNodeId = enc.toNodeId;
+  state.selectedNodeId = enc.toNodeId;
+  state.turn += 1;
+  edge.timesTraversed += 1;
+  edge.lastResolvedChoice = choiceId;
+  state.pendingEncounter = null;
+  for (const c of state.contracts) {
+    if (c.status === "ACCEPTED") {
+      c.hopsTaken += 1;
+    }
+  }
+  state.log.push({
+    turn: state.turn,
+    nodeId: state.currentNodeId,
+    edgeId: edge.id,
+    hazardId: enc.hazardId,
+    choiceId,
+    fuelDelta: -(enc.baseFuelPaid + actualExtraFuelPaid),
+    hullDelta: -totalHullLoss,
+    creditsDelta: outcome.scrapCreditBonus,
+    message: `Arrived at ${getNodeById(state.currentNodeId).name} via ${HAZARDS[enc.hazardId].name}: ${outcome.summaryNote}`
+  });
+  if (state.hull <= 0) {
+    state.runStatus = "LOSS";
+    state.failureDiagnostic = analyzeFailure(state, "HULL_ZERO", edge);
+    state.log.push({
+      turn: state.turn,
+      nodeId: state.currentNodeId,
+      edgeId: edge.id,
+      hazardId: enc.hazardId,
+      choiceId,
+      fuelDelta: 0,
+      hullDelta: 0,
+      creditsDelta: 0,
+      message: `LOSS: ${state.failureDiagnostic.title} \u2014 ${state.failureDiagnostic.summary}`
+    });
+    return { ok: true };
+  }
+  const deliverableHere = state.contracts.some(
+    (c) => c.status === "ACCEPTED" && c.destinationNodeId === state.currentNodeId && !c.paidOut
+  );
+  const minOutgoingFuel = Math.min(
+    ...getConnectedEdges(state, state.currentNodeId).map((e) => e.baseFuelCost)
+  );
+  const effectiveFuel = state.fuel + state.fuelDrums * GAME_CONFIG.fuelPerDrum;
+  const affordablePortFuel = Math.floor(state.credits / GAME_CONFIG.portFuelUnitCost);
+  if (effectiveFuel <= 0 || effectiveFuel + affordablePortFuel < minOutgoingFuel && !deliverableHere) {
+    state.runStatus = "LOSS";
+    state.failureDiagnostic = analyzeFailure(state, "FUEL_STRANDED", edge);
+    state.log.push({
+      turn: state.turn,
+      nodeId: state.currentNodeId,
+      edgeId: edge.id,
+      hazardId: enc.hazardId,
+      choiceId,
+      fuelDelta: 0,
+      hullDelta: 0,
+      creditsDelta: 0,
+      message: `LOSS: ${state.failureDiagnostic.title} \u2014 ${state.failureDiagnostic.summary}`
+    });
+    return { ok: true };
+  }
+  ensurePortContractOffers(state);
+  return { ok: true };
+}
+
+// games/04-junkyard-courier/src/audio.ts
+var CourierAudioEngine = class {
+  ctx = null;
+  muted = false;
+  ensureContext() {
+    if (this.muted || typeof window === "undefined") return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!this.ctx) {
+      try {
+        this.ctx = new AudioCtx();
+      } catch {
+        return null;
+      }
+    }
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  playSonarPing() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(1180, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.28);
+    gain.gain.setValueAtTime(0.11, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.32);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.34);
+  }
+  playDieselChug() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const t = now + i * 0.095;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(64 + i * 6, t);
+      osc.frequency.exponentialRampToValueAtTime(42, t + 0.08);
+      gain.gain.setValueAtTime(0.09, t);
+      gain.gain.exponentialRampToValueAtTime(1e-3, t + 0.085);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.09);
+    }
+  }
+  playFoghorn() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    for (const freq of [110, 164.8]) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, now);
+      osc.frequency.linearRampToValueAtTime(freq * 0.96, now + 0.55);
+      gain.gain.setValueAtTime(1e-3, now);
+      gain.gain.linearRampToValueAtTime(0.11, now + 0.06);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.6);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.62);
+    }
+  }
+  playHullClank() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(185, now);
+    osc.frequency.exponentialRampToValueAtTime(52, now + 0.16);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.18);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.19);
+  }
+  playCoinChime() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notes = [987.77, 1318.51];
+    notes.forEach((freq, idx) => {
+      const t = now + idx * 0.08;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.11, t);
+      gain.gain.exponentialRampToValueAtTime(1e-3, t + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.26);
+    });
+  }
+  destroy() {
+    if (this.ctx) {
+      this.ctx.close().catch(() => {
+      });
+      this.ctx = null;
+    }
+  }
+};
+
+// games/04-junkyard-courier/src/persistence.ts
+function serializeRunState(state) {
+  const envelope = {
+    gameId: GAME_CONFIG.gameId,
+    version: GAME_CONFIG.saveVersion,
+    savedAtIso: (/* @__PURE__ */ new Date()).toISOString(),
+    state: structuredClone(state)
+  };
+  return JSON.stringify(envelope);
+}
+function deserializeRunState(rawJson) {
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (!parsed || typeof parsed !== "object") {
+      return { ok: false, error: "Invalid save JSON payload." };
+    }
+    if (parsed.gameId !== GAME_CONFIG.gameId) {
+      return { ok: false, error: `Save belongs to another game (${String(parsed.gameId)}).` };
+    }
+    if (parsed.version !== GAME_CONFIG.saveVersion) {
+      return { ok: false, error: `Unsupported save version: ${String(parsed.version)}.` };
+    }
+    const st = parsed.state;
+    if (!st || typeof st.seed !== "number" || typeof st.currentNodeId !== "string" || !Array.isArray(st.edges) || !Array.isArray(st.contracts) || !Array.isArray(st.installedModules)) {
+      return { ok: false, error: "Corrupted run state structure." };
+    }
+    const cloned = structuredClone(st);
+    const holdValidation = validateStateHoldCapacity(cloned);
+    if (!holdValidation.valid) {
+      return { ok: false, error: `Invalid saved loadout: ${holdValidation.reason}` };
+    }
+    return { ok: true, state: cloned };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Failed to parse save data."
+    };
+  }
+}
+function saveRunToStorage(state, storage = typeof localStorage !== "undefined" ? localStorage : void 0) {
+  if (!storage) return false;
+  try {
+    storage.setItem(GAME_CONFIG.saveStorageKey, serializeRunState(state));
+    return true;
+  } catch {
+    return false;
+  }
+}
+function loadRunFromStorage(storage = typeof localStorage !== "undefined" ? localStorage : void 0) {
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(GAME_CONFIG.saveStorageKey);
+    if (!raw) return null;
+    const res = deserializeRunState(raw);
+    return res.ok && res.state ? res.state : null;
+  } catch {
+    return null;
+  }
+}
+
+// games/04-junkyard-courier/src/ui.ts
+var STYLES = `
+.jc-root {
+  container: courier-shell / inline-size;
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-block-size: 100dvh;
+  background: radial-gradient(circle at 20% 15%, #16262e 0%, #0b1317 70%);
+  color: #e6edf0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  padding-block: 0.75rem 1.5rem;
+  padding-inline: clamp(0.5rem, 2cqi, 1.25rem);
+}
+
+.jc-root *, .jc-root *::before, .jc-root *::after {
+  box-sizing: border-box;
+}
+
+.jc-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  gap: 0.75rem;
+  padding-block: 0.65rem;
+  padding-inline: 0.9rem;
+  background: #122028;
+  border: 1px solid #2b4654;
+  border-radius: 8px;
+  margin-block-end: 0.85rem;
+}
+
+.jc-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.jc-title {
+  margin: 0;
+  font-size: clamp(1.05rem, 2.2cqi, 1.35rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #f3b34c;
+  text-transform: uppercase;
+}
+
+.jc-subtitle {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #9ab3bf;
+}
+
+.jc-telemetry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+.jc-stat-pill {
+  display: flex;
+  flex-direction: column;
+  padding-block: 0.3rem;
+  padding-inline: 0.65rem;
+  background: #0c161c;
+  border: 1px solid #29424f;
+  border-radius: 6px;
+  min-inline-size: 86px;
+}
+
+.jc-stat-label {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #87a4b2;
+}
+
+.jc-stat-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f0f6f8;
+}
+
+.jc-stat-value.warn {
+  color: #e05a47;
+}
+
+.jc-stat-value.good {
+  color: #56c288;
+}
+
+.jc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  gap: 0.45rem;
+  margin-block-end: 0.85rem;
+}
+
+.jc-btn {
+  appearance: none;
+  background: #1a313d;
+  color: #e6edf0;
+  border: 1px solid #385a6b;
+  border-radius: 6px;
+  padding-block: 0.42rem;
+  padding-inline: 0.72rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.jc-btn:hover:not(:disabled) {
+  background: #244354;
+  border-color: #5ca1c2;
+}
+
+.jc-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.jc-btn-primary {
+  background: #c87d20;
+  border-color: #f3b34c;
+  color: #0b1317;
+  font-weight: 700;
+}
+
+.jc-btn-primary:hover:not(:disabled) {
+  background: #e0922b;
+  border-color: #ffd07b;
+}
+
+.jc-btn-success {
+  background: #216e47;
+  border-color: #46b87c;
+  color: #eefaf3;
+}
+
+.jc-btn-danger {
+  background: #5c2222;
+  border-color: #b54545;
+  color: #ffdede;
+}
+
+.jc-toast {
+  padding-block: 0.5rem;
+  padding-inline: 0.8rem;
+  border-radius: 6px;
+  margin-block-end: 0.8rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  background: #19313d;
+  border-inline-start: 4px solid #f3b34c;
+}
+
+.jc-toast.error {
+  background: #3a1a1d;
+  border-inline-start-color: #e05a47;
+  color: #ffb8ae;
+}
+
+.jc-main-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.9rem;
+}
+
+@container courier-shell (inline-size > 880px) {
+  .jc-main-grid {
+    grid-template-columns: 1.25fr 1fr;
+    align-items: start;
+  }
+}
+
+.jc-panel {
+  background: #111e25;
+  border: 1px solid #26404d;
+  border-radius: 8px;
+  padding: 0.85rem;
+}
+
+.jc-panel-title {
+  margin: 0 0 0.6rem 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #f3b34c;
+  display: flex;
+  align-items: safe center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.jc-map-canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  aspect-ratio: 5 / 3;
+  background: #091319;
+  border: 1px solid #2c4c5c;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.jc-leg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.55rem;
+  margin-block-start: 0.75rem;
+}
+
+.jc-leg-card {
+  background: #0c171d;
+  border: 1px solid #294452;
+  border-radius: 6px;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.jc-badge {
+  display: inline-block;
+  padding-block: 0.12rem;
+  padding-inline: 0.45rem;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.jc-hold-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.45rem;
+  margin-block: 0.55rem 0.75rem;
+}
+
+@container courier-shell (inline-size < 460px) {
+  .jc-hold-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.jc-slot-cell {
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px dashed #355566;
+  background: #0a141a;
+  min-block-size: 58px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.jc-slot-cell.cargo {
+  border-style: solid;
+  border-color: #f3b34c;
+  background: rgba(243, 179, 76, 0.14);
+}
+
+.jc-slot-cell.module {
+  border-style: solid;
+  border-color: #5bc0de;
+  background: rgba(91, 192, 222, 0.14);
+}
+
+.jc-slot-cell.fuel {
+  border-style: solid;
+  border-color: #e67e22;
+  background: rgba(230, 126, 34, 0.14);
+}
+
+.jc-slot-cell.repair {
+  border-style: solid;
+  border-color: #56c288;
+  background: rgba(86, 194, 136, 0.14);
+}
+
+.jc-slot-index {
+  font-size: 0.64rem;
+  color: #7e9aa8;
+  font-weight: 700;
+}
+
+.jc-slot-name {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #eef5f8;
+}
+
+.jc-contract-list, .jc-module-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.jc-card {
+  background: #0c161c;
+  border: 1px solid #27414e;
+  border-radius: 6px;
+  padding: 0.65rem;
+}
+
+.jc-card.active-contract {
+  border-color: #f3b34c;
+  background: #172428;
+}
+
+.jc-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-block-end: 0.35rem;
+}
+
+.jc-log-list {
+  max-block-size: 165px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  font-size: 0.76rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-inline-end: 0.25rem;
+}
+
+/* Native modal dialog rules per modern-web-guidance */
+dialog.jc-encounter-dialog {
+  background: #101e26;
+  color: #e6edf0;
+  border: 2px solid #f3b34c;
+  border-radius: 10px;
+  padding: 1.15rem;
+  max-inline-size: min(540px, 94dvw);
+  inline-size: 100%;
+}
+
+dialog.jc-encounter-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+dialog.jc-encounter-dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.jc-encounter-dialog::backdrop {
+  background: rgba(4, 10, 14, 0.78);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.jc-outcome-banner {
+  padding: 0.9rem;
+  border-radius: 8px;
+  margin-block-end: 0.85rem;
+  border: 2px solid #f3b34c;
+  background: #172830;
+}
+
+.jc-outcome-banner.loss {
+  border-color: #e05a47;
+  background: #2d1417;
+}
+
+.jc-outcome-banner.victory {
+  border-color: #56c288;
+  background: #122e22;
+}
+`;
+var JunkyardCourierUI = class {
+  container;
+  state;
+  audio;
+  debugOpen;
+  statusNotice = null;
+  keydownHandler;
+  constructor(container, initialState, options) {
+    this.container = container;
+    this.state = initialState;
+    this.audio = new CourierAudioEngine();
+    this.debugOpen = Boolean(options?.debug);
+    this.keydownHandler = (e) => {
+      if (e.key === "d" || e.key === "D") {
+        if (document.activeElement && ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) {
+          return;
+        }
+        this.toggleDebug();
+      }
+    };
+    window.addEventListener("keydown", this.keydownHandler);
+    this.render();
+  }
+  getState() {
+    return this.state;
+  }
+  setState(nextState) {
+    this.state = nextState;
+    this.render();
+  }
+  restartWithSeed(seed) {
+    this.state = createInitialRunState(seed);
+    this.statusNotice = {
+      text: `Started fresh archipelago run with Seed #${seed}.`,
+      isError: false
+    };
+    this.audio.playFoghorn();
+    this.render();
+  }
+  toggleDebug(force) {
+    this.debugOpen = typeof force === "boolean" ? force : !this.debugOpen;
+    this.render();
+  }
+  destroy() {
+    window.removeEventListener("keydown", this.keydownHandler);
+    this.audio.destroy();
+    this.container.innerHTML = "";
+  }
+  setNotice(text, isError = false) {
+    this.statusNotice = { text, isError };
+  }
+  buildHoldSlotsVisualArray() {
+    const slots = [];
+    for (const c of this.state.contracts.filter((ct) => ct.status === "ACCEPTED")) {
+      for (let i = 0; i < c.cargoSlots; i++) {
+        slots.push({
+          slotNumber: slots.length + 1,
+          category: "cargo",
+          title: c.cargoName,
+          subtitle: `Cargo (${i + 1}/${c.cargoSlots}) -> ${getNodeById(c.destinationNodeId).code}`
+        });
+      }
+    }
+    for (const modId of this.state.installedModules) {
+      const mod = getModuleById(modId);
+      for (let i = 0; i < mod.slotCost; i++) {
+        slots.push({
+          slotNumber: slots.length + 1,
+          category: "module",
+          title: mod.shortTag,
+          subtitle: mod.name
+        });
+      }
+    }
+    for (let i = 0; i < this.state.fuelDrums; i++) {
+      slots.push({
+        slotNumber: slots.length + 1,
+        category: "fuel",
+        title: "FUEL DRUM",
+        subtitle: `+${GAME_CONFIG.fuelPerDrum} Reserve Fuel`
+      });
+    }
+    for (let i = 0; i < this.state.repairKits; i++) {
+      const restoreAmt = this.state.installedModules.includes("mod-bilge-rig") ? GAME_CONFIG.bilgeRigRepairAmount : GAME_CONFIG.baseRepairAmount;
+      slots.push({
+        slotNumber: slots.length + 1,
+        category: "repair",
+        title: "REPAIR KIT",
+        subtitle: `+${restoreAmt} Hull Patch`
+      });
+    }
+    while (slots.length < this.state.maxHoldSlots) {
+      slots.push({
+        slotNumber: slots.length + 1,
+        category: "empty",
+        title: "OPEN SLOT",
+        subtitle: "Available Hold Space"
+      });
+    }
+    return slots;
+  }
+  render() {
+    const st = this.state;
+    const holdValidation = validateStateHoldCapacity(st);
+    const currentNode = getNodeById(st.currentNodeId);
+    const activeContracts = st.contracts.filter((c) => c.status === "ACCEPTED");
+    const portOffers = st.contracts.filter(
+      (c) => c.status === "OFFERED" && c.originNodeId === st.currentNodeId
+    );
+    const connectedEdges = getConnectedEdges(st, st.currentNodeId);
+    const holdCells = this.buildHoldSlotsVisualArray();
+    let routePreviewHtml = "";
+    const previewTargetId = st.selectedNodeId && st.selectedNodeId !== st.currentNodeId ? st.selectedNodeId : activeContracts[0]?.destinationNodeId;
+    let highlightedPathNodes = [];
+    if (previewTargetId && previewTargetId !== st.currentNodeId) {
+      try {
+        const bestRoute = findOptimalRouteForLoadout(st, st.currentNodeId, previewTargetId, 5);
+        highlightedPathNodes = bestRoute.pathNodeIds;
+        const targetNode = getNodeById(previewTargetId);
+        routePreviewHtml = `
+          <div style="margin-block-start:0.55rem;padding:0.5rem 0.65rem;background:#0c1820;border:1px solid #2b4a59;border-radius:6px;font-size:0.78rem;">
+            <strong>Best Route Preview to ${targetNode.name} (${targetNode.code}):</strong>
+            <span>${bestRoute.pathNodeIds.map((id) => getNodeById(id).code).join(" \u2192 ")}</span>
+            <span style="margin-inline-start:0.6rem;color:#f3b34c;">Est. Fuel: ${bestRoute.totalExpectedFuel}F</span>
+            <span style="margin-inline-start:0.6rem;color:#e05a47;">Est. Hull Risk: -${bestRoute.expectedHullDamage}</span>
+          </div>
+        `;
+      } catch {
+      }
+    }
+    this.container.innerHTML = `
+      <style>${STYLES}</style>
+      <div class="jc-root">
+        <header class="jc-header">
+          <div class="jc-brand">
+            <h1 class="jc-title">Junkyard Courier \xB7 The Rustwater Shallows</h1>
+            <p class="jc-subtitle">Vessel: The Iron Skiff \xB7 Moored at <strong>${currentNode.name} (${currentNode.code})</strong> \xB7 Turn ${st.turn} \xB7 Seed #${st.seed}</p>
+          </div>
+          <div class="jc-telemetry" role="region" aria-label="Boat Telemetry">
+            <div class="jc-stat-pill">
+              <span class="jc-stat-label">Hull Plating</span>
+              <span class="jc-stat-value ${st.hull <= 12 ? "warn" : "good"}" data-testid="stat-hull">${st.hull}/${st.maxHull}</span>
+            </div>
+            <div class="jc-stat-pill">
+              <span class="jc-stat-label">Internal Fuel</span>
+              <span class="jc-stat-value ${st.fuel <= 2 ? "warn" : ""}" data-testid="stat-fuel">${st.fuel}/${st.maxFuel} (+${st.fuelDrums} Drum)</span>
+            </div>
+            <div class="jc-stat-pill">
+              <span class="jc-stat-label">Hold Capacity</span>
+              <span class="jc-stat-value ${holdValidation.usedSlots >= st.maxHoldSlots ? "warn" : ""}" data-testid="stat-hold">${holdValidation.usedSlots}/${st.maxHoldSlots} Slots</span>
+            </div>
+            <div class="jc-stat-pill">
+              <span class="jc-stat-label">Guild Credits</span>
+              <span class="jc-stat-value good" data-testid="stat-credits">${st.credits}\xA2</span>
+            </div>
+            <div class="jc-stat-pill">
+              <span class="jc-stat-label">Deliveries</span>
+              <span class="jc-stat-value good" data-testid="stat-deliveries">${st.deliveriesCompleted}/${GAME_CONFIG.deliveriesToWin}</span>
+            </div>
+          </div>
+        </header>
+
+        <div class="jc-toolbar">
+          <button type="button" class="jc-btn" data-action="preset-hauler" title="${LOADOUT_PRESETS.hauler.preferredStrategy}">
+            Preset: Light High-Capacity Hauler
+          </button>
+          <button type="button" class="jc-btn" data-action="preset-armored" title="${LOADOUT_PRESETS.armored_runner.preferredStrategy}">
+            Preset: Armored Storm-Runner
+          </button>
+          <button type="button" class="jc-btn" data-action="save-run">Save Run</button>
+          <button type="button" class="jc-btn" data-action="load-run">Load Saved</button>
+          <button type="button" class="jc-btn" data-action="new-run">New Seed Run</button>
+          <button type="button" class="jc-btn" data-action="toggle-mute">${this.audio.muted ? "Unmute Audio" : "Mute Audio"}</button>
+          <button type="button" class="jc-btn" data-action="toggle-debug" style="margin-inline-start:auto;">[D] Debug Inspector</button>
+        </div>
+
+        ${this.statusNotice ? `<div class="jc-toast ${this.statusNotice.isError ? "error" : ""}" role="status">${this.statusNotice.text}</div>` : ""}
+
+        ${this.renderOutcomeBanner()}
+        ${this.renderPendingUpgradeBanner()}
+
+        <div class="jc-main-grid">
+          <!-- LEFT COLUMN: 12-Node Archipelago Map & Outgoing Route Legs -->
+          <section class="jc-panel" aria-label="Archipelago Navigation Chart">
+            <h2 class="jc-panel-title">
+              <span>12-Location Rustwater Archipelago Chart</span>
+              <span style="font-size:0.74rem;color:#9ab3bf;font-weight:500;">Click any adjacent node or route card to sail</span>
+            </h2>
+            <canvas class="jc-map-canvas" width="800" height="480" data-testid="archipelago-canvas"></canvas>
+            ${routePreviewHtml}
+
+            <h3 style="margin:0.8rem 0 0.4rem 0;font-size:0.82rem;color:#f3b34c;text-transform:uppercase;">
+              Outgoing Route Legs from ${currentNode.name} (${currentNode.code})
+            </h3>
+            <div class="jc-leg-grid">
+              ${connectedEdges.map((edge) => {
+      const neighborId = getNeighborNodeId(edge, st.currentNodeId);
+      const neighbor = getNodeById(neighborId);
+      const haz = HAZARDS[edge.hazardId];
+      const counterOwned = haz.counterModuleId && st.installedModules.includes(haz.counterModuleId);
+      const isDest = activeContracts.some((c) => c.destinationNodeId === neighborId);
+      return `
+                    <div class="jc-leg-card" style="${isDest ? "border-color:#f3b34c;" : ""}">
+                      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.3rem;">
+                        <strong style="font-size:0.84rem;color:#fff;">\u2192 ${neighbor.code}: ${neighbor.name}</strong>
+                        <span class="jc-badge" style="background:${haz.badgeColor};color:#081014;">${haz.shortCode}</span>
+                      </div>
+                      <div style="font-size:0.74rem;color:#b4c7d0;">
+                        Base Fuel: <strong>${edge.baseFuelCost}F</strong> \xB7 Channel: ${edge.channelType.replace("_", " ")}
+                      </div>
+                      <div style="font-size:0.72rem;color:#9ab3bf;">
+                        ${haz.name}: ${haz.consequenceSummary}
+                      </div>
+                      <div style="font-size:0.71rem;color:${counterOwned ? "#56c288" : "#f3b34c"};">
+                        ${counterOwned ? `\u2713 Counter Equipped (${getModuleById(haz.counterModuleId).shortTag})` : haz.counterModuleId ? `Counter Module: ${getModuleById(haz.counterModuleId).name}` : "Standard seamanship leg"}
+                      </div>
+                      <button
+                        type="button"
+                        class="jc-btn jc-btn-primary"
+                        data-action="sail-node"
+                        data-node-id="${neighborId}"
+                        ${st.runStatus !== "IN_PROGRESS" ? "disabled" : ""}
+                      >
+                        Sail to ${neighbor.code} (${edge.baseFuelCost} Fuel)
+                      </button>
+                    </div>
+                  `;
+    }).join("")}
+            </div>
+          </section>
+
+          <!-- RIGHT COLUMN: 8-Slot Hold Grid, Contract Clipboard & Modules -->
+          <div style="display:flex;flex-direction:column;gap:0.9rem;">
+            <!-- Hold Slot Allocation Grid -->
+            <section class="jc-panel" aria-label="Boat Hold Slot Allocation">
+              <h2 class="jc-panel-title">
+                <span>Iron Skiff Shared Hold (${holdValidation.usedSlots}/${st.maxHoldSlots} Slots)</span>
+                <span style="font-size:0.74rem;color:#9ab3bf;">Cargo ${holdValidation.breakdown.cargoSlots} \xB7 Mods ${holdValidation.breakdown.moduleSlots} \xB7 Drums ${holdValidation.breakdown.fuelDrumSlots} \xB7 Kits ${holdValidation.breakdown.repairKitSlots}</span>
+              </h2>
+              <div class="jc-hold-grid" data-testid="hold-slot-grid">
+                ${holdCells.map(
+      (cell) => `
+                  <div class="jc-slot-cell ${cell.category}">
+                    <span class="jc-slot-index">SLOT 0${cell.slotNumber} \xB7 ${cell.category.toUpperCase()}</span>
+                    <span class="jc-slot-name">${cell.title}</span>
+                    <span style="font-size:0.66rem;color:#9ab3bf;">${cell.subtitle}</span>
+                  </div>
+                `
+    ).join("")}
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
+                <button type="button" class="jc-btn" data-action="port-refuel" ${st.fuel >= st.maxFuel ? "disabled" : ""}>
+                  Refuel Tank (+1F / ${GAME_CONFIG.portFuelUnitCost}\xA2)
+                </button>
+                <button type="button" class="jc-btn" data-action="port-repair" ${st.hull >= st.maxHull ? "disabled" : ""}>
+                  Drydock Patch (+5 Hull / ${GAME_CONFIG.portHullPointCost * 5}\xA2)
+                </button>
+                <button type="button" class="jc-btn" data-action="buy-drum">
+                  +1 Fuel Drum (${GAME_CONFIG.fuelDrumCost}\xA2 \xB7 1 Slot)
+                </button>
+                <button type="button" class="jc-btn" data-action="crack-drum" ${st.fuelDrums <= 0 || st.fuel >= st.maxFuel ? "disabled" : ""}>
+                  Crack Drum (+${GAME_CONFIG.fuelPerDrum}F)
+                </button>
+                <button type="button" class="jc-btn" data-action="sell-drum" ${st.fuelDrums <= 0 ? "disabled" : ""}>
+                  Unload Drum (+${GAME_CONFIG.fuelDrumResell}\xA2)
+                </button>
+                <button type="button" class="jc-btn" data-action="buy-kit">
+                  +1 Repair Kit (${GAME_CONFIG.repairKitCost}\xA2 \xB7 1 Slot)
+                </button>
+                <button type="button" class="jc-btn" data-action="use-kit" ${st.repairKits <= 0 || st.hull >= st.maxHull ? "disabled" : ""}>
+                  Use Kit (+${st.installedModules.includes("mod-bilge-rig") ? GAME_CONFIG.bilgeRigRepairAmount : GAME_CONFIG.baseRepairAmount} Hull)
+                </button>
+                <button type="button" class="jc-btn" data-action="sell-kit" ${st.repairKits <= 0 ? "disabled" : ""}>
+                  Unload Kit (+${GAME_CONFIG.repairKitResell}\xA2)
+                </button>
+              </div>
+            </section>
+
+            <!-- Port Contract Clipboard -->
+            <section class="jc-panel" aria-label="Port Salvage Contracts">
+              <h2 class="jc-panel-title">
+                <span>Salvage Contract Clipboard</span>
+                <span style="font-size:0.74rem;color:#9ab3bf;">Active: ${activeContracts.length}/${GAME_CONFIG.maxActiveContracts}</span>
+              </h2>
+
+              <div class="jc-contract-list">
+                ${activeContracts.map((c) => {
+      const dest = getNodeById(c.destinationNodeId);
+      const canDeliver = st.currentNodeId === c.destinationNodeId && !c.paidOut;
+      return `
+                      <div class="jc-card active-contract" data-testid="active-contract-${c.id}">
+                        <div class="jc-card-header">
+                          <strong>[IN HOLD] ${c.cargoName} (${c.cargoSlots} Slot${c.cargoSlots > 1 ? "s" : ""})</strong>
+                          <span class="jc-badge" style="background:#f3b34c;color:#0b1317;">Payout ${Math.max(10, c.basePayout - c.accumulatedPenalty)}\xA2</span>
+                        </div>
+                        <div style="font-size:0.76rem;color:#d0e0e7;margin-block-end:0.4rem;">
+                          Destination: <strong>${dest.name} (${dest.code})</strong> \xB7 Hops: ${c.hopsTaken}
+                          ${c.fragile ? ' \xB7 <span style="color:#ff9f7f;">FRAGILE</span>' : ""}
+                          ${c.bulky ? ' \xB7 <span style="color:#f3b34c;">BULKY (3 Slots)</span>' : ""}
+                        </div>
+                        <div style="display:flex;gap:0.45rem;">
+                          ${canDeliver ? `<button type="button" class="jc-btn jc-btn-success" data-action="deliver-contract" data-contract-id="${c.id}">Deliver & Claim Payout (${Math.max(10, c.basePayout - c.accumulatedPenalty)}\xA2)</button>` : `<button type="button" class="jc-btn" data-action="focus-node" data-node-id="${c.destinationNodeId}">Plot Route to ${dest.code}</button>`}
+                          <button type="button" class="jc-btn jc-btn-danger" data-action="abandon-contract" data-contract-id="${c.id}">Jettison Cargo</button>
+                        </div>
+                      </div>
+                    `;
+    }).join("")}
+
+                ${portOffers.map((c) => {
+      const dest = getNodeById(c.destinationNodeId);
+      const fitsHold = holdValidation.breakdown.freeSlots >= c.cargoSlots;
+      return `
+                      <div class="jc-card" data-testid="offer-contract-${c.id}">
+                        <div class="jc-card-header">
+                          <strong>${c.cargoName} \u2014 ${c.categoryName}</strong>
+                          <div>
+                            <span class="jc-badge" style="background:#264554;color:#fff;">${c.cargoSlots} Hold Slot${c.cargoSlots > 1 ? "s" : ""}</span>
+                            <span class="jc-badge" style="background:#56c288;color:#08120c;">+${c.basePayout}\xA2</span>
+                          </div>
+                        </div>
+                        <div style="font-size:0.75rem;color:#9ab3bf;margin-block-end:0.35rem;">
+                          Deliver to <strong>${dest.name} (${dest.code})</strong>
+                          ${c.fragile ? ' \xB7 <strong style="color:#ff9f7f;">FRAGILE</strong>' : ""}
+                          ${c.urgentMaxHops ? ` \xB7 <strong style="color:#7fd4ff;">URGENT (\u2264${c.urgentMaxHops} hops: +15\xA2)</strong>` : ""}
+                        </div>
+                        <p style="margin:0 0 0.45rem 0;font-size:0.73rem;color:#8aa4b0;">${c.description}</p>
+                        <div style="display:flex;gap:0.45rem;">
+                          <button
+                            type="button"
+                            class="jc-btn jc-btn-primary"
+                            data-action="accept-contract"
+                            data-contract-id="${c.id}"
+                            ${!fitsHold || activeContracts.length >= GAME_CONFIG.maxActiveContracts ? "disabled" : ""}
+                          >
+                            ${fitsHold ? `Accept & Load (${c.cargoSlots} Slot${c.cargoSlots > 1 ? "s" : ""})` : `Needs ${c.cargoSlots} Free Slots (${holdValidation.breakdown.freeSlots} Free)`}
+                          </button>
+                          <button type="button" class="jc-btn" data-action="focus-node" data-node-id="${c.destinationNodeId}">
+                            Inspect Route
+                          </button>
+                        </div>
+                      </div>
+                    `;
+    }).join("")}
+              </div>
+            </section>
+
+            <!-- 6 Boat Modules Refit Bay -->
+            <section class="jc-panel" aria-label="Boat Module Refit Bay">
+              <h2 class="jc-panel-title">
+                <span>Boat Modules (${st.installedModules.length}/6 Installed)</span>
+                <span style="font-size:0.74rem;color:#9ab3bf;">Modules share the 8-Slot Hold</span>
+              </h2>
+              <div class="jc-module-list">
+                ${BOAT_MODULES.map((mod) => {
+      const installed = st.installedModules.includes(mod.id);
+      return `
+                    <div class="jc-card" style="display:flex;justify-content:space-between;align-items:center;gap:0.6rem;">
+                      <div>
+                        <div style="font-size:0.81rem;font-weight:700;color:${installed ? "#5bc0de" : "#e6edf0"};">
+                          ${mod.name} (${mod.slotCost} Slot${mod.slotCost > 1 ? "s" : ""} \xB7 ${mod.creditCost}\xA2)
+                        </div>
+                        <div style="font-size:0.72rem;color:#9ab3bf;">${mod.description}</div>
+                      </div>
+                      ${installed ? `<button type="button" class="jc-btn jc-btn-danger" data-action="uninstall-mod" data-mod-id="${mod.id}">Remove</button>` : `<button type="button" class="jc-btn" data-action="install-mod" data-mod-id="${mod.id}">Install (${mod.creditCost}\xA2)</button>`}
+                    </div>
+                  `;
+    }).join("")}
+              </div>
+            </section>
+
+            <!-- Voyage Log -->
+            <section class="jc-panel" aria-label="Skipper Logbook">
+              <h2 class="jc-panel-title"><span>Skipper's Logbook</span></h2>
+              <div class="jc-log-list">
+                ${[...st.log].reverse().map(
+      (entry) => `
+                  <div>
+                    <strong style="color:#f3b34c;">[T${entry.turn}]</strong>
+                    <span>${entry.message}</span>
+                  </div>
+                `
+    ).join("")}
+              </div>
+            </section>
+          </div>
+        </div>
+
+        ${this.debugOpen ? this.renderDebugPanel() : ""}
+        ${this.renderEncounterDialog()}
+      </div>
+    `;
+    this.drawArchipelagoCanvas(highlightedPathNodes);
+    this.bindEvents();
+    this.syncEncounterModal();
+  }
+  renderOutcomeBanner() {
+    const st = this.state;
+    if (st.runStatus === "VICTORY") {
+      return `
+        <div class="jc-outcome-banner victory" role="region" aria-label="Run Victory Summary">
+          <h2 style="margin:0 0 0.35rem 0;color:#56c288;">\u2605 VOYAGE VICTORY \u2014 3 SALVAGE DELIVERIES COMPLETED!</h2>
+          <p style="margin:0 0 0.55rem 0;font-size:0.85rem;">
+            The Iron Skiff conquered The Rustwater Shallows with <strong>${st.credits}\xA2</strong> in guild earnings,
+            <strong>${st.hull}/${st.maxHull} Hull</strong>, and <strong>${st.fuel}/${st.maxFuel} Fuel</strong> remaining.
+          </p>
+          <button type="button" class="jc-btn jc-btn-primary" data-action="new-run">Launch Next Archipelago Run</button>
+        </div>
+      `;
+    }
+    if (st.runStatus === "LOSS" && st.failureDiagnostic) {
+      const diag = st.failureDiagnostic;
+      return `
+        <div class="jc-outcome-banner loss" role="region" aria-label="Failure Diagnostic Report" data-testid="failure-diagnostic">
+          <h2 style="margin:0 0 0.35rem 0;color:#ff8978;">\u2715 VOYAGE LOST \u2014 ${diag.title}</h2>
+          <p style="margin:0 0 0.35rem 0;font-size:0.84rem;">
+            <strong>Diagnostic (${diag.mistakeCategory}):</strong> ${diag.summary}
+          </p>
+          <p style="margin:0 0 0.6rem 0;font-size:0.8rem;color:#ffd0c8;">
+            <strong>Skipper Recommendation:</strong> ${diag.recommendation}
+          </p>
+          <button type="button" class="jc-btn jc-btn-primary" data-action="new-run">Retry Archipelago Run</button>
+        </div>
+      `;
+    }
+    return "";
+  }
+  renderPendingUpgradeBanner() {
+    const st = this.state;
+    if (st.pendingUpgradeChoices.length === 0 || st.runStatus !== "IN_PROGRESS") {
+      return "";
+    }
+    return `
+      <div class="jc-outcome-banner" role="region" aria-label="Delivery Module Upgrade Reward">
+        <h3 style="margin:0 0 0.35rem 0;color:#f3b34c;">Delivery Complete! Select 1 Guild Module Upgrade (or +20\xA2 Stipend):</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+          ${st.pendingUpgradeChoices.map((modId) => {
+      const mod = getModuleById(modId);
+      return `
+                <button type="button" class="jc-btn jc-btn-primary" data-action="claim-upgrade" data-mod-id="${mod.id}">
+                  Install Free: ${mod.name} (${mod.slotCost} Slot${mod.slotCost > 1 ? "s" : ""})
+                </button>
+              `;
+    }).join("")}
+          <button type="button" class="jc-btn" data-action="claim-upgrade" data-mod-id="skip_for_credits">
+            Skip Module (+20\xA2 Guild Stipend)
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  renderEncounterDialog() {
+    const enc = this.state.pendingEncounter;
+    if (!enc) {
+      return `<dialog class="jc-encounter-dialog" id="jc-hazard-modal" aria-labelledby="jc-hazard-title" closedby="none"></dialog>`;
+    }
+    const haz = HAZARDS[enc.hazardId];
+    const destNode = getNodeById(enc.toNodeId);
+    return `
+      <dialog class="jc-encounter-dialog" id="jc-hazard-modal" aria-labelledby="jc-hazard-title" closedby="none">
+        <div>
+          <span class="jc-badge" style="background:${haz.badgeColor};color:#081014;">${haz.severity} HAZARD ENCOUNTER</span>
+          <h2 id="jc-hazard-title" style="margin:0.35rem 0 0.25rem 0;color:#f3b34c;">${haz.name} \u2014 En Route to ${destNode.name}</h2>
+          <p style="margin:0;font-size:0.83rem;color:#c2d5de;">${haz.description}</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:0.55rem;">
+          ${haz.choices.map((ch, idx) => {
+      const prev = previewHazardOutcome(this.state, enc.hazardId, ch.id);
+      const disabled = ch.id === "patch_brace" && this.state.repairKits <= 0;
+      return `
+                <div class="jc-card">
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;margin-block-end:0.3rem;">
+                    <strong>${ch.label}</strong>
+                    <span style="font-size:0.74rem;color:#f3b34c;">
+                      Extra Fuel: ${prev.extraFuel}F \xB7 Hull: -${prev.hullDamage}
+                      ${prev.scrapCreditBonus > 0 ? ` \xB7 +${prev.scrapCreditBonus}\xA2 Scrap` : ""}
+                    </span>
+                  </div>
+                  <p style="margin:0 0 0.45rem 0;font-size:0.76rem;color:#9ab3bf;">${prev.summaryNote}</p>
+                  <button
+                    type="button"
+                    class="jc-btn jc-btn-primary"
+                    data-action="resolve-encounter"
+                    data-choice-id="${ch.id}"
+                    ${idx === 0 ? "autofocus" : ""}
+                    ${disabled ? "disabled" : ""}
+                  >
+                    ${disabled ? "Requires 1 Repair Kit in Hold" : `Execute: ${ch.label}`}
+                  </button>
+                </div>
+              `;
+    }).join("")}
+        </div>
+      </dialog>
+    `;
+  }
+  renderDebugPanel() {
+    const st = this.state;
+    const hold = validateStateHoldCapacity(st);
+    return `
+      <section class="jc-panel" style="margin-block-start:0.9rem;border-color:#5bc0de;" data-testid="debug-inspector">
+        <h2 class="jc-panel-title"><span>[D] Debug Telemetry & Route Inspector</span></h2>
+        <div style="font-size:0.76rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.6rem;">
+          <div>
+            <strong>Seed / RNG State:</strong> ${st.seed} / ${st.rngState}<br/>
+            <strong>Hold Validation:</strong> ${hold.valid ? "VALID" : "INVALID"} (${hold.usedSlots}/${hold.maxSlots} Slots)<br/>
+            <strong>Delivered IDs (Anti-Double-Pay Ledger):</strong> ${st.deliveredContractIds.join(", ") || "None"}
+          </div>
+          <div>
+            <strong>Serialize / Import State:</strong>
+            <div style="display:flex;gap:0.4rem;margin-block-start:0.3rem;">
+              <button type="button" class="jc-btn" data-action="debug-add-credits">+50\xA2 Credits</button>
+              <button type="button" class="jc-btn" data-action="debug-heal">Full Hull & Fuel</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+  syncEncounterModal() {
+    const dialog = this.container.querySelector("#jc-hazard-modal");
+    if (!dialog) return;
+    if (this.state.pendingEncounter) {
+      if (!dialog.open && typeof dialog.showModal === "function") {
+        try {
+          dialog.showModal();
+        } catch {
+          dialog.setAttribute("open", "");
+        }
+      }
+    } else if (dialog.open && typeof dialog.close === "function") {
+      dialog.close();
+    }
+  }
+  drawArchipelagoCanvas(highlightedPathNodes) {
+    const canvas = this.container.querySelector(".jc-map-canvas");
+    if (!canvas) return;
+    if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent)) {
+      return;
+    }
+    let ctx = null;
+    try {
+      ctx = canvas.getContext("2d");
+    } catch {
+      return;
+    }
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(65, 115, 138, 0.16)";
+    ctx.lineWidth = 1;
+    for (let x = 40; x < w; x += 60) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = 40; y < h; y += 60) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+    const highlightedPairs = /* @__PURE__ */ new Set();
+    for (let i = 0; i < highlightedPathNodes.length - 1; i++) {
+      highlightedPairs.add(`${highlightedPathNodes[i]}__${highlightedPathNodes[i + 1]}`);
+      highlightedPairs.add(`${highlightedPathNodes[i + 1]}__${highlightedPathNodes[i]}`);
+    }
+    for (const edge of this.state.edges) {
+      const fromNode = getNodeById(edge.from);
+      const toNode = getNodeById(edge.to);
+      const haz = HAZARDS[edge.hazardId];
+      const isHighlighted = highlightedPairs.has(`${edge.from}__${edge.to}`);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(fromNode.x, fromNode.y);
+      ctx.lineTo(toNode.x, toNode.y);
+      ctx.strokeStyle = isHighlighted ? "#f3b34c" : haz.badgeColor;
+      ctx.lineWidth = isHighlighted ? 4 : 2.2;
+      if (edge.channelType === "INNER_SHORTCUT" && !isHighlighted) {
+        ctx.setLineDash([6, 4]);
+      }
+      ctx.stroke();
+      ctx.restore();
+      const mx = (fromNode.x + toNode.x) / 2;
+      const my = (fromNode.y + toNode.y) / 2;
+      const label = `${edge.baseFuelCost}F\xB7${haz.shortCode}`;
+      ctx.fillStyle = "rgba(9, 19, 25, 0.88)";
+      ctx.fillRect(mx - 28, my - 9, 56, 17);
+      ctx.strokeStyle = haz.badgeColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(mx - 28, my - 9, 56, 17);
+      ctx.fillStyle = "#e6edf0";
+      ctx.font = "bold 9px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, mx, my);
+    }
+    const activeDestinations = new Set(
+      this.state.contracts.filter((c) => c.status === "ACCEPTED").map((c) => c.destinationNodeId)
+    );
+    for (const node of ARCHIPELAGO_NODES) {
+      const isCurrent = node.id === this.state.currentNodeId;
+      const isTarget = activeDestinations.has(node.id);
+      const isSelected = node.id === this.state.selectedNodeId;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, isCurrent ? 15 : 11, 0, Math.PI * 2);
+      ctx.fillStyle = isCurrent ? "#f3b34c" : isTarget ? "#56c288" : "#1b3542";
+      ctx.fill();
+      ctx.lineWidth = isSelected ? 3 : 2;
+      ctx.strokeStyle = isSelected ? "#ffffff" : isCurrent ? "#081014" : "#5bc0de";
+      ctx.stroke();
+      ctx.fillStyle = isCurrent || isTarget ? "#081014" : "#e6edf0";
+      ctx.font = "bold 9px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(node.code, node.x, node.y);
+      ctx.fillStyle = isCurrent ? "#f3b34c" : isTarget ? "#7ef0b0" : "#d2e2e9";
+      ctx.font = "bold 11px Inter, sans-serif";
+      ctx.fillText(node.name, node.x, node.y + 24);
+    }
+  }
+  bindEvents() {
+    const canvas = this.container.querySelector(".jc-map-canvas");
+    if (canvas) {
+      canvas.addEventListener("click", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const cx = (e.clientX - rect.left) * scaleX;
+        const cy = (e.clientY - rect.top) * scaleY;
+        for (const node of ARCHIPELAGO_NODES) {
+          const dist = Math.hypot(cx - node.x, cy - node.y);
+          if (dist <= 24) {
+            this.state.selectedNodeId = node.id;
+            const connected = getConnectedEdges(this.state, this.state.currentNodeId).some(
+              (edge) => getNeighborNodeId(edge, this.state.currentNodeId) === node.id
+            );
+            if (connected && this.state.runStatus === "IN_PROGRESS") {
+              const res = beginTravelToNode(this.state, node.id);
+              if (!res.ok) {
+                this.setNotice(res.error ?? "Unable to sail.", true);
+              } else {
+                this.audio.playDieselChug();
+              }
+            } else {
+              this.audio.playSonarPing();
+              this.setNotice(`Selected ${node.name} (${node.code}) on archipelago chart.`);
+            }
+            this.render();
+            break;
+          }
+        }
+      });
+    }
+    this.container.querySelectorAll("button[data-action]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const action = btn.dataset.action;
+        switch (action) {
+          case "preset-hauler":
+          case "preset-armored": {
+            const presetId = action === "preset-hauler" ? "hauler" : "armored_runner";
+            const res = applyLoadoutPreset(this.state, presetId);
+            if (!res.ok) {
+              this.setNotice(res.error ?? "Preset blocked by hold capacity.", true);
+            } else {
+              this.audio.playHullClank();
+              this.setNotice(`Equipped ${LOADOUT_PRESETS[presetId].name} loadout.`);
+            }
+            this.render();
+            break;
+          }
+          case "save-run": {
+            const ok = saveRunToStorage(this.state);
+            this.setNotice(
+              ok ? `Run saved at ${getNodeById(this.state.currentNodeId).name} (Seed #${this.state.seed}).` : "Unable to save run to localStorage.",
+              !ok
+            );
+            this.render();
+            break;
+          }
+          case "load-run": {
+            const loaded = loadRunFromStorage();
+            if (loaded) {
+              this.state = loaded;
+              this.audio.playSonarPing();
+              this.setNotice(`Loaded saved run (Seed #${loaded.seed}, Turn ${loaded.turn}).`);
+            } else {
+              this.setNotice("No saved run found in localStorage.", true);
+            }
+            this.render();
+            break;
+          }
+          case "new-run": {
+            this.restartWithSeed(this.state.seed + 1);
+            break;
+          }
+          case "toggle-mute": {
+            this.audio.muted = !this.audio.muted;
+            this.render();
+            break;
+          }
+          case "toggle-debug": {
+            this.toggleDebug();
+            break;
+          }
+          case "sail-node": {
+            const targetId = btn.dataset.nodeId;
+            const res = beginTravelToNode(this.state, targetId);
+            if (!res.ok) {
+              this.setNotice(res.error ?? "Cannot sail leg.", true);
+            } else {
+              this.audio.playDieselChug();
+            }
+            this.render();
+            break;
+          }
+          case "resolve-encounter": {
+            const choiceId = btn.dataset.choiceId;
+            const res = resolvePendingEncounter(this.state, choiceId);
+            if (!res.ok) {
+              this.setNotice(res.error ?? "Encounter resolution failed.", true);
+            } else {
+              this.audio.playHullClank();
+            }
+            this.render();
+            break;
+          }
+          case "accept-contract": {
+            const cId = btn.dataset.contractId;
+            const res = acceptContract(this.state, cId);
+            if (!res.ok) {
+              this.setNotice(res.error ?? "Cannot accept contract.", true);
+            } else {
+              this.audio.playHullClank();
+              this.setNotice("Contract cargo loaded into Hold.");
+            }
+            this.render();
+            break;
+          }
+          case "abandon-contract": {
+            const cId = btn.dataset.contractId;
+            const res = abandonContract(this.state, cId);
+            if (!res.ok) {
+              this.setNotice(res.error ?? "Cannot jettison contract.", true);
+            } else {
+              this.setNotice("Cargo jettisoned; hold slots freed.");
+            }
+            this.render();
+            break;
+          }
+          case "deliver-contract": {
+            const cId = btn.dataset.contractId;
+            const res = deliverContract(this.state, cId);
+            if (!res.ok) {
+              this.setNotice(res.error ?? "Delivery rejected.", true);
+            } else {
+              this.audio.playCoinChime();
+              this.setNotice(`Delivered contract for +${res.payout}\xA2!`);
+            }
+            this.render();
+            break;
+          }
+          case "claim-upgrade": {
+            const modId = btn.dataset.modId;
+            const res = selectDeliveryUpgradeModule(this.state, modId);
+            if (!res.ok) {
+              this.setNotice(res.error ?? "Cannot install upgrade (check free Hold Slots).", true);
+            } else {
+              this.audio.playCoinChime();
+              this.setNotice("Applied post-delivery guild upgrade!");
+            }
+            this.render();
+            break;
+          }
+          case "focus-node": {
+            this.state.selectedNodeId = btn.dataset.nodeId ?? null;
+            this.audio.playSonarPing();
+            this.render();
+            break;
+          }
+          case "install-mod": {
+            const modId = btn.dataset.modId;
+            const res = installModule(this.state, modId);
+            if (!res.ok) {
+              this.setNotice(res.error ?? "Module installation failed.", true);
+            } else {
+              this.audio.playHullClank();
+              this.setNotice("Module bolted into boat hold.");
+            }
+            this.render();
+            break;
+          }
+          case "uninstall-mod": {
+            const modId = btn.dataset.modId;
+            const res = uninstallModule(this.state, modId);
+            if (!res.ok) {
+              this.setNotice(res.error ?? "Cannot remove module.", true);
+            } else {
+              this.setNotice("Module uninstalled and hold space freed.");
+            }
+            this.render();
+            break;
+          }
+          case "port-refuel": {
+            const res = refuelAtPort(this.state, 1);
+            if (!res.ok) this.setNotice(res.error ?? "Cannot refuel.", true);
+            this.render();
+            break;
+          }
+          case "port-repair": {
+            const res = repairHullAtPort(this.state, 5);
+            if (!res.ok) this.setNotice(res.error ?? "Cannot repair hull.", true);
+            this.render();
+            break;
+          }
+          case "buy-drum": {
+            const res = buyFuelDrum(this.state);
+            if (!res.ok) this.setNotice(res.error ?? "Cannot buy Fuel Drum.", true);
+            this.render();
+            break;
+          }
+          case "crack-drum": {
+            const res = crackFuelDrumIntoTank(this.state);
+            if (!res.ok) this.setNotice(res.error ?? "Cannot crack drum.", true);
+            this.render();
+            break;
+          }
+          case "sell-drum": {
+            const res = sellFuelDrum(this.state);
+            if (!res.ok) this.setNotice(res.error ?? "Cannot sell drum.", true);
+            this.render();
+            break;
+          }
+          case "buy-kit": {
+            const res = buyRepairKit(this.state);
+            if (!res.ok) this.setNotice(res.error ?? "Cannot buy Repair Kit.", true);
+            this.render();
+            break;
+          }
+          case "use-kit": {
+            const res = useRepairKitOnHull(this.state);
+            if (!res.ok) this.setNotice(res.error ?? "Cannot use Repair Kit.", true);
+            this.render();
+            break;
+          }
+          case "sell-kit": {
+            const res = sellRepairKit(this.state);
+            if (!res.ok) this.setNotice(res.error ?? "Cannot sell Repair Kit.", true);
+            this.render();
+            break;
+          }
+          case "debug-add-credits": {
+            this.state.credits += 50;
+            this.render();
+            break;
+          }
+          case "debug-heal": {
+            this.state.hull = this.state.maxHull;
+            this.state.fuel = this.state.maxFuel;
+            this.render();
+            break;
+          }
+        }
+      });
+    });
+  }
+  exportStateJson() {
+    return serializeRunState(this.state);
+  }
+  importStateJson(raw) {
+    const res = deserializeRunState(raw);
+    if (res.ok && res.state) {
+      this.state = res.state;
+      this.render();
+      return true;
+    }
+    return false;
+  }
+};
+
+// games/04-junkyard-courier/src/index.ts
+function mountGame(container, options) {
+  const seed = options?.initialSeed ?? GAME_CONFIG.defaultSeed;
+  const initialState = createInitialRunState(seed);
+  const ui = new JunkyardCourierUI(container, initialState, {
+    debug: options?.debug
+  });
+  return {
+    destroy() {
+      ui.destroy();
+    },
+    getStateSnapshot() {
+      return structuredClone(ui.getState());
+    },
+    restartWithSeed(nextSeed) {
+      ui.restartWithSeed(nextSeed);
+    },
+    toggleDebug(force) {
+      ui.toggleDebug(force);
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_04-junkyard-courier.ts
+var root = document.getElementById("game-root");
+if (root) {
+  mountGame(root, { initialSeed: 404 });
+}
+
+</script>
+  </body>
+</html>

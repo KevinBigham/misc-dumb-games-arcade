@@ -1,0 +1,2563 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Belt &amp; Bolt — Factory Logistics Defense</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0b0f19;
+        color: #e2e8f0;
+        min-height: 100vh;
+      }
+      #game-root {
+        min-height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-root"></div>
+    <script type="module">
+// games/09-belt-and-bolt/src/audio.ts
+var BeltAndBoltAudio = class {
+  ctx = null;
+  muted = false;
+  ensureContext() {
+    if (this.muted || typeof window === "undefined") return null;
+    if (!this.ctx) {
+      const AudioCtor = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtor) {
+        try {
+          this.ctx = new AudioCtor();
+        } catch {
+          this.ctx = null;
+        }
+      }
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  setMuted(muted) {
+    this.muted = muted;
+  }
+  isMuted() {
+    return this.muted;
+  }
+  playPlaceClank() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(190, now);
+    osc.frequency.exponentialRampToValueAtTime(95, now + 0.08);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.09);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.09);
+  }
+  playDemolish() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(70, now + 0.12);
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.13);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.13);
+  }
+  playTurretPulse(isRailgun = false) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = isRailgun ? "sawtooth" : "square";
+    osc.frequency.setValueAtTime(isRailgun ? 640 : 420, now);
+    osc.frequency.exponentialRampToValueAtTime(isRailgun ? 110 : 160, now + 0.07);
+    gain.gain.setValueAtTime(isRailgun ? 0.1 : 0.06, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.075);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.075);
+  }
+  playSmelterHiss() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(780, now + 0.06);
+    gain.gain.setValueAtTime(0.04, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.065);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.065);
+  }
+  playWaveKlaxon(isBoss = false) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(isBoss ? 220 : 330, now);
+    osc.frequency.setValueAtTime(isBoss ? 310 : 440, now + 0.14);
+    gain.gain.setValueAtTime(0.11, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.3);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  }
+  destroy() {
+    if (this.ctx) {
+      this.ctx.close().catch(() => {
+      });
+      this.ctx = null;
+    }
+  }
+};
+
+// games/09-belt-and-bolt/src/config.ts
+var DIRECTION_ORDER = ["N", "E", "S", "W"];
+var DIRECTION_DELTAS = {
+  N: { dx: 0, dy: -1 },
+  E: { dx: 1, dy: 0 },
+  S: { dx: 0, dy: 1 },
+  W: { dx: -1, dy: 0 }
+};
+function rotateDirectionCW(dir) {
+  switch (dir) {
+    case "N":
+      return "E";
+    case "E":
+      return "S";
+    case "S":
+      return "W";
+    case "W":
+      return "N";
+  }
+}
+var CONFIG = {
+  GRID_SIZE: 12,
+  CORE_DEFAULT_X: 5,
+  CORE_DEFAULT_Y: 5,
+  CORE_MAX_HP: 500,
+  INITIAL_CREDITS: 150,
+  REFUND_RATIO: 0.75,
+  SHORT_GOAL_WAVE: 10,
+  CAMPAIGN_MAX_WAVE: 30,
+  TICK_INTERVAL_MS: 220,
+  WAVE_PREP_TICKS: 25,
+  EARLY_WAVE_BONUS_BASE: 20,
+  // Producer / Processor / Storage parameters
+  MINER_INTERVAL_TICKS: 1,
+  SMELTER_PROCESS_TICKS: 1,
+  SMELTER_INPUT_CAPACITY: 3,
+  SILO_CAPACITY: 12,
+  AMMO_PER_DELIVERED_ITEM: 2,
+  // Quota milestones that grant bonus Core overcharge credits + tech points
+  QUOTA_MILESTONES: [15, 60, 200, 600],
+  QUOTA_MILESTONE_REWARDS: [45, 90, 180, 350],
+  // Tech unlock waves
+  TECH_UNLOCK_WAVES: [1, 3, 6, 9, 12],
+  STORAGE_KEY: "argon_game09_belt_and_bolt_save_v1"
+};
+
+// games/09-belt-and-bolt/src/content.ts
+var ITEMS = {
+  CuCircle: {
+    id: "CuCircle",
+    code: "CuCu",
+    name: "Raw Copper Circle",
+    tier: "raw",
+    color: "#f97316",
+    strokeColor: "#fdba74",
+    shapeKind: "circle",
+    creditValue: 4,
+    quotaValue: 1,
+    damageMultiplier: 1,
+    pierceBonus: 0,
+    refinedInto: "CutHalf",
+    description: "Standard kinetic round (1.0x turret dmg) or 4 Core credits."
+  },
+  FeSquare: {
+    id: "FeSquare",
+    code: "FeFe",
+    name: "Raw Iron Square",
+    tier: "raw",
+    color: "#60a5fa",
+    strokeColor: "#bfdbfe",
+    shapeKind: "square",
+    creditValue: 6,
+    quotaValue: 2,
+    damageMultiplier: 1.4,
+    pierceBonus: 0,
+    refinedInto: "BoltedAlloy",
+    description: "Dense iron slug (1.4x turret dmg) or refine in Smelter -> BoltedAlloy."
+  },
+  AuStar: {
+    id: "AuStar",
+    code: "AuAu",
+    name: "Crystal Star Ore",
+    tier: "raw",
+    color: "#facc15",
+    strokeColor: "#fef08a",
+    shapeKind: "star",
+    creditValue: 10,
+    quotaValue: 4,
+    damageMultiplier: 1.8,
+    pierceBonus: 1,
+    refinedInto: "BoltedAlloy",
+    description: "High-value crystal star (1.8x turret dmg, 10 Core credits)."
+  },
+  CutHalf: {
+    id: "CutHalf",
+    code: "CuHalf",
+    name: "Cut Copper Wedge",
+    tier: "refined",
+    color: "#fb923c",
+    strokeColor: "#ffedd5",
+    shapeKind: "wedge",
+    creditValue: 8,
+    quotaValue: 3,
+    damageMultiplier: 2,
+    pierceBonus: 1,
+    refinedInto: null,
+    description: "Precision-cut copper wedge (2.0x turret dmg, 2x Core credit value)."
+  },
+  BoltedAlloy: {
+    id: "BoltedAlloy",
+    code: "FeBolt",
+    name: "Refined Bolt Ammo",
+    tier: "refined",
+    color: "#38bdf8",
+    strokeColor: "#e0f2fe",
+    shapeKind: "bolt",
+    creditValue: 12,
+    quotaValue: 5,
+    damageMultiplier: 2.5,
+    pierceBonus: 2,
+    refinedInto: null,
+    description: "Smelted hyper-velocity bolt (2.5x turret dmg + armor pierce, 2x Core credit value)."
+  }
+};
+var VEIN_TO_ITEM = {
+  none: "CuCircle",
+  copper_vein: "CuCircle",
+  iron_vein: "FeSquare",
+  crystal_vein: "AuStar"
+};
+var BLOCKS = {
+  empty: {
+    id: "empty",
+    name: "Empty Deck",
+    shortLabel: "",
+    hotkey: "",
+    cost: 0,
+    maxHp: 0,
+    unlockWave: 1,
+    category: "logistics",
+    color: "#111827",
+    accentColor: "#1f2937",
+    rotatable: false,
+    isTurret: false,
+    description: "Open industrial deck tile."
+  },
+  core: {
+    id: "core",
+    name: "Central Command Core",
+    shortLabel: "CORE",
+    hotkey: "",
+    cost: 0,
+    maxHp: CONFIG.CORE_MAX_HP,
+    unlockWave: 1,
+    category: "core",
+    color: "#0ea5e9",
+    accentColor: "#bae6fd",
+    rotatable: false,
+    isTurret: false,
+    description: "Accepts ore & refined shapes from all 4 sides for Credits + Quota Progress. Lose if HP hits 0."
+  },
+  miner: {
+    id: "miner",
+    name: "Extractor Miner",
+    shortLabel: "MINER",
+    hotkey: "1",
+    cost: 20,
+    maxHp: 90,
+    unlockWave: 1,
+    category: "production",
+    color: "#d97706",
+    accentColor: "#fde68a",
+    rotatable: true,
+    isTurret: false,
+    description: "Extracts geometric ore from veins (or trace CuCircle on deck) and pushes into facing belt."
+  },
+  belt: {
+    id: "belt",
+    name: "Conveyor Belt",
+    shortLabel: "BELT",
+    hotkey: "2",
+    cost: 4,
+    maxHp: 50,
+    unlockWave: 1,
+    category: "logistics",
+    color: "#334155",
+    accentColor: "#94a3b8",
+    rotatable: true,
+    isTurret: false,
+    description: "Moves 1 item/tick in facing direction. Jams visibly if downstream tile is full."
+  },
+  splitter: {
+    id: "splitter",
+    name: "1:1 Splitter",
+    shortLabel: "SPLIT",
+    hotkey: "3",
+    cost: 14,
+    maxHp: 75,
+    unlockWave: 3,
+    category: "logistics",
+    color: "#7c3aed",
+    accentColor: "#ddd6fe",
+    rotatable: true,
+    isTurret: false,
+    description: "Alternates incoming items 50/50 (or toggleable 2:1) between open downstream paths."
+  },
+  overclock_belt: {
+    id: "overclock_belt",
+    name: "Overclocked Belt (2x)",
+    shortLabel: "2X BELT",
+    hotkey: "4",
+    cost: 10,
+    maxHp: 65,
+    unlockWave: 3,
+    category: "logistics",
+    color: "#0284c7",
+    accentColor: "#7dd3fc",
+    rotatable: true,
+    isTurret: false,
+    description: "High-speed magnetic conveyor that shunts items up to 2 tiles per tick."
+  },
+  smelter: {
+    id: "smelter",
+    name: "Alloy Cutter/Smelter",
+    shortLabel: "SMELT",
+    hotkey: "5",
+    cost: 35,
+    maxHp: 110,
+    unlockWave: 6,
+    category: "processing",
+    color: "#ea580c",
+    accentColor: "#fed7aa",
+    rotatable: true,
+    isTurret: false,
+    description: "Refines FeSquare -> BoltedAlloy (2.5x turret dmg, 2x Core value) and CuCircle -> CutHalf."
+  },
+  silo: {
+    id: "silo",
+    name: "Capacitor Buffer Silo",
+    shortLabel: "SILO",
+    hotkey: "6",
+    cost: 28,
+    maxHp: 130,
+    unlockWave: 9,
+    category: "processing",
+    color: "#0d9488",
+    accentColor: "#99f6e4",
+    rotatable: true,
+    isTurret: false,
+    description: "Stores up to 12 items to absorb belt congestion spikes and auto-feeds adjacent turrets."
+  },
+  bolt_turret: {
+    id: "bolt_turret",
+    name: "Bolt Turret",
+    shortLabel: "BOLT",
+    hotkey: "7",
+    cost: 30,
+    maxHp: 120,
+    unlockWave: 1,
+    category: "defense",
+    color: "#16a34a",
+    accentColor: "#bbf7d0",
+    rotatable: false,
+    isTurret: true,
+    turretRange: 3.8,
+    turretBaseDamage: 16,
+    turretFireIntervalTicks: 1,
+    turretMaxAmmo: 10,
+    turretTargetsPerShot: 1,
+    turretAntiBossMultiplier: 1,
+    description: "Starter kinetic turret. Must be fed ammo via belt or silo (up to 2.5x dmg with BoltedAlloy)."
+  },
+  scatter_turret: {
+    id: "scatter_turret",
+    name: "Twin-Barrel Scatter Turret",
+    shortLabel: "SCATTER",
+    hotkey: "8",
+    cost: 55,
+    maxHp: 150,
+    unlockWave: 9,
+    category: "defense",
+    color: "#ca8a04",
+    accentColor: "#fef08a",
+    rotatable: false,
+    isTurret: true,
+    turretRange: 3.4,
+    turretBaseDamage: 14,
+    turretFireIntervalTicks: 1,
+    turretMaxAmmo: 14,
+    turretTargetsPerShot: 2,
+    turretAntiBossMultiplier: 1.1,
+    description: "Fires twin flak bursts at up to 2 enemies simultaneously. Ideal against Swarm Waves."
+  },
+  arc_railgun: {
+    id: "arc_railgun",
+    name: "Arc Railgun Turret",
+    shortLabel: "RAILGUN",
+    hotkey: "9",
+    cost: 85,
+    maxHp: 180,
+    unlockWave: 12,
+    category: "defense",
+    color: "#2563eb",
+    accentColor: "#bfdbfe",
+    rotatable: false,
+    isTurret: true,
+    turretRange: 5.5,
+    turretBaseDamage: 38,
+    turretFireIntervalTicks: 1,
+    turretMaxAmmo: 8,
+    turretTargetsPerShot: 1,
+    turretAntiBossMultiplier: 2,
+    description: "Long-range magnetic railgun. Deals 2x bonus damage to Bosses & Shielded units."
+  },
+  wall: {
+    id: "wall",
+    name: "Repair Wall",
+    shortLabel: "WALL",
+    hotkey: "0",
+    cost: 12,
+    maxHp: 240,
+    unlockWave: 1,
+    category: "defense",
+    color: "#475569",
+    accentColor: "#cbd5e1",
+    rotatable: false,
+    isTurret: false,
+    description: "Reinforced industrial bulkhead that absorbs enemy attacks and regenerates hull between waves."
+  }
+};
+var BUILDABLE_BLOCK_ORDER = [
+  "miner",
+  "belt",
+  "splitter",
+  "overclock_belt",
+  "smelter",
+  "silo",
+  "bolt_turret",
+  "scatter_turret",
+  "arc_railgun",
+  "wall"
+];
+var TECH_TREE_UNLOCKS = [
+  {
+    wave: 1,
+    title: "Tier 0: Pioneer Starter Kit",
+    unlockedBlocks: ["miner", "belt", "bolt_turret", "wall"],
+    description: "Basic extraction, 1x conveyors, kinetic Bolt Turrets, and defensive Repair Walls."
+  },
+  {
+    wave: 3,
+    title: "Tier 1: Logistics Routing & Overclock",
+    unlockedBlocks: ["splitter", "overclock_belt"],
+    description: "Unlocks 1:1 Splitters to balance Core vs. Turret routing and 2x Overclocked Belts."
+  },
+  {
+    wave: 6,
+    title: "Tier 2: Geometric Alloy Refinement",
+    unlockedBlocks: ["smelter"],
+    description: "Unlocks Alloy Cutter/Smelter (FeSquare -> BoltedAlloy with 2.5x turret damage & 2x Core value)."
+  },
+  {
+    wave: 9,
+    title: "Tier 3: Flak Defense & Surge Buffering",
+    unlockedBlocks: ["scatter_turret", "silo"],
+    description: "Unlocks Twin-Barrel Scatter Turrets and 12-slot Capacitor Buffer Silos."
+  },
+  {
+    wave: 12,
+    title: "Tier 4: High-Voltage Boss Suppression",
+    unlockedBlocks: ["arc_railgun"],
+    description: "Unlocks long-range Arc Railgun Turrets with 2.0x anti-boss/shield penetration."
+  }
+];
+var ENEMY_TYPES = {
+  scout_drone: {
+    id: "scout_drone",
+    name: "Scout Drone",
+    maxHp: 28,
+    speedTilesPerTick: 0.42,
+    coreDamage: 18,
+    wallDamage: 12,
+    bountyCredits: 8,
+    isBoss: false,
+    isShielded: false,
+    color: "#ef4444",
+    radiusRatio: 0.26
+  },
+  swarm_wasp: {
+    id: "swarm_wasp",
+    name: "Swarm Wasp",
+    maxHp: 20,
+    speedTilesPerTick: 0.58,
+    coreDamage: 12,
+    wallDamage: 8,
+    bountyCredits: 6,
+    isBoss: false,
+    isShielded: false,
+    color: "#f97316",
+    radiusRatio: 0.22
+  },
+  armored_bruiser: {
+    id: "armored_bruiser",
+    name: "Armored Bruiser",
+    maxHp: 85,
+    speedTilesPerTick: 0.3,
+    coreDamage: 35,
+    wallDamage: 24,
+    bountyCredits: 16,
+    isBoss: false,
+    isShielded: true,
+    color: "#a855f7",
+    radiusRatio: 0.32
+  },
+  siege_crawler: {
+    id: "siege_crawler",
+    name: "Siege Crawler (Boss)",
+    maxHp: 320,
+    speedTilesPerTick: 0.22,
+    coreDamage: 95,
+    wallDamage: 50,
+    bountyCredits: 65,
+    isBoss: true,
+    isShielded: true,
+    color: "#dc2626",
+    radiusRatio: 0.42
+  },
+  shielded_dreadnought: {
+    id: "shielded_dreadnought",
+    name: "Shielded Dreadnought (Boss)",
+    maxHp: 560,
+    speedTilesPerTick: 0.2,
+    coreDamage: 130,
+    wallDamage: 75,
+    bountyCredits: 110,
+    isBoss: true,
+    isShielded: true,
+    color: "#7c3aed",
+    radiusRatio: 0.45
+  },
+  apex_goliath: {
+    id: "apex_goliath",
+    name: "Apex Goliath (Final Boss)",
+    maxHp: 980,
+    speedTilesPerTick: 0.18,
+    coreDamage: 220,
+    wallDamage: 110,
+    bountyCredits: 250,
+    isBoss: true,
+    isShielded: true,
+    color: "#be123c",
+    radiusRatio: 0.48
+  }
+};
+function buildWaveTable() {
+  const waves = [];
+  for (let w = 1; w <= CONFIG.CAMPAIGN_MAX_WAVE; w++) {
+    const techUnlock = TECH_TREE_UNLOCKS.find((t) => t.wave === w);
+    if (w === 15) {
+      waves.push({
+        wave: w,
+        title: "Wave 15: Siege Crawler Assault",
+        isBossWave: true,
+        rewardCredits: 90,
+        earlyLaunchBonus: 35,
+        spawns: [
+          { enemyType: "scout_drone", count: 4, spacingTicks: 2 },
+          { enemyType: "siege_crawler", count: 1, spacingTicks: 4 },
+          { enemyType: "armored_bruiser", count: 2, spacingTicks: 3 }
+        ]
+      });
+    } else if (w === 20) {
+      waves.push({
+        wave: w,
+        title: "Wave 20: Shielded Dreadnought Vanguard",
+        isBossWave: true,
+        rewardCredits: 120,
+        earlyLaunchBonus: 45,
+        spawns: [
+          { enemyType: "swarm_wasp", count: 6, spacingTicks: 2 },
+          { enemyType: "shielded_dreadnought", count: 1, spacingTicks: 4 },
+          { enemyType: "armored_bruiser", count: 3, spacingTicks: 3 }
+        ]
+      });
+    } else if (w === 25) {
+      waves.push({
+        wave: w,
+        title: "Wave 25: Twin Dreadnought Siege",
+        isBossWave: true,
+        rewardCredits: 160,
+        earlyLaunchBonus: 55,
+        spawns: [
+          { enemyType: "armored_bruiser", count: 4, spacingTicks: 2 },
+          { enemyType: "shielded_dreadnought", count: 2, spacingTicks: 5 },
+          { enemyType: "swarm_wasp", count: 8, spacingTicks: 1 }
+        ]
+      });
+    } else if (w === 30) {
+      waves.push({
+        wave: w,
+        title: "Wave 30: Apex Goliath Final Reckoning",
+        isBossWave: true,
+        rewardCredits: 300,
+        earlyLaunchBonus: 80,
+        spawns: [
+          { enemyType: "armored_bruiser", count: 4, spacingTicks: 2 },
+          { enemyType: "siege_crawler", count: 1, spacingTicks: 4 },
+          { enemyType: "apex_goliath", count: 1, spacingTicks: 5 }
+        ]
+      });
+    } else {
+      const spawns = [];
+      const scoutCount = Math.min(8, 2 + Math.floor(w * 0.45));
+      spawns.push({ enemyType: "scout_drone", count: scoutCount, spacingTicks: 2 });
+      if (w >= 4) {
+        spawns.push({
+          enemyType: "swarm_wasp",
+          count: 1 + Math.floor((w - 3) * 0.5),
+          spacingTicks: 2
+        });
+      }
+      if (w >= 7) {
+        spawns.push({
+          enemyType: "armored_bruiser",
+          count: 1 + Math.floor((w - 6) * 0.35),
+          spacingTicks: 3
+        });
+      }
+      waves.push({
+        wave: w,
+        title: techUnlock ? `Wave ${w}: ${techUnlock.title}` : `Wave ${w}: Sector Patrol`,
+        isBossWave: false,
+        techUnlockNote: techUnlock?.title,
+        rewardCredits: 20 + w * 4,
+        earlyLaunchBonus: 12 + w * 2,
+        spawns
+      });
+    }
+  }
+  return waves;
+}
+var WAVE_TABLE = buildWaveTable();
+function getWaveDefinition(waveNumber) {
+  if (waveNumber >= 1 && waveNumber <= WAVE_TABLE.length) {
+    return WAVE_TABLE[waveNumber - 1];
+  }
+  const extra = Math.max(1, waveNumber - 30);
+  return {
+    wave: waveNumber,
+    title: `Wave ${waveNumber}: Endless Overdrive +${extra}`,
+    isBossWave: waveNumber % 5 === 0,
+    rewardCredits: 180 + extra * 15,
+    earlyLaunchBonus: 50 + extra * 5,
+    spawns: [
+      { enemyType: "swarm_wasp", count: 6 + extra, spacingTicks: 1 },
+      { enemyType: "armored_bruiser", count: 3 + Math.floor(extra * 0.6), spacingTicks: 2 },
+      ...waveNumber % 5 === 0 ? [{ enemyType: "apex_goliath", count: 1 + Math.floor(extra / 5), spacingTicks: 4 }] : []
+    ]
+  };
+}
+
+// games/09-belt-and-bolt/src/rng.ts
+function mulberry32(seed) {
+  let state = seed >>> 0;
+  if (state === 0) state = 1831565813;
+  const next = () => {
+    state = state + 1831565813 >>> 0;
+    let t = Math.imul(state ^ state >>> 15, 1 | state);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  return {
+    next,
+    nextInt(minInclusive, maxInclusive) {
+      const span = Math.max(1, maxInclusive - minInclusive + 1);
+      return minInclusive + Math.floor(next() * span);
+    },
+    pick(items) {
+      if (items.length === 0) {
+        throw new Error("Cannot pick from an empty array");
+      }
+      const idx = Math.floor(next() * items.length);
+      return items[idx];
+    },
+    getState() {
+      return state >>> 0;
+    }
+  };
+}
+
+// games/09-belt-and-bolt/src/simulation.ts
+function createEmptyTile(x, y, vein = "none") {
+  return {
+    x,
+    y,
+    vein,
+    block: "empty",
+    direction: "E",
+    hp: 0,
+    maxHp: 0,
+    item: null,
+    inputBuffer: [],
+    craftProgress: 0,
+    congested: false,
+    splitterToggle: 0,
+    splitterRatio: "1:1",
+    ammoCount: 0,
+    maxAmmo: 0,
+    loadedAmmoType: null,
+    cooldown: 0
+  };
+}
+function createInitialState(options) {
+  const seed = options?.seed ?? 9092026;
+  const rng = mulberry32(seed);
+  const gridSize = CONFIG.GRID_SIZE;
+  const coreX = options?.coreX ?? CONFIG.CORE_DEFAULT_X;
+  const coreY = options?.coreY ?? CONFIG.CORE_DEFAULT_Y;
+  const grid = [];
+  for (let y = 0; y < gridSize; y++) {
+    const row = [];
+    for (let x = 0; x < gridSize; x++) {
+      row.push(createEmptyTile(x, y, "none"));
+    }
+    grid.push(row);
+  }
+  const anchorVeins = [
+    { x: Math.max(0, coreX - 2), y: coreY, vein: "copper_vein" },
+    { x: Math.max(0, coreX - 3), y: Math.max(0, coreY - 1), vein: "copper_vein" },
+    { x: coreX, y: Math.max(0, coreY - 2), vein: "iron_vein" },
+    { x: Math.min(gridSize - 1, coreX + 2), y: coreY, vein: "iron_vein" },
+    { x: coreX, y: Math.min(gridSize - 1, coreY + 2), vein: "copper_vein" },
+    { x: Math.min(gridSize - 1, coreX + 3), y: Math.min(gridSize - 1, coreY + 2), vein: "crystal_vein" },
+    { x: Math.max(0, coreX - 2), y: Math.min(gridSize - 1, coreY + 3), vein: "iron_vein" },
+    { x: Math.min(gridSize - 1, coreX + 2), y: Math.max(0, coreY - 3), vein: "crystal_vein" }
+  ];
+  for (const v of anchorVeins) {
+    if (v.x !== coreX || v.y !== coreY) {
+      grid[v.y][v.x].vein = v.vein;
+    }
+  }
+  const veinChoices = ["copper_vein", "iron_vein", "crystal_vein"];
+  for (let i = 0; i < 8; i++) {
+    const vx = rng.nextInt(1, gridSize - 2);
+    const vy = rng.nextInt(1, gridSize - 2);
+    const dist = Math.abs(vx - coreX) + Math.abs(vy - coreY);
+    if (dist >= 2 && grid[vy][vx].vein === "none") {
+      grid[vy][vx].vein = rng.pick(veinChoices);
+    }
+  }
+  const coreTile = grid[coreY][coreX];
+  coreTile.vein = "none";
+  coreTile.block = "core";
+  coreTile.hp = CONFIG.CORE_MAX_HP;
+  coreTile.maxHp = CONFIG.CORE_MAX_HP;
+  const starterUnlocks = [...TECH_TREE_UNLOCKS[0].unlockedBlocks];
+  return {
+    seed,
+    rngState: rng.getState(),
+    tick: 0,
+    gridSize,
+    corePos: { x: coreX, y: coreY },
+    coreHp: CONFIG.CORE_MAX_HP,
+    coreMaxHp: CONFIG.CORE_MAX_HP,
+    credits: CONFIG.INITIAL_CREDITS,
+    quotaProgress: 0,
+    claimedQuotaMilestones: [],
+    wave: 1,
+    waveActive: false,
+    wavePrepTicksRemaining: CONFIG.WAVE_PREP_TICKS,
+    queuedSpawns: [],
+    waveSpawnTimer: 0,
+    enemies: [],
+    activeShots: [],
+    unlockedBlocks: starterUnlocks,
+    unlockedTechWaves: [1],
+    coreInventory: {
+      CuCircle: 0,
+      FeSquare: 0,
+      AuStar: 0,
+      CutHalf: 0,
+      BoltedAlloy: 0
+    },
+    grid,
+    status: "playing",
+    endlessMode: false,
+    nextItemId: 1,
+    nextEnemyId: 1,
+    nextShotId: 1,
+    stats: {
+      itemsMined: 0,
+      itemsDeliveredToCore: 0,
+      itemsRefined: 0,
+      ammoLoaded: 0,
+      shotsFired: 0,
+      totalDamageDealt: 0,
+      enemiesDestroyed: 0,
+      totalCreditsEarned: 0,
+      congestionTicks: 0,
+      wavesCleared: 0
+    },
+    lastEventMessage: "Command Core online. Place Miners and Belts to feed Core Quota & Perimeter Turrets."
+  };
+}
+function getTile(state, x, y) {
+  if (x < 0 || y < 0 || x >= state.gridSize || y >= state.gridSize) {
+    return null;
+  }
+  return state.grid[y][x];
+}
+function isBlockUnlocked(state, blockType) {
+  if (blockType === "empty" || blockType === "core") return true;
+  return state.unlockedBlocks.includes(blockType);
+}
+function unlockTechForWave(state, targetWave) {
+  const newlyUnlocked = [];
+  for (const tier of TECH_TREE_UNLOCKS) {
+    if (tier.wave <= targetWave) {
+      if (!state.unlockedTechWaves.includes(tier.wave)) {
+        state.unlockedTechWaves.push(tier.wave);
+      }
+      for (const blockId of tier.unlockedBlocks) {
+        if (!state.unlockedBlocks.includes(blockId)) {
+          state.unlockedBlocks.push(blockId);
+          newlyUnlocked.push(blockId);
+        }
+      }
+    }
+  }
+  if (newlyUnlocked.length > 0) {
+    const names = newlyUnlocked.map((b) => BLOCKS[b].name).join(" + ");
+    state.lastEventMessage = `Tech Unlocked (Wave ${targetWave}): ${names}!`;
+  }
+  return newlyUnlocked;
+}
+function applyBuildCommand(state, command) {
+  const tile = getTile(state, command.x, command.y);
+  if (!tile) {
+    return { ok: false, reason: "out_of_bounds" };
+  }
+  if (command.type === "rotate") {
+    if (tile.block === "empty" || tile.block === "core") {
+      return { ok: false, reason: "not_rotatable" };
+    }
+    tile.direction = command.direction ?? rotateDirectionCW(tile.direction);
+    return { ok: true };
+  }
+  if (command.type === "toggle_splitter_ratio") {
+    if (tile.block !== "splitter") {
+      return { ok: false, reason: "not_splitter" };
+    }
+    const order = ["1:1", "2:1_A", "2:1_B"];
+    const idx = order.indexOf(tile.splitterRatio);
+    tile.splitterRatio = order[(idx + 1) % order.length];
+    return { ok: true };
+  }
+  if (command.type === "demolish") {
+    if (tile.block === "empty") {
+      return { ok: false, reason: "already_empty" };
+    }
+    if (tile.block === "core") {
+      return { ok: false, reason: "cannot_demolish_core" };
+    }
+    const meta = BLOCKS[tile.block];
+    const refund = Math.floor(meta.cost * CONFIG.REFUND_RATIO);
+    state.credits += refund;
+    const preservedVein = tile.vein;
+    state.grid[tile.y][tile.x] = createEmptyTile(tile.x, tile.y, preservedVein);
+    return { ok: true, refundedCredits: refund };
+  }
+  if (command.type === "place") {
+    const blockType = command.blockType;
+    if (!blockType || blockType === "empty") {
+      return { ok: false, reason: "invalid_block" };
+    }
+    if (tile.block === "core") {
+      return { ok: false, reason: "cannot_overwrite_core" };
+    }
+    if (command.respectTechLock && !isBlockUnlocked(state, blockType)) {
+      return { ok: false, reason: "tech_locked" };
+    }
+    const meta = BLOCKS[blockType];
+    const isSameBlockRotation = tile.block === blockType;
+    const refundExisting = tile.block !== "empty" && !isSameBlockRotation ? Math.floor(BLOCKS[tile.block].cost * CONFIG.REFUND_RATIO) : 0;
+    const netCost = command.free || isSameBlockRotation ? 0 : Math.max(0, meta.cost - refundExisting);
+    if (!command.free && state.credits < netCost) {
+      return { ok: false, reason: "insufficient_credits" };
+    }
+    state.credits -= netCost;
+    if (isSameBlockRotation) {
+      if (command.direction) {
+        tile.direction = command.direction;
+      } else {
+        tile.direction = rotateDirectionCW(tile.direction);
+      }
+      if (command.produceOverride) {
+        tile.produceOverride = command.produceOverride;
+      }
+      return { ok: true, costPaid: 0 };
+    }
+    const preservedVein = tile.vein;
+    const nextTile = createEmptyTile(tile.x, tile.y, preservedVein);
+    nextTile.block = blockType;
+    nextTile.direction = command.direction ?? "E";
+    nextTile.hp = meta.maxHp;
+    nextTile.maxHp = meta.maxHp;
+    nextTile.maxAmmo = meta.turretMaxAmmo ?? 0;
+    if (command.produceOverride) {
+      nextTile.produceOverride = command.produceOverride;
+    }
+    if (blockType === "core") {
+      state.corePos = { x: tile.x, y: tile.y };
+    }
+    state.grid[tile.y][tile.x] = nextTile;
+    return { ok: true, costPaid: netCost };
+  }
+  return { ok: false, reason: "unknown_command" };
+}
+function isReceiverBlock(block) {
+  return block === "core" || block === "belt" || block === "overclock_belt" || block === "splitter" || block === "smelter" || block === "silo" || block === "bolt_turret" || block === "scatter_turret" || block === "arc_railgun";
+}
+function isTilePointingInto(tile, targetX, targetY) {
+  if (tile.block !== "belt" && tile.block !== "overclock_belt" && tile.block !== "miner" && tile.block !== "smelter") {
+    return false;
+  }
+  const delta = DIRECTION_DELTAS[tile.direction];
+  return tile.x + delta.dx === targetX && tile.y + delta.dy === targetY;
+}
+function canTileAcceptItem(state, tx, ty, _itemType, fromX, fromY) {
+  const target = getTile(state, tx, ty);
+  if (!target) return false;
+  if (fromX !== void 0 && fromY !== void 0 && (target.block === "belt" || target.block === "overclock_belt") && isTilePointingInto(target, fromX, fromY)) {
+    return false;
+  }
+  switch (target.block) {
+    case "core":
+      return true;
+    case "belt":
+    case "overclock_belt":
+    case "splitter":
+      return target.item === null;
+    case "smelter":
+      return target.inputBuffer.length < CONFIG.SMELTER_INPUT_CAPACITY;
+    case "silo":
+      return target.inputBuffer.length < CONFIG.SILO_CAPACITY;
+    case "bolt_turret":
+    case "scatter_turret":
+    case "arc_railgun":
+      return target.ammoCount < target.maxAmmo;
+    default:
+      return false;
+  }
+}
+function checkQuotaMilestones(state) {
+  for (let i = 0; i < CONFIG.QUOTA_MILESTONES.length; i++) {
+    const threshold = CONFIG.QUOTA_MILESTONES[i];
+    if (state.quotaProgress >= threshold && !state.claimedQuotaMilestones.includes(threshold)) {
+      state.claimedQuotaMilestones.push(threshold);
+      const reward = CONFIG.QUOTA_MILESTONE_REWARDS[i] ?? 50;
+      state.credits += reward;
+      state.stats.totalCreditsEarned += reward;
+      state.lastEventMessage = `Core Quota Milestone (${threshold}) reached! +${reward} Bonus Credits!`;
+    }
+  }
+}
+function deliverItemToTile(state, target, item) {
+  switch (target.block) {
+    case "core": {
+      const meta = ITEMS[item.type];
+      state.credits += meta.creditValue;
+      state.quotaProgress += meta.quotaValue;
+      state.coreInventory[item.type] = (state.coreInventory[item.type] ?? 0) + 1;
+      state.stats.itemsDeliveredToCore += 1;
+      state.stats.totalCreditsEarned += meta.creditValue;
+      checkQuotaMilestones(state);
+      return;
+    }
+    case "belt":
+    case "overclock_belt":
+    case "splitter": {
+      target.item = { ...item, progress: 1 };
+      return;
+    }
+    case "smelter":
+    case "silo": {
+      target.inputBuffer.push(item.type);
+      return;
+    }
+    case "bolt_turret":
+    case "scatter_turret":
+    case "arc_railgun": {
+      target.ammoCount = Math.min(
+        target.maxAmmo,
+        target.ammoCount + CONFIG.AMMO_PER_DELIVERED_ITEM
+      );
+      if (!target.loadedAmmoType || ITEMS[item.type].damageMultiplier >= ITEMS[target.loadedAmmoType].damageMultiplier) {
+        target.loadedAmmoType = item.type;
+      }
+      state.stats.ammoLoaded += CONFIG.AMMO_PER_DELIVERED_ITEM;
+      return;
+    }
+    default:
+      return;
+  }
+}
+function findProducerOrProcessorTarget(state, tile) {
+  const primaryDelta = DIRECTION_DELTAS[tile.direction];
+  const px = tile.x + primaryDelta.dx;
+  const py = tile.y + primaryDelta.dy;
+  const primaryNeighbor = getTile(state, px, py);
+  if (primaryNeighbor && isReceiverBlock(primaryNeighbor.block) && !isTilePointingInto(primaryNeighbor, tile.x, tile.y)) {
+    return { x: px, y: py };
+  }
+  for (const dir of DIRECTION_ORDER) {
+    const delta = DIRECTION_DELTAS[dir];
+    const nx = tile.x + delta.dx;
+    const ny = tile.y + delta.dy;
+    const neighbor = getTile(state, nx, ny);
+    if (neighbor && isReceiverBlock(neighbor.block) && !isTilePointingInto(neighbor, tile.x, tile.y)) {
+      return { x: nx, y: ny };
+    }
+  }
+  return { x: px, y: py };
+}
+function getSplitterDownstreamCandidates(state, tile) {
+  const startIdx = DIRECTION_ORDER.indexOf(tile.direction);
+  const candidates = [];
+  for (let offset = 0; offset < 4; offset++) {
+    const dir = DIRECTION_ORDER[(startIdx + offset) % 4];
+    const delta = DIRECTION_DELTAS[dir];
+    const nx = tile.x + delta.dx;
+    const ny = tile.y + delta.dy;
+    const neighbor = getTile(state, nx, ny);
+    if (!neighbor) continue;
+    if (!isReceiverBlock(neighbor.block)) continue;
+    if (isTilePointingInto(neighbor, tile.x, tile.y)) continue;
+    candidates.push({ x: nx, y: ny });
+  }
+  return candidates;
+}
+function pickSplitterTarget(state, tile, itemType) {
+  const candidates = getSplitterDownstreamCandidates(state, tile);
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) {
+    const only = candidates[0];
+    if (canTileAcceptItem(state, only.x, only.y, itemType, tile.x, tile.y)) {
+      tile.splitterToggle = (tile.splitterToggle + 1) % 2;
+      return only;
+    }
+    return null;
+  }
+  let preferredSlot = 0;
+  if (tile.splitterRatio === "1:1") {
+    preferredSlot = tile.splitterToggle % candidates.length;
+  } else if (tile.splitterRatio === "2:1_A") {
+    const pattern = [0, 0, 1];
+    preferredSlot = pattern[tile.splitterToggle % pattern.length] % candidates.length;
+  } else {
+    const pattern = [0, 1, 1];
+    preferredSlot = pattern[tile.splitterToggle % pattern.length] % candidates.length;
+  }
+  for (let attempt = 0; attempt < candidates.length; attempt++) {
+    const idx = (preferredSlot + attempt) % candidates.length;
+    const cand = candidates[idx];
+    if (canTileAcceptItem(state, cand.x, cand.y, itemType, tile.x, tile.y)) {
+      tile.splitterToggle += 1;
+      return cand;
+    }
+  }
+  return null;
+}
+function stepFactoryTick(state) {
+  if (state.status !== "playing") {
+    return state;
+  }
+  state.tick += 1;
+  state.activeShots = state.activeShots.map((s) => ({ ...s, ttlTicks: s.ttlTicks - 1 })).filter((s) => s.ttlTicks > 0);
+  const movesLeft = /* @__PURE__ */ new Map();
+  const initialItemIdByTile = /* @__PURE__ */ new Map();
+  for (let y = 0; y < state.gridSize; y++) {
+    for (let x = 0; x < state.gridSize; x++) {
+      const tile = state.grid[y][x];
+      tile.congested = false;
+      if (tile.item) {
+        const budget = tile.block === "overclock_belt" ? 2 : 1;
+        movesLeft.set(tile.item.id, budget);
+        initialItemIdByTile.set(tile, tile.item.id);
+      }
+    }
+  }
+  const siloPushed = /* @__PURE__ */ new Set();
+  let movedAny = true;
+  let guard = 0;
+  const maxPasses = state.gridSize * state.gridSize * 2;
+  while (movedAny && guard < maxPasses) {
+    movedAny = false;
+    guard += 1;
+    for (let y = 0; y < state.gridSize; y++) {
+      for (let x = 0; x < state.gridSize; x++) {
+        const tile = state.grid[y][x];
+        if ((tile.block === "belt" || tile.block === "overclock_belt") && tile.item !== null) {
+          const rem = movesLeft.get(tile.item.id) ?? 0;
+          if (rem > 0) {
+            const delta = DIRECTION_DELTAS[tile.direction];
+            const tx = tile.x + delta.dx;
+            const ty = tile.y + delta.dy;
+            if (canTileAcceptItem(state, tx, ty, tile.item.type, tile.x, tile.y)) {
+              const movingItem = tile.item;
+              const destTile = getTile(state, tx, ty);
+              tile.item = null;
+              deliverItemToTile(state, destTile, movingItem);
+              const nextRem = destTile.block === "overclock_belt" || tile.block === "overclock_belt" ? rem - 1 : 0;
+              movesLeft.set(movingItem.id, Math.max(0, nextRem));
+              movedAny = true;
+            }
+          }
+        } else if (tile.block === "splitter" && tile.item !== null) {
+          const rem = movesLeft.get(tile.item.id) ?? 0;
+          if (rem > 0) {
+            const targetCoord = pickSplitterTarget(state, tile, tile.item.type);
+            if (targetCoord) {
+              const movingItem = tile.item;
+              const destTile = getTile(state, targetCoord.x, targetCoord.y);
+              tile.item = null;
+              deliverItemToTile(state, destTile, movingItem);
+              movesLeft.set(movingItem.id, 0);
+              movedAny = true;
+            }
+          }
+        } else if (tile.block === "smelter" && tile.item !== null) {
+          const rem = movesLeft.get(tile.item.id) ?? 0;
+          if (rem > 0) {
+            const targetCoord = findProducerOrProcessorTarget(state, tile);
+            if (canTileAcceptItem(
+              state,
+              targetCoord.x,
+              targetCoord.y,
+              tile.item.type,
+              tile.x,
+              tile.y
+            )) {
+              const movingItem = tile.item;
+              const destTile = getTile(state, targetCoord.x, targetCoord.y);
+              tile.item = null;
+              deliverItemToTile(state, destTile, movingItem);
+              movesLeft.set(movingItem.id, 0);
+              movedAny = true;
+            }
+          }
+        } else if (tile.block === "silo" && tile.inputBuffer.length > 0) {
+          const key = `${tile.x},${tile.y}`;
+          if (!siloPushed.has(key)) {
+            const nextType = tile.inputBuffer[0];
+            let fedTarget = null;
+            for (const dir of DIRECTION_ORDER) {
+              const d = DIRECTION_DELTAS[dir];
+              const adj = getTile(state, tile.x + d.dx, tile.y + d.dy);
+              if (adj && BLOCKS[adj.block].isTurret && adj.ammoCount < adj.maxAmmo) {
+                fedTarget = adj;
+                break;
+              }
+            }
+            if (!fedTarget) {
+              const d = DIRECTION_DELTAS[tile.direction];
+              const outX = tile.x + d.dx;
+              const outY = tile.y + d.dy;
+              if (canTileAcceptItem(
+                state,
+                outX,
+                outY,
+                nextType,
+                tile.x,
+                tile.y
+              )) {
+                fedTarget = getTile(state, outX, outY);
+              }
+            }
+            if (fedTarget) {
+              tile.inputBuffer.shift();
+              const outItem = {
+                id: state.nextItemId++,
+                type: nextType,
+                progress: 1
+              };
+              movesLeft.set(outItem.id, 0);
+              deliverItemToTile(state, fedTarget, outItem);
+              siloPushed.add(key);
+              movedAny = true;
+            }
+          }
+        }
+      }
+    }
+  }
+  for (const [tile, startItemId] of initialItemIdByTile.entries()) {
+    if (tile.item !== null && tile.item.id === startItemId) {
+      tile.congested = true;
+      state.stats.congestionTicks += 1;
+    }
+  }
+  for (let y = 0; y < state.gridSize; y++) {
+    for (let x = 0; x < state.gridSize; x++) {
+      const tile = state.grid[y][x];
+      if (tile.block !== "smelter") continue;
+      if (tile.item === null && tile.inputBuffer.length > 0) {
+        tile.craftProgress += 1;
+        if (tile.craftProgress >= CONFIG.SMELTER_PROCESS_TICKS) {
+          tile.craftProgress = 0;
+          const rawType = tile.inputBuffer.shift();
+          const refinedType = ITEMS[rawType].refinedInto ?? "BoltedAlloy";
+          const refinedItem = {
+            id: state.nextItemId++,
+            type: refinedType,
+            progress: 1
+          };
+          state.stats.itemsRefined += 1;
+          const targetCoord = findProducerOrProcessorTarget(state, tile);
+          if (canTileAcceptItem(
+            state,
+            targetCoord.x,
+            targetCoord.y,
+            refinedItem.type,
+            tile.x,
+            tile.y
+          )) {
+            const destTile = getTile(state, targetCoord.x, targetCoord.y);
+            deliverItemToTile(state, destTile, refinedItem);
+            movesLeft.set(refinedItem.id, 0);
+          } else {
+            tile.item = refinedItem;
+            tile.congested = true;
+          }
+        }
+      }
+    }
+  }
+  for (let y = 0; y < state.gridSize; y++) {
+    for (let x = 0; x < state.gridSize; x++) {
+      const tile = state.grid[y][x];
+      if (tile.block !== "miner") continue;
+      const minedType = tile.produceOverride ?? VEIN_TO_ITEM[tile.vein] ?? "CuCircle";
+      if (tile.item === null) {
+        tile.craftProgress += 1;
+        if (tile.craftProgress >= CONFIG.MINER_INTERVAL_TICKS) {
+          tile.craftProgress = 0;
+          tile.item = {
+            id: state.nextItemId++,
+            type: minedType,
+            progress: 0
+          };
+          state.stats.itemsMined += 1;
+        }
+      }
+      if (tile.item !== null) {
+        const targetCoord = findProducerOrProcessorTarget(state, tile);
+        if (canTileAcceptItem(
+          state,
+          targetCoord.x,
+          targetCoord.y,
+          tile.item.type,
+          tile.x,
+          tile.y
+        )) {
+          const destTile = getTile(state, targetCoord.x, targetCoord.y);
+          const outItem = tile.item;
+          tile.item = null;
+          tile.congested = false;
+          deliverItemToTile(state, destTile, outItem);
+          movesLeft.set(outItem.id, 0);
+        } else {
+          tile.congested = true;
+          state.stats.congestionTicks += 1;
+        }
+      }
+    }
+  }
+  if (!state.waveActive && state.enemies.length === 0) {
+    if (state.wavePrepTicksRemaining > 0) {
+      state.wavePrepTicksRemaining -= 1;
+    }
+  } else {
+    stepWaveCombat(state);
+  }
+  return state;
+}
+function spawnEnemy(state, enemyType, customX, customY) {
+  const meta = ENEMY_TYPES[enemyType];
+  const rng = mulberry32(state.rngState);
+  let sx = customX;
+  let sy = customY;
+  if (sx === void 0 || sy === void 0) {
+    const edge = rng.nextInt(0, 3);
+    const offset = rng.nextInt(1, state.gridSize - 2);
+    if (edge === 0) {
+      sx = offset;
+      sy = 0;
+    } else if (edge === 1) {
+      sx = state.gridSize - 1;
+      sy = offset;
+    } else if (edge === 2) {
+      sx = offset;
+      sy = state.gridSize - 1;
+    } else {
+      sx = 0;
+      sy = offset;
+    }
+  }
+  state.rngState = rng.getState();
+  const waveScale = 1 + Math.max(0, state.wave - 1) * 0.06;
+  const scaledHp = Math.round(meta.maxHp * waveScale);
+  const enemy = {
+    id: state.nextEnemyId++,
+    type: enemyType,
+    name: meta.name,
+    x: sx,
+    y: sy,
+    hp: scaledHp,
+    maxHp: scaledHp,
+    speedTilesPerTick: meta.speedTilesPerTick,
+    coreDamage: meta.coreDamage,
+    wallDamage: meta.wallDamage,
+    bountyCredits: meta.bountyCredits,
+    isBoss: meta.isBoss,
+    isShielded: meta.isShielded
+  };
+  state.enemies.push(enemy);
+  return enemy;
+}
+function triggerNextWave(state, options) {
+  if (state.status !== "playing") return state;
+  if (options?.waveNumber !== void 0) {
+    state.wave = options.waveNumber;
+  }
+  unlockTechForWave(state, state.wave);
+  const waveDef = getWaveDefinition(state.wave);
+  if (options?.earlyBonus && !state.waveActive && state.wavePrepTicksRemaining > 0) {
+    state.credits += waveDef.earlyLaunchBonus;
+    state.stats.totalCreditsEarned += waveDef.earlyLaunchBonus;
+  }
+  const queue = [];
+  for (const group of waveDef.spawns) {
+    for (let i = 0; i < group.count; i++) {
+      queue.push({
+        enemyType: group.enemyType,
+        delayTicks: i === 0 ? 0 : group.spacingTicks
+      });
+    }
+  }
+  state.queuedSpawns = queue;
+  state.waveSpawnTimer = 0;
+  state.waveActive = true;
+  state.wavePrepTicksRemaining = 0;
+  state.lastEventMessage = `${waveDef.title} incoming! Keep turret magazines supplied!`;
+  if (state.queuedSpawns.length > 0) {
+    const first = state.queuedSpawns.shift();
+    spawnEnemy(state, first.enemyType);
+    if (state.queuedSpawns.length > 0) {
+      state.waveSpawnTimer = state.queuedSpawns[0].delayTicks;
+    }
+  }
+  return state;
+}
+function stepWaveCombat(state) {
+  if (state.status !== "playing") return state;
+  if (state.waveActive && state.queuedSpawns.length > 0) {
+    if (state.waveSpawnTimer > 0) {
+      state.waveSpawnTimer -= 1;
+    }
+    if (state.waveSpawnTimer <= 0 && state.queuedSpawns.length > 0) {
+      const next = state.queuedSpawns.shift();
+      spawnEnemy(state, next.enemyType);
+      if (state.queuedSpawns.length > 0) {
+        state.waveSpawnTimer = state.queuedSpawns[0].delayTicks;
+      }
+    }
+  }
+  for (let y = 0; y < state.gridSize; y++) {
+    for (let x = 0; x < state.gridSize; x++) {
+      const tile = state.grid[y][x];
+      const meta = BLOCKS[tile.block];
+      if (!meta.isTurret) continue;
+      if (tile.cooldown > 0) {
+        tile.cooldown -= 1;
+      }
+      if (tile.ammoCount <= 0 || tile.cooldown > 0 || state.enemies.length === 0) {
+        continue;
+      }
+      const range = meta.turretRange ?? 3.8;
+      const inRange = state.enemies.map((enemy) => {
+        const distToTurret = Math.hypot(enemy.x - tile.x, enemy.y - tile.y);
+        const distToCore = Math.hypot(
+          enemy.x - state.corePos.x,
+          enemy.y - state.corePos.y
+        );
+        return { enemy, distToTurret, distToCore };
+      }).filter((entry) => entry.distToTurret <= range && entry.enemy.hp > 0).sort((a, b) => a.distToCore - b.distToCore);
+      if (inRange.length === 0) continue;
+      const maxTargets = meta.turretTargetsPerShot ?? 1;
+      const targets = inRange.slice(0, maxTargets);
+      const ammoType = tile.loadedAmmoType ?? "CuCircle";
+      const ammoMeta = ITEMS[ammoType];
+      const baseDamage = meta.turretBaseDamage ?? 15;
+      tile.ammoCount = Math.max(0, tile.ammoCount - 1);
+      if (tile.ammoCount === 0) {
+        tile.loadedAmmoType = null;
+      }
+      tile.cooldown = Math.max(0, (meta.turretFireIntervalTicks ?? 1) - 1);
+      state.stats.shotsFired += 1;
+      for (const { enemy } of targets) {
+        let shotDamage = Math.round(baseDamage * ammoMeta.damageMultiplier);
+        if ((enemy.isBoss || enemy.isShielded) && (meta.turretAntiBossMultiplier ?? 1) > 1) {
+          shotDamage = Math.round(shotDamage * (meta.turretAntiBossMultiplier ?? 1));
+        }
+        enemy.hp -= shotDamage;
+        state.stats.totalDamageDealt += shotDamage;
+        state.activeShots.push({
+          id: state.nextShotId++,
+          fromX: tile.x,
+          fromY: tile.y,
+          toX: enemy.x,
+          toY: enemy.y,
+          color: ammoMeta.color,
+          ttlTicks: 2
+        });
+      }
+    }
+  }
+  const surviving = [];
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) {
+      state.credits += enemy.bountyCredits;
+      state.stats.totalCreditsEarned += enemy.bountyCredits;
+      state.stats.enemiesDestroyed += 1;
+    } else {
+      surviving.push(enemy);
+    }
+  }
+  state.enemies = surviving;
+  const afterMove = [];
+  for (const enemy of state.enemies) {
+    const dx = state.corePos.x - enemy.x;
+    const dy = state.corePos.y - enemy.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= 0.85) {
+      state.coreHp = Math.max(0, state.coreHp - enemy.coreDamage);
+      state.lastEventMessage = `WARNING: ${enemy.name} struck the Command Core (-${enemy.coreDamage} HP)!`;
+      if (state.coreHp <= 0) {
+        state.coreHp = 0;
+        state.status = "defeat";
+        state.waveActive = false;
+        state.lastEventMessage = "CRITICAL FAILURE: Command Core Hull reached 0 HP!";
+        break;
+      }
+      if (enemy.isBoss) {
+        afterMove.push(enemy);
+      }
+      continue;
+    }
+    const stepDist = Math.min(dist, enemy.speedTilesPerTick);
+    const nx = enemy.x + dx / dist * stepDist;
+    const ny = enemy.y + dy / dist * stepDist;
+    const cellTile = getTile(state, Math.round(nx), Math.round(ny));
+    if (cellTile && cellTile.block === "wall" && cellTile.hp > 0) {
+      cellTile.hp -= enemy.wallDamage;
+      if (cellTile.hp <= 0) {
+        const preservedVein = cellTile.vein;
+        state.grid[cellTile.y][cellTile.x] = createEmptyTile(
+          cellTile.x,
+          cellTile.y,
+          preservedVein
+        );
+      }
+      afterMove.push(enemy);
+    } else {
+      enemy.x = nx;
+      enemy.y = ny;
+      afterMove.push(enemy);
+    }
+  }
+  if (state.status === "defeat") {
+    return state;
+  }
+  state.enemies = afterMove;
+  if (state.waveActive && state.queuedSpawns.length === 0 && state.enemies.length === 0 && state.coreHp > 0) {
+    const clearedWave = state.wave;
+    const waveDef = getWaveDefinition(clearedWave);
+    state.waveActive = false;
+    state.stats.wavesCleared += 1;
+    state.credits += waveDef.rewardCredits;
+    state.stats.totalCreditsEarned += waveDef.rewardCredits;
+    for (let y = 0; y < state.gridSize; y++) {
+      for (let x = 0; x < state.gridSize; x++) {
+        const t = state.grid[y][x];
+        if (t.block === "wall" && t.hp > 0 && t.hp < t.maxHp) {
+          t.hp = Math.min(t.maxHp, t.hp + 40);
+        }
+      }
+    }
+    if (clearedWave >= CONFIG.CAMPAIGN_MAX_WAVE && !state.endlessMode) {
+      state.status = "victory";
+      state.lastEventMessage = `CAMPAIGN VICTORY! All ${CONFIG.CAMPAIGN_MAX_WAVE} Waves survived!`;
+    } else {
+      state.wave = clearedWave + 1;
+      state.wavePrepTicksRemaining = CONFIG.WAVE_PREP_TICKS;
+      const unlocked = unlockTechForWave(state, state.wave);
+      if (unlocked.length === 0) {
+        state.lastEventMessage = `Wave ${clearedWave} cleared (+${waveDef.rewardCredits} Credits)! Prepare for Wave ${state.wave}.`;
+      }
+    }
+  }
+  return state;
+}
+function diagnoseBottlenecks(state) {
+  const congestedTiles = [];
+  const dryTurrets = [];
+  const starvedSmelters = [];
+  for (let y = 0; y < state.gridSize; y++) {
+    for (let x = 0; x < state.gridSize; x++) {
+      const tile = state.grid[y][x];
+      if (tile.congested) {
+        const delta = DIRECTION_DELTAS[tile.direction];
+        const dest = getTile(state, tile.x + delta.dx, tile.y + delta.dy);
+        let reason = "Downstream capacity full";
+        if (!dest || dest.block === "empty") {
+          reason = "Belt ends at open deck (no receiver)";
+        } else if (BLOCKS[dest.block].isTurret && dest.ammoCount >= dest.maxAmmo) {
+          reason = `${BLOCKS[dest.block].shortLabel} magazine full (${dest.ammoCount}/${dest.maxAmmo})`;
+        } else if (dest.block === "smelter") {
+          reason = "Smelter input buffer full";
+        }
+        congestedTiles.push({ x, y, block: tile.block, reason });
+      }
+      if (BLOCKS[tile.block].isTurret && tile.ammoCount === 0) {
+        dryTurrets.push({ x, y, block: tile.block });
+      }
+      if (tile.block === "smelter" && tile.inputBuffer.length === 0 && tile.item === null) {
+        starvedSmelters.push({ x, y });
+      }
+    }
+  }
+  const ticksElapsed = Math.max(1, state.tick);
+  const ticksPerMinute = Math.round(6e4 / CONFIG.TICK_INTERVAL_MS);
+  const coreThroughputPerMin = Math.round(
+    state.stats.itemsDeliveredToCore / ticksElapsed * ticksPerMinute
+  );
+  return {
+    congestedTiles,
+    dryTurrets,
+    starvedSmelters,
+    coreThroughputPerMin
+  };
+}
+function deployStarterBlueprint(state) {
+  const cx = state.corePos.x;
+  const cy = state.corePos.y;
+  applyBuildCommand(state, {
+    type: "place",
+    x: cx - 2,
+    y: cy,
+    blockType: "miner",
+    direction: "E"
+  });
+  applyBuildCommand(state, {
+    type: "place",
+    x: cx - 1,
+    y: cy,
+    blockType: "belt",
+    direction: "E"
+  });
+  applyBuildCommand(state, {
+    type: "place",
+    x: cx,
+    y: cy - 2,
+    blockType: "miner",
+    direction: "S"
+  });
+  applyBuildCommand(state, {
+    type: "place",
+    x: cx,
+    y: cy - 1,
+    blockType: "belt",
+    direction: "S"
+  });
+  applyBuildCommand(state, {
+    type: "place",
+    x: cx,
+    y: cy + 2,
+    blockType: "miner",
+    direction: "S"
+  });
+  applyBuildCommand(state, {
+    type: "place",
+    x: cx,
+    y: cy + 3,
+    blockType: "bolt_turret",
+    direction: "S"
+  });
+  state.lastEventMessage = "Starter Blueprint deployed: 2 Core Economy lines + 1 Perimeter Bolt Turret line active!";
+}
+
+// games/09-belt-and-bolt/src/persistence.ts
+var SAVE_SCHEMA_VERSION = 1;
+var DEFAULT_BEST_RECORD = {
+  bestWaveReached: 1,
+  bestQuotaProgress: 0,
+  bestCreditsEarned: 0,
+  campaignsWon: 0
+};
+function deepClone(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+function serializeGameState(state, bestRecord) {
+  const currentBest = bestRecord ?? computeUpdatedBestRecord(state, DEFAULT_BEST_RECORD);
+  const envelope = {
+    schemaVersion: SAVE_SCHEMA_VERSION,
+    savedAtIso: (/* @__PURE__ */ new Date()).toISOString(),
+    state: deepClone(state),
+    bestRecord: currentBest
+  };
+  return JSON.stringify(envelope);
+}
+function deserializeGameState(rawJson) {
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (!parsed || parsed.schemaVersion !== SAVE_SCHEMA_VERSION || !parsed.state || typeof parsed.state.gridSize !== "number" || !Array.isArray(parsed.state.grid)) {
+      return null;
+    }
+    const fallback = createInitialState({ seed: parsed.state.seed ?? 9092026 });
+    const restoredState = {
+      ...fallback,
+      ...deepClone(parsed.state)
+    };
+    const bestRecord = {
+      ...DEFAULT_BEST_RECORD,
+      ...parsed.bestRecord ?? {}
+    };
+    return { state: restoredState, bestRecord };
+  } catch {
+    return null;
+  }
+}
+function computeUpdatedBestRecord(state, prev) {
+  return {
+    bestWaveReached: Math.max(prev.bestWaveReached, state.wave),
+    bestQuotaProgress: Math.max(prev.bestQuotaProgress, state.quotaProgress),
+    bestCreditsEarned: Math.max(prev.bestCreditsEarned, state.stats.totalCreditsEarned),
+    campaignsWon: prev.campaignsWon + (state.status === "victory" && prev.campaignsWon === 0 ? 1 : 0)
+  };
+}
+function saveGameToStorage(state, storageKey = CONFIG.STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    const prev = loadGameFromStorage(storageKey)?.bestRecord ?? DEFAULT_BEST_RECORD;
+    const updatedBest = computeUpdatedBestRecord(state, prev);
+    const payload = serializeGameState(state, updatedBest);
+    window.localStorage.setItem(storageKey, payload);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function loadGameFromStorage(storageKey = CONFIG.STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return null;
+    return deserializeGameState(raw);
+  } catch {
+    return null;
+  }
+}
+function clearSavedGame(storageKey = CONFIG.STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    window.localStorage.removeItem(storageKey);
+  } catch {
+  }
+}
+
+// games/09-belt-and-bolt/src/ui.ts
+function createBeltAndBoltUI(container2, options) {
+  const audio = new BeltAndBoltAudio();
+  const saved = options?.initialSeed === void 0 ? loadGameFromStorage() : null;
+  let state = saved ? saved.state : createInitialState({ seed: options?.initialSeed ?? 9092026 });
+  let selectedTool = "miner";
+  let currentDirection = "E";
+  let hoveredCell = null;
+  let paused = false;
+  let debugVisible = Boolean(options?.debug);
+  let animPhase = 0;
+  container2.innerHTML = "";
+  const root = document.createElement("div");
+  root.className = "bb-root";
+  root.innerHTML = `
+    <style>
+      .bb-root {
+        font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+        background: #0b0f19;
+        color: #e2e8f0;
+        min-height: 100%;
+        padding: 12px;
+        box-sizing: border-box;
+        user-select: none;
+      }
+      .bb-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        background: #111827;
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin-bottom: 12px;
+      }
+      .bb-title-wrap h1 {
+        margin: 0;
+        font-size: 1.2rem;
+        letter-spacing: 0.04em;
+        color: #38bdf8;
+      }
+      .bb-title-wrap p {
+        margin: 2px 0 0;
+        font-size: 0.78rem;
+        color: #94a3b8;
+      }
+      .bb-metrics {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .bb-metric {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 6px 10px;
+        min-width: 92px;
+      }
+      .bb-metric-label {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        color: #94a3b8;
+      }
+      .bb-metric-value {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #f8fafc;
+      }
+      .bb-layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 540px) minmax(260px, 1fr);
+        gap: 14px;
+        align-items: start;
+      }
+      @media (max-width: 860px) {
+        .bb-layout {
+          grid-template-columns: 1fr;
+        }
+      }
+      .bb-canvas-card {
+        background: #111827;
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .bb-canvas {
+        width: 100%;
+        max-width: 516px;
+        aspect-ratio: 1 / 1;
+        background: #090d16;
+        border: 2px solid #334155;
+        border-radius: 8px;
+        cursor: crosshair;
+        touch-action: none;
+      }
+      .bb-event-banner {
+        width: 100%;
+        margin-top: 8px;
+        padding: 7px 10px;
+        background: #0f172a;
+        border-left: 3px solid #38bdf8;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        color: #bae6fd;
+        box-sizing: border-box;
+      }
+      .bb-side {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .bb-panel {
+        background: #111827;
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .bb-panel h2 {
+        margin: 0 0 8px;
+        font-size: 0.86rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #38bdf8;
+      }
+      .bb-toolbar-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(125px, 1fr));
+        gap: 6px;
+      }
+      .bb-tool-btn {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 7px;
+        color: #f1f5f9;
+        padding: 7px 8px;
+        text-align: left;
+        cursor: pointer;
+        font-size: 0.76rem;
+        transition: border-color 0.15s, background 0.15s;
+      }
+      .bb-tool-btn:hover:not(:disabled) {
+        border-color: #38bdf8;
+      }
+      .bb-tool-btn.active {
+        background: #0c4a6e;
+        border-color: #38bdf8;
+        box-shadow: 0 0 0 1px #38bdf8 inset;
+      }
+      .bb-tool-btn:disabled {
+        opacity: 0.42;
+        cursor: not-allowed;
+      }
+      .bb-action-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .bb-btn {
+        background: #1e293b;
+        border: 1px solid #475569;
+        color: #f8fafc;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 0.76rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .bb-btn.primary {
+        background: #0284c7;
+        border-color: #38bdf8;
+      }
+      .bb-btn.warn {
+        background: #b45309;
+        border-color: #f59e0b;
+      }
+      .bb-tech-list {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        font-size: 0.76rem;
+      }
+      .bb-tech-item {
+        padding: 5px 8px;
+        border-radius: 6px;
+        background: #0f172a;
+        border: 1px solid #1e293b;
+      }
+      .bb-tech-item.unlocked {
+        border-color: #10b981;
+        color: #a7f3d0;
+      }
+      .bb-diag-box {
+        font-size: 0.76rem;
+        line-height: 1.45;
+        color: #cbd5e1;
+      }
+      .bb-badge-jam {
+        display: inline-block;
+        padding: 1px 6px;
+        border-radius: 4px;
+        background: #7f1d1d;
+        color: #fecaca;
+        font-weight: 700;
+        font-size: 0.7rem;
+      }
+    </style>
+
+    <div class="bb-header">
+      <div class="bb-title-wrap">
+        <h1>BELT &amp; BOLT // INDUSTRIAL LOGISTICS DEFENSE</h1>
+        <p>Route Mined Ore to Central Core (Credits + Tech Quota) OR Perimeter Turrets (Wave Ammo)</p>
+      </div>
+      <div class="bb-metrics">
+        <div class="bb-metric">
+          <div class="bb-metric-label">Core Hull</div>
+          <div class="bb-metric-value" data-bb="core-hp">500 / 500</div>
+        </div>
+        <div class="bb-metric">
+          <div class="bb-metric-label">Credits</div>
+          <div class="bb-metric-value" data-bb="credits">150</div>
+        </div>
+        <div class="bb-metric">
+          <div class="bb-metric-label">Core Quota</div>
+          <div class="bb-metric-value" data-bb="quota">0 / 15</div>
+        </div>
+        <div class="bb-metric">
+          <div class="bb-metric-label">Wave</div>
+          <div class="bb-metric-value" data-bb="wave">1 / 30</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bb-layout">
+      <div class="bb-canvas-card">
+        <canvas class="bb-canvas" width="528" height="528"></canvas>
+        <div class="bb-event-banner" data-bb="event-banner">Command Core online.</div>
+      </div>
+
+      <div class="bb-side">
+        <div class="bb-panel">
+          <h2>Build Toolbar ([1..0] Select, [R] Rotate: <span data-bb="dir-label">E</span>, [X] Demolish)</h2>
+          <div class="bb-toolbar-grid" data-bb="toolbar"></div>
+          <div class="bb-action-row">
+            <button type="button" class="bb-btn" data-bb="btn-rotate">[R] Rotate Dir (E)</button>
+            <button type="button" class="bb-btn" data-bb="btn-demolish">[X] Demolish (75% Refund)</button>
+            <button type="button" class="bb-btn primary" data-bb="btn-wave">[Space] Launch Wave</button>
+            <button type="button" class="bb-btn warn" data-bb="btn-blueprint">Starter Blueprint</button>
+            <button type="button" class="bb-btn" data-bb="btn-pause">[P] Pause</button>
+            <button type="button" class="bb-btn" data-bb="btn-reset">Reset Factory</button>
+          </div>
+        </div>
+
+        <div class="bb-panel">
+          <h2>Bottleneck &amp; Tile Diagnostic Inspector</h2>
+          <div class="bb-diag-box" data-bb="inspector">Hover or click any tile on the 12x12 grid to inspect flow, backpressure, or splitter ratios.</div>
+        </div>
+
+        <div class="bb-panel">
+          <h2>Tech Tree Unlocks (Every 3 Waves) &amp; Shape Grammar</h2>
+          <div class="bb-tech-list" data-bb="tech-list"></div>
+        </div>
+
+        <div class="bb-panel" data-bb="debug-panel" style="display: none;">
+          <h2>Engineering Debug &amp; Telemetry ([D])</h2>
+          <div class="bb-action-row">
+            <button type="button" class="bb-btn" data-bb="dbg-credits">+250 Credits</button>
+            <button type="button" class="bb-btn" data-bb="dbg-unlock">Unlock All Tech</button>
+            <button type="button" class="bb-btn" data-bb="dbg-step">Step 1 Tick</button>
+            <button type="button" class="bb-btn" data-bb="dbg-wave12">Jump Wave 12</button>
+            <button type="button" class="bb-btn" data-bb="dbg-wave30">Jump Wave 30</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  container2.appendChild(root);
+  const canvas = root.querySelector(".bb-canvas");
+  const isJsdom = typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent);
+  const ctx = isJsdom ? null : canvas.getContext("2d");
+  const hpEl = root.querySelector('[data-bb="core-hp"]');
+  const creditsEl = root.querySelector('[data-bb="credits"]');
+  const quotaEl = root.querySelector('[data-bb="quota"]');
+  const waveEl = root.querySelector('[data-bb="wave"]');
+  const bannerEl = root.querySelector('[data-bb="event-banner"]');
+  const dirLabelEl = root.querySelector('[data-bb="dir-label"]');
+  const toolbarEl = root.querySelector('[data-bb="toolbar"]');
+  const inspectorEl = root.querySelector('[data-bb="inspector"]');
+  const techListEl = root.querySelector('[data-bb="tech-list"]');
+  const debugPanelEl = root.querySelector('[data-bb="debug-panel"]');
+  const rotateBtn = root.querySelector('[data-bb="btn-rotate"]');
+  const demolishBtn = root.querySelector('[data-bb="btn-demolish"]');
+  const waveBtn = root.querySelector('[data-bb="btn-wave"]');
+  const blueprintBtn = root.querySelector('[data-bb="btn-blueprint"]');
+  const pauseBtn = root.querySelector('[data-bb="btn-pause"]');
+  const resetBtn = root.querySelector('[data-bb="btn-reset"]');
+  function renderToolbar() {
+    toolbarEl.innerHTML = "";
+    for (const blockId of BUILDABLE_BLOCK_ORDER) {
+      const meta = BLOCKS[blockId];
+      const unlocked = isBlockUnlocked(state, blockId);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `bb-tool-btn${selectedTool === blockId ? " active" : ""}`;
+      btn.disabled = !unlocked;
+      const lockLabel = unlocked ? `${meta.cost}c` : `Wave ${meta.unlockWave}`;
+      btn.innerHTML = `
+        <div><strong>[${meta.hotkey}] ${meta.shortLabel}</strong> <span style="float:right;color:#38bdf8">${lockLabel}</span></div>
+        <div style="font-size:0.68rem;color:#94a3b8;margin-top:2px;">${meta.name}</div>
+      `;
+      btn.addEventListener("click", () => {
+        if (!unlocked) return;
+        selectedTool = blockId;
+        demolishBtn.classList.remove("active");
+        renderToolbar();
+      });
+      toolbarEl.appendChild(btn);
+    }
+    demolishBtn.classList.toggle("active", selectedTool === "demolish");
+  }
+  function renderTechList() {
+    techListEl.innerHTML = TECH_TREE_UNLOCKS.map((tier) => {
+      const isUnl = state.unlockedTechWaves.includes(tier.wave);
+      return `
+        <div class="bb-tech-item ${isUnl ? "unlocked" : ""}">
+          <strong>${isUnl ? "UNLOCKED" : `LOCKED (Wave ${tier.wave})`} \u2014 ${tier.title}</strong>
+          <div style="color:#94a3b8;margin-top:2px;">${tier.description}</div>
+        </div>
+      `;
+    }).join("");
+  }
+  function updateHUD() {
+    hpEl.textContent = `${state.coreHp} / ${state.coreMaxHp}`;
+    hpEl.style.color = state.coreHp <= 150 ? "#f87171" : "#f8fafc";
+    creditsEl.textContent = `${state.credits}`;
+    const nextMilestone = CONFIG.QUOTA_MILESTONES.find((m) => state.quotaProgress < m) ?? CONFIG.QUOTA_MILESTONES[CONFIG.QUOTA_MILESTONES.length - 1];
+    quotaEl.textContent = `${state.quotaProgress} / ${nextMilestone}`;
+    waveEl.textContent = state.status === "victory" ? "VICTORY (30/30)" : state.status === "defeat" ? `DEFEATED (W${state.wave})` : `${state.wave} / ${CONFIG.CAMPAIGN_MAX_WAVE}`;
+    bannerEl.textContent = state.lastEventMessage;
+    dirLabelEl.textContent = currentDirection;
+    rotateBtn.textContent = `[R] Rotate Dir (${currentDirection})`;
+    const waveDef = getWaveDefinition(state.wave);
+    if (state.status === "victory") {
+      waveBtn.textContent = "Enter Endless Overdrive";
+    } else if (state.waveActive) {
+      waveBtn.textContent = `Wave ${state.wave} Active (${state.enemies.length + state.queuedSpawns.length} hostiles)`;
+    } else {
+      waveBtn.textContent = `[Space] Launch Wave ${state.wave} (+${waveDef.earlyLaunchBonus}c)`;
+    }
+    const report = diagnoseBottlenecks(state);
+    let hoverHtml = "";
+    if (hoveredCell) {
+      const t = getTile(state, hoveredCell.x, hoveredCell.y);
+      if (t) {
+        const bMeta = BLOCKS[t.block];
+        const itemLabel = t.item ? `${ITEMS[t.item.type].name} (${ITEMS[t.item.type].code})` : "None";
+        const veinLabel = t.vein === "none" ? "Deck Steel" : t.vein.replace("_", " ").toUpperCase();
+        const extra = bMeta.isTurret ? ` | Ammo: <strong>${t.ammoCount}/${t.maxAmmo}</strong> (${t.loadedAmmoType ?? "Empty"})` : t.block === "splitter" ? ` | Ratio: <strong>${t.splitterRatio}</strong> (Click splitter again to cycle)` : t.block === "smelter" || t.block === "silo" ? ` | Buffer: <strong>${t.inputBuffer.length}</strong> items` : "";
+        hoverHtml = `
+          <div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #1e293b;">
+            <strong>Tile (${t.x}, ${t.y})</strong> \u2014 ${bMeta.name} [Dir: ${t.direction}] | Vein: ${veinLabel} | Item: ${itemLabel}${extra}
+            ${t.congested ? '<span class="bb-badge-jam">BACKPRESSURE JAM</span>' : ""}
+          </div>
+        `;
+      }
+    }
+    const jamSummary = report.congestedTiles.length === 0 ? '<span style="color:#34d399;">0 Congested Belts (Smooth Flow)</span>' : `<span class="bb-badge-jam">${report.congestedTiles.length} Congested Tile(s)</span> \u2014 ${report.congestedTiles.slice(0, 2).map((c) => `(${c.x},${c.y}) ${c.reason}`).join("; ")}`;
+    const drySummary = report.dryTurrets.length === 0 ? '<span style="color:#34d399;">All Turrets Supplied</span>' : `<span style="color:#fbbf24;font-weight:700;">${report.dryTurrets.length} Dry Turret(s) Need Belt Ammo!</span>`;
+    inspectorEl.innerHTML = `
+      ${hoverHtml}
+      <div><strong>Flow Diagnostics:</strong> ${jamSummary} | ${drySummary}</div>
+      <div style="margin-top:4px;color:#94a3b8;">
+        Core Deliveries: <strong>${state.stats.itemsDeliveredToCore}</strong> (${report.coreThroughputPerMin}/min) |
+        Refined Shapes: <strong>${state.stats.itemsRefined}</strong> |
+        Enemies Destroyed: <strong>${state.stats.enemiesDestroyed}</strong>
+      </div>
+    `;
+    debugPanelEl.style.display = debugVisible ? "block" : "none";
+  }
+  function drawItemShape(c, itemType, cx, cy, radius) {
+    const meta = ITEMS[itemType];
+    c.save();
+    c.fillStyle = meta.color;
+    c.strokeStyle = meta.strokeColor;
+    c.lineWidth = 1.5;
+    if (meta.shapeKind === "circle") {
+      c.beginPath();
+      c.arc(cx, cy, radius, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+    } else if (meta.shapeKind === "square") {
+      c.beginPath();
+      c.rect(cx - radius, cy - radius, radius * 2, radius * 2);
+      c.fill();
+      c.stroke();
+    } else if (meta.shapeKind === "star") {
+      c.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const outerAngle = i * 2 * Math.PI / 5 - Math.PI / 2;
+        const innerAngle = outerAngle + Math.PI / 5;
+        const ox = cx + Math.cos(outerAngle) * (radius * 1.15);
+        const oy = cy + Math.sin(outerAngle) * (radius * 1.15);
+        const ix = cx + Math.cos(innerAngle) * (radius * 0.5);
+        const iy = cy + Math.sin(innerAngle) * (radius * 0.5);
+        if (i === 0) c.moveTo(ox, oy);
+        else c.lineTo(ox, oy);
+        c.lineTo(ix, iy);
+      }
+      c.closePath();
+      c.fill();
+      c.stroke();
+    } else if (meta.shapeKind === "wedge") {
+      c.beginPath();
+      c.arc(cx, cy, radius * 1.1, -Math.PI * 0.6, Math.PI * 0.6);
+      c.closePath();
+      c.fill();
+      c.stroke();
+    } else {
+      c.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const ang = i * Math.PI / 3;
+        const px = cx + Math.cos(ang) * (radius * 1.15);
+        const py = cy + Math.sin(ang) * (radius * 1.15);
+        if (i === 0) c.moveTo(px, py);
+        else c.lineTo(px, py);
+      }
+      c.closePath();
+      c.fill();
+      c.stroke();
+    }
+    c.restore();
+  }
+  function renderCanvas() {
+    if (!ctx) return;
+    const width = canvas.width;
+    const height = canvas.height;
+    const cellSize = width / state.gridSize;
+    animPhase = (animPhase + 0.08) % 1;
+    ctx.clearRect(0, 0, width, height);
+    for (let y = 0; y < state.gridSize; y++) {
+      for (let x = 0; x < state.gridSize; x++) {
+        const tile = state.grid[y][x];
+        const px = x * cellSize;
+        const py = y * cellSize;
+        const cx = px + cellSize / 2;
+        const cy = py + cellSize / 2;
+        ctx.fillStyle = (x + y) % 2 === 0 ? "#0f172a" : "#111827";
+        ctx.fillRect(px, py, cellSize, cellSize);
+        ctx.strokeStyle = "#1e293b";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px, py, cellSize, cellSize);
+        if (tile.vein !== "none") {
+          const veinItem = tile.vein === "copper_vein" ? "CuCircle" : tile.vein === "iron_vein" ? "FeSquare" : "AuStar";
+          ctx.save();
+          ctx.globalAlpha = tile.block === "empty" ? 0.78 : 0.32;
+          drawItemShape(ctx, veinItem, px + cellSize * 0.3, py + cellSize * 0.32, 4.5);
+          drawItemShape(ctx, veinItem, px + cellSize * 0.68, py + cellSize * 0.65, 4.5);
+          ctx.restore();
+        }
+        if (tile.block !== "empty") {
+          const meta = BLOCKS[tile.block];
+          ctx.fillStyle = meta.color;
+          ctx.fillRect(px + 3, py + 3, cellSize - 6, cellSize - 6);
+          ctx.strokeStyle = tile.congested ? "#ef4444" : meta.accentColor;
+          ctx.lineWidth = tile.congested ? 2.5 : 1.5;
+          ctx.strokeRect(px + 3, py + 3, cellSize - 6, cellSize - 6);
+          if (meta.rotatable) {
+            const d = DIRECTION_DELTAS[tile.direction];
+            ctx.fillStyle = meta.accentColor;
+            ctx.beginPath();
+            ctx.arc(
+              cx + d.dx * (cellSize * 0.28),
+              cy + d.dy * (cellSize * 0.28),
+              3.5,
+              0,
+              Math.PI * 2
+            );
+            ctx.fill();
+          }
+          ctx.fillStyle = "#f8fafc";
+          ctx.font = "bold 9px Inter, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(meta.shortLabel, cx, py + 13);
+          if (meta.isTurret) {
+            const ratio = tile.maxAmmo > 0 ? tile.ammoCount / tile.maxAmmo : 0;
+            ctx.fillStyle = "#090d16";
+            ctx.fillRect(px + 6, py + cellSize - 10, cellSize - 12, 5);
+            ctx.fillStyle = ratio > 0 ? "#22c55e" : "#ef4444";
+            ctx.fillRect(px + 6, py + cellSize - 10, (cellSize - 12) * ratio, 5);
+            if (tile.ammoCount === 0) {
+              ctx.fillStyle = "#fca5a5";
+              ctx.font = "bold 8px Inter, sans-serif";
+              ctx.fillText("NO AMMO", cx, cy + 5);
+            }
+          }
+          if (tile.item) {
+            const d = DIRECTION_DELTAS[tile.direction];
+            const shift = tile.congested ? 0 : (animPhase - 0.5) * 6;
+            drawItemShape(
+              ctx,
+              tile.item.type,
+              cx + d.dx * shift,
+              cy + 4 + d.dy * shift,
+              6.5
+            );
+          }
+        }
+      }
+    }
+    if (hoveredCell) {
+      const hx = hoveredCell.x * cellSize;
+      const hy = hoveredCell.y * cellSize;
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(hx + 1, hy + 1, cellSize - 2, cellSize - 2);
+      const hoveredTile = getTile(state, hoveredCell.x, hoveredCell.y);
+      const previewBlock = hoveredTile && BLOCKS[hoveredTile.block].isTurret ? hoveredTile.block : selectedTool !== "demolish" && BLOCKS[selectedTool].isTurret ? selectedTool : null;
+      if (previewBlock) {
+        const range = (BLOCKS[previewBlock].turretRange ?? 3.8) * cellSize;
+        ctx.save();
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+        ctx.fillStyle = "rgba(56, 189, 248, 0.08)";
+        ctx.beginPath();
+        ctx.arc(hx + cellSize / 2, hy + cellSize / 2, range, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    for (const shot of state.activeShots) {
+      ctx.save();
+      ctx.strokeStyle = shot.color;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo((shot.fromX + 0.5) * cellSize, (shot.fromY + 0.5) * cellSize);
+      ctx.lineTo((shot.toX + 0.5) * cellSize, (shot.toY + 0.5) * cellSize);
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (const enemy of state.enemies) {
+      const meta = ENEMY_TYPES[enemy.type];
+      const ex = (enemy.x + 0.5) * cellSize;
+      const ey = (enemy.y + 0.5) * cellSize;
+      const rad = cellSize * meta.radiusRatio;
+      ctx.save();
+      ctx.fillStyle = meta.color;
+      ctx.strokeStyle = enemy.isShielded ? "#38bdf8" : "#fecaca";
+      ctx.lineWidth = enemy.isBoss ? 3 : 1.5;
+      ctx.beginPath();
+      ctx.arc(ex, ey, rad, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      const hpRatio = Math.max(0, enemy.hp / enemy.maxHp);
+      const barW = cellSize * 0.75;
+      ctx.fillStyle = "#090d16";
+      ctx.fillRect(ex - barW / 2, ey - rad - 7, barW, 4);
+      ctx.fillStyle = enemy.isBoss ? "#f43f5e" : "#22c55e";
+      ctx.fillRect(ex - barW / 2, ey - rad - 7, barW * hpRatio, 4);
+      ctx.restore();
+    }
+  }
+  function getCellFromPointerEvent(ev) {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const relX = ev.clientX - rect.left;
+    const relY = ev.clientY - rect.top;
+    const x = Math.floor(relX / rect.width * state.gridSize);
+    const y = Math.floor(relY / rect.height * state.gridSize);
+    if (x < 0 || y < 0 || x >= state.gridSize || y >= state.gridSize) return null;
+    return { x, y };
+  }
+  canvas.addEventListener("mousemove", (ev) => {
+    hoveredCell = getCellFromPointerEvent(ev);
+    updateHUD();
+    renderCanvas();
+  });
+  canvas.addEventListener("click", (ev) => {
+    const cell = getCellFromPointerEvent(ev);
+    if (!cell) return;
+    const existing = getTile(state, cell.x, cell.y);
+    if (selectedTool === "demolish") {
+      const res = applyBuildCommand(state, {
+        type: "demolish",
+        x: cell.x,
+        y: cell.y
+      });
+      if (res.ok) audio.playDemolish();
+    } else if (existing && existing.block === "splitter" && selectedTool === "splitter") {
+      applyBuildCommand(state, {
+        type: "toggle_splitter_ratio",
+        x: cell.x,
+        y: cell.y
+      });
+      audio.playPlaceClank();
+    } else {
+      const res = applyBuildCommand(state, {
+        type: "place",
+        x: cell.x,
+        y: cell.y,
+        blockType: selectedTool,
+        direction: currentDirection,
+        respectTechLock: true
+      });
+      if (res.ok) {
+        audio.playPlaceClank();
+      }
+    }
+    saveGameToStorage(state);
+    renderToolbar();
+    updateHUD();
+    renderCanvas();
+  });
+  canvas.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    const cell = getCellFromPointerEvent(ev);
+    if (!cell) return;
+    const res = applyBuildCommand(state, { type: "demolish", x: cell.x, y: cell.y });
+    if (res.ok) {
+      audio.playDemolish();
+      saveGameToStorage(state);
+      updateHUD();
+      renderCanvas();
+    }
+  });
+  rotateBtn.addEventListener("click", () => {
+    currentDirection = rotateDirectionCW(currentDirection);
+    if (hoveredCell) {
+      applyBuildCommand(state, {
+        type: "rotate",
+        x: hoveredCell.x,
+        y: hoveredCell.y
+      });
+    }
+    updateHUD();
+    renderCanvas();
+  });
+  demolishBtn.addEventListener("click", () => {
+    selectedTool = selectedTool === "demolish" ? "miner" : "demolish";
+    renderToolbar();
+  });
+  waveBtn.addEventListener("click", () => {
+    if (state.status === "victory") {
+      state.endlessMode = true;
+      state.status = "playing";
+      state.wave += 1;
+    }
+    if (!state.waveActive) {
+      const waveDef = getWaveDefinition(state.wave);
+      triggerNextWave(state, { earlyBonus: true });
+      audio.playWaveKlaxon(waveDef.isBossWave);
+      renderToolbar();
+      renderTechList();
+      updateHUD();
+      renderCanvas();
+    }
+  });
+  blueprintBtn.addEventListener("click", () => {
+    deployStarterBlueprint(state);
+    audio.playPlaceClank();
+    saveGameToStorage(state);
+    updateHUD();
+    renderCanvas();
+  });
+  pauseBtn.addEventListener("click", () => {
+    paused = !paused;
+    pauseBtn.textContent = paused ? "[P] Resume" : "[P] Pause";
+  });
+  resetBtn.addEventListener("click", () => {
+    clearSavedGame();
+    state = createInitialState({ seed: state.seed });
+    renderToolbar();
+    renderTechList();
+    updateHUD();
+    renderCanvas();
+  });
+  root.querySelector('[data-bb="dbg-credits"]')?.addEventListener("click", () => {
+    state.credits += 250;
+    updateHUD();
+  });
+  root.querySelector('[data-bb="dbg-unlock"]')?.addEventListener("click", () => {
+    unlockTechForWave(state, 12);
+    renderToolbar();
+    renderTechList();
+    updateHUD();
+  });
+  root.querySelector('[data-bb="dbg-step"]')?.addEventListener("click", () => {
+    stepFactoryTick(state);
+    renderToolbar();
+    renderTechList();
+    updateHUD();
+    renderCanvas();
+  });
+  root.querySelector('[data-bb="dbg-wave12"]')?.addEventListener("click", () => {
+    state.wave = 12;
+    unlockTechForWave(state, 12);
+    renderToolbar();
+    renderTechList();
+    updateHUD();
+  });
+  root.querySelector('[data-bb="dbg-wave30"]')?.addEventListener("click", () => {
+    state.wave = 30;
+    unlockTechForWave(state, 30);
+    renderToolbar();
+    renderTechList();
+    updateHUD();
+  });
+  const onKeyDown = (ev) => {
+    if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) {
+      return;
+    }
+    const key = ev.key.toLowerCase();
+    if (key === "r") {
+      currentDirection = rotateDirectionCW(currentDirection);
+      if (hoveredCell) {
+        applyBuildCommand(state, {
+          type: "rotate",
+          x: hoveredCell.x,
+          y: hoveredCell.y
+        });
+      }
+      updateHUD();
+      renderCanvas();
+    } else if (key === "x") {
+      if (hoveredCell) {
+        applyBuildCommand(state, {
+          type: "demolish",
+          x: hoveredCell.x,
+          y: hoveredCell.y
+        });
+      } else {
+        selectedTool = selectedTool === "demolish" ? "miner" : "demolish";
+      }
+      renderToolbar();
+      updateHUD();
+      renderCanvas();
+    } else if (key === " ") {
+      ev.preventDefault();
+      if (!state.waveActive && state.status === "playing") {
+        triggerNextWave(state, { earlyBonus: true });
+        renderToolbar();
+        renderTechList();
+        updateHUD();
+        renderCanvas();
+      }
+    } else if (key === "p") {
+      paused = !paused;
+      pauseBtn.textContent = paused ? "[P] Resume" : "[P] Pause";
+    } else if (key === "d") {
+      debugVisible = !debugVisible;
+      updateHUD();
+    } else {
+      for (const blockId of BUILDABLE_BLOCK_ORDER) {
+        if (BLOCKS[blockId].hotkey === key && isBlockUnlocked(state, blockId)) {
+          selectedTool = blockId;
+          renderToolbar();
+          break;
+        }
+      }
+    }
+  };
+  window.addEventListener("keydown", onKeyDown);
+  const tickTimer = window.setInterval(() => {
+    if (paused || state.status !== "playing") return;
+    const prevShots = state.stats.shotsFired;
+    const prevRefined = state.stats.itemsRefined;
+    const prevTechCount = state.unlockedBlocks.length;
+    stepFactoryTick(state);
+    if (state.stats.shotsFired > prevShots) {
+      audio.playTurretPulse();
+    }
+    if (state.stats.itemsRefined > prevRefined) {
+      audio.playSmelterHiss();
+    }
+    if (state.unlockedBlocks.length > prevTechCount) {
+      renderToolbar();
+      renderTechList();
+    }
+    if (state.tick % 10 === 0) {
+      saveGameToStorage(state);
+    }
+    updateHUD();
+    renderCanvas();
+  }, CONFIG.TICK_INTERVAL_MS);
+  renderToolbar();
+  renderTechList();
+  updateHUD();
+  renderCanvas();
+  return {
+    destroy() {
+      window.clearInterval(tickTimer);
+      window.removeEventListener("keydown", onKeyDown);
+      audio.destroy();
+      container2.innerHTML = "";
+    },
+    getState() {
+      return state;
+    },
+    restartWithSeed(seed) {
+      state = createInitialState({ seed });
+      renderToolbar();
+      renderTechList();
+      updateHUD();
+      renderCanvas();
+    },
+    toggleDebug(force) {
+      debugVisible = force !== void 0 ? force : !debugVisible;
+      updateHUD();
+    }
+  };
+}
+
+// games/09-belt-and-bolt/src/index.ts
+function mountGame(container2, options) {
+  const controller = createBeltAndBoltUI(container2, options);
+  return {
+    destroy() {
+      controller.destroy();
+    },
+    getStateSnapshot() {
+      return controller.getState();
+    },
+    restartWithSeed(seed) {
+      controller.restartWithSeed(seed);
+    },
+    toggleDebug(force) {
+      controller.toggleDebug(force);
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_09-belt-and-bolt.ts
+var container = document.getElementById("game-root");
+if (container) {
+  mountGame(container);
+}
+
+</script>
+  </body>
+</html>
