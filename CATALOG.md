@@ -2,7 +2,7 @@
 
 Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the MacBook, Antigravity on the Mac mini, and Antigravity and Claude Cowork on the MacBook Air. Games marked "In the arcade" are in `games/<slug>/` and linked from the arcade page; everything else stays in its incoming PR so nothing is lost.
 
-- In the arcade: 80
+- In the arcade: 85
 - Held: 1
 - Source only or own repo: 4
 - Archived older versions and extras: 7
@@ -21,12 +21,15 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Blitzread | football | batch 2 | cloud PR #2 | [play](games/blitzread/) |  |
 | Brinehold | factory defense | overnight research batch | cloud PR #2 | [play](games/brinehold/) |  |
 | Bug Brawl | auto-battler | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/bug-brawl/) |  |
+| Chrono-Syndicate: The 15-Second Heist | time-loop heist tactics | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/chrono-syndicate/) |  |
+| Chrono-Vortex: The God-Forge Arena | pinball-brawler roguelite | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/chrono-vortex/) |  |
 | Clause & Effect | code puzzle | overnight research batch | cloud PR #2 | [play](games/clause-and-effect/) |  |
 | Clockbreak | brick breaker | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/clockbreak/) |  |
 | Comet Orchard | idle | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/comet-orchard/) |  |
 | CROSSBLOCK | block puzzle | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/crossblock/) |  |
 | Dual Meet | swim meet | Nov 6 new builds | cloud PR #2 | [play](games/dual-meet/) |  |
 | ECHO REQUIEM | temporal arena shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/echo-requiem/) |  |
+| Event Horizon: Singularity Slingshot | gravity slingshot roguelite | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/event-horizon/) |  |
 | Fathomsong | rhythm | overnight research batch | cloud PR #2 | [play](games/fathomsong/) |  |
 | Fourth & Forever '05 | football franchise sim | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/fourth-and-forever/) | Formerly a football franchise sim built on real league names; league, teams, players, coaches, host and brands are now fictional |
 | Franchise Dynasty | football GM sim | Games project | cloud PR #2 | [play](games/franchise-dynasty/) |  |
@@ -39,6 +42,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | HONK IF YOU'RE EMPLOYED | workplace arcade | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/honk-if-youre-employed/) |  |
 | HonkCourt: The Goose Is a Landlord | eviction physics brawler | Antigravity (MacBook Air) | Antigravity MacBook Air PR #12 | [play](games/honkcourt/) |  |
 | HUSH//PULSE | rhythm stealth action | Kimi (MacBook) | Kimi Work PR #7 | [play](games/hush-pulse/) | Built copy from the Kimi Work collection; the MacBook copy was source only |
+| HYPERNOVA: Chrono-Valkyrie | bullet-time arena shooter | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/hypernova/) |  |
 | Junkyard Courier | cargo packing and routing | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/junkyard-courier/) |  |
 | Kettle Crawl | deckbuilder | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/kettle-crawl/) |  |
 | Keystone Forge | polyomino puzzle | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/keystone-forge/) | Subtitle and guide text no longer name Tetris |
@@ -61,6 +65,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | One More Season | sports season sim | overnight research batch | cloud PR #2 | [play](games/one-more-season/) | Different game from the Mac mini One More Season: Ironvale Rovers FC |
 | One More Season: Ironvale Rovers FC | 5-a-side football season sim | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/one-more-season-ironvale/) | Different game from the cloud One More Season, despite the shared name |
 | Orbit Stack | orbital match stacker | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/orbit-stack/) |  |
+| Oroboros: The Pinball Singularity | pinball roguelike | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/oroboros/) |  |
 | Paradox Protocol: The Mirror Engine | thought-experiment arena | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/paradox-protocol/) |  |
 | Please Feed the Moon | arcade shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/please-feed-the-moon/) |  |
 | PRISM PRESS | reactor-grid puzzle | Kimi (MacBook) | Kimi Work PR #7 | [play](games/prism-press/) | Newest build from the Kimi Work collection (Nov 8) |
@@ -134,6 +139,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 - Kimi Work PR #7 carried newer builds of Prism Press and Soupermarket Sweep and the first playable build of HUSH//PULSE; those replace the MacBook copies.
 - Antigravity MacBook Air PR #12 brought two new games (Accordion Courtroom and HonkCourt); every other game it checked on that MacBook Air was already here.
 - Claude Cowork MacBook Air PR #14 brought Kinetic Chain, The Moon Wants a Sandwich and Lane Four. The Lane Four swim racer replaces Negative Split and is a different piece from the Lane Four water toy kept in cloud PR #2.
+- PR #15 brought 5 new Argon games (Oroboros, Chrono-Syndicate, Chrono-Vortex, Event Horizon, Hypernova); its bundled copies of Argon 01–11, Paradox, Metaphysical Deli and Voidbreaker were already here and were not added twice.
 - Cloud copies newer than the arcade's first PR (#1): 20 of its 22 games are older; this PR uses the live versions.
 
 ## Checks
