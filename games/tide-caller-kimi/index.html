@@ -1,0 +1,1265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#061923">
+  <meta name="description" content="TIDE CALLER — a rhythm swimming game. Find the pulse, manage your breath, and outswim your personal best.">
+  <title>TIDE CALLER — Find the pulse. Own the water.</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #061923;
+      --deep: #082b3a;
+      --pool: #07516a;
+      --foam: #e9fffa;
+      --aqua: #7df9e3;
+      --aqua-dim: #3bbdac;
+      --coral: #ff8e70;
+      --gold: #ffd27d;
+      --muted: #88abb2;
+      --glass: rgba(5, 25, 34, .78);
+    }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      background:
+        radial-gradient(circle at 18% 18%, rgba(37, 142, 150, .18), transparent 32%),
+        radial-gradient(circle at 82% 80%, rgba(255, 142, 112, .09), transparent 30%),
+        #030e15;
+      color: var(--foam);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: grid;
+      place-items: center;
+      overscroll-behavior: none;
+    }
+    button { font: inherit; }
+    button:focus-visible { outline: 2px solid var(--aqua); outline-offset: 4px; }
+    #game {
+      position: relative;
+      width: min(100vw, 540px);
+      height: min(100dvh, 940px);
+      overflow: hidden;
+      background: var(--ink);
+      isolation: isolate;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      box-shadow: 0 28px 100px rgba(0, 0, 0, .48);
+    }
+    @media (min-width: 600px) and (min-height: 700px) {
+      #game { height: calc(100dvh - 32px); border-radius: 28px; border: 1px solid rgba(160, 255, 240, .12); }
+    }
+    #pool {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      transition: filter .18s linear;
+    }
+    #shade {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(180deg, rgba(2, 14, 21, .38), transparent 22%, transparent 72%, rgba(2, 14, 21, .58));
+      z-index: 1;
+    }
+    .hidden { display: none !important; }
+    .ui { position: absolute; z-index: 3; }
+    .eyebrow {
+      color: var(--aqua);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .24em;
+      text-transform: uppercase;
+    }
+    #soundBtn {
+      top: max(15px, env(safe-area-inset-top));
+      right: 16px;
+      border: 1px solid rgba(210, 255, 248, .18);
+      border-radius: 999px;
+      background: rgba(4, 25, 34, .55);
+      color: #b8d7d8;
+      padding: 8px 11px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      cursor: pointer;
+      backdrop-filter: blur(10px);
+      z-index: 12;
+    }
+    #soundBtn:hover { color: var(--foam); border-color: rgba(125, 249, 227, .5); }
+    #hud {
+      top: max(16px, env(safe-area-inset-top));
+      left: 18px;
+      right: 18px;
+      pointer-events: none;
+    }
+    .hud-top { display: flex; align-items: flex-start; justify-content: space-between; padding-right: 90px; }
+    #timer {
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(25px, 6vw, 33px);
+      font-weight: 300;
+      letter-spacing: -.045em;
+      line-height: 1;
+      margin-top: 5px;
+    }
+    #lengthLabel { font-size: 12px; font-weight: 800; letter-spacing: .12em; margin-top: 5px; text-align: right; }
+    #lengthLabel span { color: var(--aqua); }
+    .length-pips { display: flex; gap: 5px; margin-top: 13px; width: calc(100% - 118px); }
+    .length-pips i { height: 3px; flex: 1; border-radius: 4px; background: rgba(217, 255, 249, .16); overflow: hidden; }
+    .length-pips i.done { background: var(--aqua-dim); }
+    .length-pips i.active { background: var(--aqua); box-shadow: 0 0 10px rgba(125, 249, 227, .45); }
+    #oxygenWrap { margin-top: 13px; display: flex; align-items: center; gap: 9px; width: calc(100% - 118px); }
+    #oxygenWrap label { color: #b9d4d5; font-size: 9px; font-weight: 900; letter-spacing: .18em; }
+    .oxygen-track { height: 6px; border-radius: 6px; background: rgba(1, 16, 24, .5); flex: 1; overflow: hidden; border: 1px solid rgba(255,255,255,.08); }
+    #oxygenBar { height: 100%; width: 100%; border-radius: inherit; background: var(--aqua); transform-origin: left; transition: background .25s; }
+    #oxygenText { width: 26px; text-align: right; color: #d9efed; font-size: 10px; font-variant-numeric: tabular-nums; }
+    #raceMeta {
+      left: 18px;
+      bottom: max(22px, calc(env(safe-area-inset-bottom) + 12px));
+      pointer-events: none;
+    }
+    #speedReadout { font-size: 10px; font-weight: 800; letter-spacing: .13em; color: #c6e5e3; }
+    #streakReadout { margin-top: 5px; color: var(--gold); font-size: 9px; font-weight: 800; letter-spacing: .15em; min-height: 12px; }
+    #ghostDelta {
+      right: 18px;
+      bottom: max(24px, calc(env(safe-area-inset-bottom) + 14px));
+      text-align: right;
+      color: #c3e6e1;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      pointer-events: none;
+    }
+    #ghostDelta strong { display: block; margin-top: 3px; color: var(--aqua); font-size: 13px; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+    #judgement {
+      top: 28%;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      font-size: clamp(24px, 7vw, 38px);
+      font-weight: 950;
+      font-style: italic;
+      letter-spacing: -.04em;
+      pointer-events: none;
+      opacity: 0;
+      white-space: nowrap;
+      text-shadow: 0 3px 22px rgba(0,0,0,.4);
+    }
+    #judgement small { display: block; font-size: 9px; font-style: normal; letter-spacing: .2em; margin-top: 4px; color: var(--foam); }
+    #judgement.pop { animation: judgePop .72s cubic-bezier(.16,.8,.25,1) both; }
+    #judgement.perfect { color: var(--aqua); }
+    #judgement.good { color: var(--gold); }
+    #judgement.late { color: var(--coral); }
+    @keyframes judgePop {
+      0% { opacity: 0; transform: translate(-50%, 12px) scale(.72); }
+      16% { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+      45% { opacity: 1; transform: translate(-50%, -4px) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -20px) scale(.96); }
+    }
+    #turnPrompt {
+      left: 50%;
+      top: 18%;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: 90%;
+      padding: 11px 17px;
+      text-align: center;
+      border: 1px solid rgba(255, 210, 125, .48);
+      border-radius: 12px;
+      background: rgba(4, 27, 37, .85);
+      box-shadow: 0 8px 30px rgba(0,0,0,.2);
+      pointer-events: none;
+    }
+    #turnPrompt strong { display: block; color: var(--gold); font-size: 13px; letter-spacing: .13em; }
+    #turnPrompt span { display: block; color: #c8dedd; font-size: 9px; margin-top: 4px; letter-spacing: .08em; }
+    #countdown {
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      text-align: center;
+      background: rgba(3, 20, 28, .12);
+    }
+    #countNumber {
+      font-size: clamp(92px, 30vw, 150px);
+      line-height: .8;
+      font-weight: 950;
+      font-style: italic;
+      letter-spacing: -.1em;
+      color: var(--foam);
+      text-shadow: 0 8px 50px rgba(0,0,0,.25);
+      animation: countBeat .9s ease-out infinite;
+    }
+    #countdown p { margin: 28px 0 0; color: var(--aqua); font-size: 10px; letter-spacing: .26em; font-weight: 800; }
+    @keyframes countBeat { from { transform: scale(1.12); opacity: .25; } 25% { opacity: 1; } to { transform: scale(.92); opacity: .75; } }
+    .screen {
+      inset: 0;
+      z-index: 8;
+      display: flex;
+      flex-direction: column;
+      padding: max(62px, calc(env(safe-area-inset-top) + 48px)) 28px max(28px, calc(env(safe-area-inset-bottom) + 20px));
+      background: linear-gradient(180deg, rgba(3, 20, 28, .2), rgba(3, 20, 28, .84) 72%, rgba(3, 20, 28, .94));
+      overflow-y: auto;
+      touch-action: pan-y;
+    }
+    #titleScreen { justify-content: space-between; }
+    .brand-mark { display: flex; gap: 5px; align-items: center; margin-bottom: 18px; }
+    .brand-mark i { display: block; width: 24px; height: 7px; border-top: 2px solid var(--aqua); border-radius: 50%; transform: rotate(-8deg); }
+    .brand-mark i:nth-child(2) { transform: translateY(4px) rotate(8deg); border-color: var(--coral); }
+    h1 { margin: 0; font-size: clamp(58px, 16vw, 86px); line-height: .77; letter-spacing: -.075em; font-weight: 950; font-style: italic; }
+    h1 span { display: block; color: var(--aqua); margin-left: .34em; }
+    .tagline { margin: 22px 0 0 3px; max-width: 280px; color: #b7d2d3; font-size: 13px; line-height: 1.55; }
+    .title-bottom { margin-top: 34px; }
+    .best-card { display: flex; align-items: baseline; justify-content: space-between; border-top: 1px solid rgba(199,255,245,.14); padding: 14px 2px 16px; }
+    .best-card span { color: #8fb1b5; font-size: 9px; font-weight: 800; letter-spacing: .19em; }
+    #titleBest { color: var(--foam); font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .primary {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      background: var(--aqua);
+      color: #052c34;
+      padding: 17px 20px;
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: .17em;
+      cursor: pointer;
+      box-shadow: 0 8px 30px rgba(63, 227, 204, .16);
+      transition: transform .15s, background .15s;
+    }
+    .primary:hover { background: #a2ffed; transform: translateY(-2px); }
+    .primary:active { transform: translateY(1px) scale(.99); }
+    .secondary {
+      width: 100%;
+      border: 1px solid rgba(200,255,245,.18);
+      border-radius: 12px;
+      background: rgba(10, 48, 58, .4);
+      color: #d2e9e6;
+      padding: 14px 18px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .15em;
+      cursor: pointer;
+    }
+    .secondary:hover { border-color: var(--aqua-dim); }
+    .how-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 0 0 16px; }
+    .how-grid div { border: 1px solid rgba(190,255,244,.1); border-radius: 10px; padding: 10px 8px; background: rgba(6, 37, 47, .48); }
+    .how-grid b { display: block; color: var(--foam); font-size: 9px; letter-spacing: .11em; }
+    .how-grid span { display: block; color: #8fb2b6; font-size: 9px; margin-top: 5px; line-height: 1.35; }
+    .key { color: var(--aqua); }
+    #pauseScreen, #resultsScreen { background: rgba(3, 18, 26, .86); backdrop-filter: blur(9px); justify-content: center; }
+    .modal-kicker { color: var(--aqua); font-size: 10px; font-weight: 900; letter-spacing: .24em; margin-bottom: 12px; }
+    .modal-title { margin: 0 0 12px; font-size: clamp(42px, 12vw, 64px); line-height: .9; letter-spacing: -.055em; font-weight: 950; font-style: italic; }
+    .modal-copy { color: #a7c5c6; font-size: 12px; line-height: 1.6; margin: 0 0 26px; }
+    .button-stack { display: grid; gap: 10px; }
+    #resultMessage { color: var(--aqua); font-size: 11px; font-weight: 800; letter-spacing: .08em; min-height: 16px; margin-bottom: 18px; }
+    .versus { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .versus > div { padding: 14px; border-radius: 12px; background: rgba(17, 58, 66, .5); border: 1px solid rgba(190,255,244,.1); }
+    .versus label { display: block; font-size: 9px; color: #93b6b8; font-weight: 800; letter-spacing: .16em; margin-bottom: 7px; }
+    .versus strong { font-size: clamp(19px, 5vw, 25px); font-weight: 450; font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
+    .versus .ghost-time strong { color: #9cc9c7; }
+    #splits { margin: 0 0 20px; padding: 0; list-style: none; border-top: 1px solid rgba(190,255,244,.12); }
+    #splits li { display: flex; justify-content: space-between; padding: 8px 2px; border-bottom: 1px solid rgba(190,255,244,.08); font-size: 10px; color: #9dbbbc; font-variant-numeric: tabular-nums; }
+    #splits li strong { color: #d8eeeb; font-weight: 600; }
+    #resultStats { margin: -8px 0 18px; color: #83a8ab; font-size: 9px; letter-spacing: .09em; text-align: center; }
+    #touchHints { position: absolute; inset: 0; z-index: 2; pointer-events: none; display: flex; align-items: flex-end; opacity: .64; }
+    #touchHints > div { width: 50%; padding: 0 20px max(60px, calc(env(safe-area-inset-bottom) + 52px)); color: rgba(212,245,239,.38); font-size: 8px; font-weight: 900; letter-spacing: .16em; }
+    #touchHints > div:last-child { text-align: right; }
+    #touchHints b { display: block; color: rgba(212,245,239,.55); font-size: 10px; margin-bottom: 3px; }
+    #rotateNote { display: none; }
+    @media (max-height: 650px) {
+      .screen { padding-top: 50px; }
+      h1 { font-size: 52px; }
+      .tagline { margin-top: 14px; }
+      .title-bottom { margin-top: 20px; }
+      .how-grid { display: none; }
+      .best-card { padding-bottom: 10px; }
+      #splits li { padding: 5px 2px; }
+      .modal-title { font-size: 42px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="game" aria-label="TIDE CALLER rhythm swimming game">
+    <canvas id="pool" aria-label="Top-down swimming race"></canvas>
+    <div id="shade"></div>
+
+    <button id="soundBtn" class="ui" type="button" aria-label="Toggle sound">SOUND ON</button>
+
+    <section id="hud" class="ui hidden" aria-label="Race status">
+      <div class="hud-top">
+        <div><div class="eyebrow">RACE TIME</div><div id="timer">0:00.00</div></div>
+        <div id="lengthLabel"><span>LENGTH 1</span><br>OF 4</div>
+      </div>
+      <div class="length-pips" aria-hidden="true"><i class="active"></i><i></i><i></i><i></i></div>
+      <div id="oxygenWrap">
+        <label>O₂</label><div class="oxygen-track"><div id="oxygenBar"></div></div><span id="oxygenText">100</span>
+      </div>
+    </section>
+
+    <div id="judgement" class="ui" aria-live="polite"></div>
+    <div id="turnPrompt" class="ui hidden"><strong>FLIP ON THE PULSE</strong><span>Hold, then release with the gold ring</span></div>
+    <div id="countdown" class="ui hidden"><div><div id="countNumber">3</div><p>FIND YOUR WATER</p></div></div>
+
+    <div id="raceMeta" class="ui hidden"><div id="speedReadout">0.00 M/S</div><div id="streakReadout"></div></div>
+    <div id="ghostDelta" class="ui hidden">PB GHOST<strong>—</strong></div>
+    <div id="touchHints" class="hidden" aria-hidden="true"><div><b>HOLD · RELEASE</b>STROKE</div><div><b>TAP</b>BREATHE</div></div>
+
+    <section id="titleScreen" class="screen ui">
+      <div>
+        <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="eyebrow">A RHYTHM SWIM</div>
+        <h1>TIDE<span>CALLER</span></h1>
+        <p class="tagline">Find the pulse. Own the water.<br>Four lengths between you and your fastest self.</p>
+      </div>
+      <div class="title-bottom">
+        <div class="how-grid">
+          <div><b><span class="key">SPACE</span> HOLD</b><span>Release on the pulse to stroke.</span></div>
+          <div><b><span class="key">B</span> TAP</b><span>Breathe before your vision fades.</span></div>
+          <div><b>AT THE WALL</b><span>Release on pulse to flip.</span></div>
+        </div>
+        <div class="best-card"><span>PERSONAL BEST</span><strong id="titleBest">NO GHOST YET</strong></div>
+        <button id="startBtn" class="primary" type="button">DIVE IN</button>
+      </div>
+    </section>
+
+    <section id="pauseScreen" class="screen ui hidden" aria-label="Game paused">
+      <div class="modal-kicker">TAKE A BREATH</div>
+      <h2 class="modal-title">PAUSED</h2>
+      <p class="modal-copy">The water will wait. Your race clock is stopped.</p>
+      <div class="button-stack">
+        <button id="resumeBtn" class="primary" type="button">BACK TO THE LANE</button>
+        <button id="pauseRestartBtn" class="secondary" type="button">RESTART RACE</button>
+        <button id="quitBtn" class="secondary" type="button">RETURN TO TITLE</button>
+      </div>
+    </section>
+
+    <section id="resultsScreen" class="screen ui hidden" aria-label="Race results">
+      <div class="modal-kicker">100 METERS · COMPLETE</div>
+      <h2 class="modal-title">WALL<br>REACHED.</h2>
+      <div id="resultMessage"></div>
+      <div class="versus">
+        <div><label>YOU</label><strong id="resultTime">0:00.00</strong></div>
+        <div class="ghost-time"><label>PB GHOST</label><strong id="resultGhost">—</strong></div>
+      </div>
+      <ol id="splits"></ol>
+      <div id="resultStats"></div>
+      <div class="button-stack">
+        <button id="againBtn" class="primary" type="button">RACE YOUR GHOST</button>
+        <button id="resultsTitleBtn" class="secondary" type="button">RETURN TO TITLE</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+  (() => {
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+    const game = $('game');
+    const canvas = $('pool');
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    const ui = {
+      hud: $('hud'), timer: $('timer'), length: $('lengthLabel'), oxygenBar: $('oxygenBar'), oxygenText: $('oxygenText'),
+      pips: Array.from(document.querySelectorAll('.length-pips i')), judgement: $('judgement'), turn: $('turnPrompt'),
+      countdown: $('countdown'), count: $('countNumber'), raceMeta: $('raceMeta'), speed: $('speedReadout'),
+      streak: $('streakReadout'), ghost: $('ghostDelta'), touch: $('touchHints'), title: $('titleScreen'),
+      pause: $('pauseScreen'), results: $('resultsScreen'), titleBest: $('titleBest'), sound: $('soundBtn')
+    };
+
+    const STEP = 1 / 60;
+    const LENGTH = 25;
+    const RACE_DISTANCE = 100;
+    const BASE_INTERVAL = 0.94;
+    const PERFECT_WINDOW = 0.105;
+    const GOOD_WINDOW = 0.205;
+    const STORE_KEY = 'tide-caller-save-v1';
+    const TAU = Math.PI * 2;
+    let W = 390, H = 844, DPR = 1;
+    let mode = 'title';
+    let paused = false;
+    let lastFrame = performance.now();
+    let accumulator = 0;
+    let worldTime = 0;
+    let raceTime = 0;
+    let finalTime = 0;
+    let distance = 0;
+    let speed = 0;
+    let lengthIndex = 0;
+    let oxygen = 100;
+    let streak = 0;
+    let bestStreak = 0;
+    let drag = 0;
+    let strokeAnim = 0;
+    let breathAnim = 0;
+    let breathCooldown = 0;
+    let beatFlash = 0;
+    let nextBeat = 0.7;
+    let lastBeat = -0.24;
+    let beatInterval = BASE_INTERVAL;
+    let tempo = 1;
+    let strokeHeld = false;
+    let activeStrokePointer = null;
+    let turn = null;
+    let countdown = 0;
+    let recordClock = 0;
+    let frames = [];
+    let splits = [];
+    let stats = { perfect: 0, good: 0, late: 0, breaths: 0 };
+    let timingHistory = [];
+    let best = null;
+    let previousBest = null;
+    let ghostCursor = 0;
+    let ghostDistance = 0;
+    let fps = 60;
+    let fpsClock = 0;
+    let fpsFrames = 0;
+    let lastCountLabel = '';
+    let judgeSerial = 0;
+
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const easeOut = (t) => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
+
+    function formatTime(seconds) {
+      if (!Number.isFinite(seconds)) return '—';
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      const hundredths = Math.floor((seconds % 1) * 100);
+      return `${mins}:${String(secs).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
+    }
+
+    function loadSave() {
+      try {
+        const raw = localStorage.getItem(STORE_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (data && data.version === 1 && Number.isFinite(data.time) && data.time > 10 && data.time < 3600) {
+          best = {
+            time: data.time,
+            splits: Array.isArray(data.splits) && data.splits.length === 4 ? data.splits.filter(Number.isFinite) : [],
+            frames: Array.isArray(data.frames) ? data.frames.filter((f) => Array.isArray(f) && f.length === 2 && Number.isFinite(f[0]) && Number.isFinite(f[1])) : []
+          };
+          if (best.splits.length !== 4) best.splits = [];
+          if (best.frames.length < 2) best.frames = [];
+        }
+      } catch (_) {
+        best = null;
+      }
+    }
+
+    function saveBest(value) {
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify({ version: 1, ...value }));
+      } catch (_) {
+        // The race remains fully playable when storage is unavailable.
+      }
+    }
+
+    function readMute() {
+      try { return localStorage.getItem('tide-caller-muted') === '1'; } catch (_) { return false; }
+    }
+
+    class Sound {
+      constructor() {
+        this.context = null;
+        this.master = null;
+        this.noise = null;
+        this.muted = readMute();
+      }
+      unlock() {
+        if (!this.context) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return;
+          this.context = new AudioCtx();
+          this.master = this.context.createGain();
+          this.master.gain.value = this.muted ? 0 : 0.22;
+          this.master.connect(this.context.destination);
+          const buffer = this.context.createBuffer(1, this.context.sampleRate, this.context.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+          this.noise = buffer;
+        }
+        if (this.context.state === 'suspended') this.context.resume().catch(() => {});
+      }
+      toggle() {
+        this.muted = !this.muted;
+        this.unlock();
+        if (this.master && this.context) this.master.gain.setTargetAtTime(this.muted ? 0 : 0.22, this.context.currentTime, 0.02);
+        try { localStorage.setItem('tide-caller-muted', this.muted ? '1' : '0'); } catch (_) {}
+        updateSoundLabel();
+      }
+      tone(freq, duration, volume, type = 'sine', slide = 1) {
+        if (!this.context || !this.master || this.muted) return;
+        const t = this.context.currentTime;
+        const osc = this.context.createOscillator();
+        const gain = this.context.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, t);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq * slide), t + duration);
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(volume, t + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+        osc.connect(gain); gain.connect(this.master);
+        osc.start(t); osc.stop(t + duration + 0.02);
+      }
+      beat(accent) {
+        this.tone(accent ? 540 : 420, 0.075, 0.13, 'sine', 0.72);
+        if (accent) this.tone(1080, 0.035, 0.035, 'triangle', 0.9);
+      }
+      stroke(kind) {
+        // Immediate pitch-shifted feedback: each timing tier has its own interval.
+        if (kind === 'PERFECT') {
+          this.tone(760, 0.17, 0.28, 'sine', 1.52);
+          this.tone(1140, 0.12, 0.1, 'triangle', 1.18);
+        } else if (kind === 'GOOD') {
+          this.tone(560, 0.15, 0.22, 'sine', 1.25);
+        } else {
+          this.tone(190, 0.2, 0.2, 'sawtooth', 0.58);
+        }
+      }
+      breath() {
+        if (!this.context || !this.master || !this.noise || this.muted) return;
+        const t = this.context.currentTime;
+        const source = this.context.createBufferSource();
+        const filter = this.context.createBiquadFilter();
+        const gain = this.context.createGain();
+        source.buffer = this.noise;
+        filter.type = 'bandpass'; filter.frequency.value = 1250; filter.Q.value = 0.7;
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(0.18, t + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+        source.connect(filter); filter.connect(gain); gain.connect(this.master);
+        source.start(t); source.stop(t + 0.34);
+        this.tone(330, 0.24, 0.07, 'sine', 1.4);
+      }
+      flip(kind) {
+        this.tone(kind === 'PERFECT' ? 240 : 150, 0.34, 0.25, 'sine', 2.2);
+        this.tone(90, 0.26, 0.2, 'triangle', 0.7);
+      }
+      finish() {
+        [0, 0.12, 0.24].forEach((delay, i) => {
+          if (!this.context || this.muted) return;
+          const osc = this.context.createOscillator();
+          const gain = this.context.createGain();
+          const t = this.context.currentTime + delay;
+          osc.type = 'sine'; osc.frequency.value = [440, 554.37, 659.25][i];
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.exponentialRampToValueAtTime(0.2, t + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+          osc.connect(gain); gain.connect(this.master); osc.start(t); osc.stop(t + 0.58);
+        });
+      }
+    }
+    const sound = new Sound();
+
+    function updateSoundLabel() {
+      ui.sound.textContent = sound.muted ? 'SOUND OFF' : 'SOUND ON';
+      ui.sound.setAttribute('aria-pressed', sound.muted ? 'true' : 'false');
+    }
+
+    const particles = Array.from({ length: 110 }, () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, size: 2, color: '#7df9e3' }));
+    const rings = Array.from({ length: 18 }, () => ({ active: false, x: 0, y: 0, life: 0, max: 1, radius: 0, color: '#7df9e3' }));
+    let particleCursor = 0;
+    let ringCursor = 0;
+
+    function spawnParticle(x, y, color, force = 1) {
+      const p = particles[particleCursor++ % particles.length];
+      const angle = Math.random() * TAU;
+      const magnitude = (18 + Math.random() * 54) * force;
+      p.active = true; p.x = x; p.y = y;
+      p.vx = Math.cos(angle) * magnitude; p.vy = Math.sin(angle) * magnitude - 12;
+      p.life = p.max = 0.45 + Math.random() * 0.55;
+      p.size = 1.3 + Math.random() * 3.4; p.color = color;
+    }
+
+    function spawnRing(x, y, color, strong = false) {
+      const r = rings[ringCursor++ % rings.length];
+      r.active = true; r.x = x; r.y = y; r.life = r.max = strong ? 0.75 : 0.5; r.radius = strong ? 30 : 20; r.color = color;
+    }
+
+    function burst(color, count, force = 1) {
+      const pos = swimmerPosition();
+      for (let i = 0; i < count; i++) spawnParticle(pos.x, pos.y + 10, color, force);
+      spawnRing(pos.x, pos.y, color, count > 8);
+    }
+
+    function updateEffects(dt) {
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        if (!p.active) continue;
+        p.life -= dt;
+        if (p.life <= 0) { p.active = false; continue; }
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        p.vx *= 0.975; p.vy *= 0.975;
+      }
+      for (let i = 0; i < rings.length; i++) {
+        const r = rings[i];
+        if (!r.active) continue;
+        r.life -= dt;
+        if (r.life <= 0) r.active = false;
+      }
+      strokeAnim = Math.max(0, strokeAnim - dt * 2.25);
+      breathAnim = Math.max(0, breathAnim - dt * 1.7);
+      beatFlash = Math.max(0, beatFlash - dt * 3.8);
+    }
+
+    function resize() {
+      const rect = game.getBoundingClientRect();
+      W = rect.width; H = rect.height;
+      DPR = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(W * DPR);
+      canvas.height = Math.round(H * DPR);
+      canvas.style.width = `${W}px`; canvas.style.height = `${H}px`;
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+
+    function laneMetrics() {
+      const laneW = Math.min(W * 0.68, 360);
+      return { x: (W - laneW) / 2, w: laneW, top: Math.max(112, H * 0.145), bottom: H - Math.max(105, H * 0.13) };
+    }
+
+    function swimmerPosition(forDistance = distance) {
+      const lane = laneMetrics();
+      const clamped = clamp(forDistance, 0, RACE_DISTANCE - 0.001);
+      const idx = Math.min(3, Math.floor(clamped / LENGTH));
+      const within = (clamped - idx * LENGTH) / LENGTH;
+      const progress = idx % 2 === 0 ? within : 1 - within;
+      return {
+        x: W / 2 + Math.sin(worldTime * 3.1 + forDistance * 0.08) * 2,
+        y: lerp(lane.bottom, lane.top, progress),
+        angle: idx % 2 === 0 ? 0 : Math.PI,
+        index: idx,
+        within
+      };
+    }
+
+    function roundRectPath(x, y, w, h, r) {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius);
+      ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
+    }
+
+    function drawPool() {
+      const lane = laneMetrics();
+      const bg = ctx.createLinearGradient(0, 0, W, H);
+      bg.addColorStop(0, '#0a2732'); bg.addColorStop(1, '#061923');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = 'rgba(142, 205, 201, .055)';
+      for (let y = 4; y < H; y += 24) {
+        for (let x = (Math.floor(y / 24) % 2) * 12; x < W; x += 24) ctx.fillRect(x, y, 1, 1);
+      }
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,.38)'; ctx.shadowBlur = 28;
+      roundRectPath(lane.x - 7, lane.top - 30, lane.w + 14, lane.bottom - lane.top + 60, 9);
+      ctx.fillStyle = '#d2e5df'; ctx.fill();
+      ctx.restore();
+
+      const water = ctx.createLinearGradient(lane.x, 0, lane.x + lane.w, 0);
+      water.addColorStop(0, '#063c55'); water.addColorStop(.22, '#075a73'); water.addColorStop(.55, '#08667c'); water.addColorStop(1, '#053c54');
+      ctx.fillStyle = water; ctx.fillRect(lane.x, lane.top, lane.w, lane.bottom - lane.top);
+
+      ctx.save();
+      ctx.beginPath(); ctx.rect(lane.x, lane.top, lane.w, lane.bottom - lane.top); ctx.clip();
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 19; i++) {
+        const y = lane.top + ((i * 41 + worldTime * 9) % (lane.bottom - lane.top + 50)) - 25;
+        ctx.strokeStyle = `rgba(164, 246, 235, ${0.025 + (i % 3) * 0.012})`;
+        ctx.beginPath();
+        for (let x = lane.x - 10; x <= lane.x + lane.w + 10; x += 12) {
+          const yy = y + Math.sin(x * 0.045 + worldTime * 1.4 + i) * 4;
+          if (x === lane.x - 10) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+        }
+        ctx.stroke();
+      }
+      const glow = ctx.createRadialGradient(W * .46, H * .45, 10, W * .46, H * .45, lane.w * .7);
+      glow.addColorStop(0, 'rgba(116,244,225,.065)'); glow.addColorStop(1, 'rgba(0,20,35,0)');
+      ctx.fillStyle = glow; ctx.fillRect(lane.x, lane.top, lane.w, lane.bottom - lane.top);
+      ctx.restore();
+
+      ctx.fillStyle = '#c7dad5';
+      ctx.fillRect(lane.x - 7, lane.top - 30, lane.w + 14, 30);
+      ctx.fillRect(lane.x - 7, lane.bottom, lane.w + 14, 30);
+      ctx.fillStyle = '#74999b';
+      for (let x = lane.x; x < lane.x + lane.w; x += 18) {
+        ctx.fillRect(x, lane.top - 29, 1, 28); ctx.fillRect(x, lane.bottom + 1, 1, 28);
+      }
+      ctx.fillStyle = '#183f48';
+      ctx.fillRect(lane.x, lane.top - 4, lane.w, 4);
+      ctx.fillRect(lane.x, lane.bottom, lane.w, 4);
+      ctx.fillRect(W / 2 - 3, lane.top + 12, 6, 34);
+      ctx.fillRect(W / 2 - 19, lane.top + 12, 38, 6);
+      ctx.fillRect(W / 2 - 3, lane.bottom - 46, 6, 34);
+      ctx.fillRect(W / 2 - 19, lane.bottom - 18, 38, 6);
+
+      drawLaneRope(lane.x - 13, lane.top - 3, lane.bottom + 3);
+      drawLaneRope(lane.x + lane.w + 13, lane.top - 3, lane.bottom + 3);
+
+      ctx.fillStyle = 'rgba(188,224,219,.55)';
+      ctx.font = '800 8px system-ui, sans-serif';
+      ctx.textAlign = 'left'; ctx.fillText('25 M', lane.x - 1, lane.top - 40);
+      ctx.textAlign = 'right'; ctx.fillText('TIDE AQUATIC · LANE 04', lane.x + lane.w, lane.bottom + 43);
+    }
+
+    function drawLaneRope(x, top, bottom) {
+      ctx.strokeStyle = 'rgba(3,20,28,.45)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+      for (let y = top; y < bottom; y += 13) {
+        const index = Math.floor((y - top) / 13);
+        ctx.beginPath(); ctx.arc(x, y, 4.2, 0, TAU);
+        ctx.fillStyle = index % 5 < 2 ? '#ff8e70' : index % 2 ? '#d9eee7' : '#4cb8b4';
+        ctx.fill();
+        ctx.beginPath(); ctx.arc(x - 1.2, y - 1.3, 1.1, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,.48)'; ctx.fill();
+      }
+    }
+
+    function drawGhost() {
+      if (!best || !best.frames.length || (mode !== 'race' && mode !== 'countdown')) return;
+      const pos = swimmerPosition(ghostDistance);
+      drawSwimmer(pos.x + Math.min(34, laneMetrics().w * .12), pos.y, pos.angle, true, 0);
+      ctx.fillStyle = 'rgba(185,239,231,.6)';
+      ctx.font = '800 7px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('PB', pos.x + Math.min(34, laneMetrics().w * .12), pos.y - 34);
+    }
+
+    function drawSwimmer(x, y, angle, ghost = false, action = strokeAnim) {
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(angle);
+      if (turn && !ghost) {
+        const turnProgress = clamp(turn.elapsed / 0.58, 0, 1);
+        ctx.rotate(easeOut(turnProgress) * TAU);
+        ctx.scale(1 - Math.sin(turnProgress * Math.PI) * .26, 1 - Math.sin(turnProgress * Math.PI) * .26);
+      }
+      if (ghost) ctx.globalAlpha = .27;
+      const kick = Math.sin(worldTime * 15) * 4;
+      const pull = Math.sin(action * Math.PI);
+      const charge = strokeHeld && !ghost ? 1 : 0;
+
+      ctx.fillStyle = ghost ? '#b8eee5' : 'rgba(0,18,29,.25)';
+      ctx.beginPath(); ctx.ellipse(2, 6, 15, 31, 0, 0, TAU); ctx.fill();
+
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = ghost ? '#b8eee5' : '#d69374'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(-4, 17); ctx.lineTo(-5 + kick * .35, 34); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(4, 17); ctx.lineTo(5 - kick * .35, 34); ctx.stroke();
+
+      ctx.strokeStyle = ghost ? '#d4fff7' : '#efb091'; ctx.lineWidth = 5.5;
+      const armY = -23 + pull * 20 + charge * 9;
+      const armX = 10 + pull * 13 + charge * 5;
+      ctx.beginPath(); ctx.moveTo(-7, -8); ctx.quadraticCurveTo(-armX, armY, -5 - pull * 9, -30 + pull * 38 + charge * 18); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(7, -8); ctx.quadraticCurveTo(armX, armY, 5 + pull * 9, -30 + pull * 38 + charge * 18); ctx.stroke();
+
+      ctx.fillStyle = ghost ? '#8fcac4' : '#ff8e70';
+      ctx.beginPath(); ctx.ellipse(0, 4, 10, 20, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = ghost ? '#b8eee5' : '#092f42';
+      ctx.beginPath(); ctx.ellipse(0, 5, 7, 17, 0, 0, TAU); ctx.fill();
+
+      ctx.fillStyle = ghost ? '#d4fff7' : '#efb091'; ctx.beginPath(); ctx.arc(0, -17, 9, 0, TAU); ctx.fill();
+      ctx.fillStyle = ghost ? '#b8eee5' : '#ffd27d'; ctx.beginPath(); ctx.arc(0, -19, 8.5, Math.PI, TAU); ctx.fill();
+      if (!ghost) {
+        ctx.strokeStyle = '#092f42'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-7, -19); ctx.lineTo(7, -19); ctx.stroke();
+        ctx.fillStyle = '#7df9e3'; ctx.fillRect(-6, -21, 4, 2); ctx.fillRect(2, -21, 4, 2);
+      }
+
+      if (breathAnim > 0 && !ghost) {
+        ctx.save(); ctx.rotate(Math.PI / 2 * Math.sin(breathAnim * Math.PI));
+        ctx.fillStyle = '#efb091'; ctx.beginPath(); ctx.arc(7, -17, 7, 0, TAU); ctx.fill(); ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    function drawTimingRing() {
+      if (mode !== 'race' || paused) return;
+      const pos = swimmerPosition();
+      const until = Math.max(0, nextBeat - raceTime);
+      const progress = 1 - clamp(until / beatInterval, 0, 1);
+      const color = turn ? '#ffd27d' : '#7df9e3';
+      ctx.save();
+      ctx.globalAlpha = strokeHeld ? .95 : .38 + beatFlash * .45;
+      ctx.strokeStyle = color; ctx.lineWidth = strokeHeld ? 2.5 : 1.4;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, 35 + beatFlash * 5, 0, TAU); ctx.stroke();
+      if (strokeHeld) {
+        const radius = lerp(76, 36, progress);
+        ctx.globalAlpha = .35 + progress * .65;
+        ctx.lineWidth = 2 + progress * 2;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, TAU); ctx.stroke();
+        ctx.fillStyle = color; ctx.globalAlpha = .75;
+        ctx.font = '900 8px system-ui, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(turn ? 'RELEASE TO FLIP' : 'RELEASE', pos.x, pos.y + 56);
+      }
+      ctx.restore();
+    }
+
+    function drawEffects() {
+      for (let i = 0; i < rings.length; i++) {
+        const r = rings[i]; if (!r.active) continue;
+        const t = 1 - r.life / r.max;
+        ctx.globalAlpha = (1 - t) * .75; ctx.strokeStyle = r.color; ctx.lineWidth = 2 * (1 - t) + .5;
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.radius + t * 42, 0, TAU); ctx.stroke();
+      }
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i]; if (!p.active) continue;
+        ctx.globalAlpha = clamp(p.life / p.max, 0, 1) * .85; ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.5 + p.life / p.max * .5), 0, TAU); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawLowOxygen() {
+      if (oxygen >= 42 || (mode !== 'race' && mode !== 'countdown')) return;
+      const lack = 1 - oxygen / 42;
+      const vignette = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .22, W / 2, H / 2, Math.max(W, H) * .65);
+      vignette.addColorStop(0, 'rgba(2,12,20,0)'); vignette.addColorStop(1, `rgba(1,8,16,${.25 + lack * .62})`);
+      ctx.fillStyle = vignette; ctx.fillRect(0, 0, W, H);
+      if (oxygen < 20) {
+        ctx.fillStyle = `rgba(255,142,112,${(0.025 + Math.sin(worldTime * 5) * .015) * (1 - oxygen / 20)})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    function render() {
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      drawPool();
+      if (mode === 'title') {
+        const demoDistance = 7 + (Math.sin(worldTime * .32) * .5 + .5) * 8;
+        const pos = swimmerPosition(demoDistance);
+        drawSwimmer(pos.x, pos.y, pos.angle, false, (Math.sin(worldTime * 2) + 1) * .35);
+        if (Math.floor(worldTime * 2) !== Math.floor((worldTime - STEP) * 2)) spawnParticle(pos.x + (Math.random() - .5) * 18, pos.y + 20, '#7df9e3', .4);
+      } else {
+        drawGhost();
+        const pos = swimmerPosition();
+        drawSwimmer(pos.x, pos.y, pos.angle);
+        drawTimingRing();
+      }
+      drawEffects();
+      drawLowOxygen();
+      const blur = mode === 'race' && oxygen < 35 ? (1 - oxygen / 35) * 3.4 : 0;
+      canvas.style.filter = blur > .08 ? `blur(${blur.toFixed(2)}px) saturate(${(1 - blur * .1).toFixed(2)})` : 'none';
+    }
+
+    function nearestBeatDelta() {
+      const toNext = raceTime - nextBeat;
+      const fromLast = raceTime - lastBeat;
+      return Math.abs(toNext) < Math.abs(fromLast) ? toNext : fromLast;
+    }
+
+    function judgeDelta(delta) {
+      const absolute = Math.abs(delta);
+      if (absolute <= PERFECT_WINDOW) return 'PERFECT';
+      if (absolute <= GOOD_WINDOW) return 'GOOD';
+      return 'LATE';
+    }
+
+    function showJudgement(kind, subtitle = '') {
+      judgeSerial++;
+      ui.judgement.className = 'ui';
+      ui.judgement.innerHTML = `${kind}${subtitle ? `<small>${subtitle}</small>` : ''}`;
+      void ui.judgement.offsetWidth;
+      ui.judgement.className = `ui pop ${kind.toLowerCase()}`;
+    }
+
+    function pressStroke() {
+      if (mode !== 'race' || paused || strokeHeld || (turn && turn.resolved)) return;
+      strokeHeld = true;
+      sound.unlock();
+    }
+
+    function releaseStroke() {
+      if (!strokeHeld) return;
+      strokeHeld = false;
+      if (mode !== 'race' || paused) return;
+      const kind = judgeDelta(nearestBeatDelta());
+      if (turn) completeTurn(kind, false);
+      else applyStroke(kind);
+    }
+
+    function applyStroke(kind) {
+      const clean = kind !== 'LATE';
+      if (clean) {
+        streak++;
+        bestStreak = Math.max(bestStreak, streak);
+      } else {
+        streak = 0;
+        speed *= .7;
+        drag = .75;
+      }
+      if (kind === 'PERFECT') {
+        speed = Math.min(1.64, speed + .255 + Math.min(streak, 14) * .006);
+        stats.perfect++;
+        burst('#7df9e3', 13, 1.1);
+      } else if (kind === 'GOOD') {
+        speed = Math.min(1.5, speed + .185 + Math.min(streak, 14) * .004);
+        stats.good++;
+        burst('#ffd27d', 8, .85);
+      } else {
+        stats.late++;
+        burst('#ff8e70', 6, .65);
+      }
+      if (oxygen <= 0) speed = Math.min(speed, .65);
+      strokeAnim = 1;
+      showJudgement(kind, kind === 'LATE' ? 'DRAG · FIND THE PULSE' : streak >= 3 ? `${streak} CLEAN STROKES` : '');
+
+      const accuracy = kind === 'PERFECT' ? 1 : kind === 'GOOD' ? .74 : .18;
+      timingHistory.push(accuracy);
+      if (timingHistory.length > 8) timingHistory.shift();
+
+      // Flow Channel: after eight samples, challenge stays just above current skill.
+      // Only pacing changes; timing windows, physics rules, and input rules stay fixed.
+      if (timingHistory.length === 8 && (stats.perfect + stats.good + stats.late) % 4 === 0) {
+        const average = timingHistory.reduce((sum, value) => sum + value, 0) / 8;
+        if (average > .85) tempo = Math.min(1.22, tempo * 1.03);
+        else if (average < .60) tempo = Math.max(.76, tempo * .95);
+        beatInterval = BASE_INTERVAL / tempo;
+      }
+      sound.stroke(kind);
+    }
+
+    function breathe() {
+      if (mode !== 'race' || paused || breathCooldown > 0 || (turn && turn.resolved)) return;
+      sound.unlock();
+      breathCooldown = .7;
+      breathAnim = 1;
+      oxygen = Math.min(100, oxygen + 34);
+      stats.breaths++;
+      speed *= .975;
+      showJudgement('GOOD', 'BREATH · O₂ RESTORED');
+      burst('#d9fff7', 7, .55);
+      sound.breath();
+    }
+
+    function beginTurn(wall) {
+      distance = wall;
+      speed = 0;
+      strokeHeld = false;
+      turn = { elapsed: 0, resolved: false };
+      splits.push(raceTime);
+      ui.turn.classList.remove('hidden');
+      showJudgement('GOOD', `WALL ${lengthIndex + 1} · PREPARE TO FLIP`);
+      sound.tone(120, .3, .2, 'sine', 1.8);
+    }
+
+    function completeTurn(kind, automatic) {
+      if (!turn || turn.resolved) return;
+      turn.resolved = true;
+      const wall = (lengthIndex + 1) * LENGTH;
+      lengthIndex++;
+      distance = wall + .015;
+      speed = kind === 'PERFECT' ? 1.32 : kind === 'GOOD' ? 1.05 : .62;
+      if (kind === 'LATE') drag = .65;
+      strokeAnim = 1;
+      ui.turn.classList.add('hidden');
+      showJudgement(kind, automatic ? 'LATE FLIP · KEEP MOVING' : kind === 'PERFECT' ? 'FLIP · EXPLOSIVE PUSH' : 'FLIP · HOLD YOUR LINE');
+      burst(kind === 'LATE' ? '#ff8e70' : '#7df9e3', 20, 1.5);
+      sound.flip(kind);
+      window.setTimeout(() => { turn = null; }, 280);
+    }
+
+    function updateGhost() {
+      ghostDistance = 0;
+      if (!best || best.frames.length < 2) return;
+      const data = best.frames;
+      while (ghostCursor < data.length - 2 && data[ghostCursor + 1][0] < raceTime) ghostCursor++;
+      const a = data[ghostCursor];
+      const b = data[Math.min(ghostCursor + 1, data.length - 1)];
+      if (raceTime >= best.time) {
+        ghostDistance = RACE_DISTANCE;
+      } else if (b[0] > a[0]) {
+        ghostDistance = lerp(a[1], b[1], clamp((raceTime - a[0]) / (b[0] - a[0]), 0, 1));
+      }
+    }
+
+    function recordFrame(dt) {
+      recordClock += dt;
+      if (recordClock < .1) return;
+      recordClock -= .1;
+      frames.push([Math.round(raceTime * 100) / 100, Math.round(distance * 100) / 100]);
+    }
+
+    function updateRace(dt) {
+      raceTime += dt;
+      breathCooldown = Math.max(0, breathCooldown - dt);
+      drag = Math.max(0, drag - dt);
+      oxygen = Math.max(0, oxygen - dt * 3.05);
+
+      while (raceTime >= nextBeat) {
+        lastBeat = nextBeat;
+        nextBeat += beatInterval;
+        beatFlash = 1;
+        sound.beat(Math.floor(lastBeat / beatInterval) % 4 === 0);
+      }
+
+      if (turn) {
+        turn.elapsed += dt;
+        if (turn.elapsed >= 2.35 && !turn.resolved) completeTurn('LATE', true);
+      } else {
+        const base = oxygen <= 0 ? .54 : .74;
+        speed += (base - speed) * dt * (drag > 0 ? 1.6 : .82);
+        if (drag > 0) speed = Math.max(.35, speed - dt * .22);
+        if (oxygen <= 0) speed = Math.min(speed, .63);
+        distance += Math.max(.25, speed) * dt;
+        recordFrame(dt);
+        const wall = (lengthIndex + 1) * LENGTH;
+        if (distance >= wall) {
+          if (lengthIndex === 3) {
+            distance = RACE_DISTANCE;
+            splits.push(raceTime);
+            finishRace();
+            return;
+          }
+          beginTurn(wall);
+        }
+      }
+      updateGhost();
+      updateHUD();
+    }
+
+    function updateCountdown(dt) {
+      countdown -= dt;
+      let label;
+      if (countdown > .65) label = String(Math.max(1, Math.ceil(countdown - .65)));
+      else label = 'GO';
+      if (label !== lastCountLabel) {
+        lastCountLabel = label;
+        ui.count.textContent = label;
+        if (label !== 'GO') sound.tone(330 + (3 - Number(label)) * 60, .1, .12, 'sine', .95);
+        else sound.tone(660, .28, .25, 'sine', 1.5);
+      }
+      if (countdown <= 0) {
+        mode = 'race';
+        raceTime = 0;
+        nextBeat = .72;
+        lastBeat = nextBeat - beatInterval;
+        ui.countdown.classList.add('hidden');
+        showJudgement('GOOD', 'HOLD · RELEASE ON THE PULSE');
+        updateHUD();
+      }
+    }
+
+    function update(dt) {
+      worldTime += dt;
+      if (mode === 'countdown') updateCountdown(dt);
+      else if (mode === 'race') updateRace(dt);
+      updateEffects(dt);
+      fpsClock += dt; fpsFrames++;
+      if (fpsClock >= .75) {
+        fps = fpsFrames / fpsClock;
+        fpsClock = 0; fpsFrames = 0;
+      }
+    }
+
+    function updateHUD() {
+      ui.timer.textContent = formatTime(raceTime);
+      ui.length.innerHTML = `<span>LENGTH ${Math.min(4, lengthIndex + 1)}</span><br>OF 4`;
+      ui.oxygenBar.style.width = `${oxygen}%`;
+      ui.oxygenText.textContent = String(Math.ceil(oxygen));
+      const oxygenColor = oxygen < 25 ? '#ff8e70' : oxygen < 48 ? '#ffd27d' : '#7df9e3';
+      ui.oxygenBar.style.background = oxygenColor;
+      ui.speed.textContent = `${speed.toFixed(2)} M/S`;
+      ui.streak.textContent = streak >= 3 ? `${streak} STROKE FLOW` : drag > 0 ? 'DRAG · RECOVER THE RHYTHM' : '';
+      for (let i = 0; i < ui.pips.length; i++) ui.pips[i].className = i < lengthIndex ? 'done' : i === lengthIndex ? 'active' : '';
+      if (best && best.frames.length) {
+        const delta = distance - ghostDistance;
+        ui.ghost.classList.remove('hidden');
+        ui.ghost.innerHTML = `PB GHOST<strong>${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(1)} M</strong>`;
+      } else {
+        ui.ghost.classList.add('hidden');
+      }
+    }
+
+    function setRaceUI(visible) {
+      ui.hud.classList.toggle('hidden', !visible);
+      ui.raceMeta.classList.toggle('hidden', !visible);
+      ui.touch.classList.toggle('hidden', !visible);
+      if (!visible) ui.ghost.classList.add('hidden');
+    }
+
+    function startRace() {
+      sound.unlock();
+      mode = 'countdown'; paused = false;
+      raceTime = 0; finalTime = 0; distance = 0; speed = .72; lengthIndex = 0;
+      oxygen = 100; streak = 0; bestStreak = 0; drag = 0; strokeAnim = 0; breathAnim = 0;
+      breathCooldown = 0; strokeHeld = false; activeStrokePointer = null; turn = null;
+      countdown = 3.65; lastCountLabel = ''; nextBeat = .72; lastBeat = nextBeat - BASE_INTERVAL;
+      beatInterval = BASE_INTERVAL; tempo = 1; timingHistory = [];
+      stats = { perfect: 0, good: 0, late: 0, breaths: 0 };
+      frames = [[0, 0]]; splits = []; recordClock = 0; ghostCursor = 0; ghostDistance = 0;
+      previousBest = best;
+      for (const p of particles) p.active = false;
+      for (const r of rings) r.active = false;
+      ui.title.classList.add('hidden'); ui.results.classList.add('hidden'); ui.pause.classList.add('hidden');
+      ui.turn.classList.add('hidden'); ui.countdown.classList.remove('hidden');
+      setRaceUI(true); updateHUD();
+      lastFrame = performance.now(); accumulator = 0;
+    }
+
+    function showTitle() {
+      mode = 'title'; paused = false; strokeHeld = false; turn = null; oxygen = 100;
+      ui.title.classList.remove('hidden'); ui.pause.classList.add('hidden'); ui.results.classList.add('hidden');
+      ui.countdown.classList.add('hidden'); ui.turn.classList.add('hidden');
+      setRaceUI(false); updateTitleBest();
+      canvas.style.filter = 'none';
+    }
+
+    function updateTitleBest() {
+      ui.titleBest.textContent = best ? formatTime(best.time) : 'NO GHOST YET';
+      $('startBtn').textContent = best ? 'RACE YOUR GHOST' : 'DIVE IN';
+    }
+
+    function setPaused(value, fromFocus = false) {
+      if (mode !== 'race' && mode !== 'countdown') return;
+      paused = value;
+      strokeHeld = false; activeStrokePointer = null;
+      ui.pause.classList.toggle('hidden', !paused);
+      if (paused) {
+        ui.turn.classList.add('hidden');
+        if (sound.context) sound.context.suspend().catch(() => {});
+      } else {
+        if (turn && !turn.resolved) ui.turn.classList.remove('hidden');
+        sound.unlock();
+        lastFrame = performance.now(); accumulator = 0;
+        if (fromFocus) showJudgement('GOOD', 'WELCOME BACK');
+      }
+    }
+
+    function finishRace() {
+      finalTime = raceTime;
+      frames.push([Math.round(finalTime * 100) / 100, RACE_DISTANCE]);
+      mode = 'results'; strokeHeld = false; turn = null;
+      ui.turn.classList.add('hidden'); ui.hud.classList.add('hidden'); ui.raceMeta.classList.add('hidden');
+      ui.touch.classList.add('hidden'); ui.ghost.classList.add('hidden');
+      canvas.style.filter = 'none';
+      const oldBest = previousBest;
+      const isBest = !oldBest || finalTime < oldBest.time;
+      if (isBest) {
+        best = { time: finalTime, splits: splits.slice(0, 4), frames: frames.slice() };
+        saveBest(best);
+      }
+      $('resultTime').textContent = formatTime(finalTime);
+      $('resultGhost').textContent = oldBest ? formatTime(oldBest.time) : 'FIRST WAKE';
+      if (!oldBest) $('resultMessage').textContent = 'YOUR FIRST GHOST NOW LIVES IN THE LANE.';
+      else if (isBest) $('resultMessage').textContent = `${formatTime(oldBest.time - finalTime)} FASTER · NEW PERSONAL BEST`;
+      else $('resultMessage').textContent = `+${formatTime(finalTime - oldBest.time)} BEHIND YOUR PB GHOST`;
+      const splitList = $('splits');
+      splitList.textContent = '';
+      let prior = 0;
+      for (let i = 0; i < 4; i++) {
+        const li = document.createElement('li');
+        const splitTime = splits[i] || finalTime;
+        const label = document.createElement('span'); label.textContent = `LENGTH ${i + 1} · ${i % 2 ? 'BACK' : 'OUT'}`;
+        const value = document.createElement('strong'); value.textContent = formatTime(splitTime - prior);
+        li.append(label, value); splitList.appendChild(li); prior = splitTime;
+      }
+      const total = stats.perfect + stats.good + stats.late;
+      const clean = total ? Math.round((stats.perfect + stats.good) / total * 100) : 0;
+      $('resultStats').textContent = `${clean}% CLEAN · ${bestStreak} BEST FLOW · ${stats.breaths} BREATHS`;
+      $('againBtn').textContent = 'RACE YOUR GHOST';
+      ui.results.classList.remove('hidden');
+      burst('#7df9e3', 30, 1.8);
+      sound.finish();
+      updateTitleBest();
+    }
+
+    function loop(now) {
+      const elapsed = Math.min(.08, Math.max(0, (now - lastFrame) / 1000));
+      lastFrame = now;
+      if (!paused) {
+        accumulator += elapsed;
+        let safety = 0;
+        while (accumulator >= STEP && safety++ < 6) {
+          update(STEP);
+          accumulator -= STEP;
+        }
+      } else {
+        worldTime += elapsed * .12;
+      }
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    $('startBtn').addEventListener('click', startRace);
+    $('againBtn').addEventListener('click', startRace);
+    $('resultsTitleBtn').addEventListener('click', showTitle);
+    $('resumeBtn').addEventListener('click', () => setPaused(false));
+    $('pauseRestartBtn').addEventListener('click', startRace);
+    $('quitBtn').addEventListener('click', showTitle);
+    ui.sound.addEventListener('click', () => sound.toggle());
+
+    window.addEventListener('keydown', (event) => {
+      if (event.code === 'Space') {
+        event.preventDefault();
+        if (event.repeat) return;
+        if (mode === 'title' || mode === 'results') startRace();
+        else if (!paused) pressStroke();
+      } else if (event.code === 'KeyB') {
+        event.preventDefault(); if (!event.repeat) breathe();
+      } else if (event.code === 'KeyP' || event.code === 'Escape') {
+        event.preventDefault();
+        if (mode === 'race' || mode === 'countdown') setPaused(!paused);
+      } else if (event.code === 'KeyM') {
+        event.preventDefault(); if (!event.repeat) sound.toggle();
+      }
+    }, { passive: false });
+
+    window.addEventListener('keyup', (event) => {
+      if (event.code === 'Space') { event.preventDefault(); releaseStroke(); }
+    }, { passive: false });
+
+    game.addEventListener('pointerdown', (event) => {
+      if (event.target.closest('button') || mode !== 'race' || paused) return;
+      event.preventDefault();
+      const rect = game.getBoundingClientRect();
+      if (event.clientX - rect.left < rect.width / 2) {
+        if (activeStrokePointer === null) {
+          activeStrokePointer = event.pointerId;
+          try { game.setPointerCapture(event.pointerId); } catch (_) {}
+          pressStroke();
+        }
+      } else {
+        breathe();
+      }
+    }, { passive: false });
+
+    function pointerRelease(event) {
+      if (event.pointerId === activeStrokePointer) {
+        event.preventDefault(); activeStrokePointer = null; releaseStroke();
+      }
+    }
+    game.addEventListener('pointerup', pointerRelease, { passive: false });
+    game.addEventListener('pointercancel', pointerRelease, { passive: false });
+    game.addEventListener('contextmenu', (event) => event.preventDefault());
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) setPaused(true, true);
+    });
+    window.addEventListener('blur', () => setPaused(true, true));
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', () => window.setTimeout(resize, 100));
+
+    loadSave();
+    updateTitleBest();
+    updateSoundLabel();
+    resize();
+    requestAnimationFrame(loop);
+
+    // Read-only diagnostics for frame-rate and complete state-loop verification.
+    window.__gameProbe = () => ({
+      state: mode, paused, raceTime, distance, speed, oxygen, length: lengthIndex + 1,
+      streak, turn: Boolean(turn && !turn.resolved), nextBeatIn: nextBeat - raceTime,
+      lastBeatAgo: raceTime - lastBeat, fps: Math.round(fps), bestTime: best ? best.time : null,
+      judgments: { ...stats }, storedFrames: best ? best.frames.length : 0
+    });
+    window.__GAME_READY__ = true;
+  })();
+  </script>
+</body>
+</html>
