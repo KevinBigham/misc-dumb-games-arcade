@@ -17,7 +17,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Aegis: Volt-Lash | tether-parry arena roguelite | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/volt-lash/) |  |
 | Argon Studio Collection | game launcher | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/argon-studio/) | Launcher for the 13 Argon games; borrowed game names and inspiration credits removed. Same games are also listed one by one |
 | Baseline Empire '05 | basketball franchise sim | unknown (Nov 5) | cloud PR #2 | [play](games/baseline-empire/) | Formerly Hardwood Franchise; league, teams, colleges, papers and name pools are now fictional |
-| Basketball Sim Crazy Fun Dynasty Legendary GM | basketball franchise sim | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/basketball-dynasty-gm/) |  |
+| Basketball Sim Crazy Fun Dynasty Legendary GM | basketball franchise sim | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/basketball-dynasty-gm/) | One team name changed; added a fallback so it runs without 3D graphics |
 | Beatline Salvage | rhythm | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/beatline-salvage/) |  |
 | Belt & Bolt | factory defense | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/belt-and-bolt/) | Subtitle no longer names Mindustry or shapez |
 | Black Line Dynasty | swimming dynasty sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/black-line-dynasty/) | Real swim club names were replaced with made-up ones |
