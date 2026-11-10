@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GRAVITY HEIST</title>
+<style>
+  :root {
+    --bg: #090a10;
+    --panel: #121521;
+    --accent: #00f0ff;
+    --gem: #ff2a85;
+    --gold: #ffd100;
+    --text: #e8ecf2;
+  }
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', Courier, monospace;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  #game-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 960px;
+    aspect-ratio: 16 / 9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.12), 0 0 0 2px #1e2436;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #07080d;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+  }
+  #touch-controls {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    right: 14px;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0.78;
+  }
+  .touch-group {
+    display: flex;
+    gap: 10px;
+    pointer-events: auto;
+  }
+  .touch-btn {
+    width: 58px;
+    height: 58px;
+    border-radius: 12px;
+    background: rgba(18, 21, 33, 0.75);
+    border: 2px solid rgba(0, 240, 255, 0.45);
+    color: var(--text);
+    font-size: 18px;
+    font-weight: bold;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    touch-action: none;
+    transition: transform 0.05s, background 0.05s;
+  }
+  .touch-btn:active, .touch-btn.active {
+    background: rgba(0, 240, 255, 0.35);
+    border-color: var(--accent);
+    transform: scale(0.94);
+  }
+  .touch-btn.wide {
+    width: 78px;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+  @media (min-width: 900px) and (pointer: fine) {
+    #touch-controls {
+      opacity: 0.35;
+    }
+    #touch-controls:hover {
+      opacity: 0.85;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <canvas id="canvas" width="960" height="540"></canvas>
+  <div id="touch-controls">
+    <div class="touch-group">
+      <button class="touch-btn" id="btn-left" aria-label="Move Left">&#9664;</button>
+      <button class="touch-btn" id="btn-right" aria-label="Move Right">&#9654;</button>
+    </div>
+    <div class="touch-group">
+      <button class="touch-btn wide" id="btn-jump" aria-label="Jump">JUMP</button>
+      <button class="touch-btn wide" id="btn-flip" aria-label="Flip Gravity">FLIP</button>
+      <button class="touch-btn" id="btn-reset" aria-label="Reset Level" style="width:46px;font-size:14px;">&#8635;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ============================================================================
+  // 1. CONSTANTS & GAME FEEL TUNING (Steve Swink / Celeste-inspired metrics)
+  // ============================================================================
+  const W = 960;
+  const H = 540;
+  const TILE = 30; // 32x18 grid = 960x540
+  const COLS = 32;
+  const ROWS = 18;
+  const DT = 1 / 60; // 60fps fixed timestep (16.667ms)
+
+  const PHYS = {
+    maxRun: 255,            // Max horizontal speed (px/s)
+    runAccel: 1850,         // Ground acceleration (px/s^2)
+    runDecel: 2200,         // Ground friction/deceleration (px/s^2)
+    runTurnAccel: 3100,     // Snappy turnaround on ground
+    airAccel: 1350,         // Air control acceleration
+    airDecel: 850,          // Air drag when no input
+    airTurnAccel: 2100,     // Air turnaround
+    gravity: 1120,          // Base gravity (px/s^2)
+    fallGravityMult: 1.38,  // Heavier fall for snappy arc
+    apexGravityMult: 0.55,  // Hang-time near jump apex (|vy| < apexThreshold)
+    apexThreshold: 65,      // Velocity window for apex hang
+    maxFall: 520,           // Terminal velocity (px/s)
+    jumpSpeed: 395,         // Initial jump impulse (px/s)
+    varJumpCut: 0.5,        // Variable jump height: release early = 0.5x upward velocity
+    flipImpulse: 130,       // Small initial boost in new gravity direction on flip
+    coyoteMax: 0.100,       // 100ms coyote time
+    jumpBufMax: 0.120,      // 120ms jump buffer
+    flipBufMax: 0.100,      // 100ms flip buffer
+    respawnDuration: 0.220  // 220ms death-to-control respawn (< 300ms requirement)
+  };
+
+  // ============================================================================
+  // 2. WEBAUDIO SYNTHESIZER (Zero external assets)
+  // ============================================================================
+  class SoundFX {
+    constructor() {
+      this.ctx = null;
+      this.muted = false;
+    }
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    }
+    tone(freqStart, freqEnd, duration, type = 'square', gainVal = 0.12, delay = 0) {
+      if (this.muted || !this.ctx) return;
+      try {
+        const t0 = this.ctx.currentTime + delay;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freqStart, t0);
+        if (freqEnd !== freqStart) {
+          osc.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), t0 + duration);
+        }
+        gain.gain.setValueAtTime(0.001, t0);
+        gain.gain.linearRampToValueAtTime(gainVal, t0 + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + duration + 0.01);
+      } catch (e) {}
+    }
+    noise(duration, gainVal = 0.1) {
+      if (this.muted || !this.ctx) return;
+      try {
+        const t0 = this.ctx.currentTime;
+        const bufSize = Math.floor(this.ctx.sampleRate * duration);
+        const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+        const src = this.ctx.createBufferSource();
+        src.buffer = buf;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 900;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(gainVal, t0);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+        src.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        src.start(t0);
+      } catch (e) {}
+    }
+    jump(gravDir) {
+      const base = gravDir > 0 ? 230 : 310;
+      this.tone(base, base * 2.1, 0.11, 'square', 0.11);
+    }
+    flip(newGravDir) {
+      if (newGravDir < 0) {
+        this.tone(240, 680, 0.14, 'triangle', 0.15);
+        this.tone(360, 920, 0.10, 'sine', 0.08, 0.02);
+      } else {
+        this.tone(680, 220, 0.14, 'triangle', 0.15);
+        this.tone(520, 180, 0.10, 'sine', 0.08, 0.02);
+      }
+    }
+    flipBlocked() {
+      this.tone(150, 95, 0.09, 'sawtooth', 0.12);
+    }
+    land() {
+      this.tone(110, 55, 0.055, 'triangle', 0.09);
+    }
+    gem(combo = 0) {
+      const mul = Math.pow(1.09, Math.min(combo, 8));
+      this.tone(587.33 * mul, 880 * mul, 0.09, 'square', 0.13);
+      this.tone(880 * mul, 1318.5 * mul, 0.14, 'triangle', 0.13, 0.055);
+    }
+    unlock() {
+      this.tone(440, 554.37, 0.08, 'square', 0.11, 0);
+      this.tone(554.37, 659.25, 0.08, 'square', 0.11, 0.06);
+      this.tone(659.25, 880, 0.16, 'triangle', 0.14, 0.12);
+    }
+    win() {
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((n, i) => this.tone(n, n * 1.02, 0.14, 'triangle', 0.14, i * 0.065));
+    }
+    die() {
+      this.noise(0.16, 0.16);
+      this.tone(280, 65, 0.18, 'sawtooth', 0.14);
+    }
+  }
+  const sfx = new SoundFX();
+
+  // ============================================================================
+  // 3. LEVEL DEFINITIONS (Kishōtenketsu 4-part structure per level)
+  // ============================================================================
+  // Legend (32 columns x 18 rows):
+  // '#' : Solid vault wall
+  // '.' : Empty space
+  // 'S' : Player Spawn
+  // 'G' : Vault Gem (all required to unlock exit)
+  // 'E' : Extraction Door
+  // '^' : Ceiling/Floor Spike pointing UP
+  // 'v' : Ceiling/Floor Spike pointing DOWN
+  // '<' : Spike pointing LEFT
+  // '>' : Spike pointing RIGHT
+  // 'H' : Horizontal moving platform (3 tiles wide, patrols horizontally)
+  // 'V' : Vertical moving platform (2 tiles wide, patrols vertically)
+  // 'Z' : Gravity-Lock Field (amber zone: cannot trigger mid-air flip inside)
+  // 'L' : Timed Security Laser emitter/beam (vertical or horizontal beam)
+  const LEVELS = [
+    {
+      name: "01 // FIRST INFILTRATION",
+      mechanic: "GRAVITY FLIP & SPIKES",
+      hint: "ARROWS/WASD to Run & Jump  |  SPACE / W / UP in mid-air to FLIP GRAVITY (1x per jump)",
+      kishotenketsu: [
+        { x: 1,  w: 8,  stage: "INTRO: SAFE FLIP" },
+        { x: 9,  w: 8,  stage: "DEVELOP: SPIKE GAP" },
+        { x: 17, w: 8,  stage: "TWIST: MID-AIR RE-FLIP" },
+        { x: 25, w: 6,  stage: "CONCLUDE: VAULT DROP" }
+      ],
+      map: [
+        "################################",
+        "#..............##..............#",
+        "#....G.........##....G.........#",
+        "#..#####.......##..#####.......#",
+        "#..............##..............#",
+        "#..........vvvv##..............#",
+        "#..............##.........G....#",
+        "#..............##.......#####..#",
+        "#..............##..............#",
+        "#..............##..............#",
+        "#.......#####..##..............#",
+        "#..............##vvv...........#",
+        "#..............##...###........#",
+        "#..............##......G.......#",
+        "#..S...........##..............#",
+        "#########^^^^^^########...E..###",
+        "#########......########......###",
+        "################################"
+      ]
+    },
+    {
+      name: "02 // INVERTED GAUNTLET",
+      mechanic: "SPIKE CORRIDORS",
+      hint: "Release JUMP early for a low hop. Land on ceiling or floor to recharge your FLIP.",
+      kishotenketsu: [
+        { x: 1,  w: 7,  stage: "INTRO: CEILING WALK" },
+        { x: 8,  w: 8,  stage: "DEVELOP: SAWTOOTH" },
+        { x: 16, w: 9,  stage: "TWIST: DOUBLE INVERT" },
+        { x: 25, w: 6,  stage: "CONCLUDE: SPRINT OUT" }
+      ],
+      map: [
+        "################################",
+        "#.......vvvv........vvvv.......#",
+        "#..G........................G..#",
+        "#..###....####....####....###..#",
+        "#..............................#",
+        "#.........G..........G.........#",
+        "#.......######....######.......#",
+        "#..............................#",
+        "#.............####.............#",
+        "#.............####.............#",
+        "#..............................#",
+        "#.......######....######.......#",
+        "#.........G..........G.........#",
+        "#..............................#",
+        "#..S......####....####......E..#",
+        "#####......................#####",
+        "#####...^^^^^^^^....^^^^...#####",
+        "################################"
+      ]
+    },
+    {
+      name: "03 // KINETIC CONVEYORS",
+      mechanic: "MOVING PLATFORMS",
+      hint: "Moving platforms carry your momentum and recharge your gravity flip on contact!",
+      kishotenketsu: [
+        { x: 1,  w: 8,  stage: "INTRO: FERRY RIDE" },
+        { x: 9,  w: 8,  stage: "DEVELOP: INVERTED RIDE" },
+        { x: 17, w: 8,  stage: "TWIST: DUAL ELEVATOR" },
+        { x: 25, w: 6,  stage: "CONCLUDE: FINAL LEAP" }
+      ],
+      map: [
+        "################################",
+        "#....vvvvvvv........vvvvvvv....#",
+        "#.............G................#",
+        "#...........#####.......G......#",
+        "#......................###.....#",
+        "#.....H........................#",
+        "#..............................#",
+        "#........G.....................#",
+        "#...................V..........#",
+        "#..............................#",
+        "#.............H................#",
+        "#..............................#",
+        "#.......................G......#",
+        "#.....H........................#",
+        "#..S........................E..#",
+        "#####......................#####",
+        "#####^^^^^^^^^^^^^^^^^^^^^^#####",
+        "################################"
+      ]
+    },
+    {
+      name: "04 // PENDULUM VAULT",
+      mechanic: "SYNCHRONIZED CARRIERS",
+      hint: "Time your flips with the carriers — jumping off a ceiling platform launches you downward!",
+      kishotenketsu: [
+        { x: 1,  w: 7,  stage: "INTRO: VERTICAL LIFT" },
+        { x: 8,  w: 8,  stage: "DEVELOP: CROSSING" },
+        { x: 16, w: 9,  stage: "TWIST: CEILING SWAP" },
+        { x: 25, w: 6,  stage: "CONCLUDE: EXTRACTION" }
+      ],
+      map: [
+        "################################",
+        "#vvvvvvv....vvvvvvv....vvvvvvv.#",
+        "#..............................#",
+        "#...G..........G...........G...#",
+        "#.............###..............#",
+        "#..........H.........H.........#",
+        "#..............................#",
+        "#.....V..................V.....#",
+        "#..............G...............#",
+        "#.............###..............#",
+        "#..............................#",
+        "#..........H.........H.........#",
+        "#..............................#",
+        "#...G......................G...#",
+        "#..S........................E..#",
+        "####...^^^^^^^....^^^^^^^...####",
+        "####........................####",
+        "################################"
+      ]
+    },
+    {
+      name: "05 // NULL-FLIP CHAMBERS",
+      mechanic: "GRAVITY-LOCK ZONES",
+      hint: "AMBER ZONES lock your gravity switch! Set your trajectory BEFORE entering the field.",
+      kishotenketsu: [
+        { x: 1,  w: 7,  stage: "INTRO: SAFE NULL FIELD" },
+        { x: 8,  w: 8,  stage: "DEVELOP: COMMIT EARLY" },
+        { x: 16, w: 9,  stage: "TWIST: LOCKED ARCH" },
+        { x: 25, w: 6,  stage: "CONCLUDE: DROP ESCAPE" }
+      ],
+      map: [
+        "################################",
+        "#.........ZZZZ....ZZZZ.........#",
+        "#.........ZZZZ.G..ZZZZ......G..#",
+        "#..#####..ZZZZ####ZZZZ....#####",
+        "#.........ZZZZ....ZZZZ.........#",
+        "#.........ZZZZ....ZZZZ.........#",
+        "#....G....ZZZZ....ZZZZ.........#",
+        "#.........ZZZZ....ZZZZ.........#",
+        "#.......######....######.......#",
+        "#..............................#",
+        "#.................ZZZZ.........#",
+        "#....H............ZZZZ..G......#",
+        "#.................ZZZZ#####....#",
+        "#.........G.......ZZZZ.........#",
+        "#..S..............ZZZZ......E..#",
+        "######^^^^^^^.....ZZZZ....######",
+        "######............ZZZZ....######",
+        "################################"
+      ]
+    },
+    {
+      name: "06 // AMBER LABYRINTH",
+      mechanic: "LOCK ZONES + CARRIERS",
+      hint: "Ride moving platforms through Gravity-Lock curtains, then flip the instant you clear them!",
+      kishotenketsu: [
+        { x: 1,  w: 8,  stage: "INTRO: LOCKED FERRY" },
+        { x: 9,  w: 8,  stage: "DEVELOP: WEAVE" },
+        { x: 17, w: 8,  stage: "TWIST: INVERTED DROP" },
+        { x: 25, w: 6,  stage: "CONCLUDE: VAULT DOOR" }
+      ],
+      map: [
+        "################################",
+        "#.....ZZZZ...vvvvvv...ZZZZ.....#",
+        "#..G..ZZZZ............ZZZZ..G..#",
+        "#..###ZZZZ............ZZZZ###..#",
+        "#.....ZZZZ.....G......ZZZZ.....#",
+        "#.....ZZZZ...#####....ZZZZ.....#",
+        "#.....ZZZZ............ZZZZ.....#",
+        "#........H............H........#",
+        "#..............................#",
+        "#..............G...............#",
+        "#............#####.............#",
+        "#.....ZZZZ............ZZZZ.....#",
+        "#.....ZZZZ............ZZZZ.....#",
+        "#.....ZZZZ.....H......ZZZZ.....#",
+        "#..S..ZZZZ.....G......ZZZZ..E..#",
+        "####..ZZZZ............ZZZZ..####",
+        "####..ZZZZ^^^^^^^^^^^^ZZZZ..####",
+        "################################"
+      ]
+    },
+    {
+      name: "07 // PHOTON SECURITY",
+      mechanic: "PULSED LASER GRIDS",
+      hint: "Red Laser Grids cycle ON and OFF. Watch the charge warning beam before crossing!",
+      kishotenketsu: [
+        { x: 1,  w: 7,  stage: "INTRO: TIMED GATE" },
+        { x: 8,  w: 8,  stage: "DEVELOP: LASER + SPIKE" },
+        { x: 16, w: 9,  stage: "TWIST: LOCKED LASERS" },
+        { x: 25, w: 6,  stage: "CONCLUDE: CLEAN HEIST" }
+      ],
+      map: [
+        "################################",
+        "#......L.......vvvv......L.....#",
+        "#...G..L........G........L..G..#",
+        "#..###.L......#####......L.###.#",
+        "#......L.................L.....#",
+        "#......L.................L.....#",
+        "#......L..ZZZZ.....ZZZZ..L.....#",
+        "#######...ZZZZ..G..ZZZZ...######",
+        "#.........ZZZZ#####ZZZZ........#",
+        "#.........ZZZZ.....ZZZZ........#",
+        "#......L.................L.....#",
+        "#......L.................L.....#",
+        "#......L........G........L.....#",
+        "#......L......#####......L.....#",
+        "#..S...L.................L..E..#",
+        "########^^^^^.......^^^^^#######",
+        "########.................#######",
+        "################################"
+      ]
+    },
+    {
+      name: "08 // THE GRAND CROWN HEIST",
+      mechanic: "MASTER VAULT EXAM",
+      hint: "Combine every thief skill: Spikes, Carriers, Gravity-Locks, and Lasers. Set a record!",
+      kishotenketsu: [
+        { x: 1,  w: 7,  stage: "INTRO: LASER LAUNCH" },
+        { x: 8,  w: 8,  stage: "DEVELOP: NULL CARRIER" },
+        { x: 16, w: 9,  stage: "TWIST: GAUNTLET CORE" },
+        { x: 25, w: 6,  stage: "CONCLUDE: GRAND EXIT" }
+      ],
+      map: [
+        "################################",
+        "#.....L...ZZZZvvvvvvZZZZ..L....#",
+        "#..G..L...ZZZZ..G...ZZZZ..L.G..#",
+        "#..##.L...ZZZZ#####.ZZZZ..L.##.#",
+        "#.....L...ZZZZ......ZZZZ..L....#",
+        "#.....L........H..........L....#",
+        "#.....L...................L....#",
+        "#######...................######",
+        "#..............G...............#",
+        "#............#####.............#",
+        "#######...................######",
+        "#.....L...................L....#",
+        "#.....L........H..........L....#",
+        "#.....L...ZZZZ..G...ZZZZ..L....#",
+        "#..S..L...ZZZZ......ZZZZ..L.E..#",
+        "#####.....ZZZZ^^^^^^ZZZZ...#####",
+        "#####.....ZZZZ......ZZZZ...#####",
+        "################################"
+      ]
+    }
+  ];
+
+  // ============================================================================
+  // 4. STORAGE HELPERS (Best times wrapped in try/catch)
+  // ============================================================================
+  const STORAGE_KEY = 'gravity_heist_best_times_v1';
+  function loadBestTimes() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function saveBestTime(levelIdx, seconds) {
+    try {
+      const times = loadBestTimes();
+      if (times[levelIdx] === undefined || seconds < times[levelIdx]) {
+        times[levelIdx] = seconds;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(times));
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  // ============================================================================
+  // 5. INPUT HANDLING (Keyboard + On-Screen Touch Buttons)
+  // ============================================================================
+  const keys = {
+    left: false,
+    right: false,
+    jumpDown: false,
+    jumpJustPressed: false,
+    jumpJustReleased: false,
+    flipJustPressed: false,
+    resetJustPressed: false
+  };
+  let debugMode = false;
+
+  function pressJump() {
+    sfx.init();
+    if (!keys.jumpDown) keys.jumpJustPressed = true;
+    keys.jumpDown = true;
+  }
+  function releaseJump() {
+    if (keys.jumpDown) keys.jumpJustReleased = true;
+    keys.jumpDown = false;
+  }
+  function pressFlip() {
+    sfx.init();
+    keys.flipJustPressed = true;
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Backquote') {
+      e.preventDefault();
+      debugMode = !debugMode;
+      return;
+    }
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) {
+      e.preventDefault();
+    }
+    sfx.init();
+    if (e.repeat) return;
+
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+
+    // Space / Up / W / Z: Jump when grounded/coyote, or Flip Gravity when airborne!
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'KeyZ') {
+      pressJump();
+      pressFlip();
+    }
+    // Dedicated flip keys as well (X / Shift / K / Down / S)
+    if (e.code === 'KeyX' || e.code === 'ShiftLeft' || e.code === 'ShiftRight' || e.code === 'ArrowDown' || e.code === 'KeyS') {
+      pressFlip();
+    }
+    if (e.code === 'KeyR') {
+      keys.resetJustPressed = true;
+    }
+    if (e.code === 'KeyM') {
+      sfx.muted = !sfx.muted;
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'KeyZ') {
+      releaseJump();
+    }
+  });
+
+  function bindTouchButton(id, onDown, onUp) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const handleDown = (e) => {
+      e.preventDefault();
+      sfx.init();
+      el.classList.add('active');
+      onDown();
+    };
+    const handleUp = (e) => {
+      e.preventDefault();
+      el.classList.remove('active');
+      if (onUp) onUp();
+    };
+    el.addEventListener('pointerdown', handleDown);
+    el.addEventListener('pointerup', handleUp);
+    el.addEventListener('pointercancel', handleUp);
+    el.addEventListener('pointerleave', handleUp);
+  }
+
+  bindTouchButton('btn-left',  () => { keys.left = true; },  () => { keys.left = false; });
+  bindTouchButton('btn-right', () => { keys.right = true; }, () => { keys.right = false; });
+  bindTouchButton('btn-jump',  () => { pressJump(); pressFlip(); }, () => { releaseJump(); });
+  bindTouchButton('btn-flip',  () => { pressFlip(); }, null);
+  bindTouchButton('btn-reset', () => { keys.resetJustPressed = true; }, null);
+
+  // ============================================================================
+  // 6. GAME STATE & ENTITIES
+  // ============================================================================
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  let currentLevelIdx = 0;
+  let bestTimes = loadBestTimes();
+  let gameComplete = false;
+  let totalRunTime = 0;
+
+  // Juice state: hitstop frames, screenshake, particles, flash
+  let hitstopFrames = 0;
+  let shakeMag = 0;
+  let shakeX = 0;
+  let shakeY = 0;
+  let flashAlpha = 0;
+  let flashColor = '#ffffff';
+  let newRecordBanner = 0;
+  let levelBannerTimer = 0;
+
+  const particles = [];
+  const afterimages = [];
+
+  // Level parsed objects
+  let solidGrid = [];
+  let lockGrid = [];
+  let spikes = [];
+  let gems = [];
+  let platforms = [];
+  let lasers = [];
+  let exitDoor = { x: 0, y: 0, w: 26, h: 30, open: false };
+  let spawnPt = { x: 60, y: 400 };
+  let levelTime = 0;
+  let gemsCollected = 0;
+  let gemsTotal = 0;
+  let deathCount = 0;
+
+  const player = {
+    x: 0,
+    y: 0,
+    w: 18,
+    h: 22,
+    vx: 0,
+    vy: 0,
+    gravDir: 1,         // 1 = normal down, -1 = inverted up
+    grounded: false,
+    canFlip: false,     // 1 flip per airborne moment
+    coyoteTimer: 0,     // 100ms forgiving ledge window
+    jumpBufTimer: 0,    // 120ms jump press buffer
+    flipBufTimer: 0,    // 100ms flip press buffer
+    inLockZone: false,
+    facing: 1,
+    scaleX: 1,          // Squash & stretch X
+    scaleY: 1,          // Squash & stretch Y
+    dead: false,
+    respawnTimer: 0,
+    wonTimer: 0,
+    scarfWave: 0,
+    ridingPlatform: null
+  };
+
+  function addScreenshake(amount) {
+    shakeMag = Math.min(14, Math.max(shakeMag, amount));
+  }
+
+  function spawnDust(x, y, count, vxSpread, vyBase, color = '#c8d6e5', size = 3.5) {
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: x + (Math.random() - 0.5) * 10,
+        y: y + (Math.random() - 0.5) * 4,
+        vx: (Math.random() - 0.5) * vxSpread,
+        vy: vyBase + (Math.random() - 0.5) * 60,
+        size: size * (0.6 + Math.random() * 0.7),
+        life: 0.22 + Math.random() * 0.18,
+        maxLife: 0.4,
+        color
+      });
+    }
+  }
+
+  function spawnGemBurst(x, y) {
+    for (let i = 0; i < 18; i++) {
+      const ang = (Math.PI * 2 * i) / 18 + Math.random() * 0.2;
+      const spd = 70 + Math.random() * 140;
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        size: 3 + Math.random() * 3.5,
+        life: 0.28 + Math.random() * 0.2,
+        maxLife: 0.48,
+        color: i % 2 === 0 ? '#ff2a85' : '#00f0ff'
+      });
+    }
+  }
+
+  // ============================================================================
+  // 7. LEVEL PARSER
+  // ============================================================================
+  function loadLevel(idx) {
+    currentLevelIdx = idx;
+    const def = LEVELS[idx];
+    solidGrid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+    lockGrid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+    spikes = [];
+    gems = [];
+    platforms = [];
+    lasers = [];
+    particles.length = 0;
+    afterimages.length = 0;
+
+    for (let r = 0; r < ROWS; r++) {
+      const rowStr = def.map[r] || '';
+      for (let c = 0; c < COLS; c++) {
+        const ch = rowStr[c] || '.';
+        const wx = c * TILE;
+        const wy = r * TILE;
+
+        if (ch === '#') {
+          solidGrid[r][c] = true;
+        } else if (ch === 'Z') {
+          lockGrid[r][c] = true;
+        } else if (ch === 'S') {
+          spawnPt = { x: wx + (TILE - player.w) / 2, y: wy + (TILE - player.h) };
+        } else if (ch === 'G') {
+          gems.push({
+            x: wx + TILE / 2,
+            y: wy + TILE / 2,
+            baseY: wy + TILE / 2,
+            r: 8,
+            collected: false,
+            phase: (c * 0.6 + r * 0.4)
+          });
+        } else if (ch === 'E') {
+          exitDoor = { x: wx + 2, y: wy, w: TILE - 4, h: TILE, open: false };
+        } else if (ch === '^' || ch === 'v' || ch === '<' || ch === '>') {
+          spikes.push({ c, r, x: wx, y: wy, dir: ch });
+        } else if (ch === 'H') {
+          platforms.push({
+            x: wx,
+            y: wy + 8,
+            baseX: wx,
+            baseY: wy + 8,
+            w: TILE * 2.6,
+            h: 14,
+            axis: 'x',
+            range: TILE * 2.5,
+            speed: 1.85,
+            phase: c * 0.5,
+            dx: 0,
+            dy: 0
+          });
+        } else if (ch === 'V') {
+          platforms.push({
+            x: wx + 3,
+            y: wy,
+            baseX: wx + 3,
+            baseY: wy,
+            w: TILE * 2,
+            h: 14,
+            axis: 'y',
+            range: TILE * 2.8,
+            speed: 1.9,
+            phase: r * 0.5,
+            dx: 0,
+            dy: 0
+          });
+        }
+      }
+    }
+
+    // Group contiguous vertical 'L' tiles into laser emitters
+    for (let c = 0; c < COLS; c++) {
+      let r = 0;
+      while (r < ROWS) {
+        if ((def.map[r] || '')[c] === 'L') {
+          const startR = r;
+          while (r < ROWS && (def.map[r] || '')[c] === 'L') r++;
+          const endR = r - 1;
+          lasers.push({
+            x: c * TILE + TILE / 2 - 4,
+            y: startR * TILE,
+            w: 8,
+            h: (endR - startR + 1) * TILE,
+            cycle: 2.2,
+            activeWindow: 0.95,
+            timer: (c * 0.35) % 2.2,
+            active: false,
+            warning: false
+          });
+        } else {
+          r++;
+        }
+      }
+    }
+
+    gemsTotal = gems.length;
+    gemsCollected = 0;
+    levelTime = 0;
+    levelBannerTimer = 2.2;
+    resetPlayerToSpawn(false);
+  }
+
+  function resetPlayerToSpawn(resetGems = true) {
+    player.x = spawnPt.x;
+    player.y = spawnPt.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.gravDir = 1;
+    player.grounded = false;
+    player.canFlip = true;
+    player.coyoteTimer = 0;
+    player.jumpBufTimer = 0;
+    player.flipBufTimer = 0;
+    player.inLockZone = false;
+    player.scaleX = 1.35;
+    player.scaleY = 0.65;
+    player.dead = false;
+    player.respawnTimer = 0;
+    player.wonTimer = 0;
+    player.ridingPlatform = null;
+
+    if (resetGems) {
+      gems.forEach(g => { g.collected = false; });
+      gemsCollected = 0;
+      exitDoor.open = false;
+      levelTime = 0;
+    }
+  }
+
+  // ============================================================================
+  // 8. COLLISION & PHYSICS HELPERS
+  // ============================================================================
+  function aabb(ax, ay, aw, ah, bx, by, bw, bh) {
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+  }
+
+  function isSolidAtTile(c, r) {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return true;
+    return solidGrid[r][c];
+  }
+
+  function checkPlayerInLockZone() {
+    const c0 = Math.floor((player.x + 2) / TILE);
+    const c1 = Math.floor((player.x + player.w - 2) / TILE);
+    const r0 = Math.floor((player.y + 2) / TILE);
+    const r1 = Math.floor((player.y + player.h - 2) / TILE);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        if (r >= 0 && r < ROWS && c >= 0 && c < COLS && lockGrid[r][c]) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function movePlayerX(dx) {
+    player.x += dx;
+    const c0 = Math.floor(player.x / TILE);
+    const c1 = Math.floor((player.x + player.w - 0.001) / TILE);
+    const r0 = Math.floor(player.y / TILE);
+    const r1 = Math.floor((player.y + player.h - 0.001) / TILE);
+
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        if (isSolidAtTile(c, r)) {
+          if (dx > 0) {
+            player.x = c * TILE - player.w;
+            player.vx = 0;
+          } else if (dx < 0) {
+            player.x = (c + 1) * TILE;
+            player.vx = 0;
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  function movePlayerY(dy) {
+    const wasGrounded = player.grounded;
+    player.grounded = false;
+    player.ridingPlatform = null;
+
+    player.y += dy;
+
+    const c0 = Math.floor(player.x / TILE);
+    const c1 = Math.floor((player.x + player.w - 0.001) / TILE);
+    const r0 = Math.floor(player.y / TILE);
+    const r1 = Math.floor((player.y + player.h - 0.001) / TILE);
+
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        if (isSolidAtTile(c, r)) {
+          if (dy > 0) {
+            player.y = r * TILE - player.h;
+            if (player.gravDir === 1) {
+              onTouchGround(wasGrounded, Math.abs(player.vy));
+            }
+            player.vy = 0;
+          } else if (dy < 0) {
+            player.y = (r + 1) * TILE;
+            if (player.gravDir === -1) {
+              onTouchGround(wasGrounded, Math.abs(player.vy));
+            }
+            player.vy = 0;
+          }
+        }
+      }
+    }
+
+    // Moving platform collisions (acts as solid surface for feet in current gravity direction)
+    for (const p of platforms) {
+      if (aabb(player.x, player.y, player.w, player.h, p.x, p.y, p.w, p.h)) {
+        const prevY = player.y - dy;
+        if (player.gravDir === 1 && dy >= 0 && prevY + player.h <= p.y + Math.abs(p.dy) + 8) {
+          player.y = p.y - player.h;
+          player.vy = 0;
+          player.ridingPlatform = p;
+          onTouchGround(wasGrounded, Math.abs(player.vy));
+        } else if (player.gravDir === -1 && dy <= 0 && prevY >= p.y + p.h - Math.abs(p.dy) - 8) {
+          player.y = p.y + p.h;
+          player.vy = 0;
+          player.ridingPlatform = p;
+          onTouchGround(wasGrounded, Math.abs(player.vy));
+        }
+      }
+    }
+  }
+
+  function onTouchGround(wasGrounded, impactSpeed) {
+    player.grounded = true;
+    player.canFlip = true;
+    player.coyoteTimer = PHYS.coyoteMax;
+    if (!wasGrounded && impactSpeed > 90) {
+      // Juice: Squash on landing + dust burst
+      const squash = Math.min(0.42, impactSpeed / 1100);
+      player.scaleX = 1 + squash * 1.15;
+      player.scaleY = 1 - squash;
+      const footY = player.gravDir === 1 ? player.y + player.h : player.y;
+      spawnDust(player.x + player.w / 2, footY, 6, 110, -player.gravDir * 25);
+      sfx.land();
+    }
+  }
+
+  function killPlayer() {
+    if (player.dead || player.wonTimer > 0) return;
+    player.dead = true;
+    player.respawnTimer = PHYS.respawnDuration; // 220ms (< 300ms cheap death)
+    deathCount++;
+    sfx.die();
+    addScreenshake(7);
+    flashColor = '#ff2a55';
+    flashAlpha = 0.32;
+    spawnGemBurst(player.x + player.w / 2, player.y + player.h / 2);
+  }
+
+  // ============================================================================
+  // 9. FIXED-TIMESTEP UPDATE (60Hz)
+  // ============================================================================
+  function update(dt) {
+    if (keys.resetJustPressed) {
+      keys.resetJustPressed = false;
+      if (gameComplete) {
+        gameComplete = false;
+        totalRunTime = 0;
+        deathCount = 0;
+        loadLevel(0);
+      } else {
+        loadLevel(currentLevelIdx);
+      }
+      return;
+    }
+
+    // Screen shake decay
+    if (shakeMag > 0) {
+      shakeX = (Math.random() * 2 - 1) * shakeMag;
+      shakeY = (Math.random() * 2 - 1) * shakeMag;
+      shakeMag = Math.max(0, shakeMag - 38 * dt);
+    } else {
+      shakeX = 0;
+      shakeY = 0;
+    }
+
+    if (flashAlpha > 0) flashAlpha = Math.max(0, flashAlpha - 1.8 * dt);
+    if (newRecordBanner > 0) newRecordBanner = Math.max(0, newRecordBanner - dt);
+    if (levelBannerTimer > 0) levelBannerTimer = Math.max(0, levelBannerTimer - dt);
+
+    // Hitstop freeze frames (gem grab juice)
+    if (hitstopFrames > 0) {
+      hitstopFrames--;
+      clearFrameInputs();
+      return;
+    }
+
+    // Update particles & afterimages even during death/win transitions
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = afterimages.length - 1; i >= 0; i--) {
+      afterimages[i].life -= dt;
+      if (afterimages[i].life <= 0) afterimages.splice(i, 1);
+    }
+
+    if (gameComplete) {
+      if (keys.jumpJustPressed || keys.flipJustPressed) {
+        gameComplete = false;
+        totalRunTime = 0;
+        deathCount = 0;
+        loadLevel(0);
+      }
+      clearFrameInputs();
+      return;
+    }
+
+    // Cheap, instant respawn under 300ms (220ms)
+    if (player.dead) {
+      player.respawnTimer -= dt;
+      if (player.respawnTimer <= 0) {
+        resetPlayerToSpawn(true);
+      }
+      clearFrameInputs();
+      return;
+    }
+
+    // Level complete transition
+    if (player.wonTimer > 0) {
+      player.wonTimer -= dt;
+      if (player.wonTimer <= 0) {
+        if (currentLevelIdx + 1 < LEVELS.length) {
+          loadLevel(currentLevelIdx + 1);
+        } else {
+          gameComplete = true;
+        }
+      }
+      clearFrameInputs();
+      return;
+    }
+
+    // Advance speedrun timer
+    levelTime += dt;
+    totalRunTime += dt;
+
+    // 1. Update Moving Platforms
+    for (const p of platforms) {
+      p.phase += p.speed * dt;
+      const oldX = p.x;
+      const oldY = p.y;
+      if (p.axis === 'x') {
+        p.x = p.baseX + Math.sin(p.phase) * p.range;
+      } else {
+        p.y = p.baseY + Math.sin(p.phase) * p.range;
+      }
+      p.dx = p.x - oldX;
+      p.dy = p.y - oldY;
+    }
+
+    // Carry player if standing on a moving platform
+    if (player.ridingPlatform) {
+      movePlayerX(player.ridingPlatform.dx);
+      player.y += player.ridingPlatform.dy;
+    }
+
+    // 2. Update Timed Lasers
+    for (const l of lasers) {
+      l.timer = (l.timer + dt) % l.cycle;
+      l.active = l.timer < l.activeWindow;
+      l.warning = !l.active && l.timer > l.cycle - 0.45;
+    }
+
+    // 3. Input Buffers & Coyote Time (Forgiving Input)
+    if (player.grounded) {
+      player.coyoteTimer = PHYS.coyoteMax;
+    } else {
+      player.coyoteTimer = Math.max(0, player.coyoteTimer - dt);
+    }
+
+    if (keys.jumpJustPressed) {
+      player.jumpBufTimer = PHYS.jumpBufMax;
+    } else {
+      player.jumpBufTimer = Math.max(0, player.jumpBufTimer - dt);
+    }
+
+    if (keys.flipJustPressed) {
+      player.flipBufTimer = PHYS.flipBufMax;
+    } else {
+      player.flipBufTimer = Math.max(0, player.flipBufTimer - dt);
+    }
+
+    player.inLockZone = checkPlayerInLockZone();
+
+    // 4. Horizontal Acceleration / Deceleration Curves (Steve Swink Game Feel)
+    const dir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    if (dir !== 0) {
+      player.facing = dir;
+      const turning = (player.vx !== 0 && Math.sign(player.vx) !== dir);
+      const accel = player.grounded
+        ? (turning ? PHYS.runTurnAccel : PHYS.runAccel)
+        : (turning ? PHYS.airTurnAccel : PHYS.airAccel);
+      player.vx += dir * accel * dt;
+      if (Math.abs(player.vx) > PHYS.maxRun) {
+        player.vx = dir * PHYS.maxRun;
+      }
+      // Subtle running dust on ground
+      if (player.grounded && Math.random() < 0.35) {
+        const footY = player.gravDir === 1 ? player.y + player.h : player.y;
+        spawnDust(player.x + player.w / 2, footY, 1, 30, -player.gravDir * 12, '#6c7a89', 2.2);
+      }
+    } else {
+      const decel = player.grounded ? PHYS.runDecel : PHYS.airDecel;
+      if (Math.abs(player.vx) <= decel * dt) {
+        player.vx = 0;
+      } else {
+        player.vx -= Math.sign(player.vx) * decel * dt;
+      }
+    }
+
+    // 5. Jump Execution (Coyote Time + Jump Buffer)
+    let jumpedThisFrame = false;
+    if (player.jumpBufTimer > 0 && player.coyoteTimer > 0) {
+      player.vy = -player.gravDir * PHYS.jumpSpeed;
+      player.grounded = false;
+      player.coyoteTimer = 0;
+      player.jumpBufTimer = 0;
+      player.flipBufTimer = 0; // Don't immediately consume flip on the same button press as jump
+      player.canFlip = true;
+      jumpedThisFrame = true;
+      // Stretch on jump launch
+      player.scaleX = 0.72;
+      player.scaleY = 1.32;
+      const footY = player.gravDir === 1 ? player.y + player.h : player.y;
+      spawnDust(player.x + player.w / 2, footY, 7, 95, -player.gravDir * 35, '#00f0ff', 3.2);
+      sfx.jump(player.gravDir);
+    }
+
+    // 6. Mid-Air Gravity Flip (Once per airborne moment, blocked inside Gravity-Lock Z zones)
+    if (!jumpedThisFrame && !player.grounded && player.coyoteTimer <= 0 && player.flipBufTimer > 0) {
+      if (player.inLockZone) {
+        // Feedback when attempting to flip inside a Gravity-Lock field
+        player.flipBufTimer = 0;
+        addScreenshake(2.5);
+        sfx.flipBlocked();
+        spawnDust(player.x + player.w / 2, player.y + player.h / 2, 6, 120, 0, '#ffaa00', 3);
+      } else if (player.canFlip) {
+        player.gravDir *= -1;
+        player.canFlip = false;
+        player.flipBufTimer = 0;
+        player.jumpBufTimer = 0;
+        // Arrest opposing momentum and give crisp flip impulse
+        player.vy = player.gravDir * PHYS.flipImpulse;
+        // Stretch & screenshake juice
+        player.scaleX = 0.68;
+        player.scaleY = 1.38;
+        addScreenshake(4.2); // Small screenshake on gravity flip
+        sfx.flip(player.gravDir);
+        spawnDust(player.x + player.w / 2, player.y + player.h / 2, 10, 140, -player.gravDir * 60, '#00f0ff', 3.8);
+      }
+    }
+
+    // 7. Variable Jump Height (Release early = half upward velocity)
+    const movingUpRelative = (player.gravDir === 1 && player.vy < 0) || (player.gravDir === -1 && player.vy > 0);
+    if (keys.jumpJustReleased && movingUpRelative) {
+      player.vy *= PHYS.varJumpCut;
+    }
+
+    // 8. Gravity Application with Apex Hang & Fast Fall
+    const fallingRelative = (player.gravDir === 1 && player.vy > 0) || (player.gravDir === -1 && player.vy < 0);
+    let gravMult = 1.0;
+    if (Math.abs(player.vy) < PHYS.apexThreshold && !player.grounded) {
+      gravMult = PHYS.apexGravityMult;
+    } else if (fallingRelative) {
+      gravMult = PHYS.fallGravityMult;
+    }
+    player.vy += player.gravDir * PHYS.gravity * gravMult * dt;
+    if (Math.abs(player.vy) > PHYS.maxFall) {
+      player.vy = Math.sign(player.vy) * PHYS.maxFall;
+    }
+
+    // 9. Integrate & Resolve Collisions
+    movePlayerX(player.vx * dt);
+    movePlayerY(player.vy * dt);
+
+    // Recover squash & stretch smoothly toward (1, 1)
+    player.scaleX += (1 - player.scaleX) * 14 * dt;
+    player.scaleY += (1 - player.scaleY) * 14 * dt;
+    player.scarfWave += dt * (8 + Math.abs(player.vx) * 0.05);
+
+    // Spawn afterimage trail when flipping or moving fast in air
+    if (!player.grounded && (!player.canFlip || Math.abs(player.vy) > 280)) {
+      afterimages.push({
+        x: player.x,
+        y: player.y,
+        w: player.w,
+        h: player.h,
+        gravDir: player.gravDir,
+        life: 0.14,
+        maxLife: 0.14
+      });
+    }
+
+    // 10. Hazard Checks (Spikes & Active Lasers)
+    for (const s of spikes) {
+      // Forgiving inner hitbox for spikes (shrunk by 5px so grazing edges feels fair)
+      let sx = s.x + 5, sy = s.y + 5, sw = TILE - 10, sh = TILE - 10;
+      if (s.dir === '^') { sy = s.y + 12; sh = TILE - 12; }
+      if (s.dir === 'v') { sy = s.y;      sh = TILE - 12; }
+      if (aabb(player.x + 2, player.y + 2, player.w - 4, player.h - 4, sx, sy, sw, sh)) {
+        killPlayer();
+        clearFrameInputs();
+        return;
+      }
+    }
+
+    for (const l of lasers) {
+      if (l.active && aabb(player.x + 2, player.y + 2, player.w - 4, player.h - 4, l.x, l.y, l.w, l.h)) {
+        killPlayer();
+        clearFrameInputs();
+        return;
+      }
+    }
+
+    // 11. Gem Collection (with 3-frame Hitstop & Burst)
+    for (const g of gems) {
+      g.phase += 3.5 * dt;
+      g.y = g.baseY + Math.sin(g.phase) * 3.5;
+      if (!g.collected) {
+        const cx = player.x + player.w / 2;
+        const cy = player.y + player.h / 2;
+        const distSq = (cx - g.x) * (cx - g.x) + (cy - g.y) * (cy - g.y);
+        if (distSq < (g.r + 11) * (g.r + 11)) {
+          g.collected = true;
+          gemsCollected++;
+          hitstopFrames = 3; // 2-4 frame hitstop on gem grab!
+          addScreenshake(3.2);
+          spawnGemBurst(g.x, g.y);
+          player.scaleX = 1.28;
+          player.scaleY = 1.28;
+          sfx.gem(gemsCollected - 1);
+
+          if (gemsCollected >= gemsTotal) {
+            exitDoor.open = true;
+            sfx.unlock();
+            flashColor = '#00f0ff';
+            flashAlpha = 0.22;
+          }
+        }
+      }
+    }
+
+    // 12. Extraction Door Check
+    if (exitDoor.open && aabb(player.x, player.y, player.w, player.h, exitDoor.x, exitDoor.y, exitDoor.w, exitDoor.h)) {
+      player.wonTimer = 0.45;
+      sfx.win();
+      const isRecord = saveBestTime(currentLevelIdx, levelTime);
+      bestTimes = loadBestTimes();
+      if (isRecord) newRecordBanner = 2.0;
+      flashColor = '#ffd100';
+      flashAlpha = 0.35;
+      spawnGemBurst(exitDoor.x + exitDoor.w / 2, exitDoor.y + exitDoor.h / 2);
+    }
+
+    clearFrameInputs();
+  }
+
+  function clearFrameInputs() {
+    keys.jumpJustPressed = false;
+    keys.jumpJustReleased = false;
+    keys.flipJustPressed = false;
+  }
+
+  // ============================================================================
+  // 10. RENDERING (Crisp Vault Aesthetics + Debug Overlay)
+  // ============================================================================
+  function formatTime(sec) {
+    const mins = Math.floor(sec / 60);
+    const rem = sec % 60;
+    const whole = Math.floor(rem).toString().padStart(2, '0');
+    const ms = Math.floor((rem - Math.floor(rem)) * 1000).toString().padStart(3, '0');
+    return mins > 0 ? `${mins}:${whole}.${ms}` : `${whole}.${ms}s`;
+  }
+
+  function render() {
+    ctx.save();
+    ctx.translate(Math.round(shakeX), Math.round(shakeY));
+
+    // Background
+    ctx.fillStyle = '#090b12';
+    ctx.fillRect(-16, -16, W + 32, H + 32);
+
+    // Subtle background grid & Kishōtenketsu zone dividers in debug mode
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.028)';
+    ctx.lineWidth = 1;
+    for (let c = 0; c <= COLS; c++) {
+      ctx.beginPath();
+      ctx.moveTo(c * TILE, 0);
+      ctx.lineTo(c * TILE, H);
+      ctx.stroke();
+    }
+    for (let r = 0; r <= ROWS; r++) {
+      ctx.beginPath();
+      ctx.moveTo(0, r * TILE);
+      ctx.lineTo(W, r * TILE);
+      ctx.stroke();
+    }
+
+    // 1. Gravity-Lock Zones ('Z')
+    const timeNow = performance.now() * 0.001;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (lockGrid[r][c]) {
+          const x = c * TILE;
+          const y = r * TILE;
+          ctx.fillStyle = 'rgba(255, 168, 0, 0.13)';
+          ctx.fillRect(x, y, TILE, TILE);
+          ctx.strokeStyle = 'rgba(255, 180, 0, 0.28)';
+          ctx.beginPath();
+          const offset = (timeNow * 24) % 15;
+          ctx.moveTo(x + offset, y);
+          ctx.lineTo(x, y + offset);
+          ctx.moveTo(x + TILE, y + offset);
+          ctx.lineTo(x + offset, y + TILE);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // 2. Solid Vault Tiles ('#')
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (solidGrid[r][c]) {
+          const x = c * TILE;
+          const y = r * TILE;
+          ctx.fillStyle = '#181e30';
+          ctx.fillRect(x, y, TILE, TILE);
+
+          // Highlight exposed edges for crisp readability
+          ctx.fillStyle = '#2d3859';
+          if (r > 0 && !solidGrid[r - 1][c]) ctx.fillRect(x, y, TILE, 3);
+          if (r < ROWS - 1 && !solidGrid[r + 1][c]) ctx.fillRect(x, y + TILE - 3, TILE, 3);
+          if (c > 0 && !solidGrid[r][c - 1]) ctx.fillRect(x, y, 3, TILE);
+          if (c < COLS - 1 && !solidGrid[r][c + 1]) ctx.fillRect(x + TILE - 3, y, 3, TILE);
+        }
+      }
+    }
+
+    // 3. Spikes
+    for (const s of spikes) {
+      ctx.fillStyle = '#ff3355';
+      ctx.beginPath();
+      if (s.dir === '^') {
+        for (let i = 0; i < 2; i++) {
+          const bx = s.x + i * (TILE / 2);
+          ctx.moveTo(bx, s.y + TILE);
+          ctx.lineTo(bx + TILE / 4, s.y + 8);
+          ctx.lineTo(bx + TILE / 2, s.y + TILE);
+        }
+      } else if (s.dir === 'v') {
+        for (let i = 0; i < 2; i++) {
+          const bx = s.x + i * (TILE / 2);
+          ctx.moveTo(bx, s.y);
+          ctx.lineTo(bx + TILE / 4, s.y + TILE - 8);
+          ctx.lineTo(bx + TILE / 2, s.y);
+        }
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 4. Moving Platforms
+    for (const p of platforms) {
+      ctx.fillStyle = '#00b8d4';
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = '#80f8ff';
+      ctx.fillRect(p.x + 2, p.y + 2, p.w - 4, 3);
+      ctx.fillRect(p.x + 2, p.y + p.h - 5, p.w - 4, 3);
+    }
+
+    // 5. Timed Lasers
+    for (const l of lasers) {
+      // Emitter caps
+      ctx.fillStyle = '#4a5568';
+      ctx.fillRect(l.x - 4, l.y, l.w + 8, 6);
+      ctx.fillRect(l.x - 4, l.y + l.h - 6, l.w + 8, 6);
+
+      if (l.active) {
+        ctx.fillStyle = 'rgba(255, 30, 80, 0.35)';
+        ctx.fillRect(l.x - 5, l.y, l.w + 10, l.h);
+        ctx.fillStyle = '#ff1e50';
+        ctx.fillRect(l.x, l.y, l.w, l.h);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(l.x + 2, l.y, l.w - 4, l.h);
+      } else if (l.warning) {
+        ctx.fillStyle = (Math.floor(timeNow * 25) % 2 === 0)
+          ? 'rgba(255, 80, 110, 0.45)'
+          : 'rgba(255, 80, 110, 0.15)';
+        ctx.fillRect(l.x + 2, l.y, l.w - 4, l.h);
+      } else {
+        ctx.fillStyle = 'rgba(255, 30, 80, 0.09)';
+        ctx.fillRect(l.x + 3, l.y, 2, l.h);
+      }
+    }
+
+    // 6. Extraction Door ('E')
+    ctx.save();
+    const doorColor = exitDoor.open ? '#00ff9d' : '#4a5578';
+    ctx.strokeStyle = doorColor;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(exitDoor.x, exitDoor.y, exitDoor.w, exitDoor.h);
+    ctx.fillStyle = exitDoor.open ? 'rgba(0, 255, 157, 0.22)' : 'rgba(74, 85, 120, 0.15)';
+    ctx.fillRect(exitDoor.x, exitDoor.y, exitDoor.w, exitDoor.h);
+    ctx.fillStyle = doorColor;
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(exitDoor.open ? 'EXIT' : 'LOCK', exitDoor.x + exitDoor.w / 2, exitDoor.y + exitDoor.h / 2 + 3);
+    ctx.restore();
+
+    // 7. Vault Gems ('G')
+    for (const g of gems) {
+      if (g.collected) continue;
+      ctx.save();
+      ctx.translate(g.x, g.y);
+      ctx.rotate(Math.sin(g.phase * 0.7) * 0.25);
+      // Outer diamond glow
+      ctx.fillStyle = 'rgba(255, 42, 133, 0.25)';
+      ctx.beginPath();
+      ctx.moveTo(0, -13);
+      ctx.lineTo(13, 0);
+      ctx.lineTo(0, 13);
+      ctx.lineTo(-13, 0);
+      ctx.closePath();
+      ctx.fill();
+      // Crisp gem core
+      ctx.fillStyle = '#ff2a85';
+      ctx.beginPath();
+      ctx.moveTo(0, -9);
+      ctx.lineTo(9, 0);
+      ctx.lineTo(0, 9);
+      ctx.lineTo(-9, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ff9ec7';
+      ctx.beginPath();
+      ctx.moveTo(0, -5);
+      ctx.lineTo(4, 0);
+      ctx.lineTo(0, 3);
+      ctx.lineTo(-4, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 8. Afterimage Trail
+    for (const a of afterimages) {
+      const alpha = (a.life / a.maxLife) * 0.28;
+      ctx.fillStyle = `rgba(0, 240, 255, ${alpha})`;
+      ctx.fillRect(a.x, a.y, a.w, a.h);
+    }
+
+    // 9. Player (The Gravity Thief)
+    if (!player.dead) {
+      ctx.save();
+      const pivotX = player.x + player.w / 2;
+      const pivotY = player.gravDir === 1 ? player.y + player.h : player.y;
+      ctx.translate(pivotX, pivotY);
+      ctx.scale(player.scaleX, player.scaleY * player.gravDir);
+
+      // Thief cloak / body (drawn relative to feet at y=0, extending up to -player.h)
+      const bodyColor = player.inLockZone
+        ? '#ffaa00'
+        : (player.canFlip ? '#00f0ff' : '#8a6eff');
+
+      // Flowing thief scarf
+      ctx.fillStyle = '#ff2a85';
+      const scarfX = -player.facing * 9 + Math.sin(player.scarfWave) * 2.5;
+      ctx.fillRect(scarfX - 4, -player.h + 6, 8, 5);
+
+      // Body
+      ctx.fillStyle = bodyColor;
+      ctx.fillRect(-player.w / 2, -player.h, player.w, player.h);
+
+      // Stealth mask visor
+      ctx.fillStyle = '#090b12';
+      ctx.fillRect(-player.w / 2 + 2, -player.h + 4, player.w - 4, 7);
+
+      // Glowing eyes
+      ctx.fillStyle = '#ffffff';
+      const eyeOffset = player.facing * 2.5;
+      ctx.fillRect(eyeOffset - 4, -player.h + 6, 3, 3);
+      ctx.fillRect(eyeOffset + 1, -player.h + 6, 3, 3);
+
+      ctx.restore();
+    }
+
+    // 10. Dust & Burst Particles
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+
+    // 11. Screen Flash
+    if (flashAlpha > 0) {
+      ctx.fillStyle = flashColor;
+      ctx.globalAlpha = flashAlpha;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+
+    // 12. HUD Bar
+    const def = LEVELS[currentLevelIdx];
+    ctx.fillStyle = 'rgba(9, 11, 18, 0.82)';
+    ctx.fillRect(0, 0, W, 28);
+
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillText(`${def.name}`, 12, 19);
+
+    ctx.fillStyle = '#ff2a85';
+    ctx.fillText(`GEMS: ${gemsCollected}/${gemsTotal}`, 275, 19);
+
+    ctx.fillStyle = '#e8ecf2';
+    ctx.fillText(`TIME: ${formatTime(levelTime)}`, 415, 19);
+
+    const best = bestTimes[currentLevelIdx];
+    ctx.fillStyle = '#ffd100';
+    ctx.fillText(`BEST: ${best !== undefined ? formatTime(best) : '--.---'}`, 575, 19);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#9aa8bd';
+    ctx.fillText(`[R] RESET  [\`] DEBUG ${debugMode ? 'ON' : 'OFF'}`, W - 12, 19);
+
+    // Bottom hint bar
+    ctx.fillStyle = 'rgba(9, 11, 18, 0.78)';
+    ctx.fillRect(0, H - 24, W, 24);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#b8c4d6';
+    ctx.font = '12px monospace';
+    ctx.fillText(def.hint, W / 2, H - 8);
+
+    if (newRecordBanner > 0) {
+      ctx.fillStyle = '#ffd100';
+      ctx.font = 'bold 18px monospace';
+      ctx.fillText('★ NEW VAULT RECORD! ★', W / 2, 54);
+    }
+
+    // 13. Debug View Overlay (Backtick ` toggle)
+    if (debugMode) {
+      renderDebugOverlay(def);
+    }
+
+    // 14. Victory Summary Overlay
+    if (gameComplete) {
+      ctx.fillStyle = 'rgba(9, 11, 18, 0.9)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#00f0ff';
+      ctx.font = 'bold 34px monospace';
+      ctx.fillText('GRAVITY HEIST COMPLETE!', W / 2, 110);
+
+      ctx.fillStyle = '#ffd100';
+      ctx.font = 'bold 18px monospace';
+      ctx.fillText(`TOTAL RUN TIME: ${formatTime(totalRunTime)}   |   DEATHS: ${deathCount}`, W / 2, 150);
+
+      ctx.font = '14px monospace';
+      ctx.fillStyle = '#e8ecf2';
+      for (let i = 0; i < LEVELS.length; i++) {
+        const bt = bestTimes[i] !== undefined ? formatTime(bestTimes[i]) : '--.---';
+        ctx.fillText(`${LEVELS[i].name.padEnd(28, ' ')} BEST: ${bt}`, W / 2, 200 + i * 28);
+      }
+
+      ctx.fillStyle = '#00ff9d';
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText('PRESS [SPACE] OR [R] TO HEIST AGAIN', W / 2, 465);
+    }
+
+    ctx.restore();
+  }
+
+  function renderDebugOverlay(def) {
+    ctx.save();
+
+    // Kishōtenketsu 4-stage structural bands
+    for (const seg of def.kishotenketsu) {
+      const sx = seg.x * TILE;
+      const sw = seg.w * TILE;
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.28)';
+      ctx.strokeRect(sx, 30, sw, H - 56);
+      ctx.fillStyle = 'rgba(0, 240, 255, 0.85)';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(seg.stage, sx + 4, 43);
+    }
+
+    // Hazard hitboxes
+    ctx.strokeStyle = '#ff2244';
+    ctx.lineWidth = 1.5;
+    for (const s of spikes) {
+      let sx = s.x + 5, sy = s.y + 5, sw = TILE - 10, sh = TILE - 10;
+      if (s.dir === '^') { sy = s.y + 12; sh = TILE - 12; }
+      if (s.dir === 'v') { sy = s.y;      sh = TILE - 12; }
+      ctx.strokeRect(sx, sy, sw, sh);
+    }
+    for (const l of lasers) {
+      ctx.strokeStyle = l.active ? '#ff0044' : '#ffaa00';
+      ctx.strokeRect(l.x, l.y, l.w, l.h);
+    }
+
+    // Gem collection radii
+    ctx.strokeStyle = '#ff2a85';
+    for (const g of gems) {
+      if (g.collected) continue;
+      ctx.beginPath();
+      ctx.arc(g.x, g.y, g.r + 11, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Player AABB hitbox & velocity vector
+    ctx.strokeStyle = '#00ff66';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(player.x, player.y, player.w, player.h);
+    ctx.beginPath();
+    ctx.moveTo(player.x + player.w / 2, player.y + player.h / 2);
+    ctx.lineTo(player.x + player.w / 2 + player.vx * 0.15, player.y + player.h / 2 + player.vy * 0.15);
+    ctx.stroke();
+
+    // Forgiving Input Telemetry Panel (Coyote Time & Jump/Flip Buffer meters)
+    const px = 14, py = 54, pw = 230, ph = 94;
+    ctx.fillStyle = 'rgba(9, 11, 18, 0.88)';
+    ctx.fillRect(px, py, pw, ph);
+    ctx.strokeStyle = '#00f0ff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(px, py, pw, ph);
+
+    ctx.fillStyle = '#e8ecf2';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`VEL: (${player.vx.toFixed(0)}, ${player.vy.toFixed(0)}) GRAV: ${player.gravDir > 0 ? 'DOWN' : 'UP'}`, px + 8, py + 16);
+    ctx.fillText(`CAN FLIP: ${player.canFlip}  LOCK-ZONE: ${player.inLockZone}`, px + 8, py + 31);
+
+    // Coyote bar (100ms)
+    const coyRatio = Math.min(1, player.coyoteTimer / PHYS.coyoteMax);
+    ctx.fillStyle = '#9aa8bd';
+    ctx.fillText(`COYOTE (100ms): ${(player.coyoteTimer * 1000).toFixed(0)}ms`, px + 8, py + 49);
+    ctx.fillStyle = '#222a3d';
+    ctx.fillRect(px + 8, py + 53, pw - 16, 7);
+    ctx.fillStyle = '#00ff9d';
+    ctx.fillRect(px + 8, py + 53, (pw - 16) * coyRatio, 7);
+
+    // Jump buffer bar (120ms)
+    const bufRatio = Math.min(1, player.jumpBufTimer / PHYS.jumpBufMax);
+    ctx.fillStyle = '#9aa8bd';
+    ctx.fillText(`JUMP BUF (120ms): ${(player.jumpBufTimer * 1000).toFixed(0)}ms`, px + 8, py + 74);
+    ctx.fillStyle = '#222a3d';
+    ctx.fillRect(px + 8, py + 78, pw - 16, 7);
+    ctx.fillStyle = '#ff2a85';
+    ctx.fillRect(px + 8, py + 78, (pw - 16) * bufRatio, 7);
+
+    ctx.restore();
+  }
+
+  // ============================================================================
+  // 11. FIXED-TIMESTEP 60FPS MAIN LOOP
+  // ============================================================================
+  loadLevel(0);
+
+  let lastTime = performance.now();
+  let accumulator = 0;
+
+  function frame(now) {
+    let frameDt = (now - lastTime) / 1000;
+    lastTime = now;
+    // Clamp spiral of death on tab switch
+    if (frameDt > 0.1) frameDt = 0.1;
+    accumulator += frameDt;
+
+    while (accumulator >= DT) {
+      update(DT);
+      accumulator -= DT;
+    }
+
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
