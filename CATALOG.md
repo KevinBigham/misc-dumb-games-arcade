@@ -2,7 +2,7 @@
 
 Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the MacBook, Antigravity on the Mac mini, and Antigravity and Claude Cowork on the MacBook Air. Games marked "In the arcade" are in `games/<slug>/` and linked from the arcade page; everything else stays in its incoming PR so nothing is lost.
 
-- In the arcade: 95
+- In the arcade: 112
 - Held: 1
 - Source only or own repo: 4
 - Archived older versions and extras: 7
@@ -17,12 +17,15 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Aegis: Volt-Lash | tether-parry arena roguelite | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/volt-lash/) |  |
 | Argon Studio Collection | game launcher | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/argon-studio/) | Launcher for the 13 Argon games; borrowed game names and inspiration credits removed. Same games are also listed one by one |
 | Baseline Empire '05 | basketball franchise sim | unknown (Nov 5) | cloud PR #2 | [play](games/baseline-empire/) | Formerly Hardwood Franchise; league, teams, colleges, papers and name pools are now fictional |
+| Basketball Sim Crazy Fun Dynasty Legendary GM | basketball franchise sim | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/basketball-dynasty-gm/) |  |
 | Beatline Salvage | rhythm | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/beatline-salvage/) |  |
 | Belt & Bolt | factory defense | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/belt-and-bolt/) | Subtitle no longer names Mindustry or shapez |
+| Black Line Dynasty | swimming dynasty sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/black-line-dynasty/) | Real swim club names were replaced with made-up ones |
 | Blackout Dispatch | storm power-grid routing | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/blackout-dispatch/) |  |
 | Blitzread | football | batch 2 | cloud PR #2 | [play](games/blitzread/) |  |
 | Brinehold | factory defense | overnight research batch | cloud PR #2 | [play](games/brinehold/) |  |
 | Bug Brawl | auto-battler | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/bug-brawl/) |  |
+| Chairborne: Live at 11! | TV studio chair arena | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/chairborne-live/) |  |
 | Chrono-Syndicate: The 15-Second Heist | time-loop heist tactics | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/chrono-syndicate/) |  |
 | Chrono-Vortex: The God-Forge Arena | pinball-brawler roguelite | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/chrono-vortex/) |  |
 | Clause & Effect | code puzzle | overnight research batch | cloud PR #2 | [play](games/clause-and-effect/) |  |
@@ -31,6 +34,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | CROSSBLOCK | block puzzle | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/crossblock/) |  |
 | Dual Meet | swim meet | Nov 6 new builds | cloud PR #2 | [play](games/dual-meet/) |  |
 | ECHO REQUIEM | temporal arena shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/echo-requiem/) |  |
+| Ember Loop | lantern roguelite | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/ember-loop/) |  |
 | Emberward | card-cast wall defense | Claude (Cowork, MacBook) | MacBook Cowork PR (Nov 9) | [play](games/emberward/) |  |
 | Event Horizon: Singularity Slingshot | gravity slingshot roguelite | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/event-horizon/) |  |
 | Fathomsong | rhythm | overnight research batch | cloud PR #2 | [play](games/fathomsong/) |  |
@@ -39,6 +43,8 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Frostbore | mining | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/frostbore/) |  |
 | Gloamrush | firefly survival | Opus (audit blueprint) | cloud PR #2 | [play](games/gloamrush/) |  |
 | Glowtail Rumble | snake vs bots | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/glowtail-rumble/) |  |
+| Gravity Heist (Antigravity) | gravity-flip platformer | Antigravity (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/gravity-heist-antigravity/) | Different build from the Kimi Gravity Heist |
+| Gravity Heist (Kimi) | gravity-flip platformer | Kimi (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/gravity-heist-kimi/) | Different build from the Antigravity Gravity Heist |
 | Gravity Moth | gravity-flip runner | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/gravity-moth/) |  |
 | GRIDIRON OVERDRIVE | 3D football arcade | Claude app (MacBook) | MacBook PR #3 | [play](games/gridiron-overdrive/) | Four older versions kept in the MacBook PR |
 | HARDCOURT | basketball franchise sim | Codex (MacBook) | MacBook PR #3 | [play](games/hardcourt/) | Also has a native Mac app and ZIPs in the MacBook PR |
@@ -54,6 +60,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Kinetic Chain | arcade dasher | Claude (Cowork, MacBook) | MacBook Cowork PR #14 | [play](games/kinetic-chain/) |  |
 | Lagoon Flip | pinball | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/lagoon-flip/) |  |
 | Lane Four | swim racer | Claude (Cowork, MacBook) | MacBook Cowork PR #14 | [play](games/lane-four/) | Replaces Negative Split. Newest build (Nov 9): career from Conference to the Trials, 50/200/500, phone touch pads |
+| Lane Four: Pro Swimming Dynasty | swimming dynasty sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/lane-four-dynasty/) | Real swim club names were replaced with made-up ones. Different game from the Lane Four swim racer |
 | Lanewake | swim | batch 2 | cloud PR #2 | [play](games/lanewake/) |  |
 | Lantern Drum | rhythm | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/lantern-drum/) | A newer kit build exists in the project folder, not yet published |
 | Lastlight Run | racer | overnight research batch | cloud PR #2 | [play](games/lastlight-run/) |  |
@@ -61,7 +68,9 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Loopskate | skate arcade | Nov 6 new builds | cloud PR #2 | [play](games/loopskate/) |  |
 | Lowbell | incremental | overnight research batch | cloud PR #2 | [play](games/lowbell/) |  |
 | Merge Kitchen | sliding merge | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/merge-kitchen/) |  |
+| Meridian Football League | football GM sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/meridian-football-league/) | Was titled Front Office, which echoed a real football sim |
 | Moonpond Angler | fishing | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/moonpond-angler/) |  |
+| National Pro Swimming League | pro swim franchise sim | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/national-pro-swimming-league/) | Real swim club names were replaced with made-up ones |
 | Nebula Greens | mini golf | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/nebula-greens/) |  |
 | Neon Nightcap | baseball-shooter fusion | overnight research batch | cloud PR #2 | [play](games/neon-nightcap/) |  |
 | Nine Lives Overdrive | cat roguelike | Games project | cloud PR #2 | [play](games/nine-lives-overdrive/) |  |
@@ -70,14 +79,18 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Orbit Stack | orbital match stacker | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/orbit-stack/) |  |
 | Oroboros: The Pinball Singularity | pinball roguelike | Antigravity (Mac mini) | Mac mini Cowork PR #15 | [play](games/oroboros/) |  |
 | Paradox Protocol: The Mirror Engine | thought-experiment arena | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/paradox-protocol/) |  |
+| Pitch Tunnel | pitch-and-swing duel | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/pitch-tunnel/) |  |
 | Piñata Panic! | 3D piñata survival | Kimi (MacBook Air) | Kimi Work PR #7 (Nov 9 update) | [play](games/pinata-panic/) | One upgrade renamed (was a real candy brand) |
 | Please Feed the Moon | arcade shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/please-feed-the-moon/) |  |
 | PRISM PRESS | reactor-grid puzzle | Kimi (MacBook) | Kimi Work PR #7 | [play](games/prism-press/) | Newest build from the Kimi Work collection (Nov 8) |
 | Prismwheel | ring arcade | overnight research batch | cloud PR #2 | [play](games/prismwheel/) |  |
+| Pro Swim Dynasty | pro swim league GM sim | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/pro-swim-dynasty/) | Real swim club names were replaced with made-up ones |
 | Ricochet Vault // Greed Breaker | slingshot pinball-breaker | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/ricochet-vault/) |  |
 | Roommate Republic | game-theory sim | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/roommate-republic/) |  |
 | Shardstorm Depths | match-3 RPG | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/shardstorm-depths/) |  |
 | SIDELINE — Franchise Football | football franchise sim | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/sideline/) | Seven team nicknames that matched real teams in other leagues were renamed |
+| Signal Garden (Antigravity) | light-reflection puzzle | Antigravity (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/signal-garden-antigravity/) | Different build from the Kimi Signal Garden |
+| Signal Garden (Kimi) | light-reflection puzzle | Kimi (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/signal-garden-kimi/) | Different build from the Antigravity Signal Garden |
 | Skybloom | merge | overnight research batch | cloud PR #2 | [play](games/skybloom/) |  |
 | SLINGCORE | ricochet arena roguelite | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/slingcore/) |  |
 | Slipstreak | drift racer | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/slipstreak/) |  |
@@ -100,9 +113,13 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | The Metaphysical Deli at the End of Your Forehead | surreal arena | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/metaphysical-deli/) |  |
 | The Moon Wants a Sandwich | balance stacker | Claude (Cowork, MacBook) | MacBook Cowork PR #14 | [play](games/the-moon-wants-a-sandwich/) |  |
 | Thistlemarch | tactics | batch 2 | cloud PR #2 | [play](games/thistlemarch/) |  |
+| Tide Caller (Antigravity) | rhythm swim sprint | Antigravity (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/tide-caller-antigravity/) | Different build from the Kimi Tide Caller |
+| Tide Caller (Kimi) | rhythm swim sprint | Kimi (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/tide-caller-kimi/) | Different build from the Antigravity Tide Caller |
 | Turf Riot | arcade football | Mac mini (Codex collection) | Mac mini Codex PR #6, reworked | [play](games/turf-riot/) | Reworked from a held Mac mini build: new name, its own house-rules menu, source notes removed |
+| Turn & Tide | swimming dynasty sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/turn-and-tide/) | Real swim club names were replaced with made-up ones |
 | Twelve Sols | survival | batch 2 | cloud PR #2 | [play](games/twelve-sols/) |  |
 | Undertoll | roguelike | overnight research batch | cloud PR #2 | [play](games/undertoll/) |  |
+| Vanguard Dynasty | pro basketball front office sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/vanguard-dynasty/) |  |
 | VOIDBREAKER: OMEGA | twin-stick bullet heaven | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/voidbreaker-omega/) | Weapon names that borrowed from a sports game and a real player were replaced |
 | VOIDBREAKER: OVERDRIVE | twin-stick roguelite | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/voidbreaker-overdrive/) | Older version of Voidbreaker Omega |
 | Wobble Bakery | physics stacker | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/wobble-bakery/) |  |
@@ -153,6 +170,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 - Kimi Work PR #7 was updated on Nov 9 with three new games (Stamp Duty: Executive Disorder, Stamp Duty: Overqualified and Piñata Panic). Its other copies were already here. The two Stamp Duty games are different games that share a name. Piñata Panic had an upgrade named after a real candy brand, renamed Sour Bait.
 - Claude Cowork MacBook Air brought Emberward on Nov 9, and Lane Four was updated to its newest build.
 - PR #20 brought 5 more new Argon games (Aegis: Volt-Lash, Ricochet Vault, SLINGCORE, SNAP-LANCE, SNAPBACK). A sixth, Aegis-Zero: Graze Overclock, came later through PR #4 on Nov 9. Its perks were named after real game studios and games, so those names were replaced with made-up ones. The other new Wave 12 and Wave 13 copies in PR #4 were already here.
+- Codex MacBook PR #25 and Claude Cowork MacBook Air PR #26 brought 17 new games on Nov 10. Gravity Heist, Signal Garden and Tide Caller each came in a Kimi build and an Antigravity build, so both are here under separate folders. Five swim dynasty sims used real swim club names; every club name was replaced with a made-up one (cities kept). The Cowork baseball sim stayed on the MacBook Air because it used a real league name.
 - Cloud copies newer than the arcade's first PR (#1): 20 of its 22 games are older; this PR uses the live versions.
 
 ## Checks

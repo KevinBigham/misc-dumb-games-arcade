@@ -1,0 +1,3632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CHAIRBORNE: LIVE AT 11! // Acoustic Broadcast Propulsion</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #0d0b14;
+    color: #f8f4e8;
+    font-family: 'Courier New', Courier, monospace;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #stage-wrap {
+    position: relative;
+    width: 100vw; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 45%, #1f1930 0%, #0d0b14 85%);
+  }
+  canvas {
+    display: block;
+    background: #231d30;
+    box-shadow: 0 26px 80px rgba(0, 0, 0, 0.85), 0 0 0 4px #18141f, 0 0 0 7px #d9a441;
+    border-radius: 10px;
+    cursor: crosshair;
+  }
+</style>
+</head>
+<body>
+<div id="stage-wrap">
+  <canvas id="game"></canvas>
+</div>
+<script>
+(() => {
+  'use strict';
+
+  // ============================================================================
+  // 1. CONFIGURATION & TUNABLES
+  // ============================================================================
+  const CFG = {
+    W: 960,
+    H: 580,
+    DT: 1 / 120,
+    MAX_DT: 0.1,
+    ARENA: { x: 64, y: 68, w: 832, h: 424 }, // Studio floor bounds (audience sits below y=492)
+    INK: '#18141f',
+    PALETTE: {
+      floorA: '#f2e5cf',
+      floorB: '#e6d5b8',
+      floorGrid: '#d6c2a1',
+      wall: '#261f36',
+      neonPink: '#ff3b7f',
+      neonCyan: '#2de2e6',
+      neonGold: '#ffbe2e',
+      neonGreen: '#2ee675',
+      danger: '#ff2a55',
+      suit: '#2a52be',
+      chair: '#d94e34',
+      skin: '#ffcfb3'
+    },
+    PLAYER: {
+      r: 22,
+      scootAccel: 520,
+      scootMax: 155,
+      baseDrag: 2.35,
+      spinDragBonus: 0.9,
+      chargeRate: 1.08,       // 0 -> 1.0 in ~0.92s
+      sweetMin: 0.82,
+      sweetMax: 1.00,
+      overloadAt: 1.16,       // Hold past 116% -> involuntary mega-sneeze backfire!
+      recoilBase: 410,
+      recoilCharged: 790,
+      recoilPerProp: 95,
+      recoilOverload: 960,
+      inhaleRange: 215,
+      inhaleCone: 0.72,       // half-angle in radians (~41 deg)
+      sneezeRange: 270,
+      sneezeCone: 0.58,
+      baseNoseCap: 4,
+      dizzyTime: 0.85
+    },
+    PROP: {
+      maxCount: 16,
+      spawnInterval: 2.6,
+      launchSpeed: 920
+    },
+    CRASHER: {
+      baseSpawnInterval: 4.4,
+      hijackRadius: 72,       // Central ON-AIR spotlight radius
+      hijackRate: 0.21,       // Takes ~4.8s in spotlight to hijack if unbothered
+      hijackDecay: 0.12,
+      dignityMultiplier: 2.6,
+      coldOpenGrace: 18.0     // First 18s: no strike loss, easy onboarding
+    },
+    APPLAUSE: {
+      windup: 0.58,           // 580ms visible audience wind-up before wave hits
+      waveSpeed: 640,
+      wavePush: 580,
+      cooldown: 4.2
+    },
+    NOTES: {
+      every: 18.0,            // New Network Note every 18s
+      maxActive: 3
+    },
+    DVR: {
+      frames: 95,             // ~1.58s at 60Hz capture
+      slowMoScale: 0.35
+    }
+  };
+
+  // ============================================================================
+  // 2. SEEDED RNG (Deterministic Gameplay vs. Cosmetic Particles)
+  // ============================================================================
+  function createRNG(seed) {
+    let s = seed >>> 0;
+    return {
+      next() {
+        s = (s + 0x6D2B79F5) >>> 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      },
+      range(min, max) { return min + (max - min) * this.next(); },
+      int(min, max) { return Math.floor(this.range(min, max + 1)); },
+      pick(arr) { return arr[Math.floor(this.next() * arr.length)]; },
+      chance(p) { return this.next() < p; },
+      getSeed() { return s; }
+    };
+  }
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialSeed = urlParams.has('seed')
+    ? (parseInt(urlParams.get('seed'), 10) || 1337)
+    : ((Date.now() ^ 0x5F3759DF) >>> 0);
+  let rng = createRNG(initialSeed);
+  let fxRng = createRNG(initialSeed ^ 0xA5A5A5A5);
+
+  // ============================================================================
+  // 3. PROCEDURAL WEB AUDIO ENGINE (16-Voice Cap, Compressor, Recipes)
+  // ============================================================================
+  const Snd = (() => {
+    let ctx = null;
+    let master = null;
+    let comp = null;
+    let muted = false;
+    let activeVoices = 0;
+    const MAX_VOICES = 16;
+    let noiseBuf = null;
+    let inhaleNode = null;
+
+    function init() {
+      if (ctx) {
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        return;
+      }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ctx = new AC();
+      comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -16;
+      comp.knee.value = 18;
+      comp.ratio.value = 6;
+      comp.attack.value = 0.004;
+      comp.release.value = 0.15;
+
+      master = ctx.createGain();
+      master.gain.value = muted ? 0 : 0.38;
+      comp.connect(master);
+      master.connect(ctx.destination);
+
+      // Reusable 1.2s white noise buffer
+      const len = Math.floor(ctx.sampleRate * 1.2);
+      noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    }
+
+    function canPlay() {
+      if (!ctx || muted || activeVoices >= MAX_VOICES) return false;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      return true;
+    }
+
+    function trackVoice(duration) {
+      activeVoices++;
+      setTimeout(() => { activeVoices = Math.max(0, activeVoices - 1); }, duration * 1000 + 40);
+    }
+
+    function tone(type, fStart, fEnd, dur, gainVal = 0.2, filterFreq = 2600, delay = 0) {
+      if (!canPlay()) return;
+      const now = ctx.currentTime + delay;
+      trackVoice(dur + delay);
+      const osc = ctx.createOscillator();
+      const flt = ctx.createBiquadFilter();
+      const g = ctx.createGain();
+
+      osc.type = type;
+      const jitter = 1 + (Math.random() - 0.5) * 0.08;
+      osc.frequency.setValueAtTime(Math.max(24, fStart * jitter), now);
+      if (fEnd && fEnd !== fStart) {
+        osc.frequency.exponentialRampToValueAtTime(Math.max(24, fEnd * jitter), now + dur);
+      }
+
+      flt.type = 'lowpass';
+      flt.frequency.setValueAtTime(filterFreq, now);
+
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(gainVal, now + Math.min(0.012, dur * 0.2));
+      g.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+
+      osc.connect(flt);
+      flt.connect(g);
+      g.connect(comp);
+
+      osc.start(now);
+      osc.stop(now + dur + 0.02);
+      osc.onended = () => { g.disconnect(); flt.disconnect(); osc.disconnect(); };
+    }
+
+    function noiseBurst(dur, filterType, fStart, fEnd, Q = 2.0, gainVal = 0.22, delay = 0) {
+      if (!canPlay() || !noiseBuf) return;
+      const now = ctx.currentTime + delay;
+      trackVoice(dur + delay);
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuf;
+      src.loop = true;
+
+      const flt = ctx.createBiquadFilter();
+      flt.type = filterType;
+      flt.Q.setValueAtTime(Q, now);
+      flt.frequency.setValueAtTime(fStart, now);
+      if (fEnd && fEnd !== fStart) {
+        flt.frequency.exponentialRampToValueAtTime(Math.max(60, fEnd), now + dur);
+      }
+
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.001, now);
+      g.gain.linearRampToValueAtTime(gainVal, now + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+
+      src.connect(flt);
+      flt.connect(g);
+      g.connect(comp);
+
+      src.start(now, Math.random() * 0.5);
+      src.stop(now + dur + 0.02);
+      src.onended = () => { g.disconnect(); flt.disconnect(); src.disconnect(); };
+    }
+
+    function updateInhale(chargeRatio, active) {
+      if (!ctx || muted || !noiseBuf) {
+        stopInhale();
+        return;
+      }
+      if (!active || chargeRatio <= 0.01) {
+        stopInhale();
+        return;
+      }
+      if (!inhaleNode) {
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+        src.loop = true;
+        const flt = ctx.createBiquadFilter();
+        flt.type = 'bandpass';
+        flt.Q.value = 4.2;
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        const oscG = ctx.createGain();
+        oscG.gain.value = 0.06;
+        const g = ctx.createGain();
+        g.gain.value = 0.01;
+
+        src.connect(flt);
+        flt.connect(g);
+        osc.connect(oscG);
+        oscG.connect(g);
+        g.connect(comp);
+
+        src.start();
+        osc.start();
+        inhaleNode = { src, flt, osc, g, oscG };
+      }
+      const now = ctx.currentTime;
+      const c = Math.min(1.3, chargeRatio);
+      inhaleNode.flt.frequency.setTargetAtTime(420 + c * 1550, now, 0.03);
+      inhaleNode.osc.frequency.setTargetAtTime(160 + c * 460, now, 0.03);
+      inhaleNode.g.gain.setTargetAtTime(Math.min(0.22, 0.04 + c * 0.15), now, 0.03);
+    }
+
+    function stopInhale() {
+      if (!inhaleNode) return;
+      try {
+        inhaleNode.src.stop();
+        inhaleNode.osc.stop();
+        inhaleNode.g.disconnect();
+      } catch (e) {}
+      inhaleNode = null;
+    }
+
+    return {
+      init,
+      toggleMute() {
+        muted = !muted;
+        if (master && ctx) master.gain.setValueAtTime(muted ? 0 : 0.38, ctx.currentTime);
+        if (muted) stopInhale();
+        return muted;
+      },
+      isMuted() { return muted; },
+      updateInhale,
+      stopInhale,
+
+      // Nostril vacuum pickup: rising semitone stair!
+      inhalePop(noseCount) {
+        const step = Math.pow(1.059463, Math.min(12, noseCount * 2));
+        tone('sine', 340 * step, 960 * step, 0.075, 0.25, 3200);
+        tone('triangle', 520 * step, 1280 * step, 0.055, 0.14, 3000, 0.02);
+      },
+
+      // Multi-layered Sneeze + Recoil Blast
+      sneeze(power, isSweet, isOverload, propCount) {
+        stopInhale();
+        // 1. "AH-" vocal burst
+        tone('triangle', 380, 620, 0.045, 0.22, 1800, 0);
+        // 2. "-CHOO!" high-pass noise + sawtooth recoil thump
+        const p = Math.max(0.35, Math.min(1.4, power));
+        noiseBurst(0.16 + p * 0.08, 'highpass', 720, 320, 1.4, 0.26 * p, 0.03);
+        tone('sawtooth', 240 * p, 48, 0.22, 0.30 * p, 950, 0.03);
+        tone('sine', 160 * p, 42, 0.25, 0.28 * p, 600, 0.03);
+
+        if (propCount > 0) {
+          // Blunderbuss pop
+          noiseBurst(0.09, 'bandpass', 1300, 500, 2.2, 0.22, 0.04);
+        }
+        if (isSweet) {
+          // 540-spin harmonic fanfare chord!
+          tone('triangle', 523.25, 523.25, 0.16, 0.16, 2800, 0.04);
+          tone('triangle', 659.25, 659.25, 0.18, 0.16, 2800, 0.07);
+          tone('triangle', 783.99, 783.99, 0.22, 0.18, 3000, 0.10);
+        }
+        if (isOverload) {
+          // Dizzy slide whistle backfire
+          tone('sawtooth', 720, 140, 0.36, 0.24, 1500, 0.05);
+          tone('sine', 420, 880, 0.28, 0.18, 2000, 0.18);
+        }
+      },
+
+      // Mid-sentence Dignity Shatter ("CUT HIS MIC!")
+      dignityShatter() {
+        tone('square', 220, 44, 0.16, 0.30, 1100, 0);
+        noiseBurst(0.11, 'bandpass', 1400, 600, 2.0, 0.28, 0);
+        // Court/Broadcast Brass Bell
+        tone('triangle', 587.33, 587.33, 0.18, 0.22, 3200, 0.03);
+        tone('sine', 880, 880, 0.26, 0.24, 3500, 0.06);
+        tone('triangle', 1174.66, 1174.66, 0.30, 0.20, 3600, 0.09);
+      },
+
+      // Normal physical bump / pinball bounce
+      bump(intensity = 1) {
+        const v = Math.min(1.2, Math.max(0.25, intensity));
+        tone('sine', 160 * v, 52, 0.09, 0.20 * v, 800);
+        noiseBurst(0.04, 'lowpass', 900, 400, 1.0, 0.12 * v);
+      },
+
+      // Katamari semitone escalation on every eviction / ratings score
+      scoreEvict(combo) {
+        const step = Math.pow(1.059463, Math.min(18, Math.max(0, combo - 1)));
+        tone('triangle', 440 * step, 880 * step, 0.11, 0.24, 3400, 0);
+        tone('sine', 659.25 * step, 1318.5 * step, 0.14, 0.20, 3600, 0.055);
+      },
+
+      // Stage Crasher speech bubble gibberish
+      gibberish(pitchMult = 1.0) {
+        for (let i = 0; i < 3; i++) {
+          const f = (190 + Math.random() * 140) * pitchMult;
+          tone('square', f, f * (0.85 + Math.random() * 0.35), 0.05, 0.09, 950, i * 0.065);
+        }
+      },
+
+      // Rival Anchor sneeze telegraph
+      enemyWindup() {
+        tone('sawtooth', 220, 560, 0.28, 0.14, 1200);
+      },
+
+      // Audience Applause Windup & Clapping Wall
+      applauseWindup() {
+        tone('sine', 330, 660, 0.18, 0.14, 1800, 0);
+        tone('sine', 440, 880, 0.18, 0.14, 1800, 0.12);
+      },
+      applauseBlast() {
+        for (let i = 0; i < 5; i++) {
+          noiseBurst(0.09, 'bandpass', 1100 + i * 180, 900, 1.8, 0.18, i * 0.045);
+        }
+        tone('triangle', 261.6, 523.2, 0.26, 0.18, 1600, 0);
+      },
+
+      // Network Note Fax Chime (slightly flat C-E-G corporate memo)
+      networkNote(isRelief) {
+        const flat = isRelief ? 1.0 : 0.99;
+        const notes = isRelief ? [523.25, 659.25, 783.99, 1046.5] : [523.25, 659.25, 783.99];
+        notes.forEach((n, idx) => {
+          tone('triangle', n * flat, n * flat, 0.11, 0.22, 2400, idx * 0.09);
+        });
+      },
+
+      // FCC Strike / Camera Hijacked alarm
+      strike() {
+        tone('sawtooth', 190, 95, 0.32, 0.32, 900, 0);
+        tone('square', 142, 72, 0.38, 0.28, 800, 0.12);
+      },
+
+      // Teleprompter UI Assault
+      uiHit() {
+        tone('square', 980, 420, 0.08, 0.22, 2500, 0);
+        tone('sine', 1480, 1960, 0.11, 0.20, 3500, 0.04);
+      },
+
+      // Receipt printer tick
+      receiptTick(high = false) {
+        tone('square', high ? 1400 : 920, high ? 1100 : 680, 0.025, 0.14, 2400);
+      }
+    };
+  })();
+
+  // ============================================================================
+  // 4. INPUT HANDLING (Keyboard + Mouse + Blur Safety)
+  // ============================================================================
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resizeCanvas() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const pad = 20;
+    const availW = Math.max(320, window.innerWidth - pad);
+    const availH = Math.max(240, window.innerHeight - pad);
+    const scale = Math.min(availW / CFG.W, availH / CFG.H);
+    const cssW = Math.floor(CFG.W * scale);
+    const cssH = Math.floor(CFG.H * scale);
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    canvas.width = Math.floor(CFG.W * dpr);
+    canvas.height = Math.floor(CFG.H * dpr);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  const Input = {
+    keys: new Set(),
+    justPressed: new Set(),
+    mouseX: CFG.W * 0.5 + 120,
+    mouseY: CFG.H * 0.5,
+    mouseDown: false,
+    mouseJustPressed: false,
+    mouseJustReleased: false,
+    anyInteraction: false,
+    lastInputTime: 0,
+
+    clearFrame() {
+      this.justPressed.clear();
+      this.mouseJustPressed = false;
+      this.mouseJustReleased = false;
+    },
+    resetAll() {
+      this.keys.clear();
+      this.justPressed.clear();
+      this.mouseDown = false;
+      this.mouseJustPressed = false;
+      this.mouseJustReleased = false;
+      Snd.stopInhale();
+    },
+    isActionHeld() {
+      return this.mouseDown || this.keys.has('Space');
+    }
+  };
+
+  function updateMouseCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      Input.mouseX = ((e.clientX - rect.left) / rect.width) * CFG.W;
+      Input.mouseY = ((e.clientY - rect.top) / rect.height) * CFG.H;
+    }
+  }
+
+  window.addEventListener('pointermove', (e) => {
+    updateMouseCoords(e);
+  });
+
+  window.addEventListener('pointerdown', (e) => {
+    Snd.init();
+    updateMouseCoords(e);
+    if (e.button === 0) {
+      Input.mouseDown = true;
+      Input.mouseJustPressed = true;
+      Input.anyInteraction = true;
+      Input.lastInputTime = performance.now();
+    }
+  });
+
+  window.addEventListener('pointerup', (e) => {
+    updateMouseCoords(e);
+    if (e.button === 0 && Input.mouseDown) {
+      Input.mouseDown = false;
+      Input.mouseJustReleased = true;
+      Input.lastInputTime = performance.now();
+    }
+  });
+
+  window.addEventListener('pointercancel', () => Input.resetAll());
+  window.addEventListener('blur', () => Input.resetAll());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) Input.resetAll();
+  });
+
+  const PREVENT_KEYS = new Set([
+    'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'
+  ]);
+
+  window.addEventListener('keydown', (e) => {
+    Snd.init();
+    if (PREVENT_KEYS.has(e.code)) e.preventDefault();
+    if (!Input.keys.has(e.code)) {
+      Input.justPressed.add(e.code);
+    }
+    Input.keys.add(e.code);
+    Input.anyInteraction = true;
+    Input.lastInputTime = performance.now();
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space' && Input.keys.has('Space')) {
+      Input.mouseJustReleased = true;
+    }
+    Input.keys.delete(e.code);
+  });
+
+  // ============================================================================
+  // 5. NETWORK EXECUTIVE NOTES (LAWS AS DATA — Mutating Physics Engine)
+  // ============================================================================
+  // Every 3rd enacted note pulls from the RELIEF tier so difficulty breathes!
+  const NETWORK_NOTES = [
+    {
+      id: 'WAXED_FLOOR',
+      code: 'NOTE #101',
+      title: 'BUTTERED STUDIO FLOOR',
+      desc: 'Floor friction -78%! Swivel chairs drift like curling stones.',
+      relief: false,
+      conflicts: ['VELCRO_CARPET'],
+      apply(m) { m.dragMult *= 0.24; m.recoilMult *= 1.2; },
+    },
+    {
+      id: 'TWIN_NOSTRILS',
+      code: 'NOTE #202',
+      title: 'BIFURCATED SINUS CAVITY',
+      desc: 'Every sneeze duplicates nose-ammo into a twin V-spread shotgun!',
+      relief: false,
+      conflicts: [],
+      apply(m) { m.twinShot = true; }
+    },
+    {
+      id: 'CAFFEINATED_CROWD',
+      code: 'NOTE #303',
+      title: 'OVERCAFFEINATED AUDIENCE',
+      desc: 'Audience claps 2x as often and Applause Waves blast 1.6x harder!',
+      relief: false,
+      conflicts: [],
+      apply(m) { m.applauseFreq *= 2.0; m.applauseForce *= 1.6; }
+    },
+    {
+      id: 'TILTED_SET',
+      code: 'NOTE #404',
+      title: 'FOUNDATION SINKING EAST',
+      desc: 'Studio floor tilts 8° toward Stage Right! Everything rolls East.',
+      relief: false,
+      conflicts: [],
+      apply(m) { m.gravityX += 155; }
+    },
+    {
+      id: 'RUBBER_WALLS',
+      code: 'NOTE #505',
+      title: 'TRAMPOLINE SOUNDPROOFING',
+      desc: 'Studio walls become high-velocity pinball bumpers (1.65x bounce)!',
+      relief: false,
+      conflicts: [],
+      apply(m) { m.wallBounce = 1.65; }
+    },
+    {
+      id: 'HOT_MIC_DEBATE',
+      code: 'NOTE #606',
+      title: 'DEBATE NIGHT FILIBUSTER',
+      desc: 'Stage Crashers argue 2.6x more often — nonstop 2.6x CRIT windows!',
+      relief: false,
+      conflicts: [],
+      apply(m) { m.argueRate *= 2.6; }
+    },
+    {
+      id: 'MINI_BUDGET',
+      code: 'NOTE #707',
+      title: 'BUDGET CUTS (MINI SCALE)',
+      desc: 'Everyone shrinks! You can now INHALE GUESTS directly into your nose!',
+      relief: false,
+      conflicts: ['BIG_EGOS'],
+      apply(m) { m.scaleMult = 0.68; m.canInhaleGuests = true; }
+    },
+    {
+      id: 'LUMBAR_THRUST',
+      code: 'NOTE #808',
+      title: 'JET-PROPELLED LUMBAR',
+      desc: 'Chair recoil is 1.65x stronger & rear-ending guests blasts them away!',
+      relief: false,
+      conflicts: [],
+      apply(m) { m.recoilMult *= 1.65; m.chairRamBonus = 2.2; }
+    },
+    {
+      id: 'PROMPTER_GRAVITY',
+      code: 'NOTE #909',
+      title: 'GRAVITY REPORTS TO TELEPROMPTER',
+      desc: 'The physical Score Teleprompter pulls guests & props into orbit!',
+      relief: false,
+      conflicts: [],
+      apply(m) { m.prompterGravity = 260; }
+    },
+    {
+      id: 'CHROMA_VORTEX',
+      code: 'NOTE #110',
+      title: 'CHROMA-KEY SINKHOLE',
+      desc: 'A swirling Green-Screen Portal opens right in the studio floor!',
+      relief: false,
+      conflicts: [],
+      apply(m) { m.centerPortal = true; }
+    },
+    {
+      id: 'BIG_EGOS',
+      code: 'NOTE #211',
+      title: 'INFLATED CELEBRITY EGOS',
+      desc: 'Crashers grow 38% larger, bash each other harder, and pay 2x Viewers!',
+      relief: false,
+      conflicts: ['MINI_BUDGET'],
+      apply(m) { m.enemyScale = 1.38; m.scoreMult *= 2.0; }
+    },
+    {
+      id: 'ORBITAL_CLUTTER',
+      code: 'NOTE #312',
+      title: 'ORBITAL PROP SATELLITES',
+      desc: 'Loose studio props automatically orbit your chair like wrecking balls!',
+      relief: false,
+      conflicts: [],
+      apply(m) { m.orbitalProps = true; }
+    },
+    // RELIEF / SWEEPS WEEK PERK NOTES (Every 3rd note)
+    {
+      id: 'GOLDEN_SINUS',
+      code: 'SWEEPS #777',
+      title: 'GOLDEN NASAL TURBO (PERK)',
+      desc: '2x Inhale speed, +3 Nose Capacity, and every sneeze is a Golden Crit!',
+      relief: true,
+      conflicts: [],
+      apply(m) { m.chargeRateMult *= 2.0; m.noseCapBonus += 3; m.alwaysSweet = true; }
+    },
+    {
+      id: 'ESPRESSO_RAIN',
+      code: 'SWEEPS #888',
+      title: 'FREE ESPRESSO CATERING (PERK)',
+      desc: 'Rains volatile Microwaves & Golden Trophies + 1.6x Foot-Scoot speed!',
+      relief: true,
+      conflicts: [],
+      apply(m) { m.scootMult *= 1.6; m.propSpawnMult *= 2.4; }
+    },
+    {
+      id: 'STANDING_OVATION',
+      code: 'SWEEPS #999',
+      title: 'STANDING OVATION MAGNET (PERK)',
+      desc: 'Green-Screen Portals magnetically pull nearby guests & pay 2x Viewers!',
+      relief: true,
+      conflicts: [],
+      apply(m) { m.portalMagnet = 240; m.scoreMult *= 2.0; }
+    }
+  ];
+
+  // ============================================================================
+  // 6. PROP & STAGE CRASHER ARCHETYPES
+  // ============================================================================
+  const PROP_TYPES = [
+    {
+      kind: 'MUG',
+      name: 'Hot Espresso',
+      r: 11,
+      mass: 0.9,
+      color: '#ff6b35',
+      accent: '#fff3e6',
+      points: 120,
+      effect: 'SPLASH' // Leaves slippery espresso puddle + speed boost
+    },
+    {
+      kind: 'MIC',
+      name: 'Brass Boom Mic',
+      r: 13,
+      mass: 1.4,
+      color: '#ffd166',
+      accent: '#3a3347',
+      points: 180,
+      effect: 'SHOCK'  // Acoustic feedback ring on impact
+    },
+    {
+      kind: 'BOWLING',
+      name: 'Sponsor Bowling Ball',
+      r: 15,
+      mass: 2.4,
+      color: '#2de2e6',
+      accent: '#18141f',
+      points: 240,
+      effect: 'PIERCE' // Pierces through multiple guests like bowling pins!
+    },
+    {
+      kind: 'MICROWAVE',
+      name: 'Breakroom Microwave',
+      r: 15,
+      mass: 1.8,
+      color: '#ff3b7f',
+      accent: '#fff8eb',
+      points: 280,
+      effect: 'BOOM'   // Explodes in a popcorn shockwave on impact!
+    },
+    {
+      kind: 'TROPHY',
+      name: 'Golden Emmy',
+      r: 13,
+      mass: 1.5,
+      color: '#ffbe2e',
+      accent: '#fff6cc',
+      points: 400,
+      effect: 'RATINGS' // Triggers instant Audience Applause + 3x points!
+    }
+  ];
+
+  const CRASHER_TYPES = [
+    {
+      kind: 'INTERN',
+      title: 'Unpaid Influencer',
+      r: 19,
+      mass: 1.0,
+      speed: 74,
+      color: '#4ea8de',
+      accent: '#ffbe2e',
+      points: 250,
+      pitch: 1.25,
+      quotes: [
+        'FOLLOW MY VLOG!',
+        'I PAID IN EXPOSURE!',
+        'LOOK MOM NO SCRIPT!',
+        'SMASH THAT LIKE!'
+      ]
+    },
+    {
+      kind: 'THESPIAN',
+      title: 'Method Thespian',
+      r: 22,
+      mass: 1.35,
+      speed: 62,
+      color: '#9b5de5',
+      accent: '#f15bb5',
+      points: 380,
+      pitch: 0.92,
+      quotes: [
+        'WHAT IS MY MOTIVATION?!',
+        'I AM THE TELEPROMPTER!',
+        'HOLD FOR APPLAUSE!',
+        'ART CANNOT BE EVICTED!'
+      ]
+    },
+    {
+      kind: 'RIVAL',
+      title: 'Brad Thrust (Ch. 9)',
+      r: 23,
+      mass: 1.55,
+      speed: 68,
+      color: '#f77f00',
+      accent: '#fcbf49',
+      points: 520,
+      pitch: 0.82,
+      sneezer: true, // Rides a rival chair and sneezes back at you!
+      quotes: [
+        'MY HAIR HAS AN EMMY!',
+        'CHANNEL 9 RULES!',
+        'EAT MY ALLERGIES!',
+        'YOUR RATINGS ARE FLAT!'
+      ]
+    },
+    {
+      kind: 'DIVA',
+      title: 'Grand Opera Diva',
+      r: 28,
+      mass: 2.6,
+      speed: 48,
+      color: '#e63946',
+      accent: '#ffd166',
+      points: 750,
+      pitch: 1.42,
+      quotes: [
+        'FIGARO! FIGAROOO!',
+        'I DEMAND GREEN M&MS!',
+        'MY AGENT WILL SUE!',
+        'SILENCE, CHAIR PEASANT!'
+      ]
+    }
+  ];
+
+  // ============================================================================
+  // 7. GAME STATE & WORLD CONTAINERS
+  // ============================================================================
+  let state = 'TITLE'; // 'TITLE' | 'PLAY' | 'PAUSED' | 'DVR_REPLAY' | 'RECEIPT'
+  let bestScore = 0;
+  try {
+    bestScore = parseInt(localStorage.getItem('chairborne_best_v1') || '0', 10) || 0;
+  } catch (e) {}
+
+  let debugOpen = false;
+  let fpsEstimate = 60;
+
+  const G = {
+    time: 0,
+    wave: 1,
+    waveEvicted: 0,
+    waveQuota: 4,
+    score: 0,
+    displayScore: 0,
+    combo: 0,
+    comboTimer: 0,
+    strikes: 0,
+    maxStrikes: 3,
+    hitStop: 0,
+    timeScale: 1.0,
+    shake: 0,
+    shakeX: 0,
+    shakeY: 0,
+    flashAlpha: 0,
+    flashColor: '#ffffff',
+
+    // Producer earpiece commentary ticker
+    earpieceText: 'PRODUCER: We are LIVE in 3... 2... Sneeze that crasher off the set!',
+    earpieceTimer: 5.0,
+    idleTimer: 0,
+    drySneezeCount: 0,
+
+    // Active Network Notes
+    activeNotes: [],
+    noteTimer: CFG.NOTES.every,
+    notesEnactedCount: 0,
+    noteBanner: null, // { code, title, desc, relief, timer }
+    mods: {},
+
+    // Studio Portals (Green Screen Exits on perimeter walls)
+    portals: [],
+    // Sponsor Spotlight (Bonus multiplier zone on floor)
+    sponsorSpot: { x: 660, y: 260, r: 44, vx: 28, vy: 22, pulse: 0 },
+
+    // Physical UI Teleprompter Bot
+    prompter: {
+      x: 820, y: 120, vx: 0, vy: 0, r: 28,
+      sx: 1, sy: 1, angle: 0,
+      quips: ['HEY! I AM THE HUD!', 'MY PIXELS!', 'STOP SNEEZING AT THE SCORE!', 'UNION BREAK!'],
+      bubble: '', bubbleTimer: 0, hitFlash: 0
+    },
+
+    // Live Studio Audience
+    audience: [],
+    applauseState: 'IDLE', // 'IDLE' | 'WINDUP' | 'WAVE'
+    applauseTimer: 0,
+    applauseCooldown: 0,
+    applauseWaveY: 0,
+
+    // Entities
+    player: null,
+    props: [],
+    projectiles: [],
+    crashers: [],
+    puddles: [],
+    particles: [],
+    floatTexts: [],
+    shockwaves: [],
+
+    // Physical Pause Menu ("Commercial Break" Cue Cards)
+    pauseCards: [],
+
+    // DVR Slow-Mo Instant Replay & Receipt Stats
+    dvrBuffer: [],
+    dvrIndex: 0,
+    dvrPlaybackPos: 0,
+    stats: {
+      evicted: 0,
+      dignityShattered: 0,
+      propsInhaled: 0,
+      spinTrickShots: 0,
+      prompterAssaults: 0,
+      ovationsTriggered: 0,
+      overloads: 0
+    },
+    receiptStep: 0,
+    receiptTimer: 0
+  };
+
+  function recomputeMods() {
+    const m = {
+      dragMult: 1.0,
+      recoilMult: 1.0,
+      scootMult: 1.0,
+      chargeRateMult: 1.0,
+      noseCapBonus: 0,
+      twinShot: false,
+      alwaysSweet: false,
+      applauseFreq: 1.0,
+      applauseForce: 1.0,
+      gravityX: 0,
+      gravityY: 0,
+      wallBounce: 0.85,
+      argueRate: 1.0,
+      scaleMult: 1.0,
+      enemyScale: 1.0,
+      canInhaleGuests: false,
+      chairRamBonus: 1.0,
+      prompterGravity: 0,
+      centerPortal: false,
+      orbitalProps: false,
+      propSpawnMult: 1.0,
+      portalMagnet: 0,
+      scoreMult: 1.0
+    };
+    for (const note of G.activeNotes) {
+      note.apply(m);
+    }
+    G.mods = m;
+  }
+
+  function sayEarpiece(text, dur = 4.2) {
+    G.earpieceText = text;
+    G.earpieceTimer = dur;
+  }
+
+  function addFloatText(x, y, text, color = '#ffbe2e', size = 15, vy = -55) {
+    if (G.floatTexts.length > 36) G.floatTexts.shift();
+    G.floatTexts.push({
+      x, y, vx: (fxRng.next() - 0.5) * 24, vy,
+      text, color, size, life: 1.05, maxLife: 1.05
+    });
+  }
+
+  function spawnParticles(x, y, count, color, speed = 180, size = 5, life = 0.45) {
+    for (let i = 0; i < count; i++) {
+      if (G.particles.length >= 280) G.particles.shift();
+      const ang = fxRng.range(0, Math.PI * 2);
+      const spd = fxRng.range(speed * 0.25, speed);
+      G.particles.push({
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        r: fxRng.range(size * 0.5, size * 1.25),
+        color,
+        life: fxRng.range(life * 0.6, life * 1.2),
+        maxLife: life
+      });
+    }
+  }
+
+  function addShockwave(x, y, maxR, color = '#2de2e6', width = 5) {
+    G.shockwaves.push({ x, y, r: 8, maxR, color, width, life: 0.28, maxLife: 0.28 });
+  }
+
+  // ============================================================================
+  // 8. INITIALIZATION & ARENA SETUP
+  // ============================================================================
+  function buildPortals(layoutIndex = 0) {
+    const A = CFG.ARENA;
+    const midX = A.x + A.w * 0.5;
+    const midY = A.y + A.h * 0.5;
+    const layouts = [
+      // Layout 0: Wide Left & Right Green Screens + Top Weather Wall
+      [
+        { wall: 'LEFT',  x: A.x,       y: midY, w: 18, h: 148, label: 'CHROMA-PORTAL WEST' },
+        { wall: 'RIGHT', x: A.x + A.w, y: midY, w: 18, h: 148, label: 'CHROMA-PORTAL EAST' },
+        { wall: 'TOP',   x: midX,      y: A.y,  w: 170, h: 18, label: 'WEATHER GREEN-SCREEN' }
+      ],
+      // Layout 1: Corner Portals + Twin Top Doors
+      [
+        { wall: 'LEFT',  x: A.x,       y: A.y + 110, w: 18, h: 120, label: 'SHARK TANK CAM' },
+        { wall: 'RIGHT', x: A.x + A.w, y: A.y + A.h - 110, w: 18, h: 120, label: 'SPACE WEATHER' },
+        { wall: 'TOP',   x: midX - 150, y: A.y, w: 135, h: 18, label: 'TRAPDOOR ALPHA' },
+        { wall: 'TOP',   x: midX + 150, y: A.y, w: 135, h: 18, label: 'TRAPDOOR BETA' }
+      ],
+      // Layout 2: Dual Side Gates + Giant Top Chroma Wall
+      [
+        { wall: 'LEFT',  x: A.x,       y: A.y + A.h - 105, w: 18, h: 130, label: 'EXIT CHUTE L' },
+        { wall: 'RIGHT', x: A.x + A.w, y: A.y + 105, w: 18, h: 130, label: 'EXIT CHUTE R' },
+        { wall: 'TOP',   x: midX,      y: A.y, w: 220, h: 18, label: 'MEGA GREEN-SCREEN' }
+      ]
+    ];
+    G.portals = layouts[layoutIndex % layouts.length];
+  }
+
+  function initAudience() {
+    G.audience = [];
+    const count = 15;
+    const startX = CFG.ARENA.x + 38;
+    const span = CFG.ARENA.w - 76;
+    for (let i = 0; i < count; i++) {
+      G.audience.push({
+        x: startX + (span * i) / (count - 1),
+        y: CFG.H - 36 + (i % 2) * 8,
+        phase: i * 0.7,
+        color: ['#3a3252', '#44385c', '#2e2942', '#4c3b63'][i % 4],
+        clapOffset: 0
+      });
+    }
+  }
+
+  function spawnProp(x, y, forcedKind = null) {
+    if (G.props.length >= CFG.PROP.maxCount) return null;
+    const A = CFG.ARENA;
+    const px = x !== undefined ? x : rng.range(A.x + 55, A.x + A.w - 55);
+    const py = y !== undefined ? y : rng.range(A.y + 55, A.y + A.h - 55);
+    const tmpl = forcedKind
+      ? (PROP_TYPES.find(p => p.kind === forcedKind) || rng.pick(PROP_TYPES))
+      : rng.pick(PROP_TYPES);
+    const prop = {
+      ...tmpl,
+      x: px,
+      y: py,
+      vx: rng.range(-25, 25),
+      vy: rng.range(-25, 25),
+      angle: rng.range(0, Math.PI * 2),
+      vAngle: rng.range(-2, 2),
+      sx: 1.4,
+      sy: 0.6,
+      orbitAngle: rng.range(0, Math.PI * 2),
+      alive: true
+    };
+    G.props.push(prop);
+    return prop;
+  }
+
+  function spawnCrasher(forcedKind = null, x = null, y = null) {
+    const A = CFG.ARENA;
+    // Choose archetype based on wave progression
+    let pool = CRASHER_TYPES.slice(0, Math.min(CRASHER_TYPES.length, 1 + Math.floor((G.wave + 1) / 1.3)));
+    if (pool.length < 2) pool = CRASHER_TYPES.slice(0, 2);
+    const tmpl = forcedKind
+      ? (CRASHER_TYPES.find(c => c.kind === forcedKind) || rng.pick(pool))
+      : rng.pick(pool);
+
+    // Spawn near stage doors without overlapping portals
+    let sx = x, sy = y;
+    if (sx === null || sy === null) {
+      const side = rng.int(0, 3);
+      if (side === 0) { sx = rng.range(A.x + 70, A.x + A.w - 70); sy = A.y + 34; }
+      else if (side === 1) { sx = rng.range(A.x + 70, A.x + A.w - 70); sy = A.y + A.h - 34; }
+      else if (side === 2) { sx = A.x + 36; sy = rng.range(A.y + 70, A.y + A.h - 70); }
+      else { sx = A.x + A.w - 36; sy = rng.range(A.y + 70, A.y + A.h - 70); }
+    }
+
+    const c = {
+      ...tmpl,
+      x: sx,
+      y: sy,
+      vx: 0,
+      vy: 0,
+      sx: 1.35,
+      sy: 0.65,
+      angle: 0,
+      hijackProgress: 0,
+      // Argument / Speech state ("MID-SENTENCE DIGNITY SHATTER")
+      state: 'MARCH', // 'MARCH' | 'WINDUP' | 'ARGUING' | 'STUNNED'
+      argueTimer: rng.range(1.6, 3.8),
+      stateTimer: 0,
+      quote: rng.pick(tmpl.quotes),
+      dignityShattered: false,
+      pinballTimer: 0,
+      sneezeCooldown: rng.range(2.5, 4.2),
+      blinkTimer: rng.range(1.2, 3.5),
+      alive: true
+    };
+    G.crashers.push(c);
+    return c;
+  }
+
+  function resetRun(newSeed = null) {
+    if (newSeed !== null) {
+      rng = createRNG(newSeed);
+      fxRng = createRNG(newSeed ^ 0xA5A5A5A5);
+    }
+    const A = CFG.ARENA;
+    const cx = A.x + A.w * 0.5;
+    const cy = A.y + A.h * 0.5;
+
+    G.time = 0;
+    G.wave = 1;
+    G.waveEvicted = 0;
+    G.waveQuota = 4;
+    G.score = 0;
+    G.displayScore = 0;
+    G.combo = 0;
+    G.comboTimer = 0;
+    G.strikes = 0;
+    G.hitStop = 0;
+    G.timeScale = 1.0;
+    G.shake = 0;
+    G.flashAlpha = 0;
+
+    G.activeNotes = [];
+    G.noteTimer = CFG.NOTES.every;
+    G.notesEnactedCount = 0;
+    G.noteBanner = null;
+    recomputeMods();
+
+    buildPortals(0);
+    initAudience();
+
+    G.applauseState = 'IDLE';
+    G.applauseTimer = 0;
+    G.applauseCooldown = 0;
+    G.applauseWaveY = A.y + A.h;
+
+    G.prompter.x = A.x + A.w - 92;
+    G.prompter.y = A.y + 56;
+    G.prompter.vx = 0;
+    G.prompter.vy = 0;
+    G.prompter.bubble = '';
+    G.prompter.bubbleTimer = 0;
+
+    G.player = {
+      x: cx - 75,
+      y: cy + 10,
+      vx: 0,
+      vy: 0,
+      angle: 0,
+      chairAngle: 0,
+      chairSpinVel: 0,
+      spinTrickTimer: 0,
+      charge: 0,
+      charging: false,
+      noseItems: [], // Array of swallowed prop objects!
+      dizzyTimer: 0,
+      sx: 1,
+      sy: 1,
+      scootPhase: 0,
+      blinkTimer: 2.0
+    };
+
+    G.props = [];
+    G.projectiles = [];
+    G.crashers = [];
+    G.puddles = [];
+    G.particles = [];
+    G.floatTexts = [];
+    G.shockwaves = [];
+    G.dvrBuffer = [];
+    G.dvrIndex = 0;
+    G.idleTimer = 0;
+    G.drySneezeCount = 0;
+
+    G.stats = {
+      evicted: 0,
+      dignityShattered: 0,
+      propsInhaled: 0,
+      spinTrickShots: 0,
+      prompterAssaults: 0,
+      ovationsTriggered: 0,
+      overloads: 0
+    };
+
+    // Cold Open Instant-Laugh Setup:
+    // Put a Hot Espresso Mug and a loud-mouthed Influencer right between Chad and the East Green-Screen Portal!
+    spawnProp(cx + 5, cy + 6, 'MUG');
+    spawnProp(cx - 25, cy - 55, 'MIC');
+    spawnProp(cx - 140, cy + 75, 'BOWLING');
+    spawnProp(cx + 95, cy - 80, 'MICROWAVE');
+    spawnProp(cx + 40, cy + 95, 'TROPHY');
+
+    const firstGuest = spawnCrasher('INTERN', cx + 125, cy + 4);
+    firstGuest.state = 'ARGUING';
+    firstGuest.stateTimer = 4.5;
+    firstGuest.quote = 'I AM LIVE ON TV MOM!';
+
+    spawnCrasher('THESPIAN', cx + 10, cy - 125);
+
+    sayEarpiece('PRODUCER: Hold CLICK/SPACE to INHALE props -> Release to SNEEZE crashers into the GREEN SCREEN!', 6.0);
+  }
+
+  // ============================================================================
+  // 9. CORE GAMEPLAY MECHANICS (Inhale, Sneeze, Recoil, Dignity Shatter, Notes)
+  // ============================================================================
+  function enactNextNetworkNote(forcedId = null) {
+    G.notesEnactedCount++;
+    const wantRelief = (G.notesEnactedCount % 3 === 0);
+    const activeIds = new Set(G.activeNotes.map(n => n.id));
+
+    let candidate = null;
+    if (forcedId) {
+      candidate = NETWORK_NOTES.find(n => n.id === forcedId);
+    } else {
+      const pool = NETWORK_NOTES.filter(n => {
+        if (activeIds.has(n.id)) return false;
+        if (n.relief !== wantRelief) return false;
+        for (const c of n.conflicts) {
+          if (activeIds.has(c)) return false;
+        }
+        return true;
+      });
+      candidate = pool.length > 0 ? rng.pick(pool) : rng.pick(NETWORK_NOTES.filter(n => !activeIds.has(n.id)));
+    }
+    if (!candidate) return;
+
+    if (G.activeNotes.length >= CFG.NOTES.maxActive) {
+      const expired = G.activeNotes.shift();
+      G.floatTexts = G.floatTexts.filter(ft => !ft.text.startsWith('RESCINDED:'));
+      addFloatText(CFG.W * 0.5, 108, `RESCINDED: ${expired.title}`, '#a89f91', 13, -25);
+    }
+    G.activeNotes.push(candidate);
+    recomputeMods();
+
+    G.noteBanner = {
+      code: candidate.code,
+      title: candidate.title,
+      desc: candidate.desc,
+      relief: candidate.relief,
+      timer: 3.6
+    };
+    Snd.networkNote(candidate.relief);
+    G.shake = Math.max(G.shake, 5);
+    sayEarpiece(`NETWORK FAX [${candidate.code}]: ${candidate.title} — ${candidate.desc}`, 5.0);
+  }
+
+  function triggerApplauseWave(reason = 'GREAT BROADCAST!') {
+    if (G.applauseState !== 'IDLE' || G.applauseCooldown > 0) return;
+    G.applauseState = 'WINDUP';
+    G.applauseTimer = CFG.APPLAUSE.windup;
+    G.stats.ovationsTriggered++;
+    Snd.applauseWindup();
+    addFloatText(CFG.W * 0.5, CFG.H - 72, `👏 AUDIENCE WIND-UP: ${reason}`, '#ff3b7f', 15, -35);
+  }
+
+  function awardEviction(crasher, portalLabel) {
+    if (!crasher.alive) return;
+    crasher.alive = false;
+    G.stats.evicted++;
+    G.waveEvicted++;
+    G.combo++;
+    G.comboTimer = 4.2;
+
+    const critBonus = crasher.dignityShattered ? 2.0 : 1.0;
+    const pts = Math.round(crasher.points * (1 + (G.combo - 1) * 0.35) * critBonus * G.mods.scoreMult);
+    G.score += pts;
+
+    Snd.scoreEvict(G.combo);
+    G.hitStop = Math.max(G.hitStop, crasher.dignityShattered ? 0.065 : 0.04);
+    G.shake = Math.max(G.shake, crasher.dignityShattered ? 8.5 : 5.5);
+
+    spawnParticles(crasher.x, crasher.y, 26, '#2ee675', 260, 6, 0.55);
+    spawnParticles(crasher.x, crasher.y, 14, crasher.color, 210, 5, 0.45);
+    addShockwave(crasher.x, crasher.y, 90, '#2ee675', 5);
+
+    const tag = crasher.dignityShattered ? `CRIT EVICTED! +${pts}` : `OFF THE SET! +${pts}`;
+    addFloatText(
+      Math.max(120, Math.min(CFG.W - 120, crasher.x)),
+      Math.max(90, Math.min(CFG.H - 95, crasher.y)),
+      tag,
+      crasher.dignityShattered ? '#ffbe2e' : '#2ee675',
+      crasher.dignityShattered ? 18 : 15
+    );
+
+    if (crasher.dignityShattered || G.combo >= 2) {
+      triggerApplauseWave(crasher.dignityShattered ? 'DIGNITY SHATTERED!' : `${G.combo}x COMBO!`);
+    }
+
+    // Check if Segment Quota reached -> Success creates the next complication!
+    if (G.waveEvicted >= G.waveQuota) {
+      G.wave++;
+      G.waveEvicted = 0;
+      G.waveQuota = Math.min(12, 4 + Math.floor(G.wave * 1.25));
+      buildPortals(G.wave - 1);
+      addFloatText(CFG.W * 0.5, CFG.ARENA.y + 42, `📺 SEGMENT ${G.wave} LIVE! CAMERAS SHIFTED!`, '#2de2e6', 18, -25);
+      sayEarpiece(`PRODUCER: Segment ${G.wave - 1} crushed! Ratings surging — Green Screens relocated & fresh guests incoming!`, 4.8);
+      triggerApplauseWave(`SEGMENT ${G.wave - 1} CLEARED!`);
+      // Spawn bonus props for the new segment
+      for (let i = 0; i < 3; i++) spawnProp();
+    }
+  }
+
+  function applyShatterOrPush(crasher, vx, vy, forceDignityCheck = true, sourceLabel = 'SNEEZE') {
+    const p = G.player;
+    const isTalking = (crasher.state === 'ARGUING' || crasher.state === 'WINDUP');
+    let mult = 1.0 / Math.sqrt(crasher.mass);
+
+    if (forceDignityCheck && isTalking && !crasher.dignityShattered) {
+      crasher.dignityShattered = true;
+      crasher.state = 'STUNNED';
+      crasher.stateTimer = 2.6;
+      crasher.pinballTimer = 2.6;
+      mult *= CFG.CRASHER.dignityMultiplier;
+      G.stats.dignityShattered++;
+      G.hitStop = Math.max(G.hitStop, 0.068);
+      G.shake = Math.max(G.shake, 9.0);
+      Snd.dignityShatter();
+      addShockwave(crasher.x, crasher.y, 110, '#ffbe2e', 6);
+      spawnParticles(crasher.x, crasher.y, 22, '#ffbe2e', 240, 6, 0.5);
+      addFloatText(crasher.x, crasher.y - 26, `CUT HIS MIC! (2.6x LAUNCH!)`, '#ffbe2e', 17, -65);
+      sayEarpiece(`PRODUCER: Right in the middle of his syllable! That's Emmy-winning television!`, 3.6);
+    } else {
+      crasher.state = 'STUNNED';
+      crasher.stateTimer = Math.max(crasher.stateTimer, 0.9);
+      crasher.pinballTimer = Math.max(crasher.pinballTimer, 0.9);
+      Snd.bump(0.9);
+    }
+
+    // Reset hijack progress when blasted!
+    crasher.hijackProgress = Math.max(0, crasher.hijackProgress - 0.45);
+    crasher.vx += vx * mult;
+    crasher.vy += vy * mult;
+    crasher.sx = 1.42;
+    crasher.sy = 0.62;
+
+    // Spin Trick-Shot Bonus check
+    if (p.spinTrickTimer > 0) {
+      G.stats.spinTrickShots++;
+      const bonus = 300 * G.mods.scoreMult;
+      G.score += bonus;
+      addFloatText(crasher.x, crasher.y - 44, `540° CHAIR SPIN! +${Math.round(bonus)}`, '#ff3b7f', 16, -70);
+    }
+  }
+
+  function releaseSneeze(isOverload = false) {
+    const p = G.player;
+    const rawCharge = p.charge;
+    p.charging = false;
+    p.charge = 0;
+
+    const noseCount = p.noseItems.length;
+    const isSweet = !isOverload && (
+      G.mods.alwaysSweet ||
+      (rawCharge >= CFG.PLAYER.sweetMin && rawCharge <= CFG.PLAYER.sweetMax)
+    );
+
+    const power = isOverload
+      ? 1.35
+      : Math.max(0.28, Math.min(1.15, rawCharge * (isSweet ? 1.28 : 1.0)));
+
+    let aimAngle = p.angle;
+    if (isOverload) {
+      // Involuntary overload sneeze veers off at a chaotic angle!
+      aimAngle += rng.range(-0.85, 0.85);
+      p.dizzyTimer = CFG.PLAYER.dizzyTime;
+      p.chairSpinVel = (rng.chance(0.5) ? 1 : -1) * 24;
+      p.spinTrickTimer = 1.1;
+      G.stats.overloads++;
+      addFloatText(p.x, p.y - 32, 'OVERCOMMITTED! (115% SINUS BACKFIRE!)', '#ff2a55', 16, -65);
+      sayEarpiece('MEDICAL LOG: Chad held that sneeze way too long. Look at that chair spin.', 4.0);
+    } else if (isSweet) {
+      // 540-degree (1.5 rotations = 3 * PI) swivel chair trick spin!
+      p.chairSpinVel = 19.5;
+      p.spinTrickTimer = 1.05;
+      addFloatText(p.x, p.y - 28, '540° SWIVEL BLAST!', '#ffbe2e', 14, -50);
+    } else {
+      p.chairSpinVel = 7.5 * power;
+    }
+
+    Snd.sneeze(power, isSweet, isOverload, noseCount);
+
+    // Track dry sneezes for Producer snark
+    if (noseCount === 0 && rawCharge < 0.35) {
+      G.drySneezeCount++;
+      if (G.drySneezeCount % 4 === 0) {
+        sayEarpiece('PRODUCER: Chad, inhale a coffee mug or charge your sinus first!', 3.8);
+      }
+    } else {
+      G.drySneezeCount = 0;
+    }
+
+    // 1. SWIVEL CHAIR RECOIL (Opposite to aim direction!)
+    const recoilMag = (
+      (isOverload ? CFG.PLAYER.recoilOverload : (CFG.PLAYER.recoilBase + (CFG.PLAYER.recoilCharged - CFG.PLAYER.recoilBase) * power)) +
+      noseCount * CFG.PLAYER.recoilPerProp
+    ) * G.mods.recoilMult;
+
+    p.vx -= Math.cos(aimAngle) * recoilMag;
+    p.vy -= Math.sin(aimAngle) * recoilMag;
+    p.sx = 1.48;
+    p.sy = 0.58;
+    G.shake = Math.max(G.shake, 3.5 + power * 4.5 + noseCount * 0.8);
+
+    // Visual sneeze burst particles
+    const mouthX = p.x + Math.cos(aimAngle) * 22;
+    const mouthY = p.y + Math.sin(aimAngle) * 22;
+    spawnParticles(mouthX, mouthY, 18 + noseCount * 5, isSweet ? '#ffbe2e' : '#2de2e6', 340 * power, 5, 0.38);
+    addShockwave(mouthX, mouthY, 75 + power * 85, isSweet ? '#ffbe2e' : '#2de2e6', 4);
+
+    // 2. ACOUSTIC SHOCKWAVE CONE (Direct push on Crashers, Props, and Teleprompter)
+    const range = CFG.PLAYER.sneezeRange * (0.75 + power * 0.45);
+    const cone = isOverload ? Math.PI : CFG.PLAYER.sneezeCone * (0.9 + power * 0.25);
+
+    for (const c of G.crashers) {
+      if (!c.alive) continue;
+      const dx = c.x - p.x;
+      const dy = c.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > range + c.r || dist < 1) continue;
+      const angTo = Math.atan2(dy, dx);
+      let diff = Math.abs(Math.atan2(Math.sin(angTo - aimAngle), Math.cos(angTo - aimAngle)));
+      if (diff <= cone || dist < p.r + c.r + 18) {
+        const falloff = 1 - Math.min(0.75, dist / (range + c.r));
+        const blast = (540 + power * 480 + noseCount * 85) * falloff;
+        applyShatterOrPush(c, Math.cos(angTo) * blast, Math.sin(angTo) * blast, true, 'SNEEZE');
+      }
+    }
+
+    // Push loose props in the sneeze cone too
+    for (const pr of G.props) {
+      const dx = pr.x - p.x;
+      const dy = pr.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < range && dist > 1) {
+        const angTo = Math.atan2(dy, dx);
+        const diff = Math.abs(Math.atan2(Math.sin(angTo - aimAngle), Math.cos(angTo - aimAngle)));
+        if (diff <= cone) {
+          const push = (520 + power * 380) * (1 - dist / range);
+          pr.vx += Math.cos(angTo) * push;
+          pr.vy += Math.sin(angTo) * push;
+        }
+      }
+    }
+
+    // Check if Sneeze Cone hits the physical Teleprompter HUD!
+    {
+      const prm = G.prompter;
+      const dx = prm.x - p.x;
+      const dy = prm.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < range + prm.r) {
+        const angTo = Math.atan2(dy, dx);
+        const diff = Math.abs(Math.atan2(Math.sin(angTo - aimAngle), Math.cos(angTo - aimAngle)));
+        if (diff <= cone) {
+          assaultPrompter(Math.cos(angTo) * 460 * power, Math.sin(angTo) * 460 * power);
+        }
+      }
+    }
+
+    // 3. FIRE SWALLOWED NOSE ITEMS AS HIGH-VELOCITY PROJECTILES!
+    if (noseCount > 0) {
+      const shots = [];
+      p.noseItems.forEach((item, idx) => {
+        const spread = noseCount === 1 ? 0 : ((idx / (noseCount - 1)) - 0.5) * 0.28;
+        shots.push({ item, angle: aimAngle + spread });
+        if (G.mods.twinShot) {
+          shots.push({ item: { ...item }, angle: aimAngle + spread + (idx % 2 === 0 ? 0.16 : -0.16) });
+        }
+      });
+      p.noseItems = [];
+
+      for (const s of shots) {
+        const spd = CFG.PROP.launchSpeed * (0.85 + power * 0.32);
+        G.projectiles.push({
+          ...s.item,
+          x: mouthX,
+          y: mouthY,
+          vx: Math.cos(s.angle) * spd,
+          vy: Math.sin(s.angle) * spd,
+          angle: s.angle,
+          life: 1.45,
+          pierceLeft: s.item.effect === 'PIERCE' ? 4 : 1,
+          isSweet
+        });
+      }
+    }
+  }
+
+  function assaultPrompter(vx, vy) {
+    const prm = G.prompter;
+    prm.vx += vx;
+    prm.vy += vy;
+    prm.sx = 1.45;
+    prm.sy = 0.62;
+    prm.hitFlash = 0.35;
+    prm.bubble = rng.pick(prm.quips);
+    prm.bubbleTimer = 2.2;
+    G.stats.prompterAssaults++;
+    const bonus = 150;
+    G.score += bonus;
+    Snd.uiHit();
+    spawnParticles(prm.x, prm.y, 12, '#ffbe2e', 190, 4, 0.35);
+    addFloatText(prm.x, prm.y - 24, `UI ASSAULT! +${bonus}`, '#2de2e6', 14);
+    if (G.stats.prompterAssaults === 1 || G.stats.prompterAssaults % 4 === 0) {
+      sayEarpiece('ACCOUNTING: Please stop sneezing bowling balls at the Teleprompter HUD!', 3.8);
+    }
+  }
+
+  function triggerProjectileImpact(proj, hitX, hitY) {
+    spawnParticles(hitX, hitY, 12, proj.color, 210, 5, 0.4);
+    if (proj.effect === 'SPLASH') {
+      // Hot Espresso puddle!
+      if (G.puddles.length > 6) G.puddles.shift();
+      G.puddles.push({ x: hitX, y: hitY, r: 44, life: 7.0, maxLife: 7.0 });
+      addFloatText(hitX, hitY - 18, '☕ ESPRESSO SLICK!', '#ff6b35', 13);
+    } else if (proj.effect === 'SHOCK') {
+      // Brass Mic feedback ring!
+      addShockwave(hitX, hitY, 115, '#ffd166', 5);
+      for (const c of G.crashers) {
+        const d = Math.hypot(c.x - hitX, c.y - hitY);
+        if (d < 115 && d > 1) {
+          applyShatterOrPush(c, ((c.x - hitX) / d) * 480, ((c.y - hitY) / d) * 480, true, 'MIC FEEDBACK');
+        }
+      }
+    } else if (proj.effect === 'BOOM') {
+      // Microwave Popcorn Explosion!
+      Snd.dignityShatter();
+      G.shake = Math.max(G.shake, 9.5);
+      addShockwave(hitX, hitY, 155, '#ff3b7f', 7);
+      spawnParticles(hitX, hitY, 32, '#fff8eb', 310, 6, 0.55);
+      addFloatText(hitX, hitY - 24, '🍿 POPCORN DETONATION!', '#ff3b7f', 16, -60);
+      for (const c of G.crashers) {
+        const d = Math.hypot(c.x - hitX, c.y - hitY);
+        if (d < 155 && d > 1) {
+          applyShatterOrPush(c, ((c.x - hitX) / d) * 760, ((c.y - hitY) / d) * 760, true, 'MICROWAVE');
+        }
+      }
+    } else if (proj.effect === 'RATINGS') {
+      const bonus = Math.round(proj.points * G.mods.scoreMult);
+      G.score += bonus;
+      addFloatText(hitX, hitY - 22, `🏆 EMMY SMASH! +${bonus}`, '#ffbe2e', 16);
+      triggerApplauseWave('GOLDEN EMMY HIT!');
+    } else if (proj.isGuest) {
+      addShockwave(hitX, hitY, 95, '#9b5de5', 5);
+      addFloatText(hitX, hitY - 20, 'GUEST-ON-GUEST COLLISION!', '#ffbe2e', 15);
+    }
+  }
+
+  // ============================================================================
+  // 10. SIMULATION UPDATE STEP (Fixed 1/120 Timestep)
+  // ============================================================================
+  let propSpawnTimer = 1.8;
+  let crasherSpawnTimer = 2.6;
+
+  function checkPortalEviction(entity) {
+    // Check perimeter Green-Screen Portals
+    for (const portal of G.portals) {
+      const halfW = portal.w * 0.5 + entity.r * 0.65;
+      const halfH = portal.h * 0.5 + entity.r * 0.65;
+      if (Math.abs(entity.x - portal.x) <= halfW && Math.abs(entity.y - portal.y) <= halfH) {
+        return portal.label;
+      }
+    }
+    // Check Center Sinkhole Portal if Note #110 is active
+    if (G.mods.centerPortal) {
+      const cx = CFG.ARENA.x + CFG.ARENA.w * 0.5;
+      const cy = CFG.ARENA.y + CFG.ARENA.h * 0.5;
+      if (Math.hypot(entity.x - cx, entity.y - cy) < 34) {
+        return 'CHROMA SINKHOLE';
+      }
+    }
+    return null;
+  }
+
+  function updatePlay(dt) {
+    G.time += dt;
+    const A = CFG.ARENA;
+    const p = G.player;
+    const m = G.mods;
+
+    // Smooth score ticker
+    if (G.displayScore < G.score) {
+      G.displayScore += Math.ceil((G.score - G.displayScore) * Math.min(1, dt * 14));
+    }
+
+    // Combo decay
+    if (G.combo > 0) {
+      G.comboTimer -= dt;
+      if (G.comboTimer <= 0) G.combo = 0;
+    }
+
+    // Earpiece & Banner timers
+    if (G.earpieceTimer > 0) G.earpieceTimer -= dt;
+    if (G.noteBanner) {
+      G.noteBanner.timer -= dt;
+      if (G.noteBanner.timer <= 0) G.noteBanner = null;
+    }
+
+    // Network Note Scheduler (every 18s)
+    G.noteTimer -= dt;
+    if (G.noteTimer <= 0) {
+      G.noteTimer = CFG.NOTES.every;
+      enactNextNetworkNote();
+    }
+
+    // Aim Chad's swivel chair toward mouse cursor
+    const targetAngle = Math.atan2(Input.mouseY - p.y, Input.mouseX - p.x);
+    if (p.dizzyTimer > 0) {
+      p.dizzyTimer -= dt;
+      p.angle += dt * 11;
+    } else {
+      const diff = Math.atan2(Math.sin(targetAngle - p.angle), Math.cos(targetAngle - p.angle));
+      p.angle += diff * Math.min(1, dt * 22);
+    }
+
+    // Swivel chair visual spin
+    if (Math.abs(p.chairSpinVel) > 0.1) {
+      p.chairAngle += p.chairSpinVel * dt;
+      p.chairSpinVel *= Math.pow(0.18, dt);
+    } else {
+      const cDiff = Math.atan2(Math.sin(p.angle - p.chairAngle), Math.cos(p.angle - p.chairAngle));
+      p.chairAngle += cDiff * Math.min(1, dt * 14);
+    }
+    if (p.spinTrickTimer > 0) p.spinTrickTimer -= dt;
+
+    // Foot-Scoot Movement (WASD / Arrows)
+    let ix = 0, iy = 0;
+    if (Input.keys.has('KeyW') || Input.keys.has('ArrowUp')) iy -= 1;
+    if (Input.keys.has('KeyS') || Input.keys.has('ArrowDown')) iy += 1;
+    if (Input.keys.has('KeyA') || Input.keys.has('ArrowLeft')) ix -= 1;
+    if (Input.keys.has('KeyD') || Input.keys.has('ArrowRight')) ix += 1;
+
+    if (ix !== 0 || iy !== 0) {
+      const len = Math.hypot(ix, iy);
+      ix /= len; iy /= len;
+      const scootAcc = CFG.PLAYER.scootAccel * m.scootMult;
+      p.vx += ix * scootAcc * dt;
+      p.vy += iy * scootAcc * dt;
+      p.scootPhase += dt * 14;
+      G.idleTimer = 0;
+    } else if (!Input.isActionHeld()) {
+      G.idleTimer += dt;
+      if (G.idleTimer > 4.5) {
+        G.idleTimer = -6.0;
+        sayEarpiece('PRODUCER: Chad? You are dissociating on live television. Hold CLICK or SPACE!', 4.2);
+      }
+    }
+
+    // Espresso Puddle Boost on Player
+    for (const pud of G.puddles) {
+      if (Math.hypot(p.x - pud.x, p.y - pud.y) < pud.r + p.r) {
+        p.vx *= (1 + 0.8 * dt);
+        p.vy *= (1 + 0.8 * dt);
+      }
+    }
+
+    // INHALE & SINUS CHARGE MECHANIC
+    const maxNoseCap = CFG.PLAYER.baseNoseCap + m.noseCapBonus;
+    if (Input.isActionHeld() && p.dizzyTimer <= 0) {
+      p.charging = true;
+      p.charge += CFG.PLAYER.chargeRate * m.chargeRateMult * dt;
+      Snd.updateInhale(p.charge, true);
+
+      // Inhale Vortex pulls loose Props (and Shrunk/Stunned Guests!) toward Chad's nostrils
+      const vRange = CFG.PLAYER.inhaleRange;
+      const vCone = CFG.PLAYER.inhaleCone;
+
+      for (let i = G.props.length - 1; i >= 0; i--) {
+        const pr = G.props[i];
+        const dx = pr.x - p.x;
+        const dy = pr.y - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < vRange) {
+          const angTo = Math.atan2(dy, dx);
+          const diff = Math.abs(Math.atan2(Math.sin(angTo - p.angle), Math.cos(angTo - p.angle)));
+          if (diff <= vCone || dist < 48) {
+            const pull = (620 + p.charge * 340) * (1 - dist / vRange);
+            pr.vx -= Math.cos(angTo) * pull * dt * 6.5;
+            pr.vy -= Math.sin(angTo) * pull * dt * 6.5;
+
+            if (dist < p.r + pr.r + 12 && p.noseItems.length < maxNoseCap) {
+              p.noseItems.push({ ...pr, isGuest: false });
+              G.props.splice(i, 1);
+              G.stats.propsInhaled++;
+              p.sx = 1.32;
+              p.sy = 0.74;
+              Snd.inhalePop(p.noseItems.length);
+              addFloatText(p.x, p.y - 24, `SHLURP! (${pr.name})`, pr.color, 13, -45);
+              if (p.noseItems.length === 4) {
+                sayEarpiece('PRODUCER: Four studio props stuffed in one nose! Release to fire the blunderbuss!', 3.8);
+              }
+            }
+          }
+        }
+      }
+
+      // If Note #707 (MINI_BUDGET) is active, you can INHALE ENTIRE GUESTS into your nose!
+      if (m.canInhaleGuests && p.noseItems.length < maxNoseCap) {
+        for (let i = G.crashers.length - 1; i >= 0; i--) {
+          const c = G.crashers[i];
+          const dx = c.x - p.x;
+          const dy = c.y - p.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < vRange) {
+            const angTo = Math.atan2(dy, dx);
+            const diff = Math.abs(Math.atan2(Math.sin(angTo - p.angle), Math.cos(angTo - p.angle)));
+            if (diff <= vCone) {
+              c.vx -= Math.cos(angTo) * 520 * dt * 5;
+              c.vy -= Math.sin(angTo) * 520 * dt * 5;
+              if (dist < p.r + c.r * m.scaleMult + 14) {
+                p.noseItems.push({
+                  kind: 'GUEST_AMMO',
+                  name: c.title,
+                  r: 16,
+                  mass: 2.0,
+                  color: c.color,
+                  accent: c.accent,
+                  points: c.points,
+                  effect: 'SHOCK',
+                  isGuest: true
+                });
+                G.crashers.splice(i, 1);
+                G.stats.propsInhaled++;
+                Snd.inhalePop(p.noseItems.length);
+                addFloatText(p.x, p.y - 28, `INHALED ${c.title.toUpperCase()}!`, '#ff3b7f', 15);
+              }
+            }
+          }
+        }
+      }
+
+      // Check Overload Threshold (116% Sinus Capacity -> Involuntary Backfire!)
+      if (p.charge >= CFG.PLAYER.overloadAt) {
+        releaseSneeze(true);
+      }
+    } else if (p.charging) {
+      releaseSneeze(false);
+    } else {
+      Snd.stopInhale();
+    }
+
+    // Apply Studio Gravity / Tilt & Drag to Player
+    p.vx += m.gravityX * dt;
+    p.vy += m.gravityY * dt;
+    const pDrag = CFG.PLAYER.baseDrag * m.dragMult + (Math.abs(p.chairSpinVel) > 2 ? CFG.PLAYER.spinDragBonus : 0);
+    p.vx *= Math.exp(-pDrag * dt);
+    p.vy *= Math.exp(-pDrag * dt);
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    // Player Wall Bounds & Bounce
+    const pr = p.r * m.scaleMult;
+    if (p.x < A.x + pr) { p.x = A.x + pr; p.vx = Math.abs(p.vx) * m.wallBounce; Snd.bump(0.5); }
+    if (p.x > A.x + A.w - pr) { p.x = A.x + A.w - pr; p.vx = -Math.abs(p.vx) * m.wallBounce; Snd.bump(0.5); }
+    if (p.y < A.y + pr) { p.y = A.y + pr; p.vy = Math.abs(p.vy) * m.wallBounce; Snd.bump(0.5); }
+    if (p.y > A.y + A.h - pr) { p.y = A.y + A.h - pr; p.vy = -Math.abs(p.vy) * m.wallBounce; Snd.bump(0.5); }
+
+    // Spring squash/stretch back to 1
+    p.sx += (1 - p.sx) * Math.min(1, dt * 14);
+    p.sy += (1 - p.sy) * Math.min(1, dt * 14);
+    p.blinkTimer -= dt;
+    if (p.blinkTimer <= -0.12) p.blinkTimer = fxRng.range(1.8, 4.2);
+
+    // Sponsor Spotlight drift
+    const sp = G.sponsorSpot;
+    sp.pulse += dt * 4;
+    sp.x += sp.vx * dt;
+    sp.y += sp.vy * dt;
+    if (sp.x < A.x + 90 || sp.x > A.x + A.w - 90) sp.vx *= -1;
+    if (sp.y < A.y + 80 || sp.y > A.y + A.h - 80) sp.vy *= -1;
+
+    // Update Physical Teleprompter HUD
+    {
+      const prm = G.prompter;
+      prm.vx *= Math.exp(-2.8 * dt);
+      prm.vy *= Math.exp(-2.8 * dt);
+      // Gently drift back toward top-right corner so HUD stays legible
+      prm.vx += ((A.x + A.w - 95) - prm.x) * 1.4 * dt;
+      prm.vy += ((A.y + 52) - prm.y) * 1.4 * dt;
+      prm.x += prm.vx * dt;
+      prm.y += prm.vy * dt;
+      prm.x = Math.max(A.x + prm.r, Math.min(A.x + A.w - prm.r, prm.x));
+      prm.y = Math.max(A.y + prm.r, Math.min(A.y + A.h - prm.r, prm.y));
+      prm.sx += (1 - prm.sx) * Math.min(1, dt * 12);
+      prm.sy += (1 - prm.sy) * Math.min(1, dt * 12);
+      if (prm.hitFlash > 0) prm.hitFlash -= dt;
+      if (prm.bubbleTimer > 0) prm.bubbleTimer -= dt;
+
+      // Player Chair collides with Teleprompter
+      const dPrm = Math.hypot(p.x - prm.x, p.y - prm.y);
+      if (dPrm < pr + prm.r && Math.hypot(p.vx, p.vy) > 140) {
+        const nx = (prm.x - p.x) / (dPrm || 1);
+        const ny = (prm.y - p.y) / (dPrm || 1);
+        assaultPrompter(nx * 360, ny * 360);
+        p.vx -= nx * 160;
+        p.vy -= ny * 160;
+      }
+    }
+
+    // Update Audience & Applause Has Mass Wave!
+    if (G.applauseCooldown > 0) G.applauseCooldown -= dt * m.applauseFreq;
+    if (G.applauseState === 'WINDUP') {
+      G.applauseTimer -= dt;
+      if (G.applauseTimer <= 0) {
+        G.applauseState = 'WAVE';
+        G.applauseWaveY = A.y + A.h;
+        Snd.applauseBlast();
+        G.shake = Math.max(G.shake, 5.5);
+      }
+    } else if (G.applauseState === 'WAVE') {
+      const prevY = G.applauseWaveY;
+      G.applauseWaveY -= CFG.APPLAUSE.waveSpeed * dt;
+      const force = CFG.APPLAUSE.wavePush * m.applauseForce;
+
+      // Push Crashers, Props, and Player when the Applause Wave crosses them!
+      for (const c of G.crashers) {
+        if (c.y <= prevY + 18 && c.y >= G.applauseWaveY - 18) {
+          c.vy -= force / Math.sqrt(c.mass);
+          c.vx += (rng.next() - 0.5) * 140;
+          c.sx = 1.3; c.sy = 0.7;
+          c.pinballTimer = Math.max(c.pinballTimer, 0.8);
+        }
+      }
+      for (const prop of G.props) {
+        if (prop.y <= prevY + 15 && prop.y >= G.applauseWaveY - 15) {
+          prop.vy -= force * 0.85;
+        }
+      }
+      if (p.y <= prevY + 18 && p.y >= G.applauseWaveY - 18) {
+        p.vy -= force * 0.45;
+      }
+
+      if (G.applauseWaveY <= A.y) {
+        G.applauseState = 'IDLE';
+        G.applauseCooldown = CFG.APPLAUSE.cooldown;
+      }
+    }
+
+    // Spawn Props periodically
+    propSpawnTimer -= dt * m.propSpawnMult;
+    if (propSpawnTimer <= 0) {
+      propSpawnTimer = CFG.PROP.spawnInterval;
+      if (G.props.length < CFG.PROP.maxCount) {
+        const spProp = spawnProp();
+        if (spProp) addShockwave(spProp.x, spProp.y, 28, spProp.color, 2);
+      }
+    }
+
+    // Update Loose Studio Props
+    for (let i = G.props.length - 1; i >= 0; i--) {
+      const pr = G.props[i];
+      if (m.orbitalProps && Math.hypot(pr.x - p.x, pr.y - p.y) < 190) {
+        // Note #312: Props orbit your swivel chair like wrecking balls!
+        pr.orbitAngle += dt * 4.6;
+        const targetX = p.x + Math.cos(pr.orbitAngle) * 68;
+        const targetY = p.y + Math.sin(pr.orbitAngle) * 68;
+        pr.vx += (targetX - pr.x) * 16 * dt;
+        pr.vy += (targetY - pr.y) * 16 * dt;
+
+        // Orbiting props bash nearby Stage Crashers!
+        for (const c of G.crashers) {
+          if (Math.hypot(c.x - pr.x, c.y - pr.y) < c.r + pr.r + 4) {
+            const ang = Math.atan2(c.y - p.y, c.x - p.x);
+            applyShatterOrPush(c, Math.cos(ang) * 520, Math.sin(ang) * 520, true, 'ORBITAL PROP');
+            pr.vx = -Math.cos(ang) * 200;
+            pr.vy = -Math.sin(ang) * 200;
+          }
+        }
+      }
+
+      // Teleprompter Gravity Note (#909)
+      if (m.prompterGravity > 0) {
+        const dx = G.prompter.x - pr.x;
+        const dy = G.prompter.y - pr.y;
+        const d = Math.max(40, Math.hypot(dx, dy));
+        pr.vx += (dx / d) * m.prompterGravity * dt;
+        pr.vy += (dy / d) * m.prompterGravity * dt;
+      }
+
+      pr.vx += m.gravityX * 0.7 * dt;
+      pr.vy += m.gravityY * 0.7 * dt;
+      pr.vx *= Math.exp(-2.2 * m.dragMult * dt);
+      pr.vy *= Math.exp(-2.2 * m.dragMult * dt);
+      pr.x += pr.vx * dt;
+      pr.y += pr.vy * dt;
+      pr.angle += pr.vAngle * dt;
+      pr.sx += (1 - pr.sx) * Math.min(1, dt * 12);
+      pr.sy += (1 - pr.sy) * Math.min(1, dt * 12);
+
+      if (pr.x < A.x + pr.r) { pr.x = A.x + pr.r; pr.vx = Math.abs(pr.vx) * m.wallBounce; }
+      if (pr.x > A.x + A.w - pr.r) { pr.x = A.x + A.w - pr.r; pr.vx = -Math.abs(pr.vx) * m.wallBounce; }
+      if (pr.y < A.y + pr.r) { pr.y = A.y + pr.r; pr.vy = Math.abs(pr.vy) * m.wallBounce; }
+      if (pr.y > A.y + A.h - pr.r) { pr.y = A.y + A.h - pr.r; pr.vy = -Math.abs(pr.vy) * m.wallBounce; }
+    }
+
+    // Update Fired Nostril Projectiles
+    for (let i = G.projectiles.length - 1; i >= 0; i--) {
+      const proj = G.projectiles[i];
+      proj.life -= dt;
+      proj.x += proj.vx * dt;
+      proj.y += proj.vy * dt;
+      proj.angle += 14 * dt;
+
+      // Sponsor Spotlight delivery bonus!
+      if (!proj.sponsorBanked && Math.hypot(proj.x - sp.x, proj.y - sp.y) < sp.r + proj.r) {
+        proj.sponsorBanked = true;
+        const bonus = Math.round(proj.points * 2 * m.scoreMult);
+        G.score += bonus;
+        Snd.scoreEvict(G.combo + 1);
+        addFloatText(sp.x, sp.y - 24, `⭐ SPONSOR PLUG! +${bonus}`, '#ffbe2e', 16, -65);
+        triggerApplauseWave('SPONSOR PRODUCT PLACEMENT!');
+      }
+
+      // Check collision with Teleprompter HUD
+      if (Math.hypot(proj.x - G.prompter.x, proj.y - G.prompter.y) < proj.r + G.prompter.r) {
+        assaultPrompter(proj.vx * 0.55, proj.vy * 0.55);
+        triggerProjectileImpact(proj, proj.x, proj.y);
+        G.projectiles.splice(i, 1);
+        continue;
+      }
+
+      // Check collision with Stage Crashers
+      let consumed = false;
+      for (const c of G.crashers) {
+        if (!c.alive) continue;
+        const cr = c.r * m.scaleMult * m.enemyScale;
+        if (Math.hypot(proj.x - c.x, proj.y - c.y) < proj.r + cr) {
+          applyShatterOrPush(c, proj.vx * 0.92, proj.vy * 0.92, true, proj.name);
+          triggerProjectileImpact(proj, proj.x, proj.y);
+          proj.pierceLeft--;
+          if (proj.pierceLeft <= 0) {
+            consumed = true;
+            break;
+          }
+        }
+      }
+      if (consumed) {
+        G.projectiles.splice(i, 1);
+        continue;
+      }
+
+      // Wall bounce or expire
+      if (
+        proj.x < A.x + proj.r || proj.x > A.x + A.w - proj.r ||
+        proj.y < A.y + proj.r || proj.y > A.y + A.h - proj.r ||
+        proj.life <= 0
+      ) {
+        triggerProjectileImpact(proj,
+          Math.max(A.x + 16, Math.min(A.x + A.w - 16, proj.x)),
+          Math.max(A.y + 16, Math.min(A.y + A.h - 16, proj.y))
+        );
+        G.projectiles.splice(i, 1);
+      }
+    }
+
+    // Spawn Stage Crashers (Logarithmic difficulty curve per Fable High/Medium)
+    const diffScale = 1 + 0.58 * Math.log2(1 + G.time / 25);
+    const maxCrashers = Math.min(10, Math.floor(3 + diffScale * 1.6));
+    crasherSpawnTimer -= dt * diffScale;
+    if (crasherSpawnTimer <= 0) {
+      crasherSpawnTimer = CFG.CRASHER.baseSpawnInterval;
+      if (G.crashers.length < maxCrashers) {
+        spawnCrasher();
+      }
+    }
+
+    // Update Stage Crashers
+    const centerSpotX = A.x + A.w * 0.5;
+    const centerSpotY = A.y + A.h * 0.5;
+
+    for (let i = G.crashers.length - 1; i >= 0; i--) {
+      const c = G.crashers[i];
+      if (!c.alive) {
+        G.crashers.splice(i, 1);
+        continue;
+      }
+      const cr = c.r * m.scaleMult * m.enemyScale;
+
+      // State Machine: MARCH -> WINDUP (250ms telegraph) -> ARGUING (Crit window!)
+      if (c.state === 'STUNNED') {
+        c.stateTimer -= dt;
+        if (c.stateTimer <= 0) {
+          c.state = 'MARCH';
+          c.dignityShattered = false;
+        }
+      } else if (c.state === 'MARCH') {
+        c.argueTimer -= dt * m.argueRate;
+        if (c.argueTimer <= 0) {
+          c.state = 'WINDUP';
+          c.stateTimer = 0.26; // 260ms readable anticipation wind-up!
+          c.sx = 0.82;
+          c.sy = 1.28;
+        }
+      } else if (c.state === 'WINDUP') {
+        c.stateTimer -= dt;
+        if (c.stateTimer <= 0) {
+          c.state = 'ARGUING';
+          c.stateTimer = 2.1;
+          c.quote = rng.pick(c.quotes);
+          c.sx = 1.25;
+          c.sy = 0.82;
+          Snd.gibberish(c.pitch);
+        }
+      } else if (c.state === 'ARGUING') {
+        c.stateTimer -= dt;
+        if (c.stateTimer <= 0) {
+          c.state = 'MARCH';
+          c.argueTimer = rng.range(2.4, 4.8);
+        }
+      }
+
+      if (c.pinballTimer > 0) c.pinballTimer -= dt;
+
+      // Rival Anchor Brad Thrust sneezes back at you!
+      if (c.sneezer && c.state !== 'STUNNED') {
+        c.sneezeCooldown -= dt;
+        if (c.sneezeCooldown <= 0.35 && !c.windingSneeze) {
+          c.windingSneeze = true;
+          Snd.enemyWindup();
+        }
+        if (c.sneezeCooldown <= 0) {
+          c.sneezeCooldown = rng.range(3.4, 5.2);
+          c.windingSneeze = false;
+          const ang = Math.atan2(p.y - c.y, p.x - c.x);
+          c.vx -= Math.cos(ang) * 260;
+          c.vy -= Math.sin(ang) * 260;
+          addShockwave(c.x + Math.cos(ang) * 20, c.y + Math.sin(ang) * 20, 95, '#f77f00', 4);
+          if (Math.hypot(p.x - c.x, p.y - c.y) < 190) {
+            p.vx += Math.cos(ang) * 420;
+            p.vy += Math.sin(ang) * 420;
+            addFloatText(c.x, c.y - 26, 'RIVAL SNEEZE!', '#f77f00', 14);
+          }
+        }
+      }
+
+      // March toward the Central ON-AIR Camera Spotlight
+      if (c.state !== 'STUNNED') {
+        const dx = centerSpotX - c.x;
+        const dy = centerSpotY - c.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 18) {
+          const spd = c.speed * (c.state === 'ARGUING' ? 0.35 : 1.0);
+          c.vx += (dx / dist) * spd * 3.2 * dt;
+          c.vy += (dy / dist) * spd * 3.2 * dt;
+        }
+      }
+
+      // Portal Magnet Perk (#999) or Center Sinkhole (#110)
+      if (m.portalMagnet > 0) {
+        let bestP = null, bestD = 9999;
+        for (const pt of G.portals) {
+          const d = Math.hypot(pt.x - c.x, pt.y - c.y);
+          if (d < bestD) { bestD = d; bestP = pt; }
+        }
+        if (bestP && bestD > 10) {
+          c.vx += ((bestP.x - c.x) / bestD) * m.portalMagnet * dt;
+          c.vy += ((bestP.y - c.y) / bestD) * m.portalMagnet * dt;
+        }
+      }
+      if (m.centerPortal) {
+        const d = Math.max(30, Math.hypot(centerSpotX - c.x, centerSpotY - c.y));
+        c.vx += ((centerSpotX - c.x) / d) * 165 * dt;
+        c.vy += ((centerSpotY - c.y) / d) * 165 * dt;
+      }
+      if (m.prompterGravity > 0) {
+        const d = Math.max(35, Math.hypot(G.prompter.x - c.x, G.prompter.y - c.y));
+        c.vx += ((G.prompter.x - c.x) / d) * m.prompterGravity * dt;
+        c.vy += ((G.prompter.y - c.y) / d) * m.prompterGravity * dt;
+      }
+
+      c.vx += m.gravityX * dt;
+      c.vy += m.gravityY * dt;
+      const cDrag = (c.pinballTimer > 0 ? 1.15 : 2.9) * m.dragMult;
+      c.vx *= Math.exp(-cDrag * dt);
+      c.vy *= Math.exp(-cDrag * dt);
+      c.x += c.vx * dt;
+      c.y += c.vy * dt;
+
+      // Check Eviction into Green-Screen Portals BEFORE clamping to walls!
+      const speedMag = Math.hypot(c.vx, c.vy);
+      if (speedMag > 65 || c.pinballTimer > 0 || m.portalMagnet > 0 || m.centerPortal) {
+        const portalHit = checkPortalEviction(c);
+        if (portalHit) {
+          awardEviction(c, portalHit);
+          G.crashers.splice(i, 1);
+          continue;
+        }
+      }
+
+      // Bounce off studio walls
+      if (c.x < A.x + cr) { c.x = A.x + cr; c.vx = Math.abs(c.vx) * m.wallBounce; if (speedMag > 160) Snd.bump(0.6); }
+      if (c.x > A.x + A.w - cr) { c.x = A.x + A.w - cr; c.vx = -Math.abs(c.vx) * m.wallBounce; if (speedMag > 160) Snd.bump(0.6); }
+      if (c.y < A.y + cr) { c.y = A.y + cr; c.vy = Math.abs(c.vy) * m.wallBounce; if (speedMag > 160) Snd.bump(0.6); }
+      if (c.y > A.y + A.h - cr) { c.y = A.y + A.h - cr; c.vy = -Math.abs(c.vy) * m.wallBounce; if (speedMag > 160) Snd.bump(0.6); }
+
+      // ON-AIR Camera Hijack Progress (Lose condition: 3 strikes, paused during 18s Cold Open!)
+      const distCenter = Math.hypot(c.x - centerSpotX, c.y - centerSpotY);
+      if (distCenter < CFG.CRASHER.hijackRadius && c.pinballTimer <= 0 && !m.centerPortal) {
+        const rate = G.time < CFG.CRASHER.coldOpenGrace ? CFG.CRASHER.hijackRate * 0.25 : CFG.CRASHER.hijackRate;
+        c.hijackProgress += rate * dt;
+        if (c.hijackProgress >= 1.0) {
+          if (G.time < CFG.CRASHER.coldOpenGrace) {
+            c.hijackProgress = 0.85; // Never lose a strike during the 18s Cold Open!
+          } else {
+            G.strikes++;
+            Snd.strike();
+            G.shake = 11;
+            G.flashColor = '#ff2a55';
+            G.flashAlpha = 0.42;
+            spawnParticles(c.x, c.y, 28, '#ff2a55', 250, 6, 0.55);
+            addFloatText(c.x, c.y - 30, `🚨 BROADCAST HIJACKED! (STRIKE ${G.strikes}/3)`, '#ff2a55', 18, -50);
+            sayEarpiece(`FCC WARNING: ${c.title} hijacked Camera 1! (${3 - G.strikes} strikes remaining!)`, 4.5);
+            G.crashers.splice(i, 1);
+
+            if (G.strikes >= G.maxStrikes) {
+              triggerGameOver();
+              return;
+            }
+            continue;
+          }
+        }
+      } else {
+        c.hijackProgress = Math.max(0, c.hijackProgress - CFG.CRASHER.hijackDecay * dt);
+      }
+
+      // Player Chair <-> Crasher Collision (Swivel Ram!)
+      const dPlayer = Math.hypot(c.x - p.x, c.y - p.y);
+      if (dPlayer < cr + pr && dPlayer > 0.01) {
+        const nx = (c.x - p.x) / dPlayer;
+        const ny = (c.y - p.y) / dPlayer;
+        const overlap = (cr + pr) - dPlayer;
+        c.x += nx * overlap * 0.6;
+        c.y += ny * overlap * 0.6;
+        p.x -= nx * overlap * 0.4;
+        p.y -= ny * overlap * 0.4;
+
+        const pSpeed = Math.hypot(p.vx, p.vy);
+        if (pSpeed > 210) {
+          const ramForce = pSpeed * 1.25 * m.chairRamBonus;
+          applyShatterOrPush(c, nx * ramForce, ny * ramForce, true, 'CHAIR RAM');
+          p.vx *= -0.35;
+          p.vy *= -0.35;
+          addFloatText(c.x, c.y - 22, '💺 SWIVEL CHAIR RAM!', '#2de2e6', 14);
+        } else {
+          c.vx += nx * 130;
+          c.vy += ny * 130;
+          p.vx -= nx * 110;
+          p.vy -= ny * 110;
+        }
+      }
+
+      // Crasher <-> Crasher Pinball Domino Collisions!
+      for (let j = i - 1; j >= 0; j--) {
+        const o = G.crashers[j];
+        if (!o.alive) continue;
+        const or = o.r * m.scaleMult * m.enemyScale;
+        const dx = o.x - c.x;
+        const dy = o.y - c.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < cr + or && dist > 0.01) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const overlap = (cr + or) - dist;
+          c.x -= nx * overlap * 0.5;
+          c.y -= ny * overlap * 0.5;
+          o.x += nx * overlap * 0.5;
+          o.y += ny * overlap * 0.5;
+
+          // If one is a pinball, chain Dignity Shatter / Launch to the other!
+          if (c.pinballTimer > 0 && o.pinballTimer <= 0) {
+            applyShatterOrPush(o, nx * 520, ny * 520, true, 'DOMINO');
+            addFloatText(o.x, o.y - 20, '🎱 PINBALL CHAIN!', '#2de2e6', 14);
+          } else if (o.pinballTimer > 0 && c.pinballTimer <= 0) {
+            applyShatterOrPush(c, -nx * 520, -ny * 520, true, 'DOMINO');
+            addFloatText(c.x, c.y - 20, '🎱 PINBALL CHAIN!', '#2de2e6', 14);
+          } else {
+            const rvx = c.vx - o.vx;
+            const rvy = c.vy - o.vy;
+            const sep = rvx * nx + rvy * ny;
+            if (sep > 0) {
+              c.vx -= nx * sep * 0.85;
+              c.vy -= ny * sep * 0.85;
+              o.vx += nx * sep * 0.85;
+              o.vy += ny * sep * 0.85;
+            }
+          }
+        }
+      }
+
+      c.sx += (1 - c.sx) * Math.min(1, dt * 12);
+      c.sy += (1 - c.sy) * Math.min(1, dt * 12);
+      c.blinkTimer -= dt;
+      if (c.blinkTimer <= -0.12) c.blinkTimer = fxRng.range(1.5, 4.0);
+    }
+
+    // Update Puddles, Particles, Shockwaves, FloatTexts
+    for (let i = G.puddles.length - 1; i >= 0; i--) {
+      G.puddles[i].life -= dt;
+      if (G.puddles[i].life <= 0) G.puddles.splice(i, 1);
+    }
+    for (let i = G.particles.length - 1; i >= 0; i--) {
+      const pt = G.particles[i];
+      pt.life -= dt;
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vx *= Math.exp(-4 * dt);
+      pt.vy *= Math.exp(-4 * dt);
+      if (pt.life <= 0) G.particles.splice(i, 1);
+    }
+    for (let i = G.shockwaves.length - 1; i >= 0; i--) {
+      const sw = G.shockwaves[i];
+      sw.life -= dt;
+      sw.r += (sw.maxR - sw.r) * Math.min(1, dt * 14);
+      if (sw.life <= 0) G.shockwaves.splice(i, 1);
+    }
+    for (let i = G.floatTexts.length - 1; i >= 0; i--) {
+      const ft = G.floatTexts[i];
+      ft.life -= dt;
+      ft.x += ft.vx * dt;
+      ft.y += ft.vy * dt;
+      ft.vy *= Math.exp(-3 * dt);
+      if (ft.life <= 0) G.floatTexts.splice(i, 1);
+    }
+  }
+
+  // ============================================================================
+  // 11. DVR SLOW-MO REPLAY BUFFER & PHYSICAL PAUSE MENU
+  // ============================================================================
+  let dvrTickCounter = 0;
+  function recordDvrSnapshot() {
+    dvrTickCounter++;
+    if (dvrTickCounter % 2 !== 0) return; // Record at 60Hz
+    const p = G.player;
+    const snap = {
+      px: p.x, py: p.y, pAngle: p.angle, pChair: p.chairAngle, psx: p.sx, psy: p.sy,
+      pCharge: p.charge, pNose: p.noseItems.length,
+      crashers: G.crashers.map(c => ({
+        x: c.x, y: c.y, r: c.r * G.mods.scaleMult * G.mods.enemyScale,
+        color: c.color, accent: c.accent, kind: c.kind,
+        state: c.state, quote: c.quote, sx: c.sx, sy: c.sy
+      })),
+      props: G.props.map(pr => ({
+        x: pr.x, y: pr.y, r: pr.r, color: pr.color, kind: pr.kind
+      }))
+    };
+    if (G.dvrBuffer.length < CFG.DVR.frames) {
+      G.dvrBuffer.push(snap);
+    } else {
+      G.dvrBuffer[G.dvrIndex] = snap;
+      G.dvrIndex = (G.dvrIndex + 1) % CFG.DVR.frames;
+    }
+  }
+
+  function triggerGameOver() {
+    Snd.stopInhale();
+    if (G.score > bestScore) {
+      bestScore = G.score;
+      try { localStorage.setItem('chairborne_best_v1', String(bestScore)); } catch (e) {}
+    }
+    // Order DVR buffer chronologically for slow-mo playback
+    if (G.dvrBuffer.length === CFG.DVR.frames) {
+      G.dvrBuffer = G.dvrBuffer.slice(G.dvrIndex).concat(G.dvrBuffer.slice(0, G.dvrIndex));
+    }
+    G.dvrPlaybackPos = 0;
+    state = 'DVR_REPLAY';
+  }
+
+  function enterPauseMenu() {
+    state = 'PAUSED';
+    Snd.stopInhale();
+    // Spawn physical wooden studio Cue Cards with gravity!
+    G.pauseCards = [
+      { id: 'RESUME', label: '▶ RESUME LIVE BROADCAST (P / CLICK)', x: CFG.W * 0.5, y: 170, vx: -25, vy: 220, w: 380, h: 48, angle: -0.02, vAngle: 0.25, color: '#2ee675' },
+      { id: 'MUTE',   label: '🔊 TOGGLE AUDIO MUTE (M)',            x: CFG.W * 0.5, y: 105, vx: 30,  vy: 180, w: 340, h: 46, angle: 0.03,  vAngle: -0.2, color: '#ffbe2e' },
+      { id: 'RESTART',label: '↻ REBOOT EPISODE (R)',                x: CFG.W * 0.5, y: 40,  vx: -18, vy: 150, w: 300, h: 46, angle: -0.02, vAngle: 0.18, color: '#ff3b7f' }
+    ];
+  }
+
+  function updatePauseMenu(dt) {
+    const floorY = CFG.ARENA.y + CFG.ARENA.h - 48;
+    for (const card of G.pauseCards) {
+      card.vy += 1150 * dt; // Pause menu has real gravity!
+      card.x += card.vx * dt;
+      card.y += card.vy * dt;
+      card.angle += card.vAngle * dt;
+      card.vx *= Math.exp(-2.0 * dt);
+      card.vAngle *= Math.exp(-3.5 * dt);
+      card.angle *= Math.exp(-2.0 * dt);
+
+      if (card.y + card.h * 0.5 > floorY) {
+        card.y = floorY - card.h * 0.5;
+        if (Math.abs(card.vy) > 90) Snd.bump(0.4);
+        card.vy = -Math.abs(card.vy) * 0.45;
+        card.vAngle = (Math.random() - 0.5) * 0.6;
+      }
+      if (card.x - card.w * 0.5 < CFG.ARENA.x + 20) { card.x = CFG.ARENA.x + 20 + card.w * 0.5; card.vx = Math.abs(card.vx) * 0.7; }
+      if (card.x + card.w * 0.5 > CFG.ARENA.x + CFG.ARENA.w - 20) { card.x = CFG.ARENA.x + CFG.ARENA.w - 20 - card.w * 0.5; card.vx = -Math.abs(card.vx) * 0.7; }
+    }
+
+    // Stack collision between pause cards with clean vertical separation
+    for (let iter = 0; iter < 3; iter++) {
+      for (let i = 0; i < G.pauseCards.length; i++) {
+        for (let j = i + 1; j < G.pauseCards.length; j++) {
+          const a = G.pauseCards[i], b = G.pauseCards[j];
+          const dy = b.y - a.y;
+          const minH = (a.h + b.h) * 0.5 + 14;
+          if (Math.abs(dy) < minH && Math.abs(b.x - a.x) < (a.w + b.w) * 0.45) {
+            const overlap = minH - Math.abs(dy);
+            if (a.y < b.y) {
+              a.y -= overlap;
+              if (a.vy > b.vy) a.vy = -Math.abs(a.vy) * 0.35;
+            } else {
+              b.y -= overlap;
+              if (b.vy > a.vy) b.vy = -Math.abs(b.vy) * 0.35;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ============================================================================
+  // 12. PROCEDURAL ART & STUDIO RENDERER
+  // ============================================================================
+  function drawRoundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+  }
+
+  function drawGooglyEyes(x, y, spacing, eyeR, lookAngle, blink = false, bigPupil = false) {
+    for (let s = -1; s <= 1; s += 2) {
+      const ex = x + Math.cos(lookAngle + Math.PI * 0.5) * (spacing * s);
+      const ey = y + Math.sin(lookAngle + Math.PI * 0.5) * (spacing * s);
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = CFG.INK;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      if (blink) {
+        ctx.moveTo(ex - eyeR, ey);
+        ctx.lineTo(ex + eyeR, ey);
+        ctx.stroke();
+      } else {
+        ctx.arc(ex, ey, eyeR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        const pr = bigPupil ? eyeR * 0.62 : eyeR * 0.48;
+        const px = ex + Math.cos(lookAngle) * (eyeR - pr) * 0.7;
+        const py = ey + Math.sin(lookAngle) * (eyeR - pr) * 0.7;
+        ctx.fillStyle = CFG.INK;
+        ctx.beginPath();
+        ctx.arc(px, py, pr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawStudioFloor() {
+    const A = CFG.ARENA;
+    // Studio periphery backdrop
+    ctx.fillStyle = '#181326';
+    ctx.fillRect(0, 0, CFG.W, CFG.H);
+
+    // Studio Hardwood / Broadcast Stage Floor
+    ctx.save();
+    drawRoundRect(A.x, A.y, A.w, A.h, 10);
+    ctx.fillStyle = CFG.PALETTE.floorA;
+    ctx.fill();
+    ctx.clip();
+
+    // Checkerboard studio tiles
+    const tile = 52;
+    ctx.fillStyle = CFG.PALETTE.floorB;
+    for (let x = A.x; x < A.x + A.w; x += tile) {
+      for (let y = A.y; y < A.y + A.h; y += tile) {
+        if (((Math.floor((x - A.x) / tile) + Math.floor((y - A.y) / tile)) & 1) === 1) {
+          ctx.fillRect(x, y, tile, tile);
+        }
+      }
+    }
+
+    // If Waxed Floor (#101) active, draw glossy sheen stripes
+    if (G.mods.dragMult < 0.5) {
+      ctx.fillStyle = 'rgba(45, 226, 230, 0.14)';
+      for (let i = -2; i < 12; i++) {
+        ctx.beginPath();
+        ctx.moveTo(A.x + i * 95, A.y);
+        ctx.lineTo(A.x + i * 95 + 38, A.y);
+        ctx.lineTo(A.x + i * 95 - 80, A.y + A.h);
+        ctx.lineTo(A.x + i * 95 - 118, A.y + A.h);
+        ctx.fill();
+      }
+    }
+
+    // If Tilted Set (#404) active, draw animated gravity arrows on the floor
+    if (G.mods.gravityX !== 0) {
+      ctx.fillStyle = 'rgba(255, 59, 127, 0.18)';
+      ctx.font = 'bold 20px Courier New';
+      const shift = (G.time * 55) % 90;
+      for (let y = A.y + 45; y < A.y + A.h - 20; y += 90) {
+        for (let x = A.x + 40 + shift; x < A.x + A.w - 40; x += 140) {
+          ctx.fillText('>>> TILT >>>', x, y);
+        }
+      }
+    }
+
+    // Central ON-AIR CAMERA 1 Spotlight Zone
+    const cx = A.x + A.w * 0.5;
+    const cy = A.y + A.h * 0.5;
+    if (G.mods.centerPortal) {
+      // Swirling Chroma-Key Sinkhole (#110)
+      const r = 38 + Math.sin(G.time * 8) * 4;
+      ctx.fillStyle = '#18b858';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#2ee675';
+      ctx.stroke();
+      ctx.fillStyle = '#0d0b14';
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('CHROMA VORTEX', cx, cy + 4);
+    } else {
+      // Check max hijack progress among crashers for warning pulse
+      let maxHijack = 0;
+      for (const c of G.crashers) if (c.hijackProgress > maxHijack) maxHijack = c.hijackProgress;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, CFG.CRASHER.hijackRadius, 0, Math.PI * 2);
+      ctx.fillStyle = maxHijack > 0.05
+        ? `rgba(255, 42, 85, ${0.12 + maxHijack * 0.28})`
+        : 'rgba(255, 190, 46, 0.11)';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 6]);
+      ctx.strokeStyle = maxHijack > 0.05 ? '#ff2a55' : 'rgba(24, 20, 31, 0.35)';
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Progress ring if a Crasher is hijacking Camera 1
+      if (maxHijack > 0.02) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, CFG.CRASHER.hijackRadius + 4, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * maxHijack);
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = '#ff2a55';
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = maxHijack > 0.2 ? '#d91e46' : 'rgba(24, 20, 31, 0.55)';
+      ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('🎥 CAMERA 1: ON-AIR ZONE', cx, cy - 6);
+      ctx.font = 'bold 10px Courier New';
+      ctx.fillText(maxHijack > 0.05 ? `⚠️ HIJACKING: ${Math.round(maxHijack * 100)}%` : 'KEEP STAGE CRASHERS OUT', cx, cy + 10);
+    }
+
+    // Sponsor Spotlight Zone
+    const sp = G.sponsorSpot;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, sp.r + Math.sin(sp.pulse) * 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(45, 226, 230, 0.16)';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#1ca8ad';
+    ctx.stroke();
+    ctx.fillStyle = '#135e63';
+    ctx.font = 'bold 10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('★ SPONSOR SPOT ★', sp.x, sp.y - 3);
+    ctx.fillText('SNEEZE PROPS HERE (2x)', sp.x, sp.y + 10);
+
+    // Espresso Puddles
+    for (const pud of G.puddles) {
+      const alpha = Math.min(1, pud.life / 1.5);
+      ctx.fillStyle = `rgba(110, 56, 26, ${0.55 * alpha})`;
+      ctx.beginPath();
+      ctx.ellipse(pud.x, pud.y, pud.r, pud.r * 0.72, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    // Studio Arena Border
+    drawRoundRect(A.x, A.y, A.w, A.h, 10);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = G.mods.wallBounce > 1.2 ? '#ff3b7f' : CFG.INK;
+    ctx.stroke();
+
+    // Draw Perimeter Green-Screen Eviction Portals
+    for (const pt of G.portals) {
+      const pulse = Math.sin(G.time * 6) * 2;
+      const x = pt.x - pt.w * 0.5;
+      const y = pt.y - pt.h * 0.5;
+      ctx.fillStyle = '#18b858';
+      ctx.strokeStyle = '#2ee675';
+      ctx.lineWidth = 3.5;
+      drawRoundRect(x - pulse * 0.5, y - pulse * 0.5, pt.w + pulse, pt.h + pulse, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      // Chroma grid lines inside portal
+      ctx.save();
+      ctx.translate(pt.x, pt.y);
+      if (pt.wall === 'LEFT' || pt.wall === 'RIGHT') ctx.rotate(Math.PI * 0.5);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(`▶ ${pt.label} ◀`, 0, 4);
+      ctx.restore();
+    }
+  }
+
+  function drawPropShape(pr, x, y, r, angle) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.fillStyle = pr.color;
+    ctx.strokeStyle = CFG.INK;
+    ctx.lineWidth = 2.8;
+
+    if (pr.kind === 'MUG') {
+      // Coffee mug with handle
+      ctx.beginPath();
+      ctx.arc(r * 0.65, 0, r * 0.45, -Math.PI * 0.5, Math.PI * 0.5);
+      ctx.stroke();
+      drawRoundRect(-r * 0.75, -r * 0.85, r * 1.5, r * 1.7, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#4a2511';
+      ctx.fillRect(-r * 0.5, -r * 0.5, r, r * 0.4);
+    } else if (pr.kind === 'MIC') {
+      // Classic broadcast microphone
+      ctx.fillStyle = '#3a3347';
+      drawRoundRect(-r * 0.35, 0, r * 0.7, r * 1.0, 3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = pr.color;
+      ctx.beginPath();
+      ctx.arc(0, -r * 0.3, r * 0.72, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else if (pr.kind === 'BOWLING') {
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = CFG.INK;
+      ctx.beginPath();
+      ctx.arc(-3, -4, 2.2, 0, Math.PI * 2);
+      ctx.arc(3, -4, 2.2, 0, Math.PI * 2);
+      ctx.arc(0, 2, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (pr.kind === 'MICROWAVE') {
+      drawRoundRect(-r, -r * 0.75, r * 2, r * 1.5, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#2de2e6';
+      ctx.fillRect(-r * 0.7, -r * 0.45, r * 1.0, r * 0.9);
+      ctx.strokeRect(-r * 0.7, -r * 0.45, r * 1.0, r * 0.9);
+    } else {
+      // Golden Emmy Trophy or Guest Ammo
+      ctx.beginPath();
+      ctx.arc(0, -r * 0.25, r * 0.75, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillRect(-r * 0.5, r * 0.35, r, r * 0.5);
+      ctx.strokeRect(-r * 0.5, r * 0.35, r, r * 0.5);
+    }
+    ctx.restore();
+  }
+
+  function drawPlayer(p) {
+    const scaleM = G.mods.scaleMult;
+    const r = CFG.PLAYER.r * scaleM;
+
+    // 1. Aim & Sneeze Cone + Recoil Trajectory Preview!
+    ctx.save();
+    const coneLen = CFG.PLAYER.inhaleRange * (p.charging ? (0.75 + p.charge * 0.35) : 0.55);
+    const coneHalf = p.charging ? CFG.PLAYER.inhaleCone : CFG.PLAYER.sneezeCone * 0.7;
+
+    // Forward Sneeze / Inhale Cone
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.arc(p.x, p.y, coneLen, p.angle - coneHalf, p.angle + coneHalf);
+    ctx.closePath();
+    const isSweet = p.charge >= CFG.PLAYER.sweetMin && p.charge <= CFG.PLAYER.sweetMax;
+    const isDanger = p.charge > CFG.PLAYER.sweetMax;
+    ctx.fillStyle = p.charging
+      ? (isDanger ? 'rgba(255, 42, 85, 0.20)' : (isSweet ? 'rgba(255, 190, 46, 0.22)' : 'rgba(45, 226, 230, 0.14)'))
+      : 'rgba(24, 20, 31, 0.05)';
+      ctx.fill();
+
+    // Animated vacuum suction rings while inhaling
+    if (p.charging) {
+      ctx.strokeStyle = isSweet ? '#ffbe2e' : '#2de2e6';
+      ctx.lineWidth = 2;
+      for (let k = 0; k < 3; k++) {
+        const prog = 1 - ((G.time * 2.8 + k / 3) % 1);
+        const arcR = 24 + prog * (coneLen - 24);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, arcR, p.angle - coneHalf * 0.85, p.angle + coneHalf * 0.85);
+        ctx.stroke();
+      }
+    }
+
+    // Backward Swivel-Chair Recoil Vector Arrow (So player ALWAYS knows where recoil sends them!)
+    const recoilLen = 42 + (p.charging ? p.charge * 65 : 18) + p.noseItems.length * 12;
+    const rx = p.x - Math.cos(p.angle) * recoilLen;
+    const ry = p.y - Math.sin(p.angle) * recoilLen;
+    ctx.strokeStyle = isSweet ? '#ffbe2e' : 'rgba(217, 78, 52, 0.75)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(p.x - Math.cos(p.angle) * (r + 4), p.y - Math.sin(p.angle) * (r + 4));
+    ctx.lineTo(rx, ry);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = isSweet ? '#ffbe2e' : '#d94e34';
+    ctx.beginPath();
+    ctx.arc(rx, ry, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Contact shadow
+    ctx.fillStyle = 'rgba(24, 20, 31, 0.22)';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y + r * 0.85, r * 1.25, r * 0.65, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(p.sx * scaleM, p.sy * scaleM);
+
+    // 2. Rolling 5-Star Swivel Office Chair Base
+    ctx.save();
+    ctx.rotate(p.chairAngle);
+    ctx.strokeStyle = CFG.INK;
+    ctx.lineWidth = 3;
+    for (let w = 0; w < 5; w++) {
+      const wa = (w * Math.PI * 2) / 5;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(wa) * (CFG.PLAYER.r + 6), Math.sin(wa) * (CFG.PLAYER.r + 6));
+      ctx.stroke();
+      ctx.fillStyle = '#2b2638';
+      ctx.beginPath();
+      ctx.arc(Math.cos(wa) * (CFG.PLAYER.r + 6), Math.sin(wa) * (CFG.PLAYER.r + 6), 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // Leather Chair Cushion
+    ctx.fillStyle = CFG.PALETTE.chair;
+    ctx.beginPath();
+    ctx.arc(0, 0, CFG.PLAYER.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // 3. Anchor Chad Chinsley (Chair Backrest, Suit, Red Tie, Inflating Nose!)
+    ctx.save();
+    ctx.rotate(p.angle);
+
+    // Ergonomic Chair Backrest behind Chad's back
+    ctx.strokeStyle = CFG.INK;
+    ctx.lineWidth = 3;
+    drawRoundRect(-CFG.PLAYER.r * 1.18, -CFG.PLAYER.r * 0.78, 9, CFG.PLAYER.r * 1.56, 4);
+    ctx.fillStyle = '#a8331e';
+    ctx.fill();
+    ctx.stroke();
+
+    // Suit shoulders
+    ctx.fillStyle = CFG.PALETTE.suit;
+    ctx.strokeStyle = CFG.INK;
+    ctx.lineWidth = 3;
+    drawRoundRect(-14, -18, 24, 36, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    // Red News Anchor Necktie fluttering behind on recoil!
+    ctx.fillStyle = '#ff2a55';
+    ctx.beginPath();
+    ctx.moveTo(6, -3);
+    ctx.lineTo(18, -5);
+    ctx.lineTo(18, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Anchor Head
+    ctx.fillStyle = CFG.PALETTE.skin;
+    ctx.beginPath();
+    ctx.arc(0, 0, 14.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Anchorman Coiffed Hair
+    ctx.fillStyle = '#3d2618';
+    ctx.beginPath();
+    ctx.arc(-3, 0, 14.5, Math.PI * 0.55, -Math.PI * 0.55);
+    ctx.fill();
+    ctx.stroke();
+
+    // THE DEFORMING / BULGING NOSE (Stretches around swallowed props + sinus charge!)
+    const noseItems = p.noseItems;
+    const noseStretch = 10 + p.charge * 22 + noseItems.length * 9;
+    const noseWidth = 6.5 + p.charge * 5.5 + noseItems.length * 2.5;
+    ctx.fillStyle = p.charge > 0.85 ? '#ff5c77' : '#ff9e85';
+    ctx.beginPath();
+    ctx.moveTo(8, -5);
+    ctx.quadraticCurveTo(8 + noseStretch * 0.6, -noseWidth, 8 + noseStretch, 0);
+    ctx.quadraticCurveTo(8 + noseStretch * 0.6, noseWidth, 8, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw visible lumps/silhouettes of swallowed items inside the nose!
+    for (let idx = 0; idx < noseItems.length; idx++) {
+      const it = noseItems[idx];
+      const lx = 13 + idx * 8.5;
+      ctx.fillStyle = it.color;
+      ctx.beginPath();
+      ctx.arc(lx, (idx % 2 === 0 ? -1.5 : 1.5), 4.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Mustache
+    ctx.fillStyle = '#3d2618';
+    drawRoundRect(6, -8, 5, 16, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
+    ctx.restore();
+
+    // Googly Eyes on Chad (bulge during charge!)
+    const eyeScale = 1 + p.charge * 0.45;
+    drawGooglyEyes(
+      p.x + Math.cos(p.angle) * 2,
+      p.y + Math.sin(p.angle) * 2,
+      7 * scaleM,
+      4.6 * scaleM * eyeScale,
+      p.angle,
+      p.blinkTimer < 0,
+      p.charge > 0.75 || p.dizzyTimer > 0
+    );
+
+    // Sinus Pressure Charge Gauge & Nose Capacity Pips overhead
+    const maxCap = CFG.PLAYER.baseNoseCap + G.mods.noseCapBonus;
+    if (p.charging || p.noseItems.length > 0) {
+      const bx = p.x - 28;
+      const by = p.y - r - 22;
+      const bw = 56;
+      const bh = 8;
+
+      if (p.charging) {
+        const wobble = p.charge > 0.9 ? (Math.random() - 0.5) * 3 : 0;
+        ctx.fillStyle = '#18141f';
+        ctx.fillRect(bx - 2, by - 2 + wobble, bw + 4, bh + 4);
+        const ratio = Math.min(1, p.charge / CFG.PLAYER.overloadAt);
+        ctx.fillStyle = isDanger ? '#ff2a55' : (isSweet ? '#ffbe2e' : '#2de2e6');
+        ctx.fillRect(bx, by + wobble, bw * ratio, bh);
+        // Sweet-spot bracket marker
+        const swStart = (CFG.PLAYER.sweetMin / CFG.PLAYER.overloadAt) * bw;
+        const swEnd = (CFG.PLAYER.sweetMax / CFG.PLAYER.overloadAt) * bw;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(bx + swStart, by - 1 + wobble, swEnd - swStart, bh + 2);
+      }
+
+      // Nose inventory pips
+      for (let i = 0; i < maxCap; i++) {
+        const px = p.x - ((maxCap - 1) * 6) + i * 12;
+        const py = by - 9;
+        ctx.beginPath();
+        ctx.arc(px, py, 4.2, 0, Math.PI * 2);
+        ctx.fillStyle = i < p.noseItems.length ? p.noseItems[i].color : 'rgba(24,20,31,0.35)';
+        ctx.fill();
+        ctx.strokeStyle = CFG.INK;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+
+    // Dizzy stars if Overloaded
+    if (p.dizzyTimer > 0) {
+      for (let s = 0; s < 3; s++) {
+        const sa = G.time * 8 + (s * Math.PI * 2) / 3;
+        ctx.fillStyle = '#ffbe2e';
+        ctx.beginPath();
+        ctx.arc(p.x + Math.cos(sa) * 20, p.y - 22 + Math.sin(sa) * 7, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawCrasher(c) {
+    const scaleM = G.mods.scaleMult * G.mods.enemyScale;
+    const r = c.r * scaleM;
+    const isTalking = (c.state === 'ARGUING' || c.state === 'WINDUP');
+
+    // Contact shadow
+    ctx.fillStyle = 'rgba(24, 20, 31, 0.20)';
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y + r * 0.85, r * 1.1, r * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Vulnerability CRIT Ring when Arguing / Monologuing!
+    if (isTalking) {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r + 8 + Math.sin(G.time * 16) * 3, 0, Math.PI * 2);
+      ctx.strokeStyle = c.state === 'ARGUING' ? '#ffbe2e' : '#ff3b7f';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    // Pinball trail ring when Dignity-Shattered
+    if (c.dignityShattered && c.pinballTimer > 0) {
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = '#2ee675';
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+    }
+
+    const wobble = Math.sin(G.time * 6 + c.x * 0.05) * 1.5;
+    ctx.save();
+    ctx.translate(c.x, c.y + wobble);
+    ctx.scale(c.sx * scaleM, c.sy * scaleM);
+
+    // Rival Anchor has a gold rolling chair base!
+    if (c.sneezer) {
+      ctx.fillStyle = '#d9a441';
+      ctx.strokeStyle = CFG.INK;
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.arc(0, 0, c.r + 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Body silhouette
+    ctx.fillStyle = c.color;
+    ctx.strokeStyle = CFG.INK;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, c.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Accent collar / outfit detail
+    ctx.fillStyle = c.accent;
+    ctx.beginPath();
+    ctx.arc(0, c.r * 0.35, c.r * 0.55, 0, Math.PI);
+    ctx.fill();
+    ctx.stroke();
+
+    // Wide open yelling mouth during ARGUING!
+    if (c.state === 'ARGUING') {
+      ctx.fillStyle = '#18141f';
+      ctx.beginPath();
+      ctx.ellipse(0, 5, 8, 6 + Math.sin(G.time * 28) * 2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    const lookAng = Math.atan2(G.player.y - c.y, G.player.x - c.x);
+    drawGooglyEyes(c.x, c.y - 4 * scaleM, 6.5 * scaleM, 4.5 * scaleM, lookAng, c.blinkTimer < 0, c.state === 'STUNNED');
+
+    // Speech Bubble when ARGUING ("SNEEZE ME FOR 2.6x CRIT!")
+    if (c.state === 'ARGUING') {
+      ctx.save();
+      ctx.font = 'bold 11px Courier New';
+      const text = `"${c.quote}"`;
+      const tw = Math.max(110, ctx.measureText(text).width + 18);
+      const bx = Math.max(CFG.ARENA.x + 10, Math.min(CFG.ARENA.x + CFG.ARENA.w - tw - 10, c.x - tw * 0.5));
+      const by = c.y - r - 38;
+
+      ctx.fillStyle = '#fffdf7';
+      ctx.strokeStyle = CFG.INK;
+      ctx.lineWidth = 2.5;
+      drawRoundRect(bx, by, tw, 26, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#d91e46';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, bx + tw * 0.5, by + 16);
+      ctx.restore();
+    }
+  }
+
+  function drawPhysicalPrompter() {
+    const prm = G.prompter;
+    ctx.save();
+    ctx.translate(prm.x, prm.y);
+    ctx.scale(prm.sx, prm.sy);
+
+    // Wheeled monitor stand
+    ctx.fillStyle = prm.hitFlash > 0 ? '#ff3b7f' : '#18141f';
+    ctx.strokeStyle = '#2de2e6';
+    ctx.lineWidth = 3;
+    drawRoundRect(-72, -28, 144, 56, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    // Score & Streak inside the physical monitor!
+    ctx.fillStyle = '#2de2e6';
+    ctx.font = 'bold 10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('LIVE VIEWERS (HUD)', 0, -13);
+    ctx.fillStyle = '#ffbe2e';
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillText(`${G.displayScore.toLocaleString()}`, 0, 6);
+    ctx.fillStyle = G.combo > 1 ? '#2ee675' : '#a89f91';
+    ctx.font = 'bold 10px Courier New';
+    ctx.fillText(`COMBO x${Math.max(1, G.combo)} | SEG ${G.wave} (${G.waveEvicted}/${G.waveQuota})`, 0, 21);
+
+    ctx.restore();
+
+    // Horizontal stereo Googly Eyes mounted on top of the Teleprompter HUD bezel!
+    const ang = Math.atan2(G.player.y - prm.y, G.player.x - prm.x);
+    for (let s = -1; s <= 1; s += 2) {
+      const ex = prm.x + s * 14;
+      const ey = prm.y - 33;
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = CFG.INK;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 5.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = CFG.INK;
+      ctx.beginPath();
+      ctx.arc(ex + Math.cos(ang) * 2.2, ey + Math.sin(ang) * 2.2, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (prm.bubbleTimer > 0) {
+      ctx.fillStyle = '#ffbe2e';
+      ctx.font = 'bold 11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(prm.bubble, prm.x, prm.y - 44);
+    }
+  }
+
+  function drawAudienceAndHUD() {
+    const A = CFG.ARENA;
+
+    // 1. Applause Wave Sweep inside Arena
+    if (G.applauseState === 'WINDUP') {
+      const pulse = Math.abs(Math.sin(G.time * 18));
+      ctx.fillStyle = `rgba(255, 59, 127, ${0.15 + pulse * 0.15})`;
+      ctx.fillRect(A.x, A.y + A.h - 42, A.w, 42);
+      ctx.fillStyle = '#ff3b7f';
+      ctx.font = 'bold 13px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('▲▲ STUDIO AUDIENCE WINDING UP APPLAUSE WAVE! ▲▲', CFG.W * 0.5, A.y + A.h - 16);
+    } else if (G.applauseState === 'WAVE') {
+      const grad = ctx.createLinearGradient(0, G.applauseWaveY - 22, 0, G.applauseWaveY + 26);
+      grad.addColorStop(0, 'rgba(255, 190, 46, 0.0)');
+      grad.addColorStop(0.5, 'rgba(255, 190, 46, 0.65)');
+      grad.addColorStop(1, 'rgba(255, 59, 127, 0.0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(A.x, G.applauseWaveY - 22, A.w, 48);
+    }
+
+    // 2. Live Studio Audience Silhouettes at Bottom
+    for (const aud of G.audience) {
+      const excited = G.applauseState !== 'IDLE' ? Math.sin(G.time * 28 + aud.phase) * 7 : Math.sin(G.time * 3 + aud.phase) * 2;
+      ctx.fillStyle = aud.color;
+      ctx.strokeStyle = CFG.INK;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(aud.x, aud.y + excited, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Clapping hands when Applause active
+      if (G.applauseState !== 'IDLE') {
+        ctx.fillStyle = '#ffcfb3';
+        ctx.beginPath();
+        ctx.arc(aud.x - 10 + Math.sin(G.time * 36 + aud.phase) * 5, aud.y - 12 + excited, 5, 0, Math.PI * 2);
+        ctx.arc(aud.x + 10 - Math.sin(G.time * 36 + aud.phase) * 5, aud.y - 12 + excited, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Neon [APPLAUSE] Sign
+    const signLit = G.applauseState !== 'IDLE';
+    ctx.fillStyle = signLit ? '#ff3b7f' : '#2b2238';
+    ctx.strokeStyle = signLit ? '#ffbe2e' : '#534469';
+    ctx.lineWidth = 2.5;
+    drawRoundRect(CFG.W * 0.5 - 78, CFG.H - 28, 156, 22, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = signLit ? '#ffffff' : '#85749e';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(signLit ? '★ [ APPLAUSE! ] ★' : '[ APPLAUSE SIGN ]', CFG.W * 0.5, CFG.H - 13);
+
+    // 3. Top Broadcast Header Bar
+    ctx.fillStyle = '#141020';
+    ctx.fillRect(0, 0, CFG.W, 60);
+    ctx.strokeStyle = '#33294a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 60);
+    ctx.lineTo(CFG.W, 60);
+    ctx.stroke();
+
+    // ON-AIR Badge & Strikes (FCC Licenses)
+    ctx.fillStyle = '#ff2a55';
+    drawRoundRect(16, 10, 86, 24, 5);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('● ON AIR', 59, 26);
+
+    // 3 FCC Strike Badges
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#d6c2a1';
+    ctx.font = 'bold 11px Courier New';
+    ctx.fillText('BROADCAST LICENSES:', 16, 50);
+    for (let s = 0; s < G.maxStrikes; s++) {
+      const alive = s < (G.maxStrikes - G.strikes);
+      ctx.fillStyle = alive ? '#2ee675' : '#3a2a3d';
+      ctx.strokeStyle = CFG.INK;
+      ctx.lineWidth = 1.5;
+      drawRoundRect(152 + s * 24, 38, 18, 14, 3);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Producer Earpiece Live Ticker (Top Center)
+    ctx.fillStyle = '#241d36';
+    ctx.strokeStyle = '#473a66';
+    drawRoundRect(236, 8, 495, 26, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = G.time < CFG.CRASHER.coldOpenGrace ? '#2ee675' : '#ffbe2e';
+    ctx.font = 'bold 11px Courier New';
+    ctx.textAlign = 'left';
+    const tickerClip = G.earpieceText.length > 64 ? G.earpieceText.slice(0, 64) + '...' : G.earpieceText;
+    ctx.fillText(tickerClip, 246, 25);
+
+    // Next Network Note countdown bar
+    ctx.fillStyle = '#a89f91';
+    ctx.font = 'bold 11px Courier New';
+    const nextSec = Math.ceil(G.noteTimer);
+    ctx.fillText(`NEXT NETWORK NOTE: ${nextSec}s`, 240, 50);
+    ctx.fillStyle = '#2b2238';
+    ctx.fillRect(395, 41, 110, 9);
+    ctx.fillStyle = '#2de2e6';
+    ctx.fillRect(395, 41, 110 * (1 - G.noteTimer / CFG.NOTES.every), 9);
+
+    // Mute / Controls hint top right
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#a89f91';
+    ctx.font = 'bold 11px Courier New';
+    ctx.fillText(`[M] ${Snd.isMuted() ? 'MUTED' : 'AUDIO ON'}  [P] PAUSE  [R] RESTART`, CFG.W - 16, 25);
+    ctx.fillStyle = '#2de2e6';
+    ctx.fillText(`HIGH: ${Math.max(bestScore, G.score).toLocaleString()}`, CFG.W - 16, 48);
+
+    // 4. Active NETWORK_NOTES.TXT Stack (Top-Left Overlay Panel inside Studio)
+    if (G.activeNotes.length > 0) {
+      ctx.save();
+      const px = A.x + 10;
+      const py = A.y + 10;
+      const pw = 266;
+      const ph = 22 + G.activeNotes.length * 19;
+      ctx.fillStyle = 'rgba(20, 16, 32, 0.86)';
+      ctx.strokeStyle = '#ffbe2e';
+      ctx.lineWidth = 2;
+      drawRoundRect(px, py, pw, ph, 6);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.roundRect(px, py, pw, ph, 6);
+      ctx.clip();
+      ctx.fillStyle = '#ffbe2e';
+      ctx.font = 'bold 10px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillText('📋 ACTIVE NETWORK_NOTES.TXT:', px + 8, py + 14);
+      G.activeNotes.forEach((n, idx) => {
+        ctx.fillStyle = n.relief ? '#2ee675' : '#2de2e6';
+        const lineText = `• ${n.code}: ${n.title}`;
+        ctx.fillText(lineText.length > 38 ? lineText.slice(0, 37) + '…' : lineText, px + 8, py + 31 + idx * 19);
+      });
+      ctx.restore();
+    }
+
+    // 5. Dramatic Network Note Enactment Banner (Placed at bottom-center of stage so it never overlaps top HUD!)
+    if (G.noteBanner && state === 'PLAY') {
+      const b = G.noteBanner;
+      const alpha = Math.min(1, b.timer * 2);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const bw = 540, bh = 54;
+      const bx = (CFG.W - bw) * 0.5;
+      const by = A.y + A.h - bh - 12;
+      ctx.fillStyle = b.relief ? 'rgba(18, 56, 36, 0.94)' : 'rgba(43, 19, 40, 0.94)';
+      ctx.strokeStyle = b.relief ? '#2ee675' : '#ff3b7f';
+      ctx.lineWidth = 3;
+      drawRoundRect(bx, by, bw, bh, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = b.relief ? '#2ee675' : '#ffbe2e';
+      ctx.font = 'bold 14px Courier New';
+      ctx.fillText(`📠 ${b.code} — ${b.title}`, CFG.W * 0.5, by + 21);
+      ctx.fillStyle = '#f8f4e8';
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillText(b.desc, CFG.W * 0.5, by + 40);
+      ctx.restore();
+    }
+
+    // 2.5s Ghost Prompt if player hasn't interacted yet
+    if (G.time > 2.2 && !Input.anyInteraction && state === 'PLAY') {
+      ctx.save();
+      const gy = CFG.H * 0.5 + 95;
+      ctx.fillStyle = 'rgba(20, 16, 32, 0.9)';
+      ctx.strokeStyle = '#ffbe2e';
+      ctx.lineWidth = 2.5;
+      drawRoundRect(CFG.W * 0.5 - 210, gy - 20, 420, 38, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffbe2e';
+      ctx.font = 'bold 13px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('HOLD CLICK or SPACE to INHALE → RELEASE to SNEEZE!', CFG.W * 0.5, gy + 4);
+      ctx.restore();
+    }
+  }
+
+  function renderWorld() {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    // Camera trauma shake
+    ctx.save();
+    ctx.translate(G.shakeX, G.shakeY);
+
+    drawStudioFloor();
+
+    // Shockwaves
+    for (const sw of G.shockwaves) {
+      ctx.strokeStyle = sw.color;
+      ctx.lineWidth = sw.width * (sw.life / sw.maxLife);
+      ctx.beginPath();
+      ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Loose Props
+    for (const pr of G.props) {
+      drawPropShape(pr, pr.x, pr.y, pr.r * G.mods.scaleMult, pr.angle);
+    }
+
+    // Fired Projectiles
+    for (const proj of G.projectiles) {
+      drawPropShape(proj, proj.x, proj.y, proj.r, proj.angle);
+    }
+
+    // Stage Crashers
+    for (const c of G.crashers) {
+      drawCrasher(c);
+    }
+
+    // Player Anchor Chad in Swivel Chair
+    if (G.player) {
+      drawPlayer(G.player);
+    }
+
+    // Physical Teleprompter Score HUD
+    drawPhysicalPrompter();
+
+    // Particles
+    for (const pt of G.particles) {
+      ctx.fillStyle = pt.color;
+      ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Floating Texts
+    for (const ft of G.floatTexts) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, ft.life / ft.maxLife);
+      ctx.font = `bold ${ft.size}px Courier New`;
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = CFG.INK;
+      ctx.strokeText(ft.text, ft.x, ft.y);
+      ctx.fillStyle = ft.color;
+      ctx.fillText(ft.text, ft.x, ft.y);
+      ctx.restore();
+    }
+
+    ctx.restore(); // End camera shake
+
+    drawAudienceAndHUD();
+
+    // Screen Flash
+    if (G.flashAlpha > 0.01) {
+      ctx.fillStyle = G.flashColor;
+      ctx.globalAlpha = G.flashAlpha;
+      ctx.fillRect(0, 0, CFG.W, CFG.H);
+      ctx.globalAlpha = 1;
+    }
+
+    // overlays per state
+    if (state === 'TITLE') drawTitleOverlay();
+    else if (state === 'PAUSED') drawPauseOverlay();
+    else if (state === 'DVR_REPLAY') drawDvrReplayOverlay();
+    else if (state === 'RECEIPT') drawReceiptOverlay();
+
+    if (debugOpen) drawDebugOverlay();
+
+    ctx.restore();
+  }
+
+  function drawTitleOverlay() {
+    ctx.fillStyle = 'rgba(13, 11, 20, 0.72)';
+    ctx.fillRect(0, 0, CFG.W, CFG.H);
+
+    const cw = 640, ch = 360;
+    const cx = (CFG.W - cw) * 0.5, cy = (CFG.H - ch) * 0.5;
+    ctx.fillStyle = '#1b152b';
+    ctx.strokeStyle = '#ffbe2e';
+    ctx.lineWidth = 4;
+    drawRoundRect(cx, cy, cw, ch, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff3b7f';
+    ctx.font = 'bold 14px Courier New';
+    ctx.fillText('● CHANNEL 11 ACTION NEWS — SPECIAL REPORT ●', CFG.W * 0.5, cy + 38);
+
+    ctx.fillStyle = '#ffbe2e';
+    ctx.font = 'bold 42px Courier New';
+    ctx.fillText('CHAIRBORNE: LIVE AT 11!', CFG.W * 0.5, cy + 84);
+
+    ctx.fillStyle = '#2de2e6';
+    ctx.font = 'bold 15px Courier New';
+    ctx.fillText('You are Anchor Chad Chinsley. Your Swivel Chair only moves by SNEEZING.', CFG.W * 0.5, cy + 116);
+
+    // 3 Visual Rule Cards
+    const boxes = [
+      { title: '1. INHALE PROPS', body: 'Hold CLICK / SPACE to suck mugs, mics & bowling balls into your nose!', col: '#2de2e6' },
+      { title: '2. SNEEZE & RECOIL', body: 'Release to shotgun props forward & rocket your swivel chair backward!', col: '#ffbe2e' },
+      { title: '3. CUT THEIR MIC!', body: 'Blast Stage Crashers MID-SENTENCE for a 2.6x Pinball Eviction!', col: '#2ee675' }
+    ];
+    boxes.forEach((b, i) => {
+      const bx = cx + 26 + i * 198;
+      const by = cy + 142;
+      ctx.fillStyle = '#261e3b';
+      ctx.strokeStyle = b.col;
+      ctx.lineWidth = 2;
+      drawRoundRect(bx, by, 188, 108, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = b.col;
+      ctx.font = 'bold 13px Courier New';
+      ctx.fillText(b.title, bx + 94, by + 26);
+
+      ctx.fillStyle = '#f8f4e8';
+      ctx.font = '11px Courier New';
+      const words = b.body.split(' ');
+      let line = '', ly = by + 50;
+      for (const w of words) {
+        if ((line + w).length > 22) {
+          ctx.fillText(line.trim(), bx + 94, ly);
+          line = w + ' ';
+          ly += 16;
+        } else {
+          line += w + ' ';
+        }
+      }
+      if (line) ctx.fillText(line.trim(), bx + 94, ly);
+    });
+
+    // Pulsing CTA button
+    const pulse = Math.sin(performance.now() * 0.007) * 4;
+    ctx.fillStyle = '#2ee675';
+    ctx.strokeStyle = CFG.INK;
+    ctx.lineWidth = 3;
+    drawRoundRect(CFG.W * 0.5 - 220 - pulse, cy + 278, 440 + pulse * 2, 50, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = CFG.INK;
+    ctx.font = 'bold 19px Courier New';
+    ctx.fillText('▶ CLICK OR PRESS SPACE TO GO LIVE! ◀', CFG.W * 0.5, cy + 310);
+  }
+
+  function drawPauseOverlay() {
+    ctx.fillStyle = 'rgba(13, 11, 20, 0.58)';
+    ctx.fillRect(0, 0, CFG.W, CFG.H);
+
+    // Header Banner
+    ctx.fillStyle = '#18141f';
+    ctx.strokeStyle = '#ffbe2e';
+    ctx.lineWidth = 3;
+    drawRoundRect(CFG.W * 0.5 - 285, 76, 570, 58, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffbe2e';
+    ctx.font = 'bold 20px Courier New';
+    ctx.fillText('⏸ COMMERCIAL BREAK (THE MENU HAS GRAVITY)', CFG.W * 0.5, 102);
+    ctx.fillStyle = '#2de2e6';
+    ctx.font = 'bold 12px Courier New';
+    ctx.fillText('Click a Cue Card — or click the floor to sneeze-bounce them!', CFG.W * 0.5, 122);
+
+    for (const card of G.pauseCards) {
+      ctx.save();
+      ctx.translate(card.x, card.y);
+      ctx.rotate(card.angle);
+      ctx.fillStyle = card.color;
+      ctx.strokeStyle = CFG.INK;
+      ctx.lineWidth = 3.5;
+      drawRoundRect(-card.w * 0.5, -card.h * 0.5, card.w, card.h, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = CFG.INK;
+      ctx.font = 'bold 15px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(card.label, 0, 5);
+      ctx.restore();
+    }
+  }
+
+  function drawDvrReplayOverlay() {
+    // Draw the buffered DVR snapshot + VHS scanlines!
+    const idx = Math.min(G.dvrBuffer.length - 1, Math.floor(G.dvrPlaybackPos));
+    const snap = G.dvrBuffer[idx];
+    if (snap) {
+      // Tint and scanlines
+      ctx.fillStyle = 'rgba(255, 42, 85, 0.14)';
+      ctx.fillRect(0, 0, CFG.W, CFG.H);
+    }
+
+    // Scanline stripes
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+    for (let y = 0; y < CFG.H; y += 6) {
+      ctx.fillRect(0, y, CFG.W, 2);
+    }
+
+    // DVR Header Badge
+    ctx.fillStyle = '#18141f';
+    ctx.strokeStyle = '#ff2a55';
+    ctx.lineWidth = 3;
+    drawRoundRect(CFG.W * 0.5 - 230, 74, 460, 48, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ff2a55';
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillText('● TiVo INSTANT REPLAY (0.35x SLOW-MO)', CFG.W * 0.5, 98);
+    ctx.fillStyle = '#f8f4e8';
+    ctx.font = 'bold 11px Courier New';
+    ctx.fillText('FINAL MOMENTS BEFORE FCC CANCELLATION — [CLICK TO SKIP]', CFG.W * 0.5, 114);
+  }
+
+  function getBroadcastRank(score) {
+    if (score >= 12000) return 'SUPREME INTERGALACTIC BROADCAST DEITY';
+    if (score >= 7500)  return 'CRONKITE OF CENTRIFUGAL FORCE';
+    if (score >= 4500)  return 'PRIMETIME RATINGS JUGGERNAUT';
+    if (score >= 2200)  return 'WEEKEND WEATHER SENSATION';
+    if (score >= 900)   return '3 AM INFOMERCIAL SURVIVOR';
+    return 'PUBLIC ACCESS INTERN';
+  }
+
+  function drawReceiptOverlay() {
+    ctx.fillStyle = 'rgba(13, 11, 20, 0.80)';
+    ctx.fillRect(0, 0, CFG.W, CFG.H);
+
+    const rw = 470, rh = 448;
+    const rx = (CFG.W - rw) * 0.5, ry = (CFG.H - rh) * 0.5;
+
+    // Dot-matrix paper receipt
+    ctx.fillStyle = '#f7f1e1';
+    ctx.strokeStyle = CFG.INK;
+    ctx.lineWidth = 4;
+    drawRoundRect(rx, ry, rw, rh, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#d91e46';
+    ctx.font = 'bold 22px Courier New';
+    ctx.fillText('NIELSEN RATINGS & FCC AUDIT', CFG.W * 0.5, ry + 36);
+    ctx.fillStyle = '#18141f';
+    ctx.font = 'bold 12px Courier New';
+    ctx.fillText('========================================', CFG.W * 0.5, ry + 54);
+
+    const rows = [
+      ['TOTAL VIEWERS (FINAL SCORE)', G.score.toLocaleString()],
+      ['ALL-TIME NETWORK RECORD', Math.max(bestScore, G.score).toLocaleString()],
+      ['STAGE CRASHERS DEFENESTRATED', String(G.stats.evicted)],
+      ['MID-SENTENCE INTERRUPTIONS (CRITS)', String(G.stats.dignityShattered)],
+      ['STUDIO PROPS INHALED BY NOSE', String(G.stats.propsInhaled)],
+      ['540° CHAIR SPIN TRICK-SHOTS', String(G.stats.spinTrickShots)],
+      ['TELEPROMPTER HUD ASSAULTS', String(G.stats.prompterAssaults)],
+      ['STUDIO AUDIENCE OVATIONS', String(G.stats.ovationsTriggered)],
+      ['SINUS OVERLOAD BACKFIRES', String(G.stats.overloads)]
+    ];
+
+    const visibleRows = Math.min(rows.length, G.receiptStep);
+    for (let i = 0; i < visibleRows; i++) {
+      const y = ry + 80 + i * 25;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = i === 0 ? '#d91e46' : '#2b2438';
+      ctx.font = i === 0 ? 'bold 14px Courier New' : 'bold 12px Courier New';
+      ctx.fillText(rows[i][0], rx + 28, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(rows[i][1], rx + rw - 28, y);
+    }
+
+    if (G.receiptStep > rows.length) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#18141f';
+      ctx.font = 'bold 12px Courier New';
+      ctx.fillText('----------------------------------------', CFG.W * 0.5, ry + 314);
+      ctx.fillStyle = '#6c5a85';
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillText('OFFICIAL NETWORK RATING CLASSIFICATION:', CFG.W * 0.5, ry + 334);
+      ctx.fillStyle = '#d91e46';
+      ctx.font = 'bold 16px Courier New';
+      ctx.fillText(getBroadcastRank(G.score), CFG.W * 0.5, ry + 358);
+    }
+
+    // Instant Restart Button
+    ctx.fillStyle = '#2ee675';
+    ctx.strokeStyle = CFG.INK;
+    ctx.lineWidth = 3;
+    drawRoundRect(CFG.W * 0.5 - 165, ry + rh - 64, 330, 44, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = CFG.INK;
+    ctx.font = 'bold 17px Courier New';
+    ctx.fillText('↻ AIR NEXT EPISODE [CLICK / R]', CFG.W * 0.5, ry + rh - 36);
+  }
+
+  function drawDebugOverlay() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
+    ctx.fillRect(14, CFG.H - 135, 340, 120);
+    ctx.strokeStyle = '#2ee675';
+    ctx.strokeRect(14, CFG.H - 135, 340, 120);
+    ctx.fillStyle = '#2ee675';
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillText(`DEBUG [~] | FPS: ${Math.round(fpsEstimate)} | Seed: ${initialSeed}`, 24, CFG.H - 116);
+    ctx.fillText(`State: ${state} | Crashers: ${G.crashers.length} | Props: ${G.props.length}`, 24, CFG.H - 98);
+    ctx.fillText(`Nose: ${G.player ? G.player.noseItems.length : 0} | Charge: ${G.player ? G.player.charge.toFixed(2) : 0}`, 24, CFG.H - 80);
+    ctx.fillText(`Keys [1-9]: Force Network Note | [0]: Trigger Applause`, 24, CFG.H - 62);
+    ctx.fillText(`Keys [K]: Force DVR Game Over`, 24, CFG.H - 44);
+    ctx.restore();
+  }
+
+  // ============================================================================
+  // 13. MAIN FIXED-TIMESTEP LOOP & GLOBAL SHORTCUTS
+  // ============================================================================
+  resetRun(initialSeed);
+
+  let lastTime = performance.now();
+  let accumulator = 0;
+
+  function handleMetaInputs() {
+    if (Input.justPressed.has('Backquote')) {
+      debugOpen = !debugOpen;
+    }
+    if (Input.justPressed.has('KeyM')) {
+      Snd.toggleMute();
+    }
+    if (Input.justPressed.has('KeyR') && state !== 'TITLE') {
+      resetRun();
+      state = 'PLAY';
+      return;
+    }
+
+    if (state === 'TITLE') {
+      if (Input.mouseJustPressed || Input.justPressed.has('Space') || Input.justPressed.has('Enter')) {
+        resetRun();
+        state = 'PLAY';
+      }
+    } else if (state === 'PLAY') {
+      if (Input.justPressed.has('KeyP') || Input.justPressed.has('Escape')) {
+        enterPauseMenu();
+        return;
+      }
+      // Debug shortcuts when debug panel is open (or via window.__DEBUG)
+      if (debugOpen) {
+        for (let d = 1; d <= 9; d++) {
+          if (Input.justPressed.has('Digit' + d) && NETWORK_NOTES[d - 1]) {
+            enactNextNetworkNote(NETWORK_NOTES[d - 1].id);
+          }
+        }
+        if (Input.justPressed.has('Digit0')) triggerApplauseWave('DEBUG APPLAUSE!');
+        if (Input.justPressed.has('KeyK')) triggerGameOver();
+      }
+    } else if (state === 'PAUSED') {
+      if (Input.justPressed.has('KeyP') || Input.justPressed.has('Escape')) {
+        state = 'PLAY';
+        return;
+      }
+      if (Input.mouseJustPressed) {
+        // Check if player clicked a physical pause cue card!
+        let hitCard = null;
+        for (const card of G.pauseCards) {
+          if (
+            Math.abs(Input.mouseX - card.x) <= card.w * 0.5 &&
+            Math.abs(Input.mouseY - card.y) <= card.h * 0.5
+          ) {
+            hitCard = card;
+            break;
+          }
+        }
+        if (hitCard) {
+          if (hitCard.id === 'RESUME') { state = 'PLAY'; return; }
+          if (hitCard.id === 'MUTE') { Snd.toggleMute(); hitCard.vy = -260; return; }
+          if (hitCard.id === 'RESTART') { resetRun(); state = 'PLAY'; return; }
+        } else {
+          // Clicking anywhere else in the pause menu sneezes a shockwave that bounces the pause cards!
+          Snd.sneeze(0.7, false, false, 0);
+          addShockwave(Input.mouseX, Input.mouseY, 120, '#ffbe2e', 5);
+          for (const card of G.pauseCards) {
+            const dx = card.x - Input.mouseX;
+            const dy = card.y - Input.mouseY;
+            const d = Math.max(30, Math.hypot(dx, dy));
+            card.vx += (dx / d) * 420;
+            card.vy = -Math.abs((dy / d) * 460) - 180;
+            card.vAngle += (Math.random() - 0.5) * 4;
+          }
+        }
+      }
+    } else if (state === 'DVR_REPLAY') {
+      if (Input.mouseJustPressed || Input.justPressed.has('Space') || Input.justPressed.has('Enter')) {
+        state = 'RECEIPT';
+        G.receiptStep = 0;
+        G.receiptTimer = 0;
+      }
+    } else if (state === 'RECEIPT') {
+      if (Input.mouseJustPressed || Input.justPressed.has('Space') || Input.justPressed.has('Enter')) {
+        if (G.receiptStep <= 10) {
+          G.receiptStep = 12;
+        } else {
+          resetRun();
+          state = 'PLAY';
+        }
+      }
+    }
+  }
+
+  function frame(now) {
+    let rawDt = (now - lastTime) / 1000;
+    lastTime = now;
+    if (rawDt > 0) fpsEstimate = fpsEstimate * 0.92 + (1 / rawDt) * 0.08;
+    const clampedDt = Math.min(CFG.MAX_DT, Math.max(0, rawDt));
+
+    handleMetaInputs();
+
+    // Update camera shake & screen flash in real time
+    if (G.shake > 0.05) {
+      G.shake *= Math.pow(0.04, clampedDt);
+      const mag = Math.min(11, G.shake);
+      G.shakeX = Math.sin(now * 0.09) * mag;
+      G.shakeY = Math.cos(now * 0.11) * mag;
+    } else {
+      G.shake = 0; G.shakeX = 0; G.shakeY = 0;
+    }
+    if (G.flashAlpha > 0) {
+      G.flashAlpha = Math.max(0, G.flashAlpha - clampedDt * 1.8);
+    }
+
+    if (state === 'PLAY' || state === 'TITLE') {
+      if (G.hitStop > 0) {
+        G.hitStop = Math.max(0, G.hitStop - clampedDt);
+      } else {
+        accumulator += clampedDt * G.timeScale;
+        let steps = 0;
+        while (accumulator >= CFG.DT && steps < 6) {
+          updatePlay(CFG.DT);
+          if (state === 'PLAY') recordDvrSnapshot();
+          accumulator -= CFG.DT;
+          steps++;
+        }
+        if (steps >= 6) accumulator = 0;
+      }
+    } else if (state === 'PAUSED') {
+      updatePauseMenu(clampedDt);
+    } else if (state === 'DVR_REPLAY') {
+      // Play back the recorded DVR buffer at 0.35x speed!
+      G.dvrPlaybackPos += clampedDt * 60 * CFG.DVR.slowMoScale;
+      const idx = Math.floor(G.dvrPlaybackPos);
+      if (idx < G.dvrBuffer.length) {
+        const snap = G.dvrBuffer[idx];
+        G.player.x = snap.px; G.player.y = snap.py;
+        G.player.angle = snap.pAngle; G.player.chairAngle = snap.pChair;
+        G.player.sx = snap.psx; G.player.sy = snap.psy;
+      } else {
+        state = 'RECEIPT';
+        G.receiptStep = 0;
+        G.receiptTimer = 0;
+      }
+    } else if (state === 'RECEIPT') {
+      G.receiptTimer += clampedDt;
+      if (G.receiptTimer >= 0.11 && G.receiptStep <= 10) {
+        G.receiptTimer = 0;
+        G.receiptStep++;
+        Snd.receiptTick(G.receiptStep > 9);
+      }
+    }
+
+    renderWorld();
+    Input.clearFrame();
+    requestAnimationFrame(frame);
+  }
+
+  // Expose testing hooks for automated headless verification
+  window.__CHAIRBORNE = {
+    getState: () => state,
+    setState: (s) => { state = s; },
+    getGame: () => G,
+    enactNote: (id) => enactNextNetworkNote(id),
+    triggerApplause: () => triggerApplauseWave('TEST APPLAUSE'),
+    triggerGameOver: () => triggerGameOver(),
+    enterPause: () => enterPauseMenu(),
+    notes: NETWORK_NOTES
+  };
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
