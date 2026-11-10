@@ -20,7 +20,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Basketball Sim Crazy Fun Dynasty Legendary GM | basketball franchise sim | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/basketball-dynasty-gm/) | One team name changed; added a fallback so it runs without 3D graphics |
 | Beatline Salvage | rhythm | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/beatline-salvage/) |  |
 | Belt & Bolt | factory defense | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/belt-and-bolt/) | Subtitle no longer names Mindustry or shapez |
-| Black Line Dynasty | swimming dynasty sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/black-line-dynasty/) | Real swim club names were replaced with made-up ones |
+| Black Line Dynasty | swimming dynasty sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/black-line-dynasty/) | Real swim club names other than Blue Springs Power Cats were replaced with made-up ones |
 | Blackout Dispatch | storm power-grid routing | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/blackout-dispatch/) |  |
 | Blitzread | football | batch 2 | cloud PR #2 | [play](games/blitzread/) |  |
 | Brinehold | factory defense | overnight research batch | cloud PR #2 | [play](games/brinehold/) |  |
@@ -60,7 +60,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Kinetic Chain | arcade dasher | Claude (Cowork, MacBook) | MacBook Cowork PR #14 | [play](games/kinetic-chain/) |  |
 | Lagoon Flip | pinball | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/lagoon-flip/) |  |
 | Lane Four | swim racer | Claude (Cowork, MacBook) | MacBook Cowork PR #14 | [play](games/lane-four/) | Replaces Negative Split. Newest build (Nov 9): career from Conference to the Trials, 50/200/500, phone touch pads |
-| Lane Four: Pro Swimming Dynasty | swimming dynasty sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/lane-four-dynasty/) | Real swim club names were replaced with made-up ones. Different game from the Lane Four swim racer |
+| Lane Four: Pro Swimming Dynasty | swimming dynasty sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/lane-four-dynasty/) | Real swim club names other than Blue Springs Power Cats were replaced with made-up ones. Different game from the Lane Four swim racer |
 | Lanewake | swim | batch 2 | cloud PR #2 | [play](games/lanewake/) |  |
 | Lantern Drum | rhythm | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/lantern-drum/) | A newer kit build exists in the project folder, not yet published |
 | Lastlight Run | racer | overnight research batch | cloud PR #2 | [play](games/lastlight-run/) |  |
@@ -70,7 +70,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Merge Kitchen | sliding merge | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/merge-kitchen/) |  |
 | Meridian Football League | football GM sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/meridian-football-league/) | Was titled Front Office, which echoed a real football sim |
 | Moonpond Angler | fishing | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/moonpond-angler/) |  |
-| National Pro Swimming League | pro swim franchise sim | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/national-pro-swimming-league/) | Real swim club names were replaced with made-up ones |
+| National Pro Swimming League | pro swim franchise sim | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/national-pro-swimming-league/) | Real swim club names other than Blue Springs Power Cats were replaced with made-up ones |
 | Nebula Greens | mini golf | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/nebula-greens/) |  |
 | Neon Nightcap | baseball-shooter fusion | overnight research batch | cloud PR #2 | [play](games/neon-nightcap/) |  |
 | Nine Lives Overdrive | cat roguelike | Games project | cloud PR #2 | [play](games/nine-lives-overdrive/) |  |
@@ -84,7 +84,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Please Feed the Moon | arcade shooter | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/please-feed-the-moon/) |  |
 | PRISM PRESS | reactor-grid puzzle | Kimi (MacBook) | Kimi Work PR #7 | [play](games/prism-press/) | Newest build from the Kimi Work collection (Nov 8) |
 | Prismwheel | ring arcade | overnight research batch | cloud PR #2 | [play](games/prismwheel/) |  |
-| Pro Swim Dynasty | pro swim league GM sim | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/pro-swim-dynasty/) | Real swim club names were replaced with made-up ones |
+| Pro Swim Dynasty | pro swim league GM sim | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/pro-swim-dynasty/) | Real swim club names other than Blue Springs Power Cats were replaced with made-up ones |
 | Ricochet Vault // Greed Breaker | slingshot pinball-breaker | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/ricochet-vault/) |  |
 | Roommate Republic | game-theory sim | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/roommate-republic/) |  |
 | Shardstorm Depths | match-3 RPG | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/shardstorm-depths/) |  |
@@ -116,7 +116,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 | Tide Caller (Antigravity) | rhythm swim sprint | Antigravity (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/tide-caller-antigravity/) | Different build from the Kimi Tide Caller |
 | Tide Caller (Kimi) | rhythm swim sprint | Kimi (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/tide-caller-kimi/) | Different build from the Antigravity Tide Caller |
 | Turf Riot | arcade football | Mac mini (Codex collection) | Mac mini Codex PR #6, reworked | [play](games/turf-riot/) | Reworked from a held Mac mini build: new name, its own house-rules menu, source notes removed |
-| Turn & Tide | swimming dynasty sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/turn-and-tide/) | Real swim club names were replaced with made-up ones |
+| Turn & Tide | swimming dynasty sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/turn-and-tide/) | Real swim club names other than Blue Springs Power Cats were replaced with made-up ones |
 | Twelve Sols | survival | batch 2 | cloud PR #2 | [play](games/twelve-sols/) |  |
 | Undertoll | roguelike | overnight research batch | cloud PR #2 | [play](games/undertoll/) |  |
 | Vanguard Dynasty | pro basketball front office sim | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/vanguard-dynasty/) |  |
@@ -170,7 +170,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 - Kimi Work PR #7 was updated on Nov 9 with three new games (Stamp Duty: Executive Disorder, Stamp Duty: Overqualified and Piñata Panic). Its other copies were already here. The two Stamp Duty games are different games that share a name. Piñata Panic had an upgrade named after a real candy brand, renamed Sour Bait.
 - Claude Cowork MacBook Air brought Emberward on Nov 9, and Lane Four was updated to its newest build.
 - PR #20 brought 5 more new Argon games (Aegis: Volt-Lash, Ricochet Vault, SLINGCORE, SNAP-LANCE, SNAPBACK). A sixth, Aegis-Zero: Graze Overclock, came later through PR #4 on Nov 9. Its perks were named after real game studios and games, so those names were replaced with made-up ones. The other new Wave 12 and Wave 13 copies in PR #4 were already here.
-- Codex MacBook PR #25 and Claude Cowork MacBook Air PR #26 brought 17 new games on Nov 10. Gravity Heist, Signal Garden and Tide Caller each came in a Kimi build and an Antigravity build, so both are here under separate folders. Five swim dynasty sims used real swim club names; every club name was replaced with a made-up one (cities kept). The Cowork baseball sim stayed on the MacBook Air because it used a real league name.
+- Codex MacBook PR #25 and Claude Cowork MacBook Air PR #26 brought 17 new games on Nov 10. Gravity Heist, Signal Garden and Tide Caller each came in a Kimi build and an Antigravity build, so both are here under separate folders. Five swim dynasty sims used real swim club names; every club name except Blue Springs Power Cats was replaced with a made-up one (cities kept). The Cowork baseball sim stayed on the MacBook Air because it used a real league name.
 - Cloud copies newer than the arcade's first PR (#1): 20 of its 22 games are older; this PR uses the live versions.
 
 ## Checks
