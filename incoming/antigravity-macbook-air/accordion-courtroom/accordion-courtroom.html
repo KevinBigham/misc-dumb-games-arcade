@@ -1,0 +1,2165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ACCORDION COURTROOM // HONK AT LAW</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #140f0c; color: #f6eedf;
+    font-family: 'Courier New', Courier, monospace;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #wrap {
+    position: relative;
+    width: 100vw; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    background: #f3e9d2;
+    box-shadow: 0 22px 60px rgba(0,0,0,0.75), 0 0 0 5px #1e1612;
+    border-radius: 6px;
+    cursor: crosshair;
+    max-width: 98vw; max-height: 98vh;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="gameCanvas" width="960" height="580"></canvas>
+</div>
+<script>
+(() => {
+"use strict";
+
+// ===== CONFIG & TUNABLES =====
+const CFG = {
+  W: 960,
+  H: 580,
+  dt: 1 / 120,
+  desk: { x: 48, y: 84, w: 864, h: 460 },
+  player: {
+    baseR: 22,
+    moveSpeed: 310,
+    maxInhale: 8,
+    overchargeTime: 1.55,
+    drag: 5.2,
+    recoilBase: 410,
+    recoilPerItem: 95,
+    bounce: 0.72
+  },
+  verdictEvery: 18,
+  maxActiveLaws: 3,
+  gracePeriod: 16, // First 16 seconds cannot cause mistrial
+  maxMistrials: 3,
+  palette: {
+    ink: '#1e1612',
+    parchment: '#f3e9d2',
+    wood: '#c89d66',
+    woodDark: '#9e723d',
+    crimson: '#d93829',
+    gold: '#f2b705',
+    teal: '#1b8a7a',
+    purple: '#6b3fa0',
+    cream: '#fffdf7'
+  }
+};
+
+// ===== SEEDED RNG =====
+const urlParams = new URLSearchParams(window.location.search);
+let initialSeed = parseInt(urlParams.get('seed'), 10) || ((Date.now() ^ 0x5f3759df) >>> 0);
+
+function makeRNG(seed) {
+  let s = seed >>> 0;
+  if (s === 0) s = 123456789;
+  return function() {
+    s ^= s << 13;
+    s ^= s >>> 17;
+    s ^= s << 5;
+    return (s >>> 0) / 4294967296;
+  };
+}
+let rng = makeRNG(initialSeed);
+let fxRng = makeRNG(initialSeed ^ 0x9e3779b9);
+const rand = (a = 0, b = 1) => a + rng() * (b - a);
+const fxRand = (a = 0, b = 1) => a + fxRng() * (b - a);
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// ===== WEB AUDIO SYNTHESIZER =====
+const AudioSys = {
+  ctx: null,
+  master: null,
+  comp: null,
+  muted: false,
+  voices: 0,
+  maxVoices: 16,
+  inhaleOsc: null,
+  inhaleGain: null,
+
+  init() {
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      return;
+    }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.comp = this.ctx.createDynamicsCompressor();
+    this.comp.threshold.value = -16;
+    this.comp.ratio.value = 6;
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.36;
+    this.master.connect(this.comp);
+    this.comp.connect(this.ctx.destination);
+  },
+
+  toggleMute() {
+    this.muted = !this.muted;
+    if (this.master && this.ctx) {
+      this.master.gain.setValueAtTime(this.muted ? 0 : 0.36, this.ctx.currentTime);
+    }
+  },
+
+  canPlay() {
+    if (!this.ctx || this.muted || this.voices >= this.maxVoices) return false;
+    return true;
+  },
+
+  trackVoice(dur) {
+    this.voices++;
+    setTimeout(() => { this.voices = Math.max(0, this.voices - 1); }, dur * 1000 + 40);
+  },
+
+  // Accordion wheeze chord on inhale
+  updateInhale(active, chargeRatio, count) {
+    if (!this.ctx || this.muted) return;
+    const now = this.ctx.currentTime;
+    if (active) {
+      if (!this.inhaleOsc) {
+        const osc1 = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        const filt = this.ctx.createBiquadFilter();
+        const gain = this.ctx.createGain();
+        osc1.type = 'sawtooth';
+        osc2.type = 'square';
+        filt.type = 'bandpass';
+        filt.Q.value = 3.2;
+        gain.gain.setValueAtTime(0.001, now);
+        osc1.connect(filt);
+        osc2.connect(filt);
+        filt.connect(gain);
+        gain.connect(this.master);
+        osc1.start(now);
+        osc2.start(now);
+        this.inhaleOsc = { osc1, osc2, filt, gain };
+      }
+      const baseF = 165 + chargeRatio * 240 + count * 22;
+      this.inhaleOsc.osc1.frequency.setTargetAtTime(baseF, now, 0.03);
+      this.inhaleOsc.osc2.frequency.setTargetAtTime(baseF * 1.498, now, 0.03); // Fifth interval
+      this.inhaleOsc.filt.frequency.setTargetAtTime(450 + chargeRatio * 1400, now, 0.04);
+      this.inhaleOsc.gain.gain.setTargetAtTime(0.08 + chargeRatio * 0.07, now, 0.03);
+    } else if (this.inhaleOsc) {
+      try {
+        this.inhaleOsc.gain.gain.setTargetAtTime(0.0001, now, 0.02);
+        this.inhaleOsc.osc1.stop(now + 0.06);
+        this.inhaleOsc.osc2.stop(now + 0.06);
+      } catch (e) {}
+      this.inhaleOsc = null;
+    }
+  },
+
+  // Polyphonic accordion + brass honk blast on exhale
+  playHonk(power, count, overcharged = false) {
+    if (!this.canPlay()) return;
+    const now = this.ctx.currentTime;
+    const dur = overcharged ? 0.42 : 0.26 + count * 0.02;
+    this.trackVoice(dur);
+
+    const root = overcharged ? 110 : (196 * Math.pow(1.05946, (count % 7))) * fxRand(0.96, 1.04);
+    const ratios = overcharged ? [1, 1.18, 1.414, 1.88] : [1, 1.25, 1.5]; // Diminished vs Major triad
+
+    ratios.forEach((r) => {
+      const osc = this.ctx.createOscillator();
+      const filt = this.ctx.createBiquadFilter();
+      const g = this.ctx.createGain();
+      osc.type = overcharged ? 'sawtooth' : 'square';
+      osc.frequency.setValueAtTime(root * r * 1.12, now);
+      osc.frequency.exponentialRampToValueAtTime(root * r * (overcharged ? 0.55 : 0.88), now + dur);
+
+      filt.type = 'lowpass';
+      filt.frequency.setValueAtTime(1900, now);
+      filt.frequency.exponentialRampToValueAtTime(520, now + dur);
+
+      const peak = (0.12 + Math.min(count, 6) * 0.015) / ratios.length;
+      g.gain.setValueAtTime(0.001, now);
+      g.gain.linearRampToValueAtTime(peak, now + 0.018);
+      g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+      osc.connect(filt);
+      filt.connect(g);
+      g.connect(this.master);
+      osc.start(now);
+      osc.stop(now + dur + 0.02);
+    });
+  },
+
+  playGulp(comboIndex) {
+    if (!this.canPlay()) return;
+    const now = this.ctx.currentTime;
+    this.trackVoice(0.11);
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    const f = 320 * Math.pow(1.08, Math.min(10, comboIndex)) * fxRand(0.96, 1.04);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(f, now);
+    osc.frequency.exponentialRampToValueAtTime(f * 1.75, now + 0.09);
+    g.gain.setValueAtTime(0.18, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(g);
+    g.connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.11);
+  },
+
+  playConviction(semitone) {
+    if (!this.canPlay()) return;
+    const now = this.ctx.currentTime;
+    this.trackVoice(0.24);
+    const base = 440 * Math.pow(1.059463, clamp(semitone, 0, 18));
+    [1, 1.25, 1.5].forEach((mult, idx) => {
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'triangle';
+      const t0 = now + idx * 0.035;
+      osc.frequency.setValueAtTime(base * mult, t0);
+      osc.frequency.exponentialRampToValueAtTime(base * mult * 1.04, t0 + 0.14);
+      g.gain.setValueAtTime(0.001, t0);
+      g.gain.linearRampToValueAtTime(0.16, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+      osc.connect(g);
+      g.connect(this.master);
+      osc.start(t0);
+      osc.stop(t0 + 0.17);
+    });
+  },
+
+  playGavel() {
+    if (!this.canPlay()) return;
+    const now = this.ctx.currentTime;
+    this.trackVoice(0.22);
+    // Wooden knock + noise burst
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(290, now);
+    osc.frequency.exponentialRampToValueAtTime(58, now + 0.14);
+    g.gain.setValueAtTime(0.32, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(g);
+    g.connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.16);
+
+    // Noise clack
+    const bufSize = this.ctx.sampleRate * 0.05;
+    const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufSize * 0.3));
+    const noise = this.ctx.createBufferSource();
+    const filt = this.ctx.createBiquadFilter();
+    const ng = this.ctx.createGain();
+    noise.buffer = buf;
+    filt.type = 'bandpass';
+    filt.frequency.value = 1100;
+    ng.gain.value = 0.25;
+    noise.connect(filt);
+    filt.connect(ng);
+    ng.connect(this.master);
+    noise.start(now);
+  },
+
+  playClap() {
+    if (!this.canPlay()) return;
+    const now = this.ctx.currentTime;
+    this.trackVoice(0.09);
+    const bufSize = Math.floor(this.ctx.sampleRate * 0.065);
+    const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufSize, 1.8);
+    const src = this.ctx.createBufferSource();
+    const hp = this.ctx.createBiquadFilter();
+    const g = this.ctx.createGain();
+    src.buffer = buf;
+    hp.type = 'highpass';
+    hp.frequency.value = 850 + fxRand(-180, 220);
+    g.gain.setValueAtTime(0.15, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+    src.connect(hp);
+    hp.connect(g);
+    g.connect(this.master);
+    src.start(now);
+  },
+
+  playVerdictChime(helpful = false) {
+    if (!this.canPlay()) return;
+    const now = this.ctx.currentTime;
+    this.trackVoice(0.45);
+    const notes = helpful ? [523.25, 659.25, 783.99, 1046.5] : [440, 415.3, 349.23];
+    notes.forEach((f, i) => {
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = helpful ? 'triangle' : 'sawtooth';
+      const t0 = now + i * 0.085;
+      osc.frequency.setValueAtTime(f, t0);
+      g.gain.setValueAtTime(0.16, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.18);
+      osc.connect(g);
+      g.connect(this.master);
+      osc.start(t0);
+      osc.stop(t0 + 0.19);
+    });
+  },
+
+  playMistrial() {
+    if (!this.canPlay()) return;
+    const now = this.ctx.currentTime;
+    this.trackVoice(0.45);
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(190, now);
+    osc.frequency.linearRampToValueAtTime(62, now + 0.38);
+    g.gain.setValueAtTime(0.28, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc.connect(g);
+    g.connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.42);
+  },
+
+  playTick() {
+    if (!this.canPlay()) return;
+    const now = this.ctx.currentTime;
+    this.trackVoice(0.04);
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1100 + fxRand(-120, 120), now);
+    g.gain.setValueAtTime(0.09, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+    osc.connect(g);
+    g.connect(this.master);
+    osc.start(now);
+    osc.stop(now + 0.035);
+  }
+};
+
+// ===== INPUT HANDLING =====
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const Input = {
+  keys: new Set(),
+  justPressed: new Set(),
+  mouse: { x: CFG.W / 2, y: CFG.H / 2, down: false, justDown: false, justUp: false, rightJustDown: false },
+  lastActiveTime: 0,
+
+  init() {
+    window.addEventListener('keydown', (e) => {
+      AudioSys.init();
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+        e.preventDefault();
+      }
+      if (!this.keys.has(e.code)) this.justPressed.add(e.code);
+      this.keys.add(e.code);
+      this.lastActiveTime = performance.now();
+
+      if (e.code === 'KeyM') AudioSys.toggleMute();
+      if (e.code === 'KeyR' && (Game.state === 'PLAY' || Game.state === 'RESULTS')) {
+        Game.startRun();
+      }
+      if (e.code === 'Backquote') Game.debug = !Game.debug;
+      if (e.code === 'Space') {
+        if (!this.mouse.down) this.mouse.justDown = true;
+        this.mouse.down = true;
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      this.keys.delete(e.code);
+      if (e.code === 'Space') {
+        if (this.mouse.down) this.mouse.justUp = true;
+        this.mouse.down = false;
+      }
+    });
+
+    const updateMousePos = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      this.mouse.x = (e.clientX - rect.left) * (CFG.W / rect.width);
+      this.mouse.y = (e.clientY - rect.top) * (CFG.H / rect.height);
+    };
+
+    canvas.addEventListener('pointerdown', (e) => {
+      AudioSys.init();
+      updateMousePos(e);
+      this.lastActiveTime = performance.now();
+      if (e.button === 2) {
+        this.mouse.rightJustDown = true;
+      } else {
+        if (!this.mouse.down) this.mouse.justDown = true;
+        this.mouse.down = true;
+      }
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      updateMousePos(e);
+    });
+
+    window.addEventListener('pointerup', (e) => {
+      if (e.button !== 2) {
+        if (this.mouse.down) this.mouse.justUp = true;
+        this.mouse.down = false;
+      }
+    });
+
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.justPressed.clear();
+      if (this.mouse.down) this.mouse.justUp = true;
+      this.mouse.down = false;
+      AudioSys.updateInhale(false, 0, 0);
+    });
+  },
+
+  clearFrame() {
+    this.justPressed.clear();
+    this.mouse.justDown = false;
+    this.mouse.justUp = false;
+    this.mouse.rightJustDown = false;
+  }
+};
+
+// ===== SUPREME COURT VERDICTS (MUTATING LAWS AS DATA) =====
+const LAWS = [
+  {
+    id: 'OBJECTION_MASS',
+    title: 'OBJECTION! HAS MASS',
+    desc: 'Every accordion honk spawns a physical OBJECTION! slab that ricochets.',
+    helpful: false,
+    conflicts: []
+  },
+  {
+    id: 'PERJURY_ICE',
+    title: 'SLIPPERY TESTIMONY',
+    desc: 'Courtroom floor polished with butter. Friction reduced by 78%.',
+    helpful: false,
+    conflicts: ['STICKY_TAPE']
+  },
+  {
+    id: 'STICKY_TAPE',
+    title: 'RED TAPE MOLASSES',
+    desc: 'Floor covered in bureaucratic adhesive. High drag, double recoil.',
+    helpful: false,
+    conflicts: ['PERJURY_ICE']
+  },
+  {
+    id: 'GRAVITY_TILT',
+    title: 'COURT IS ADJOURNED SIDEWAYS',
+    desc: 'Gravity pulls all unswallowed suspects toward the Eastern Wall.',
+    helpful: false,
+    conflicts: ['CEILING_FAN']
+  },
+  {
+    id: 'CEILING_FAN',
+    title: 'SWORN WHIRLWIND',
+    desc: 'Giant courtroom ceiling fan gently swirls everything around the center.',
+    helpful: false,
+    conflicts: ['GRAVITY_TILT']
+  },
+  {
+    id: 'KANGAROO_BOUNCE',
+    title: 'KANGAROO COURT',
+    desc: 'Wall elasticity is now 135%. Everything bounces harder!',
+    helpful: false,
+    conflicts: []
+  },
+  {
+    id: 'GAVEL_HUNGRY',
+    title: 'THE GAVEL IS PERSONAL',
+    desc: 'Judge Gavel hops twice as fast and actively chases your accordion.',
+    helpful: false,
+    conflicts: []
+  },
+  {
+    id: 'JURY_CAFFEINE',
+    title: 'CAFFEINATED JURY',
+    desc: 'Jury applause waves blast twice as hard and echo faster!',
+    helpful: true, // Helpful because applause knocks suspects into boxes!
+    conflicts: []
+  },
+  {
+    id: 'MAGNETIC_GUILT',
+    title: 'ATTRACTIVE VERDICT',
+    desc: 'BREATHER: Verdict boxes gently magnetize nearby airborne suspects!',
+    helpful: true,
+    conflicts: []
+  },
+  {
+    id: 'PLEA_BARGAIN',
+    title: 'PLEA BARGAIN RECESS',
+    desc: 'BREATHER: Escape timers frozen & inhale cone 60% wider!',
+    helpful: true,
+    conflicts: []
+  },
+  {
+    id: 'GIANT_BELLOWS',
+    title: 'SENIOR PARTNER PROMOTION',
+    desc: 'Your accordion is 45% larger and blasts with mammoth force.',
+    helpful: false,
+    conflicts: ['SMALL_CLAIMS']
+  },
+  {
+    id: 'SMALL_CLAIMS',
+    title: 'SMALL CLAIMS COURT',
+    desc: 'Everyone is shrunk by 35% and moves 30% faster!',
+    helpful: false,
+    conflicts: ['GIANT_BELLOWS']
+  },
+  {
+    id: 'DOUBLE_JEOPARDY',
+    title: 'DOUBLE JEOPARDY',
+    desc: 'Convicting a suspect spawns a miniature bonus witness Coin!',
+    helpful: true,
+    conflicts: []
+  },
+  {
+    id: 'REVERSE_AIM',
+    title: 'CROSS-EXAMINATION',
+    desc: 'Your accordion fires out the BACK while inhaling from the FRONT!',
+    helpful: false,
+    conflicts: []
+  }
+];
+
+// ===== SUSPECT ARCHETYPES =====
+const SUSPECT_TYPES = [
+  { kind: 'TOASTER', name: 'Tax-Evading Toaster', color: '#d9534f', r: 17, mass: 1.0, speed: 78, pts: 100 },
+  { kind: 'PIGEON', name: 'Insider-Trading Pigeon', color: '#6c8ebf', r: 15, mass: 0.75, speed: 112, pts: 130 },
+  { kind: 'PLANT', name: 'Perjuring Potted Fern', color: '#3b945e', r: 21, mass: 1.45, speed: 52, pts: 150 },
+  { kind: 'BRIEFCASE', name: 'Bribe Briefcase', color: '#d49b27', r: 18, mass: 1.15, speed: 88, pts: 175 },
+  { kind: 'TEACUP', name: 'Conspiracy Teacup', color: '#9b59b6', r: 14, mass: 0.65, speed: 120, pts: 140 }
+];
+
+// ===== MAIN GAME STATE & LOGIC =====
+const Game = {
+  state: 'TITLE', // TITLE, PLAY, DYING, RESULTS
+  time: 0,
+  runTime: 0,
+  hitStop: 0,
+  timeScale: 1.0,
+  shake: 0,
+  debug: false,
+
+  score: 0,
+  highScore: 0,
+  combo: 0,
+  comboTimer: 0,
+  mistrials: 0,
+
+  // Run telemetry for humorous receipt
+  stats: {
+    convictions: 0,
+    honksFired: 0,
+    overcharges: 0,
+    gavelBonks: 0,
+    juryOvations: 0,
+    multiKillBest: 0,
+    lawsSurvived: 0
+  },
+
+  player: null,
+  echoGhost: null,
+  historyBuffer: [],
+  suspects: [],
+  verdictBoxes: [],
+  jurors: [],
+  shockwaves: [],
+  particles: [],
+  popups: [],
+  objectionSlabs: [],
+  gavel: null,
+  stenographer: { text: 'COURT IS NOW IN SESSION. HOLD CLICK TO INHALE SUSPECTS.', timer: 0 },
+
+  activeLaws: [],
+  verdictTimer: 0,
+  verdictCount: 0,
+  banner: { active: false, title: '', desc: '', helpful: false, timer: 0 },
+  spawnTimer: 0,
+  dyingTimer: 0,
+  receiptStep: 0,
+  receiptTimer: 0,
+
+  init() {
+    try {
+      const saved = localStorage.getItem('accordion_court_high');
+      if (saved) this.highScore = parseInt(saved, 10) || 0;
+    } catch (e) {}
+    this.setupTitleScene();
+  },
+
+  hasLaw(id) {
+    return this.activeLaws.some(l => l.id === id);
+  },
+
+  setupTitleScene() {
+    this.state = 'TITLE';
+    this.activeLaws = [];
+    this.resetArenaEntities();
+    // Spawn 5 playful suspects on title screen
+    for (let i = 0; i < 5; i++) this.spawnSuspect(true);
+  },
+
+  resetArenaEntities() {
+    const d = CFG.desk;
+    this.player = {
+      x: d.x + d.w * 0.5,
+      y: d.y + d.h * 0.55,
+      vx: 0, vy: 0,
+      angle: 0,
+      r: CFG.player.baseR,
+      inhaling: false,
+      charge: 0,
+      stomach: [], // swallowed suspects
+      dizzy: 0,
+      scaleX: 1, scaleY: 1,
+      vScaleX: 0, vScaleY: 0,
+      pleats: 4
+    };
+
+    // Delayed Clerk Ghost (repeats player honks 1.8s later!)
+    this.echoGhost = {
+      x: this.player.x,
+      y: this.player.y,
+      angle: 0,
+      inhaling: false,
+      active: false
+    };
+    this.historyBuffer = [];
+
+    // Two Verdict Zones (GUILTY and RIDICULOUSLY GUILTY)
+    this.verdictBoxes = [
+      {
+        x: d.x + 86, y: d.y + 115, w: 122, h: 105,
+        label: 'GUILTY BOX', sub: 'DROP EVIDENCE',
+        color: '#d93829', pulse: 0
+      },
+      {
+        x: d.x + d.w - 208, y: d.y + d.h - 215, w: 122, h: 105,
+        label: 'SUPER GUILTY', sub: '1.5x CONVICTION',
+        color: '#6b3fa0', pulse: 0, mult: 1.5
+      }
+    ];
+
+    // 8 Jury Members along the top courtroom gallery
+    this.jurors = [];
+    for (let i = 0; i < 8; i++) {
+      this.jurors.push({
+        x: d.x + 115 + i * 92,
+        y: d.y - 16,
+        windup: 0,
+        clapCooldown: 0,
+        eyeAngle: 0,
+        color: i % 2 === 0 ? '#d9822b' : '#4a7c59'
+      });
+    }
+
+    // The Sentient Judge's Gavel
+    this.gavel = {
+      x: d.x + d.w * 0.5,
+      y: d.y + 72,
+      vx: 0, vy: 0,
+      r: 25,
+      hopTimer: 1.4,
+      airborne: 0,
+      targetX: d.x + d.w * 0.5,
+      targetY: d.y + 72,
+      scaleX: 1, scaleY: 1
+    };
+
+    this.suspects = [];
+    this.shockwaves = [];
+    this.particles = [];
+    this.popups = [];
+    this.objectionSlabs = [];
+  },
+
+  startRun() {
+    AudioSys.init();
+    AudioSys.playGavel();
+    this.state = 'PLAY';
+    this.runTime = 0;
+    this.score = 0;
+    this.combo = 0;
+    this.comboTimer = 0;
+    this.mistrials = 0;
+    this.activeLaws = [];
+    this.verdictTimer = CFG.verdictEvery;
+    this.verdictCount = 0;
+    this.spawnTimer = 0.8;
+    this.timeScale = 1.0;
+    this.hitStop = 0;
+    this.banner.active = false;
+
+    this.stats = {
+      convictions: 0,
+      honksFired: 0,
+      overcharges: 0,
+      gavelBonks: 0,
+      juryOvations: 0,
+      multiKillBest: 0,
+      lawsSurvived: 0
+    };
+
+    this.resetArenaEntities();
+    for (let i = 0; i < 5; i++) this.spawnSuspect(false);
+    this.setTranscript('HONORABLE ACCORDION PRESIDING. INHALE SUSPECTS -> BLAST INTO GUILTY BOXES!');
+  },
+
+  setTranscript(msg) {
+    this.stenographer.text = msg;
+    this.stenographer.timer = 5.0;
+  },
+
+  spawnSuspect(isTitle = false) {
+    if (this.suspects.length >= 20) return;
+    const d = CFG.desk;
+    const arch = SUSPECT_TYPES[randInt(0, SUSPECT_TYPES.length - 1)];
+    let sx = rand(d.x + 150, d.x + d.w - 150);
+    let sy = rand(d.y + 80, d.y + d.h - 80);
+    // Avoid spawning directly inside a verdict box
+    for (const b of this.verdictBoxes) {
+      if (sx > b.x - 30 && sx < b.x + b.w + 30 && sy > b.y - 30 && sy < b.y + b.h + 30) {
+        sx = d.x + d.w * 0.5 + rand(-90, 90);
+        sy = d.y + d.h * 0.5 + rand(-90, 90);
+      }
+    }
+    const maxPatience = isTitle ? 999 : clamp(24 - Math.log2(1 + this.runTime / 25) * 3.2, 13, 24);
+    this.suspects.push({
+      kind: arch.kind,
+      name: arch.name,
+      color: arch.color,
+      baseR: arch.r,
+      r: arch.r,
+      mass: arch.mass,
+      speed: arch.speed,
+      pts: arch.pts,
+      x: sx, y: sy,
+      vx: rand(-40, 40),
+      vy: rand(-40, 40),
+      stunned: 0,
+      launched: 0, // >0 when blasted out of accordion
+      patience: maxPatience,
+      maxPatience: maxPatience,
+      wobbleSeed: rand(0, 100),
+      scaleX: 1, scaleY: 1,
+      isBonusCoin: false
+    });
+  },
+
+  spawnBonusWitness(x, y) {
+    this.suspects.push({
+      kind: 'COIN',
+      name: 'Subpoena Coin',
+      color: '#f2b705',
+      baseR: 13,
+      r: 13,
+      mass: 0.5,
+      speed: 45,
+      pts: 200,
+      x, y,
+      vx: rand(-140, 140),
+      vy: rand(-140, 140),
+      stunned: 0.4,
+      launched: 0,
+      patience: 18,
+      maxPatience: 18,
+      wobbleSeed: rand(0, 100),
+      scaleX: 1.3, scaleY: 0.7,
+      isBonusCoin: true
+    });
+  },
+
+  enactNextLaw() {
+    this.verdictCount++;
+    this.stats.lawsSurvived++;
+    const wantHelpful = (this.verdictCount % 3 === 0);
+
+    // Filter eligible laws
+    let pool = LAWS.filter(law => {
+      if (this.hasLaw(law.id)) return false;
+      if (law.helpful !== wantHelpful) return false;
+      for (const active of this.activeLaws) {
+        if (law.conflicts.includes(active.id) || active.conflicts.includes(law.id)) return false;
+      }
+      return true;
+    });
+    if (pool.length === 0) {
+      pool = LAWS.filter(l => !this.hasLaw(l.id));
+    }
+    if (pool.length === 0) return;
+
+    const chosen = pool[randInt(0, pool.length - 1)];
+    if (this.activeLaws.length >= CFG.maxActiveLaws) {
+      this.activeLaws.shift();
+    }
+    this.activeLaws.push(chosen);
+
+    this.banner = {
+      active: true,
+      title: `SUPREME VERDICT #${this.verdictCount}: ${chosen.title}`,
+      desc: chosen.desc,
+      helpful: chosen.helpful,
+      timer: 4.2
+    };
+    this.setTranscript(`NEW LAW ENACTED: ${chosen.title} — ${chosen.desc}`);
+    AudioSys.playVerdictChime(chosen.helpful);
+    this.addShake(5);
+  },
+
+  relocateVerdictBox(box) {
+    const d = CFG.desk;
+    const spots = [
+      { x: d.x + 40, y: d.y + 45 },
+      { x: d.x + d.w - box.w - 40, y: d.y + 45 },
+      { x: d.x + 40, y: d.y + d.h - box.h - 45 },
+      { x: d.x + d.w - box.w - 40, y: d.y + d.h - box.h - 45 },
+      { x: d.x + d.w * 0.5 - box.w * 0.5, y: d.y + d.h - box.h - 35 }
+    ];
+    const valid = spots.filter(sp => {
+      return !this.verdictBoxes.some(other => Math.hypot(other.x - sp.x, other.y - sp.y) < 140);
+    });
+    const pick = valid[randInt(0, valid.length - 1)] || spots[0];
+    box.x = pick.x;
+    box.y = pick.y;
+    box.pulse = 1.0;
+  },
+
+  addShake(amt) {
+    this.shake = Math.min(12, this.shake + amt);
+  },
+
+  addPopup(x, y, text, color = '#1e1612', size = 18) {
+    if (this.popups.length > 35) this.popups.shift();
+    this.popups.push({ x, y, vy: -55, text, color, size, life: 1.1, maxLife: 1.1 });
+  },
+
+  addBurst(x, y, color, count = 12, speed = 180) {
+    for (let i = 0; i < count; i++) {
+      if (this.particles.length > 280) this.particles.shift();
+      const ang = fxRand(0, Math.PI * 2);
+      const spd = fxRand(speed * 0.25, speed);
+      this.particles.push({
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        r: fxRand(3, 7),
+        color,
+        life: fxRand(0.25, 0.55),
+        maxLife: 0.55
+      });
+    }
+  },
+
+  // Triggered when a player releases click or over-inhales
+  fireAccordionHonk(overcharged = false, fromGhost = false, ghostState = null) {
+    const actor = fromGhost ? ghostState : this.player;
+    const count = fromGhost ? ghostState.count : this.player.stomach.length;
+
+    let aimAngle = actor.angle;
+    if (!fromGhost && this.hasLaw('REVERSE_AIM')) {
+      aimAngle += Math.PI;
+    }
+    if (overcharged) {
+      aimAngle += rand(-0.65, 0.65);
+    }
+
+    const dirX = Math.cos(aimAngle);
+    const dirY = Math.sin(aimAngle);
+
+    // Visual shockwave cone
+    this.shockwaves.push({
+      x: actor.x + dirX * 20,
+      y: actor.y + dirY * 20,
+      angle: aimAngle,
+      r: 24,
+      maxR: 155 + count * 28 + (this.hasLaw('GIANT_BELLOWS') ? 55 : 0),
+      life: 0.26,
+      maxLife: 0.26,
+      color: overcharged ? '#d93829' : (fromGhost ? '#1b8a7a' : '#f2b705')
+    });
+
+    if (!fromGhost) {
+      this.stats.honksFired++;
+      AudioSys.playHonk(1 + count * 0.25, count, overcharged);
+
+      // Squash & stretch impulse
+      this.player.scaleX = 0.58;
+      this.player.scaleY = 1.45;
+
+      // Recoil opposite to aim direction
+      let recoilMag = CFG.player.recoilBase + count * CFG.player.recoilPerItem;
+      if (this.hasLaw('STICKY_TAPE')) recoilMag *= 1.65;
+      if (this.hasLaw('GIANT_BELLOWS')) recoilMag *= 1.25;
+      if (overcharged) {
+        recoilMag *= 1.35;
+        this.player.dizzy = 1.2;
+        this.stats.overcharges++;
+        this.addPopup(this.player.x, this.player.y - 34, 'BELLOWS RUPTURE!', '#d93829', 20);
+        this.setTranscript('OBJECTION! COUNSEL OVER-INHALED AND RUPTURED THEIR OWN BELLOWS!');
+      }
+
+      this.player.vx -= dirX * recoilMag;
+      this.player.vy -= dirY * recoilMag;
+      this.addShake(Math.min(9, 2.5 + count * 1.1 + (overcharged ? 4 : 0)));
+
+      // Eject swallowed suspects as high-speed evidence missiles
+      const spread = Math.min(0.55, count * 0.08);
+      for (let i = 0; i < count; i++) {
+        const s = this.player.stomach[i];
+        const frac = count === 1 ? 0 : (i / (count - 1)) - 0.5;
+        const shotAng = aimAngle + frac * spread + (overcharged ? rand(-0.4, 0.4) : 0);
+        const launchSpeed = (660 + count * 55) * (overcharged ? 0.85 : 1.0);
+        s.x = this.player.x + Math.cos(shotAng) * (this.player.r + s.r + 6);
+        s.y = this.player.y + Math.sin(shotAng) * (this.player.r + s.r + 6);
+        s.vx = Math.cos(shotAng) * launchSpeed;
+        s.vy = Math.sin(shotAng) * launchSpeed;
+        s.launched = 1.65;
+        s.stunned = 1.8;
+        s.scaleX = 1.45;
+        s.scaleY = 0.65;
+        this.suspects.push(s);
+      }
+      this.player.stomach = [];
+      this.player.charge = 0;
+      this.player.inhaling = false;
+
+      // Law: OBJECTION! HAS MASS spawns a physical ricocheting speech slab
+      if (this.hasLaw('OBJECTION_MASS') && this.objectionSlabs.length < 6) {
+        this.objectionSlabs.push({
+          x: this.player.x + dirX * 36,
+          y: this.player.y + dirY * 36,
+          vx: dirX * 520,
+          vy: dirY * 520,
+          w: 94, h: 30,
+          life: 4.5
+        });
+      }
+    }
+
+    // Push any unswallowed suspects or gavel inside the acoustic blast cone
+    const blastRange = 165 + count * 25;
+    for (const s of this.suspects) {
+      const dx = s.x - actor.x;
+      const dy = s.y - actor.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0 && dist < blastRange) {
+        const angTo = Math.atan2(dy, dx);
+        const diff = Math.abs( Math.atan2(Math.sin(angTo - aimAngle), Math.cos(angTo - aimAngle)) );
+        if (diff < 0.75) {
+          const push = (1 - dist / blastRange) * (540 + count * 70);
+          s.vx += Math.cos(angTo) * push;
+          s.vy += Math.sin(angTo) * push;
+          s.launched = Math.max(s.launched, 1.25);
+          s.stunned = Math.max(s.stunned, 1.1);
+        }
+      }
+    }
+  },
+
+  triggerJuryApplause(boxX, countDelivered) {
+    this.stats.juryOvations++;
+    for (const j of this.jurors) {
+      const dist = Math.abs(j.x - boxX);
+      if (dist < 290 && j.clapCooldown <= 0 && j.windup <= 0) {
+        j.windup = 0.52 + (dist / 290) * 0.25; // Delayed staggered applause wave
+      }
+    }
+  },
+
+  update(dt) {
+    this.time += dt;
+    if (this.shake > 0) {
+      this.shake *= Math.pow(0.84, dt * 60);
+      if (this.shake < 0.1) this.shake = 0;
+    }
+
+    if (this.hitStop > 0) {
+      this.hitStop -= dt;
+      return;
+    }
+
+    const simDt = dt * this.timeScale;
+
+    if (this.state === 'TITLE') {
+      this.updateArena(simDt, true);
+      if (Input.mouse.justDown || Input.justPressed.has('Enter')) {
+        this.startRun();
+      }
+      return;
+    }
+
+    if (this.state === 'DYING') {
+      this.dyingTimer -= dt;
+      this.updateArena(dt * 0.28, false);
+      if (this.dyingTimer <= 0) {
+        this.state = 'RESULTS';
+        this.receiptStep = 0;
+        this.receiptTimer = 0.18;
+      }
+      return;
+    }
+
+    if (this.state === 'RESULTS') {
+      this.receiptTimer -= dt;
+      if (this.receiptTimer <= 0 && this.receiptStep < 8) {
+        this.receiptStep++;
+        this.receiptTimer = 0.16;
+        AudioSys.playTick();
+      }
+      if ((Input.mouse.justDown && this.receiptStep >= 3) || Input.justPressed.has('Enter')) {
+        this.startRun();
+      }
+      return;
+    }
+
+    // PLAY STATE
+    this.runTime += simDt;
+
+    // Combo decay
+    if (this.comboTimer > 0) {
+      this.comboTimer -= simDt;
+      if (this.comboTimer <= 0) this.combo = 0;
+    }
+
+    // Banner timer
+    if (this.banner.active) {
+      this.banner.timer -= simDt;
+      if (this.banner.timer <= 0) this.banner.active = false;
+    }
+
+    // Verdict mutation schedule
+    this.verdictTimer -= simDt;
+    if (this.verdictTimer <= 0) {
+      this.verdictTimer = CFG.verdictEvery;
+      this.enactNextLaw();
+    }
+
+    // Logarithmic difficulty spawn rate
+    this.spawnTimer -= simDt;
+    if (this.spawnTimer <= 0) {
+      const targetCount = Math.min(14, Math.floor(4 + 2.4 * Math.log2(1 + this.runTime / 18)));
+      if (this.suspects.length + this.player.stomach.length < targetCount) {
+        this.spawnSuspect(false);
+      }
+      this.spawnTimer = clamp(2.4 - 0.35 * Math.log2(1 + this.runTime / 20), 0.95, 2.4);
+    }
+
+    this.updateArena(simDt, false);
+  },
+
+  updateArena(dt, isTitle) {
+    const p = this.player;
+    const d = CFG.desk;
+
+    // Size modifiers from laws
+    const scaleMult = this.hasLaw('GIANT_BELLOWS') ? 1.42 : (this.hasLaw('SMALL_CLAIMS') ? 0.68 : 1.0);
+    p.r = (CFG.player.baseR + p.stomach.length * 3.2) * scaleMult;
+    p.pleats = 4 + p.stomach.length;
+
+    // Aim angle toward cursor (or autonomous demo in title)
+    if (isTitle) {
+      const idleSec = (performance.now() - Input.lastActiveTime) / 1000;
+      if (idleSec > 1.2 && this.suspects.length > 0) {
+        const target = p.stomach.length >= 2 ? this.verdictBoxes[0] : this.suspects[0];
+        const tx = target.w ? target.x + target.w * 0.5 : target.x;
+        const ty = target.h ? target.y + target.h * 0.5 : target.y;
+        p.angle = Math.atan2(ty - p.y, tx - p.x);
+        p.vx += Math.cos(p.angle) * 240 * dt;
+        p.vy += Math.sin(p.angle) * 240 * dt;
+        if (p.stomach.length < 2) {
+          p.inhaling = true;
+          p.charge += dt * 0.7;
+        } else {
+          this.fireAccordionHonk(false);
+        }
+      } else {
+        p.angle = Math.atan2(Input.mouse.y - p.y, Input.mouse.x - p.x);
+      }
+    } else {
+      let targetAng = Math.atan2(Input.mouse.y - p.y, Input.mouse.x - p.x);
+      if (p.dizzy > 0) {
+        p.dizzy -= dt;
+        targetAng += Math.sin(this.time * 18) * 0.75;
+      }
+      p.angle = targetAng;
+
+      // WASD / Arrow movement
+      let mx = 0, my = 0;
+      if (Input.keys.has('KeyW') || Input.keys.has('ArrowUp')) my -= 1;
+      if (Input.keys.has('KeyS') || Input.keys.has('ArrowDown')) my += 1;
+      if (Input.keys.has('KeyA') || Input.keys.has('ArrowLeft')) mx -= 1;
+      if (Input.keys.has('KeyD') || Input.keys.has('ArrowRight')) mx += 1;
+      if (mx !== 0 || my !== 0) {
+        const len = Math.hypot(mx, my);
+        const weightSlow = 1 / (1 + p.stomach.length * 0.08);
+        const spd = CFG.player.moveSpeed * weightSlow * (this.hasLaw('SMALL_CLAIMS') ? 1.28 : 1.0);
+        p.vx += (mx / len) * spd * 6.5 * dt;
+        p.vy += (my / len) * spd * 6.5 * dt;
+      }
+
+      // Inhale & Exhale mechanics
+      if (Input.mouse.down && p.dizzy <= 0) {
+        p.inhaling = true;
+        p.charge += dt;
+        // Over-commitment check: holding charge too long bursts bellows!
+        if (p.charge >= CFG.player.overchargeTime) {
+          this.fireAccordionHonk(true);
+        }
+      } else if (p.inhaling) {
+        this.fireAccordionHonk(false);
+      }
+      AudioSys.updateInhale(p.inhaling && !isTitle, clamp(p.charge / CFG.player.overchargeTime, 0, 1), p.stomach.length);
+    }
+
+    // Record history for Delayed Junior Clerk Ghost (starts at 35s into a run for extra hilarity)
+    if (!isTitle) {
+      this.historyBuffer.push({
+        x: p.x, y: p.y, angle: p.angle,
+        inhaling: p.inhaling,
+        justHonked: Input.mouse.justUp,
+        count: p.stomach.length
+      });
+      if (this.historyBuffer.length > 200) { // ~1.66s delay at 120Hz
+        const past = this.historyBuffer.shift();
+        if (this.runTime > 30) {
+          this.echoGhost.active = true;
+          this.echoGhost.x = past.x;
+          this.echoGhost.y = past.y;
+          this.echoGhost.angle = past.angle;
+          this.echoGhost.inhaling = past.inhaling;
+          if (past.justHonked) {
+            this.fireAccordionHonk(false, true, past);
+          }
+        }
+      }
+    }
+
+    // Vacuum suction cone when inhaling
+    if (p.inhaling && p.stomach.length < CFG.player.maxInhale) {
+      const suckAngle = this.hasLaw('REVERSE_AIM') ? p.angle + Math.PI : p.angle;
+      const coneRange = 175 * (this.hasLaw('GIANT_BELLOWS') ? 1.3 : 1.0);
+      const coneHalfWidth = this.hasLaw('PLEA_BARGAIN') ? 0.92 : 0.62;
+
+      for (let i = this.suspects.length - 1; i >= 0; i--) {
+        const s = this.suspects[i];
+        const dx = s.x - p.x;
+        const dy = s.y - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < coneRange) {
+          const angTo = Math.atan2(dy, dx);
+          const diff = Math.abs(Math.atan2(Math.sin(angTo - suckAngle), Math.cos(angTo - suckAngle)));
+          if (diff < coneHalfWidth) {
+            // Pull suspect into accordion mouth
+            const pull = (1 - dist / coneRange) * 920 * dt;
+            s.vx -= Math.cos(angTo) * pull;
+            s.vy -= Math.sin(angTo) * pull;
+            s.scaleX = 1.25;
+            s.scaleY = 0.78;
+            if (dist < p.r + s.r + 12 && p.stomach.length < CFG.player.maxInhale) {
+              this.suspects.splice(i, 1);
+              p.stomach.push(s);
+              p.scaleX = 1.32;
+              p.scaleY = 0.74;
+              AudioSys.playGulp(p.stomach.length);
+            }
+          }
+        }
+      }
+    }
+
+    // Physics integration for Player
+    let drag = CFG.player.drag;
+    if (this.hasLaw('PERJURY_ICE')) drag *= 0.22;
+    if (this.hasLaw('STICKY_TAPE')) drag *= 2.1;
+    p.vx *= Math.exp(-drag * dt);
+    p.vy *= Math.exp(-drag * dt);
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+
+    // Wall collisions for Player
+    const wallBounce = this.hasLaw('KANGAROO_BOUNCE') ? 1.25 : CFG.player.bounce;
+    if (p.x - p.r < d.x) { p.x = d.x + p.r; p.vx = Math.abs(p.vx) * wallBounce; }
+    if (p.x + p.r > d.x + d.w) { p.x = d.x + d.w - p.r; p.vx = -Math.abs(p.vx) * wallBounce; }
+    if (p.y - p.r < d.y) { p.y = d.y + p.r; p.vy = Math.abs(p.vy) * wallBounce; }
+    if (p.y + p.r > d.y + d.h) { p.y = d.y + d.h - p.r; p.vy = -Math.abs(p.vy) * wallBounce; }
+
+    // Squash & stretch spring return
+    p.scaleX = lerp(p.scaleX, p.inhaling ? 1.18 + Math.sin(this.time * 24) * 0.06 : 1.0, dt * 14);
+    p.scaleY = lerp(p.scaleY, p.inhaling ? 0.86 - Math.sin(this.time * 24) * 0.05 : 1.0, dt * 14);
+
+    // Update Jury Applause Waves
+    for (const j of this.jurors) {
+      j.eyeAngle = Math.atan2(p.y - j.y, p.x - j.x);
+      if (j.clapCooldown > 0) j.clapCooldown -= dt;
+      if (j.windup > 0) {
+        j.windup -= dt;
+        if (j.windup <= 0) {
+          j.clapCooldown = 1.4;
+          AudioSys.playClap();
+          const clapPower = this.hasLaw('JURY_CAFFEINE') ? 540 : 340;
+          this.shockwaves.push({
+            x: j.x, y: d.y + 8,
+            angle: Math.PI * 0.5,
+            r: 14, maxR: 150,
+            life: 0.24, maxLife: 0.24,
+            color: '#fffdf7'
+          });
+          this.addPopup(j.x, d.y + 18, 'BRAVO!', '#f2b705', 14);
+          // Push nearby suspects & player downward
+          for (const s of this.suspects) {
+            const dist = Math.hypot(s.x - j.x, s.y - d.y);
+            if (dist < 165) {
+              s.vy += (1 - dist / 165) * clapPower;
+              s.launched = Math.max(s.launched, 0.9);
+            }
+          }
+        }
+      }
+    }
+
+    // Update Sentient Judge's Gavel
+    const g = this.gavel;
+    const gavelFast = this.hasLaw('GAVEL_HUNGRY') ? 1.85 : 1.0;
+    g.hopTimer -= dt * gavelFast;
+    if (g.hopTimer <= 0 && g.airborne <= 0) {
+      g.airborne = 0.52;
+      g.hopTimer = rand(1.6, 2.5);
+      // Pick target: either player or nearest suspect
+      if (this.hasLaw('GAVEL_HUNGRY') || rng() < 0.45) {
+        g.targetX = clamp(p.x + rand(-50, 50), d.x + 60, d.x + d.w - 60);
+        g.targetY = clamp(p.y + rand(-50, 50), d.y + 60, d.y + d.h - 60);
+      } else {
+        g.targetX = rand(d.x + 90, d.x + d.w - 90);
+        g.targetY = rand(d.y + 90, d.y + d.h - 90);
+      }
+      g.vx = (g.targetX - g.x) / g.airborne;
+      g.vy = (g.targetY - g.y) / g.airborne;
+    }
+    if (g.airborne > 0) {
+      g.airborne -= dt;
+      g.x += g.vx * dt;
+      g.y += g.vy * dt;
+      if (g.airborne <= 0) {
+        // Gavel slams the desk!
+        AudioSys.playGavel();
+        this.addShake(4.5);
+        this.addBurst(g.x, g.y, '#9e723d', 10, 140);
+        this.shockwaves.push({
+          x: g.x, y: g.y, angle: 0, fullCircle: true,
+          r: 18, maxR: 115, life: 0.22, maxLife: 0.22, color: '#d93829'
+        });
+        // Check if player got bonked by the gavel
+        const distP = Math.hypot(p.x - g.x, p.y - g.y);
+        if (distP < p.r + g.r + 32) {
+          this.stats.gavelBonks++;
+          const ang = Math.atan2(p.y - g.y, p.x - g.x);
+          p.vx += Math.cos(ang) * 580;
+          p.vy += Math.sin(ang) * 580;
+          this.addPopup(g.x, g.y - 25, 'ORDER IN COURT!', '#d93829', 18);
+          // Spill 1 swallowed item if carrying any
+          if (p.stomach.length > 0) {
+            const spilled = p.stomach.pop();
+            spilled.x = p.x;
+            spilled.y = p.y;
+            spilled.vx = -Math.cos(ang) * 320;
+            spilled.vy = -Math.sin(ang) * 320;
+            this.suspects.push(spilled);
+          }
+        }
+        // Knock suspects around
+        for (const s of this.suspects) {
+          const ds = Math.hypot(s.x - g.x, s.y - g.y);
+          if (ds < 115 && ds > 0) {
+            const ang = Math.atan2(s.y - g.y, s.x - g.x);
+            s.vx += Math.cos(ang) * 440 * (1 - ds / 115);
+            s.vy += Math.sin(ang) * 440 * (1 - ds / 115);
+            s.launched = Math.max(s.launched, 1.0);
+          }
+        }
+      }
+    }
+
+    // Update Physical OBJECTION! Slabs
+    for (let i = this.objectionSlabs.length - 1; i >= 0; i--) {
+      const ob = this.objectionSlabs[i];
+      ob.life -= dt;
+      ob.x += ob.vx * dt;
+      ob.y += ob.vy * dt;
+      if (ob.x - ob.w * 0.5 < d.x || ob.x + ob.w * 0.5 > d.x + d.w) ob.vx *= -1;
+      if (ob.y - ob.h * 0.5 < d.y || ob.y + ob.h * 0.5 > d.y + d.h) ob.vy *= -1;
+
+      // Hit suspects
+      for (const s of this.suspects) {
+        if (Math.abs(s.x - ob.x) < ob.w * 0.5 + s.r && Math.abs(s.y - ob.y) < ob.h * 0.5 + s.r) {
+          s.vx = ob.vx * 1.15;
+          s.vy = ob.vy * 1.15;
+          s.launched = 1.2;
+        }
+      }
+      if (ob.life <= 0) this.objectionSlabs.splice(i, 1);
+    }
+
+    // Update Suspects
+    let convictionsThisFrame = 0;
+    for (let i = this.suspects.length - 1; i >= 0; i--) {
+      const s = this.suspects[i];
+      s.r = s.baseR * (this.hasLaw('SMALL_CLAIMS') ? 0.68 : 1.0);
+      if (s.stunned > 0) s.stunned -= dt;
+      if (s.launched > 0) s.launched -= dt;
+
+      // Patience / Escape countdown (paused during grace period or PLEA_BARGAIN)
+      if (!isTitle && !s.isBonusCoin && !this.hasLaw('PLEA_BARGAIN')) {
+        const drainRate = this.runTime < CFG.gracePeriod ? 0.35 : 1.0;
+        s.patience -= dt * drainRate;
+        if (s.patience <= 0) {
+          // Suspect shreds their subpoena and escapes!
+          this.suspects.splice(i, 1);
+          this.addBurst(s.x, s.y, '#d93829', 16, 210);
+          if (this.runTime >= CFG.gracePeriod) {
+            this.mistrials++;
+            AudioSys.playMistrial();
+            this.addShake(8);
+            this.addPopup(s.x, s.y, 'EVIDENCE FLED! MISTRIAL STRIKE!', '#d93829', 20);
+            this.setTranscript(`MISTRIAL STRIKE (${this.mistrials}/${CFG.maxMistrials}): ${s.name.toUpperCase()} ESCAPED CUSTODY!`);
+            if (this.mistrials >= CFG.maxMistrials) {
+              this.triggerGameOver();
+              return;
+            }
+          } else {
+            this.addPopup(s.x, s.y, 'SUSPECT FLED (WARMUP GRACE)', '#9e723d', 15);
+          }
+          continue;
+        }
+      }
+
+      // Autonomous fleeing when not stunned
+      if (s.stunned <= 0) {
+        const dx = s.x - p.x;
+        const dy = s.y - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 240 && dist > 1) {
+          const fleeSpd = s.speed * (this.hasLaw('SMALL_CLAIMS') ? 1.3 : 1.0);
+          s.vx += (dx / dist) * fleeSpd * 3.5 * dt;
+          s.vy += (dy / dist) * fleeSpd * 3.5 * dt;
+        } else {
+          // Gentle wander
+          s.vx += Math.cos(this.time * 2 + s.wobbleSeed) * 35 * dt;
+          s.vy += Math.sin(this.time * 2 + s.wobbleSeed) * 35 * dt;
+        }
+      }
+
+      // Law forces on suspects
+      if (this.hasLaw('GRAVITY_TILT')) {
+        s.vx += 185 * dt;
+      }
+      if (this.hasLaw('CEILING_FAN')) {
+        const cx = d.x + d.w * 0.5;
+        const cy = d.y + d.h * 0.5;
+        const rx = s.x - cx;
+        const ry = s.y - cy;
+        s.vx += (-ry * 0.65 - rx * 0.15) * dt;
+        s.vy += (rx * 0.65 - ry * 0.15) * dt;
+      }
+      if (this.hasLaw('MAGNETIC_GUILT') || s.launched > 0) {
+        // Gentle magnetism toward verdict boxes so trick shots feel generous and joyful!
+        for (const b of this.verdictBoxes) {
+          const bx = b.x + b.w * 0.5;
+          const by = b.y + b.h * 0.5;
+          const distB = Math.hypot(bx - s.x, by - s.y);
+          const magRadius = this.hasLaw('MAGNETIC_GUILT') ? 210 : 120;
+          if (distB < magRadius && distB > 5) {
+            const pull = this.hasLaw('MAGNETIC_GUILT') ? 380 : 210;
+            s.vx += ((bx - s.x) / distB) * pull * dt;
+            s.vy += ((by - s.y) / distB) * pull * dt;
+          }
+        }
+      }
+
+      // Suspect damping & integration
+      const sDrag = this.hasLaw('PERJURY_ICE') ? 0.65 : 2.6;
+      s.vx *= Math.exp(-sDrag * dt);
+      s.vy *= Math.exp(-sDrag * dt);
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.scaleX = lerp(s.scaleX, 1, dt * 10);
+      s.scaleY = lerp(s.scaleY, 1, dt * 10);
+
+      // Wall bounce for suspects (ricochets extend launched timer)
+      const sBounce = this.hasLaw('KANGAROO_BOUNCE') ? 1.32 : 0.85;
+      let bounced = false;
+      if (s.x - s.r < d.x) { s.x = d.x + s.r; s.vx = Math.abs(s.vx) * sBounce; bounced = true; }
+      if (s.x + s.r > d.x + d.w) { s.x = d.x + d.w - s.r; s.vx = -Math.abs(s.vx) * sBounce; bounced = true; }
+      if (s.y - s.r < d.y) { s.y = d.y + s.r; s.vy = Math.abs(s.vy) * sBounce; bounced = true; }
+      if (s.y + s.r > d.y + d.h) { s.y = d.y + d.h - s.r; s.vy = -Math.abs(s.vy) * sBounce; bounced = true; }
+      if (bounced && Math.hypot(s.vx, s.vy) > 180) {
+        s.scaleX = 1.35;
+        s.scaleY = 0.7;
+      }
+
+      // Check delivery into Verdict Boxes!
+      const speed = Math.hypot(s.vx, s.vy);
+      if (s.launched > 0 || speed > 135) {
+        let delivered = false;
+        for (const b of this.verdictBoxes) {
+          if (s.x > b.x && s.x < b.x + b.w && s.y > b.y && s.y < b.y + b.h) {
+            delivered = true;
+            convictionsThisFrame++;
+            this.suspects.splice(i, 1);
+            this.scoreConviction(s, b);
+            break;
+          }
+        }
+        if (delivered) continue;
+      }
+    }
+
+    //Suspect-to-suspect billiard collisions (Airborne suspects knock idle ones!)
+    for (let i = 0; i < this.suspects.length; i++) {
+      for (let j = i + 1; j < this.suspects.length; j++) {
+        const a = this.suspects[i];
+        const b = this.suspects[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy);
+        const minDist = a.r + b.r;
+        if (dist > 0 && dist < minDist) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const overlap = (minDist - dist) * 0.5;
+          a.x -= nx * overlap;
+          a.y -= ny * overlap;
+          b.x += nx * overlap;
+          b.y += ny * overlap;
+
+          const kx = a.vx - b.vx;
+          const ky = a.vy - b.vy;
+          const pImp = 2 * (nx * kx + ny * ky) / (a.mass + b.mass);
+          a.vx -= pImp * b.mass * nx * 0.9;
+          a.vy -= pImp * b.mass * ny * 0.9;
+          b.vx += pImp * a.mass * nx * 0.9;
+          b.vy += pImp * a.mass * ny * 0.9;
+
+          if (a.launched > 0 || b.launched > 0) {
+            a.launched = Math.max(a.launched, 1.1);
+            b.launched = Math.max(b.launched, 1.1);
+          }
+        }
+      }
+    }
+
+    if (convictionsThisFrame > this.stats.multiKillBest) {
+      this.stats.multiKillBest = convictionsThisFrame;
+    }
+
+    // Update Verdict Box pulses
+    for (const b of this.verdictBoxes) {
+      if (b.pulse > 0) b.pulse = Math.max(0, b.pulse - dt * 2.5);
+    }
+
+    // Update shockwaves, particles, popups
+    for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+      const sw = this.shockwaves[i];
+      sw.life -= dt;
+      sw.r = lerp(sw.maxR, 18, sw.life / sw.maxLife);
+      if (sw.life <= 0) this.shockwaves.splice(i, 1);
+    }
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const pt = this.particles[i];
+      pt.life -= dt;
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vx *= 0.94;
+      pt.vy *= 0.94;
+      if (pt.life <= 0) this.particles.splice(i, 1);
+    }
+    for (let i = this.popups.length - 1; i >= 0; i--) {
+      const pop = this.popups[i];
+      pop.life -= dt;
+      pop.y += pop.vy * dt;
+      pop.vy *= 0.92;
+      if (pop.life <= 0) this.popups.splice(i, 1);
+    }
+  },
+
+  scoreConviction(suspect, box) {
+    this.combo++;
+    this.comboTimer = 4.2;
+    this.stats.convictions++;
+
+    const mult = (box.mult || 1.0) * (1 + (this.combo - 1) * 0.25);
+    const pts = Math.round(suspect.pts * mult);
+    this.score += pts;
+    if (this.score > this.highScore) {
+      this.highScore = this.score;
+      try { localStorage.setItem('accordion_court_high', String(this.highScore)); } catch (e) {}
+    }
+
+    AudioSys.playConviction(this.combo);
+    this.hitStop = 0.045; // Snappy 45ms hit-stop on conviction
+    this.addShake(4);
+    box.pulse = 1.0;
+
+    const cx = box.x + box.w * 0.5;
+    const cy = box.y + box.h * 0.5;
+    this.addBurst(cx, cy, CFG.palette.gold, 18, 230);
+    this.addPopup(cx, cy - 12, `GUILTY! +${pts}${this.combo > 1 ? ` (${this.combo}x)` : ''}`, CFG.palette.gold, 20);
+    this.setTranscript(`CONVICTION! ${suspect.name.toUpperCase()} SENTENCED FOR +${pts} PTS!`);
+
+    // THE ONE THING: Success creates the next complication!
+    // 1. Trigger delayed Jury Applause shockwaves
+    this.triggerJuryApplause(cx, 1);
+
+    // 2. Relocate the verdict box every 3 convictions and spawn fresh docket suspects
+    if (this.stats.convictions % 3 === 0) {
+      this.relocateVerdictBox(box);
+      this.spawnSuspect(false);
+    }
+    if (this.hasLaw('DOUBLE_JEOPARDY') && !suspect.isBonusCoin) {
+      this.spawnBonusWitness(cx, cy);
+    }
+  },
+
+  triggerGameOver() {
+    this.state = 'DYING';
+    this.dyingTimer = 1.35;
+    AudioSys.updateInhale(false, 0, 0);
+    this.addShake(11);
+  },
+
+  // ===== RENDERING =====
+  draw() {
+    ctx.save();
+
+    // Camera screenshake
+    if (this.shake > 0) {
+      const sx = (fxRand(-1, 1)) * this.shake;
+      const sy = (fxRand(-1, 1)) * this.shake;
+      ctx.translate(sx, sy);
+    }
+
+    // Courtroom Background
+    ctx.fillStyle = '#261b14';
+    ctx.fillRect(0, 0, CFG.W, CFG.H);
+
+    const d = CFG.desk;
+    // Mahogany Courtroom Floor / Bench
+    ctx.fillStyle = this.hasLaw('PERJURY_ICE') ? '#d8eef5' : (this.hasLaw('STICKY_TAPE') ? '#c9b483' : CFG.palette.parchment);
+    ctx.strokeStyle = CFG.palette.ink;
+    ctx.lineWidth = 4;
+    ctx.fillRect(d.x, d.y, d.w, d.h);
+    ctx.strokeRect(d.x, d.y, d.w, d.h);
+
+    // Subtle courtroom wood grain lines
+    ctx.strokeStyle = 'rgba(30, 22, 18, 0.06)';
+    ctx.lineWidth = 2;
+    for (let y = d.y + 38; y < d.y + d.h; y += 38) {
+      ctx.beginPath();
+      ctx.moveTo(d.x, y);
+      ctx.lineTo(d.x + d.w, y);
+      ctx.stroke();
+    }
+
+    // Ceiling fan shadow if law active
+    if (this.hasLaw('CEILING_FAN')) {
+      ctx.save();
+      ctx.translate(d.x + d.w * 0.5, d.y + d.h * 0.5);
+      ctx.rotate(this.time * 2.4);
+      ctx.fillStyle = 'rgba(30, 22, 18, 0.08)';
+      for (let i = 0; i < 4; i++) {
+        ctx.rotate(Math.PI * 0.5);
+        ctx.fillRect(-18, 0, 36, 210);
+      }
+      ctx.restore();
+    }
+
+    // Draw Jury Box along top edge
+    this.drawJuryBox();
+
+    // Draw Verdict Delivery Zones
+    for (const b of this.verdictBoxes) {
+      this.drawVerdictBox(b);
+    }
+
+    // Draw Inhale Suction Cone if player is inhaling
+    if (this.player.inhaling) {
+      this.drawInhaleCone(this.player);
+    }
+
+    // Draw Delayed Junior Clerk Ghost
+    if (this.echoGhost.active && this.state === 'PLAY') {
+      ctx.save();
+      ctx.globalAlpha = 0.42;
+      this.drawAccordion(this.echoGhost, true);
+      ctx.restore();
+    }
+
+    // Draw Shockwaves
+    for (const sw of this.shockwaves) {
+      ctx.save();
+      ctx.strokeStyle = sw.color;
+      ctx.lineWidth = 5 * (sw.life / sw.maxLife);
+      ctx.beginPath();
+      if (sw.fullCircle) {
+        ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+      } else {
+        ctx.arc(sw.x, sw.y, sw.r, sw.angle - 0.55, sw.angle + 0.55);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Draw Physical OBJECTION! Slabs
+    for (const ob of this.objectionSlabs) {
+      ctx.save();
+      ctx.translate(ob.x, ob.y);
+      ctx.fillStyle = CFG.palette.crimson;
+      ctx.strokeStyle = CFG.palette.ink;
+      ctx.lineWidth = 3;
+      ctx.fillRect(-ob.w * 0.5, -ob.h * 0.5, ob.w, ob.h);
+      ctx.strokeRect(-ob.w * 0.5, -ob.h * 0.5, ob.w, ob.h);
+      ctx.fillStyle = '#fffdf7';
+      ctx.font = 'bold 13px Courier New';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('OBJECTION!', 0, 1);
+      ctx.restore();
+    }
+
+    // Draw Suspects
+    for (const s of this.suspects) {
+      this.drawSuspect(s);
+    }
+
+    // Draw Player (The Accordion Attorney)
+    this.drawAccordion(this.player, false);
+
+    // Draw Sentient Judge's Gavel
+    this.drawGavel();
+
+    // Draw Particles & Popups
+    for (const pt of this.particles) {
+      ctx.fillStyle = pt.color;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r * (pt.life / pt.maxLife), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const pop of this.popups) {
+      ctx.save();
+      ctx.globalAlpha = clamp(pop.life / pop.maxLife, 0, 1);
+      ctx.font = `bold ${pop.size}px Courier New`;
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#fffdf7';
+      ctx.strokeText(pop.text, pop.x, pop.y);
+      ctx.fillStyle = pop.color;
+      ctx.fillText(pop.text, pop.x, pop.y);
+      ctx.restore();
+    }
+
+    // Draw HUD & Courtroom Stenographer Ticker
+    this.drawHUD();
+
+    // Overlays for TITLE or RESULTS
+    if (this.state === 'TITLE') {
+      this.drawTitleOverlay();
+    } else if (this.state === 'RESULTS') {
+      this.drawResultsModal();
+    }
+
+    if (this.debug) {
+      this.drawDebug();
+    }
+
+    ctx.restore();
+  },
+
+  drawJuryBox() {
+    const d = CFG.desk;
+    ctx.fillStyle = '#3c291d';
+    ctx.strokeStyle = CFG.palette.ink;
+    ctx.lineWidth = 3;
+    ctx.fillRect(d.x + 70, d.y - 42, d.w - 140, 42);
+    ctx.strokeRect(d.x + 70, d.y - 42, d.w - 140, 42);
+
+    for (const j of this.jurors) {
+      ctx.save();
+      const bounce = j.windup > 0 ? Math.sin(this.time * 45) * 4 : Math.sin(this.time * 3 + j.x) * 1.5;
+      ctx.translate(j.x, j.y + bounce);
+      ctx.fillStyle = j.windup > 0 ? CFG.palette.gold : j.color;
+      ctx.strokeStyle = CFG.palette.ink;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Googly eyes tracking player
+      this.drawGooglyEyes(0, -2, 5, j.eyeAngle);
+
+      if (j.windup > 0) {
+        ctx.fillStyle = CFG.palette.crimson;
+        ctx.font = 'bold 11px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('CLAP!', 0, -20);
+      }
+      ctx.restore();
+    }
+  },
+
+  drawVerdictBox(b) {
+    ctx.save();
+    const s = 1 + b.pulse * 0.12;
+    ctx.translate(b.x + b.w * 0.5, b.y + b.h * 0.5);
+    ctx.scale(s, s);
+
+    ctx.fillStyle = b.color + '22';
+    ctx.strokeStyle = b.color;
+    ctx.lineWidth = 3.5;
+    ctx.setLineDash([8, 6]);
+    ctx.lineDashOffset = -this.time * 28;
+    ctx.fillRect(-b.w * 0.5, -b.h * 0.5, b.w, b.h);
+    ctx.strokeRect(-b.w * 0.5, -b.h * 0.5, b.w, b.h);
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = b.color;
+    ctx.font = 'bold 14px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.label, 0, -6);
+    ctx.fillStyle = CFG.palette.ink;
+    ctx.font = 'bold 11px Courier New';
+    ctx.fillText(b.sub, 0, 12);
+    ctx.restore();
+  },
+
+  drawInhaleCone(p) {
+    const suckAngle = this.hasLaw('REVERSE_AIM') ? p.angle + Math.PI : p.angle;
+    const range = 175 * (this.hasLaw('GIANT_BELLOWS') ? 1.3 : 1.0);
+    const spread = this.hasLaw('PLEA_BARGAIN') ? 0.85 : 0.55;
+    const danger = clamp(p.charge / CFG.player.overchargeTime, 0, 1);
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(suckAngle);
+
+    ctx.fillStyle = danger > 0.75 ? 'rgba(217, 56, 41, 0.22)' : 'rgba(27, 138, 122, 0.16)';
+    ctx.strokeStyle = danger > 0.75 ? CFG.palette.crimson : CFG.palette.teal;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, range, -spread, spread);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Animated suction rings pulling inward
+    const ringOffset = 1 - ((this.time * 3.2) % 1);
+    ctx.beginPath();
+    ctx.arc(0, 0, range * ringOffset, -spread * 0.85, spread * 0.85);
+    ctx.stroke();
+    ctx.restore();
+  },
+
+  drawAccordion(actor, isGhost) {
+    ctx.save();
+    ctx.translate(actor.x, actor.y);
+    ctx.rotate(actor.angle);
+    const sx = actor.scaleX || 1;
+    const sy = actor.scaleY || 1;
+    ctx.scale(sx, sy);
+
+    const count = actor.stomach ? actor.stomach.length : 1;
+    const bodyLen = 28 + count * 9 + (actor.inhaling ? 14 : 0);
+    const halfH = 20 + count * 1.5;
+
+    // Contact shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(-bodyLen * 0.5 + 3, -halfH + 5, bodyLen, halfH * 2);
+
+    // Accordion Bellows Pleats
+    const pleats = 4 + count;
+    const step = bodyLen / pleats;
+    ctx.fillStyle = isGhost ? '#7bd4c8' : (actor.dizzy > 0 ? '#e07a5f' : '#f2b705');
+    ctx.strokeStyle = CFG.palette.ink;
+    ctx.lineWidth = 3;
+
+    ctx.beginPath();
+    for (let i = 0; i <= pleats; i++) {
+      const px = -bodyLen * 0.5 + i * step;
+      const py = (i % 2 === 0) ? -halfH : -halfH + 6;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    for (let i = pleats; i >= 0; i--) {
+      const px = -bodyLen * 0.5 + i * step;
+      const py = (i % 2 === 0) ? halfH : halfH - 6;
+      ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Wooden End Caps (Treble Keyboard & Bass Side)
+    ctx.fillStyle = isGhost ? '#1b8a7a' : CFG.palette.crimson;
+    ctx.fillRect(-bodyLen * 0.5 - 7, -halfH - 2, 9, halfH * 2 + 4);
+    ctx.strokeRect(-bodyLen * 0.5 - 7, -halfH - 2, 9, halfH * 2 + 4);
+
+    // Front Piano Keys Cap
+    ctx.fillStyle = '#fffdf7';
+    ctx.fillRect(bodyLen * 0.5 - 2, -halfH - 2, 11, halfH * 2 + 4);
+    ctx.strokeRect(bodyLen * 0.5 - 2, -halfH - 2, 11, halfH * 2 + 4);
+
+    // Expressive Googly Eyes on the Accordion
+    this.drawGooglyEyes(2, 0, 7, 0);
+
+    ctx.restore();
+
+    // Charge / Overcharge Warning Bar above player
+    if (!isGhost && actor.inhaling) {
+      const ratio = clamp(actor.charge / CFG.player.overchargeTime, 0, 1);
+      const bw = 54;
+      ctx.fillStyle = CFG.palette.ink;
+      ctx.fillRect(actor.x - bw * 0.5 - 2, actor.y - 38, bw + 4, 9);
+      ctx.fillStyle = ratio > 0.75 ? CFG.palette.crimson : CFG.palette.teal;
+      ctx.fillRect(actor.x - bw * 0.5, actor.y - 36, bw * ratio, 5);
+    }
+
+    // Swallowed count badge
+    if (!isGhost && actor.stomach.length > 0) {
+      ctx.fillStyle = CFG.palette.ink;
+      ctx.font = 'bold 13px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(`LOADED: ${actor.stomach.length}`, actor.x, actor.y + 36);
+    }
+  },
+
+  drawSuspect(s) {
+    ctx.save();
+    const wobble = Math.sin(this.time * 7 + s.wobbleSeed) * 2;
+    ctx.translate(s.x, s.y + wobble);
+    ctx.scale(s.scaleX, s.scaleY);
+
+    // Patience / Escape warning ring when running low
+    if (s.patience < 7 && !s.isBonusCoin) {
+      const blink = Math.sin(this.time * 22) > 0;
+      ctx.strokeStyle = blink ? CFG.palette.crimson : CFG.palette.gold;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, s.r + 6, -Math.PI * 0.5, -Math.PI * 0.5 + (Math.PI * 2) * (s.patience / s.maxPatience));
+      ctx.stroke();
+    }
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.beginPath();
+    ctx.arc(2, 4, s.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body silhouette by kind
+    ctx.fillStyle = s.launched > 0 ? CFG.palette.gold : s.color;
+    ctx.strokeStyle = CFG.palette.ink;
+    ctx.lineWidth = 3;
+
+    ctx.beginPath();
+    if (s.kind === 'TOASTER' || s.kind === 'BRIEFCASE') {
+      ctx.roundRect(-s.r, -s.r * 0.85, s.r * 2, s.r * 1.7, 6);
+    } else {
+      ctx.arc(0, 0, s.r, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    // Look toward the player or flight direction
+    const lookAng = Math.atan2(this.player.y - s.y, this.player.x - s.x);
+    this.drawGooglyEyes(0, -2, 5, lookAng);
+
+    ctx.restore();
+  },
+
+  drawGavel() {
+    const g = this.gavel;
+    const lift = g.airborne > 0 ? Math.sin((g.airborne / 0.52) * Math.PI) * 55 : 0;
+
+    // Ground target shadow when airborne
+    if (g.airborne > 0) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(217, 56, 41, 0.55)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(g.targetX, g.targetY, g.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.translate(g.x, g.y - lift);
+    ctx.rotate(g.airborne > 0 ? Math.sin(this.time * 22) * 0.4 : 0);
+
+    // Gavel handle & head
+    ctx.fillStyle = '#8c5828';
+    ctx.strokeStyle = CFG.palette.ink;
+    ctx.lineWidth = 3;
+    ctx.fillRect(-5, 0, 10, 26);
+    ctx.strokeRect(-5, 0, 10, 26);
+
+    ctx.fillStyle = '#593315';
+    ctx.beginPath();
+    ctx.roundRect(-22, -14, 44, 22, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    // Angry Judge Eyebrows & Googly Eyes on the Gavel
+    this.drawGooglyEyes(0, -3, 6, Math.atan2(this.player.y - g.y, this.player.x - g.x));
+    ctx.restore();
+  },
+
+  drawGooglyEyes(ox, oy, spacing, lookAngle) {
+    const px = Math.cos(lookAngle) * 2.2;
+    const py = Math.sin(lookAngle) * 2.2;
+    [-spacing, spacing].forEach(dy => {
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = CFG.palette.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(ox, oy + dy * 0.65, 4.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = CFG.palette.ink;
+      ctx.beginPath();
+      ctx.arc(ox + px, oy + dy * 0.65 + py, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  },
+
+  drawHUD() {
+    // Top Courtroom Docket Bar
+    ctx.fillStyle = '#1e1612';
+    ctx.fillRect(0, 0, CFG.W, 42);
+
+    ctx.fillStyle = CFG.palette.gold;
+    ctx.font = 'bold 20px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillText(`SCORE: ${this.score}`, 20, 27);
+
+    if (this.combo > 1) {
+      ctx.fillStyle = '#fffdf7';
+      ctx.font = 'bold 15px Courier New';
+      ctx.fillText(`COMBO x${this.combo}!`, 195, 26);
+    }
+
+    // Active Laws Pills in Top Center
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 12px Courier New';
+    const lawsText = this.activeLaws.length > 0
+      ? `ACTIVE VERDICTS: ${this.activeLaws.map(l => l.title).join(' | ')}`
+      : `NEXT SUPREME VERDICT IN ${Math.ceil(this.verdictTimer)}s`;
+    ctx.fillStyle = '#f3e9d2';
+    ctx.fillText(lawsText, CFG.W * 0.54, 26);
+
+    // Mistrial Strikes on Right
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 15px Courier New';
+    ctx.fillStyle = this.mistrials > 0 ? CFG.palette.crimson : '#f3e9d2';
+    const strikes = 'X '.repeat(this.mistrials) + '- '.repeat(Math.max(0, CFG.maxMistrials - this.mistrials));
+    ctx.fillText(`MISTRIALS: [${strikes.trim()}]`, CFG.W - 20, 26);
+
+    // Bottom Court Stenographer Ticker
+    ctx.fillStyle = '#1e1612';
+    ctx.fillRect(0, CFG.H - 34, CFG.W, 34);
+    ctx.fillStyle = '#9fd8cb';
+    ctx.font = 'bold 13px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillText(`STENOGRAPHER: "${this.stenographer.text}"`, 20, CFG.H - 13);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#b8a99a';
+    ctx.font = '12px Courier New';
+    ctx.fillText(`[M] MUTE:${AudioSys.muted ? 'ON' : 'OFF'}  [R] RESTART  BEST:${this.highScore}`, CFG.W - 18, CFG.H - 13);
+
+    // Dramatic Verdict Announcement Banner
+    if (this.banner.active) {
+      ctx.save();
+      const bx = CFG.W * 0.5;
+      const by = 115;
+      ctx.fillStyle = this.banner.helpful ? '#1b8a7a' : '#d93829';
+      ctx.strokeStyle = '#1e1612';
+      ctx.lineWidth = 4;
+      ctx.fillRect(bx - 310, by - 32, 620, 62);
+      ctx.strokeRect(bx - 310, by - 32, 620, 62);
+
+      ctx.fillStyle = '#fffdf7';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 17px Courier New';
+      ctx.fillText(this.banner.title, bx, by - 7);
+      ctx.font = '13px Courier New';
+      ctx.fillText(this.banner.desc, bx, by + 16);
+      ctx.restore();
+    }
+  },
+
+  drawTitleOverlay() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(20, 15, 12, 0.72)';
+    ctx.fillRect(CFG.W * 0.5 - 320, CFG.H * 0.5 - 150, 640, 290);
+    ctx.strokeStyle = CFG.palette.gold;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(CFG.W * 0.5 - 320, CFG.H * 0.5 - 150, 640, 290);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = CFG.palette.gold;
+    ctx.font = 'bold 36px Courier New';
+    ctx.fillText('ACCORDION COURTROOM', CFG.W * 0.5, CFG.H * 0.5 - 92);
+
+    ctx.fillStyle = '#fffdf7';
+    ctx.font = 'bold 16px Courier New';
+    ctx.fillText('YOU ARE AN ACCORDION ATTORNEY. THE LAW IS VERY LOUD.', CFG.W * 0.5, CFG.H * 0.5 - 52);
+
+    ctx.fillStyle = '#f3e9d2';
+    ctx.font = '14px Courier New';
+    ctx.fillText('1. HOLD CLICK / SPACE to inhale fleeing suspects into your pleats.', CFG.W * 0.5, CFG.H * 0.5 - 10);
+    ctx.fillText('2. RELEASE to HONK-BLAST them into the Guilty Boxes (+Recoil!).', CFG.W * 0.5, CFG.H * 0.5 + 18);
+    ctx.fillText('3. Every 18s the Supreme Court mutates courtroom physics.', CFG.W * 0.5, CFG.H * 0.5 + 46);
+
+    const pulse = 0.7 + Math.sin(this.time * 6) * 0.3;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = CFG.palette.gold;
+    ctx.font = 'bold 20px Courier New';
+    ctx.fillText('>>> CLICK OR PRESS SPACE TO CALL COURT TO ORDER <<<', CFG.W * 0.5, CFG.H * 0.5 + 102);
+    ctx.restore();
+  },
+
+  drawResultsModal() {
+    ctx.save();
+    ctx.fillStyle = 'rgba(20, 15, 12, 0.82)';
+    ctx.fillRect(0, 0, CFG.W, CFG.H);
+
+    const rx = CFG.W * 0.5 - 230;
+    const ry = 64;
+    const rw = 460;
+    const rh = 445;
+
+    ctx.fillStyle = '#f6eedf';
+    ctx.strokeStyle = '#1e1612';
+    ctx.lineWidth = 4;
+    ctx.fillRect(rx, ry, rw, rh);
+    ctx.strokeRect(rx, ry, rw, rh);
+
+    ctx.fillStyle = '#d93829';
+    ctx.font = 'bold 24px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('OFFICIAL DISBARMENT RECEIPT', CFG.W * 0.5, ry + 42);
+
+    ctx.strokeStyle = '#1e1612';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(rx + 28, ry + 58);
+    ctx.lineTo(rx + rw - 28, ry + 58);
+    ctx.stroke();
+
+    const rows = [
+      ['FINAL VERDICT SCORE', `${this.score} PTS`],
+      ['HIGHEST RECORDED SCORE', `${this.highScore} PTS`],
+      ['SUSPECTS CONVICTED', `${this.stats.convictions}`],
+      ['ACCORDION HONKS DEPLOYED', `${this.stats.honksFired}`],
+      ['BELLOWS RUPTURES (OVERCHARGED)', `${this.stats.overcharges}`],
+      ['JURY STANDING OVATIONS', `${this.stats.juryOvations}`],
+      ['SUPREME VERDICTS SURVIVED', `${this.stats.lawsSurvived}`]
+    ];
+
+    ctx.font = 'bold 15px Courier New';
+    for (let i = 0; i < Math.min(this.receiptStep, rows.length); i++) {
+      const y = ry + 95 + i * 34;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#1e1612';
+      ctx.fillText(rows[i][0], rx + 34, y);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#d93829';
+      ctx.fillText(rows[i][1], rx + rw - 34, y);
+    }
+
+    if (this.receiptStep >= rows.length) {
+      const rank = this.score >= 4500 ? 'CHIEF JUSTICE OF SQUEEZEBOXES'
+                 : this.score >= 2200 ? 'SENIOR BELLOWS PARTNER'
+                 : this.score >= 900  ? 'PUBLIC DEFENDER OF NOISE'
+                 : 'UNLICENSED KAZOO PARALEGAL';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#1b8a7a';
+      ctx.font = 'bold 16px Courier New';
+      ctx.fillText(`BAR RANK: ${rank}`, CFG.W * 0.5, ry + 355);
+
+      ctx.fillStyle = '#1e1612';
+      ctx.font = 'bold 17px Courier New';
+      ctx.fillText('CLICK OR PRESS [R] TO APPEAL IMMEDIATELY', CFG.W * 0.5, ry + 408);
+    }
+
+    ctx.restore();
+  },
+
+  drawDebug() {
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(12, 50, 250, 95);
+    ctx.fillStyle = '#00ff88';
+    ctx.font = '12px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillText(`SEED: ${initialSeed}`, 20, 68);
+    ctx.fillText(`SUSPECTS: ${this.suspects.length} | STOMACH: ${this.player.stomach.length}`, 20, 86);
+    ctx.fillText(`VOICES: ${AudioSys.voices} | LAWS: ${this.activeLaws.length}`, 20, 104);
+    ctx.fillText(`RUNTIME: ${this.runTime.toFixed(1)}s`, 20, 122);
+  }
+};
+
+// ===== FIXED TIMESTEP MAIN LOOP =====
+Input.init();
+Game.init();
+
+let lastTime = performance.now();
+let accumulator = 0;
+
+function frame(now) {
+  let frameDt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (frameDt > 0.1) frameDt = 0.1; // Clamp tab-switch spiral
+
+  accumulator += frameDt;
+  let steps = 0;
+  while (accumulator >= CFG.dt && steps < 6) {
+    Game.update(CFG.dt);
+    Input.clearFrame();
+    accumulator -= CFG.dt;
+    steps++;
+  }
+  Game.draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

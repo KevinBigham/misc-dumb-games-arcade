@@ -1,0 +1,2272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>HONKCOURT: THE GOOSE IS A LANDLORD</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #141118; color: #f6f1e6;
+    font-family: 'Courier New', Courier, monospace;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #wrap {
+    position: relative;
+    width: 100vw; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    display: block;
+    background: #1e1924;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.75), 0 0 0 4px #2f2838;
+    border-radius: 6px;
+    cursor: crosshair;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+</div>
+<script>
+(() => {
+  'use strict';
+  // ============================================================================
+  // 1. CONFIGURATION & CONSTANTS
+  // ============================================================================
+  const CFG = {
+    W: 960,
+    H: 560,
+    DT: 1 / 120,
+    WALL: 46,
+    CHUTE_SIZE: 108,
+    MAX_OCCUPANCY: 100,
+    PASSIVE_RENT_LOSS: 0.45, // baseline pressure
+    TENANT_OCC_RATE: 1.55,   // per tenant per second
+    RULING_INTERVAL: 22,     // seconds between HOA Emergency Rulings
+    MAX_RULINGS: 3,
+    GOOSE: {
+      R: 17,
+      SPEED: 295,
+      ACCEL: 2400,
+      FRIC: 9.5,
+      CHARGE_TIME: 0.65,
+      OVERCHARGE_TIME: 1.15,
+      RECOIL_MIN: 180,
+      RECOIL_MAX: 690,
+      HONK_RANGE_MIN: 115,
+      HONK_RANGE_MAX: 235,
+      HONK_ARC: Math.PI * 0.64,
+      INHALE_PULL_RANGE: 175,
+      INHALE_PULL_FORCE: 420
+    },
+    CHUTES: [
+      { id: 0, side: 'top',    x: 480, y: 23,  w: 126, h: 46, nx: 0,  ny: 1,  label: 'BALCONY DROP' },
+      { id: 1, side: 'bottom', x: 480, y: 537, w: 126, h: 46, nx: 0,  ny: -1, label: 'ELEVATOR SHAFT' },
+      { id: 2, side: 'left',   x: 23,  y: 280, w: 46,  h: 120, nx: 1,  ny: 0,  label: 'LAUNDRY CHUTE' },
+      { id: 3, side: 'right',  x: 937, y: 280, w: 46,  h: 120, nx: -1, ny: 0,  label: 'FIRE ESCAPE' }
+    ]
+  };
+  // ============================================================================
+  // 2. SEEDED RNG & UTILITIES
+  // ============================================================================
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialSeed = urlParams.has('seed') ? parseInt(urlParams.get('seed'), 10) || 1337 : (Date.now() & 0x7fffffff);
+  function makeRNG(seed) {
+    let s = seed >>> 0 || 1;
+    return () => {
+      s ^= s << 13; s ^= s >>> 17; s ^= s << 5;
+      return (s >>> 0) / 4294967296;
+    };
+  }
+  let rng = makeRNG(initialSeed);
+  let fxRng = makeRNG(initialSeed ^ 0x9e3779b9);
+  const rand = (a = 1, b = 0) => b + rng() * (a - b);
+  const fxRand = (a = 1, b = 0) => b + fxRng() * (a - b);
+  const randInt = (min, max) => Math.floor(rand(max + 1, min));
+  const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+  const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const distSq = (x1, y1, x2, y2) => (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+  const normAngle = (a) => {
+    while (a > Math.PI) a -= Math.PI * 2;
+    while (a < -Math.PI) a += Math.PI * 2;
+    return a;
+  };
+  // ============================================================================
+  // 3. PROCEDURAL WEB AUDIO ENGINE
+  // ============================================================================
+  const AudioSys = (() => {
+    let ctx = null;
+    let master = null;
+    let comp = null;
+    let muted = false;
+    let voices = 0;
+    const MAX_VOICES = 14;
+    let inhaleOsc = null;
+    let inhaleGain = null;
+    function unlock() {
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        ctx = new AC();
+        comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = -16;
+        comp.ratio.value = 6;
+        master = ctx.createGain();
+        master.gain.value = 0.36;
+        comp.connect(master);
+        master.connect(ctx.destination);
+      }
+      if (ctx.state === 'suspended') ctx.resume();
+    }
+    function canPlay() {
+      if (!ctx || muted || voices >= MAX_VOICES) return false;
+      return true;
+    }
+    function trackVoice(dur) {
+      voices++;
+      setTimeout(() => { voices = Math.max(0, voices - 1); }, dur * 1000 + 40);
+    }
+    function honk(power = 0.6, mega = false) {
+      if (!canPlay()) return;
+      const now = ctx.currentTime;
+      const dur = mega ? 0.36 : 0.16 + power * 0.14;
+      trackVoice(dur);
+      const baseFreq = mega ? 165 : (255 - power * 65) * (0.94 + Math.random() * 0.12);
+      const o1 = ctx.createOscillator();
+      const o2 = ctx.createOscillator();
+      const filt = ctx.createBiquadFilter();
+      const g = ctx.createGain();
+      o1.type = 'sawtooth';
+      o2.type = 'square';
+      o1.frequency.setValueAtTime(baseFreq * 1.08, now);
+      o1.frequency.exponentialRampToValueAtTime(baseFreq * (mega ? 0.62 : 0.86), now + dur);
+      o2.frequency.setValueAtTime(baseFreq * 1.035, now);
+      o2.frequency.exponentialRampToValueAtTime(baseFreq * (mega ? 0.65 : 0.89), now + dur);
+      filt.type = 'bandpass';
+      filt.frequency.setValueAtTime(mega ? 680 : 920 + power * 450, now);
+      filt.Q.value = mega ? 2.2 : 3.2;
+      const vol = (0.28 + power * 0.25) * (mega ? 1.25 : 1);
+      g.gain.setValueAtTime(0.001, now);
+      g.gain.linearRampToValueAtTime(vol, now + 0.014);
+      g.gain.setValueAtTime(vol * 0.9, now + dur * 0.55);
+      g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      o1.connect(filt);
+      o2.connect(filt);
+      filt.connect(g);
+      g.connect(comp);
+      o1.start(now); o2.start(now);
+      o1.stop(now + dur + 0.02); o2.stop(now + dur + 0.02);
+    }
+    function updateInhale(active, chargeRatio) {
+      if (!ctx || muted) return;
+      const now = ctx.currentTime;
+      if (active) {
+        if (!inhaleOsc) {
+          inhaleOsc = ctx.createOscillator();
+          inhaleGain = ctx.createGain();
+          const filt = ctx.createBiquadFilter();
+          filt.type = 'lowpass';
+          filt.frequency.value = 600;
+          inhaleOsc.type = 'triangle';
+          inhaleOsc.frequency.setValueAtTime(140, now);
+          inhaleGain.gain.setValueAtTime(0.001, now);
+          inhaleOsc.connect(filt);
+          filt.connect(inhaleGain);
+          inhaleGain.connect(comp);
+          inhaleOsc.start(now);
+        }
+        const f = 150 + chargeRatio * 340 + Math.sin(now * 45) * (chargeRatio > 1 ? 35 : 8);
+        inhaleOsc.frequency.setTargetAtTime(f, now, 0.03);
+        inhaleGain.gain.setTargetAtTime(Math.min(0.11, 0.02 + chargeRatio * 0.08), now, 0.03);
+      } else if (inhaleOsc) {
+        try {
+          inhaleGain.gain.setTargetAtTime(0.0001, now, 0.02);
+          inhaleOsc.stop(now + 0.05);
+        } catch (e) {}
+        inhaleOsc = null;
+        inhaleGain = null;
+      }
+    }
+    function objection(typeIdx = 0) {
+      if (!canPlay()) return;
+      const now = ctx.currentTime;
+      const dur = 0.22;
+      trackVoice(dur);
+      const freqs = [340, 440, 260, 520, 300, 195];
+      const f0 = (freqs[typeIdx % freqs.length] || 360) * (0.95 + Math.random() * 0.1);
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = typeIdx % 2 === 0 ? 'square' : 'sawtooth';
+      o.frequency.setValueAtTime(f0, now);
+      o.frequency.setValueAtTime(f0 * 1.25, now + 0.06);
+      o.frequency.exponentialRampToValueAtTime(f0 * 0.85, now + dur);
+      const filt = ctx.createBiquadFilter();
+      filt.type = 'lowpass';
+      filt.frequency.value = 1100;
+      g.gain.setValueAtTime(0.001, now);
+      g.gain.linearRampToValueAtTime(0.14, now + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      o.connect(filt);
+      filt.connect(g);
+      g.connect(comp);
+      o.start(now);
+      o.stop(now + dur + 0.02);
+    }
+    function shatter() {
+      if (!canPlay()) return;
+      const now = ctx.currentTime;
+      const dur = 0.28;
+      trackVoice(dur);
+      const notes = [587.33, 880, 1174.66];
+      notes.forEach((n, idx) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(n, now + idx * 0.025);
+        o.frequency.exponentialRampToValueAtTime(n * 1.15, now + idx * 0.025 + 0.14);
+        g.gain.setValueAtTime(0.001, now + idx * 0.025);
+        g.gain.linearRampToValueAtTime(0.22, now + idx * 0.025 + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.025 + 0.16);
+        o.connect(g);
+        g.connect(comp);
+        o.start(now + idx * 0.025);
+        o.stop(now + idx * 0.025 + 0.18);
+      });
+    }
+    function bump(intensity = 0.5) {
+      if (!canPlay()) return;
+      const now = ctx.currentTime;
+      const dur = 0.09;
+      trackVoice(dur);
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      const f = 110 + intensity * 90;
+      o.frequency.setValueAtTime(f, now);
+      o.frequency.exponentialRampToValueAtTime(38, now + dur);
+      g.gain.setValueAtTime(Math.min(0.26, 0.06 + intensity * 0.16), now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      o.connect(g);
+      g.connect(comp);
+      o.start(now);
+      o.stop(now + dur + 0.01);
+    }
+    function evict(combo = 1) {
+      if (!canPlay()) return;
+      const now = ctx.currentTime;
+      const dur = 0.32;
+      trackVoice(dur);
+      const semitone = Math.pow(1.059463, Math.min(16, combo - 1));
+      const base = 392 * semitone;
+      [1, 1.25, 1.5].forEach((mult, i) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        const t0 = now + i * 0.045;
+        o.frequency.setValueAtTime(base * mult, t0);
+        o.frequency.exponentialRampToValueAtTime(base * mult * 1.06, t0 + 0.15);
+        g.gain.setValueAtTime(0.001, t0);
+        g.gain.linearRampToValueAtTime(0.2, t0 + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.19);
+        o.connect(g);
+        g.connect(comp);
+        o.start(t0);
+        o.stop(t0 + 0.21);
+      });
+    }
+    function gavel() {
+      if (!canPlay()) return;
+      const now = ctx.currentTime;
+      trackVoice(0.45);
+      [0, 0.14].forEach((offset) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(220, now + offset);
+        o.frequency.exponentialRampToValueAtTime(55, now + offset + 0.11);
+        g.gain.setValueAtTime(0.32, now + offset);
+        g.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.12);
+        o.connect(g);
+        g.connect(comp);
+        o.start(now + offset);
+        o.stop(now + offset + 0.13);
+      });
+    }
+    function clack() {
+      if (!canPlay()) return;
+      const now = ctx.currentTime;
+      trackVoice(0.05);
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'square';
+      o.frequency.setValueAtTime(950 + Math.random() * 250, now);
+      o.frequency.exponentialRampToValueAtTime(220, now + 0.035);
+      g.gain.setValueAtTime(0.12, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+      o.connect(g);
+      g.connect(comp);
+      o.start(now);
+      o.stop(now + 0.045);
+    }
+    function toggleMute() {
+      muted = !muted;
+      if (muted && inhaleOsc) updateInhale(false, 0);
+      return muted;
+    }
+    return {
+      unlock, honk, updateInhale, objection, shatter, bump, evict, gavel, clack, toggleMute,
+      isMuted: () => muted
+    };
+  })();
+  // ============================================================================
+  // 4. TENANT CATALOG & LEGAL OBJECTIONS
+  // ============================================================================
+  const TENANT_TYPES = [
+    {
+      kind: 'OTTOMAN',
+      name: 'Squatter Ottoman',
+      r: 20, mass: 0.95, dignityMax: 1, rent: 90,
+      color: '#e07a5f', trim: '#f4a261', shape: 'roundrect',
+      speed: 62, argueEvery: 2.7, argueDur: 0.95,
+      quotes: ['"I AM LOAD-BEARING!"', '"30 DAYS NOTICE!"', '"MY COUSIN IS A SOFA!"', '"FEET OFF ME!"']
+    },
+    {
+      kind: 'LAMP',
+      name: 'Gaslighting Floor Lamp',
+      r: 17, mass: 0.78, dignityMax: 1, rent: 110,
+      color: '#f2cc8f', trim: '#e07a5f', shape: 'circle',
+      speed: 78, argueEvery: 2.3, argueDur: 0.9,
+      quotes: ['"I WAS ALWAYS HERE!"', '"YOU\'RE IMAGINING ME!"', '"READ THE LEASE!"', '"TOO BRIGHT FOR YOU?"']
+    },
+    {
+      kind: 'RECLINER',
+      name: 'Tenured La-Z-Boy',
+      r: 26, mass: 1.55, dignityMax: 2, rent: 175,
+      color: '#81b29a', trim: '#3d5a80', shape: 'chair',
+      speed: 48, argueEvery: 3.0, argueDur: 1.05,
+      quotes: ['"I HAVE SQUATTER RIGHTS!"', '"CALL MY PARALEGAL!"', '"LUMBAR SUPPORT IS LAW!"', '"NOT BUDGING, BIRD!"']
+    },
+    {
+      kind: 'ROOMBA',
+      name: 'Feral Sovereign Roomba',
+      r: 16, mass: 0.7, dignityMax: 1, rent: 130,
+      color: '#4ecdc4', trim: '#292f36', shape: 'circle',
+      speed: 135, argueEvery: 2.1, argueDur: 0.85,
+      quotes: ['"DIPLOMATIC IMMUNITY!"', '"BEEP BOOP SUE YOU!"', '"I EAT DUST & EVICTIONS!"', '"ADMIRALTY COURT ONLY!"']
+    },
+    {
+      kind: 'FICUS',
+      name: 'Emotional Support Ficus',
+      r: 21, mass: 1.15, dignityMax: 2, rent: 145,
+      color: '#52b788', trim: '#b07d62', shape: 'bush',
+      speed: 52, argueEvery: 2.8, argueDur: 1.0,
+      quotes: ['"I MAKE YOUR OXYGEN!"', '"PROTECTED WETLAND!"', '"PHOTOSYNTHESIS EXEMPT!"', '"DON\'T RUSTLE ME!"']
+    },
+    {
+      kind: 'FRIDGE',
+      name: 'Sovereign Citizen Fridge',
+      r: 31, mass: 2.45, dignityMax: 3, rent: 290,
+      color: '#a8dadc', trim: '#457b9d', shape: 'rect',
+      speed: 38, argueEvery: 3.2, argueDur: 1.1,
+      quotes: ['"I AM TRAVELING, NOT RENTING!"', '"SHOW ME THE CORPUS!"', '"I WILL HONK BACK!"', '"FREEZER BURN LITIGATION!"']
+    }
+  ];
+  // ============================================================================
+  // 5. HOA EMERGENCY RULINGS (MUTATING LAWS AS DATA)
+  // ============================================================================
+  const RULINGS = [
+    {
+      id: 'WAXED_FLOORS',
+      title: 'Bylaw 4B: Freshly Waxed Parquet',
+      desc: 'All floor friction reduced by 72%. Everybody slides forever.',
+      helpful: false
+    },
+    {
+      id: 'SHAG_CARPET',
+      title: 'Bylaw 9A: Vintage 1974 Shag Carpet',
+      desc: 'High floor drag, but Honk shockwaves blast +35% harder.',
+      helpful: false
+    },
+    {
+      id: 'TILT_EAST',
+      title: 'Structural Notice: Foundation Settling',
+      desc: 'The entire apartment tilts toward the Fire Escape.',
+      helpful: false
+    },
+    {
+      id: 'RUBBER_MOULDING',
+      title: 'Bylaw 12: Enthusiastic Baseboards',
+      desc: 'Walls bounce furniture and geese at 135% velocity.',
+      helpful: false
+    },
+    {
+      id: 'MEGAPHONE',
+      title: 'Tenant Relief: Brass Megaphone Permit',
+      desc: 'BONUS! Honk cone is 45% wider and shatters +1 extra Dignity.',
+      helpful: true
+    },
+    {
+      id: 'OPEN_CONCEPT',
+      title: 'Renovation: Open-Concept Chutes',
+      desc: 'BONUS! Eviction chutes are 45% wider and magnetically pull Undignified furniture.',
+      helpful: true
+    },
+    {
+      id: 'LAWYER_UP',
+      title: 'Class Action: Furniture Unionized',
+      desc: 'Furniture argues 40% more often (more Perjury windows, more pushback!).',
+      helpful: false
+    },
+    {
+      id: 'PENTHOUSE_FAN',
+      title: 'HVAC Alert: Industrial Ceiling Fan',
+      desc: 'A giant central vortex swirls everything around the living room.',
+      helpful: false
+    },
+    {
+      id: 'RENT_HIKE',
+      title: 'Market Adjustment: Surge Pricing',
+      desc: 'BONUS! All evictions pay DOUBLE rent and clear extra Occupancy.',
+      helpful: true
+    },
+    {
+      id: 'SMALL_GOOSE',
+      title: 'Zoning Code: Compact Landlord',
+      desc: 'You are 35% smaller and faster, with 40% more recoil flight.',
+      helpful: false
+    },
+    {
+      id: 'SUBLET_BOOM',
+      title: 'Illegal Subletting: Nesting Ottomans',
+      desc: 'Heavy furniture splits into a tiny angry Ottoman when evicted!',
+      helpful: false
+    },
+    {
+      id: 'COFFEE_SPILL',
+      title: 'Amenity: Espresso Leak in Hallway',
+      desc: 'BONUS! Goose waddles 35% faster and charges honks in half the time.',
+      helpful: true
+    }
+  ];
+  // ============================================================================
+  // 6. INPUT HANDLING
+  // ============================================================================
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let dpr = Math.min(2, window.devicePixelRatio || 1);
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    const pad = 20;
+    const availW = window.innerWidth - pad;
+    const availH = window.innerHeight - pad;
+    const scale = Math.min(availW / CFG.W, availH / CFG.H);
+    const cssW = Math.max(480, Math.floor(CFG.W * scale));
+    const cssH = Math.max(280, Math.floor(CFG.H * scale));
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    canvas.width = Math.floor(CFG.W * dpr);
+    canvas.height = Math.floor(CFG.H * dpr);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  const Input = {
+    keys: new Set(),
+    justPressed: new Set(),
+    mouseX: CFG.W * 0.65,
+    mouseY: CFG.H * 0.5,
+    mouseDown: false,
+    mouseJustDown: false,
+    mouseJustUp: false,
+    usingKeyboardAim: false
+  };
+  function toWorldCoords(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    Input.mouseX = clamp(((clientX - rect.left) / rect.width) * CFG.W, 0, CFG.W);
+    Input.mouseY = clamp(((clientY - rect.top) / rect.height) * CFG.H, 0, CFG.H);
+    Input.usingKeyboardAim = false;
+  }
+  window.addEventListener('pointermove', (e) => toWorldCoords(e.clientX, e.clientY));
+  window.addEventListener('pointerdown', (e) => {
+    AudioSys.unlock();
+    toWorldCoords(e.clientX, e.clientY);
+    if (e.button === 0) {
+      Input.mouseDown = true;
+      Input.mouseJustDown = true;
+    }
+  });
+  window.addEventListener('pointerup', (e) => {
+    if (e.button === 0) {
+      Input.mouseDown = false;
+      Input.mouseJustUp = true;
+    }
+  });
+  window.addEventListener('pointercancel', () => {
+    Input.mouseDown = false;
+  });
+  window.addEventListener('keydown', (e) => {
+    AudioSys.unlock();
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+      e.preventDefault();
+    }
+    if (!Input.keys.has(e.code)) {
+      Input.justPressed.add(e.code);
+    }
+    Input.keys.add(e.code);
+  });
+  window.addEventListener('keyup', (e) => {
+    Input.keys.delete(e.code);
+  });
+  window.addEventListener('blur', () => {
+    Input.keys.clear();
+    Input.mouseDown = false;
+    AudioSys.updateInhale(false, 0);
+  });
+  // ============================================================================
+  // 7. GAME STATE & ENTITIES
+  // ============================================================================
+  let highScore = 0;
+  try {
+    highScore = parseInt(localStorage.getItem('honkcourt_best_v1') || '0', 10) || 0;
+  } catch (e) {}
+  let state = 'TITLE'; // TITLE, PLAY, DYING, RECEIPT
+  let debugOpen = false;
+  const Game = {
+    time: 0,
+    hitStop: 0,
+    timeScale: 1,
+    trauma: 0,
+    shakeX: 0,
+    shakeY: 0,
+    rent: 0,
+    displayRent: 0,
+    occupancy: 18,
+    combo: 0,
+    comboTimer: 0,
+    maxCombo: 0,
+    nextSpawnTimer: 1.2,
+    nextRulingTimer: CFG.RULING_INTERVAL,
+    rulingCount: 0,
+    activeRulings: [],
+    rulingBanner: null, // { ruling, timer, dur }
+    goose: null,
+    tenants: [],
+    particles: [],
+    shockwaves: [],
+    floatTexts: [],
+    rugAngle: 0,
+    rugSpin: 0,
+    // Physical HUD Lease Ledger that can be bumped!
+    ledger: {
+      x: 156, y: 46, vx: 0, vy: 0,
+      homeX: 156, homeY: 46,
+      w: 220, h: 52, angle: 0, vAngle: 0,
+      assaults: 0, flash: 0
+    },
+    // Run stats for the Eviction Court Docket Receipt
+    stats: {
+      evicted: 0,
+      perjuriesShattered: 0,
+      collaterals: 0,
+      selfHonkDizzy: 0,
+      chuteCounts: [0, 0, 0, 0],
+      rulingsSurvived: 0,
+      honksFired: 0
+    },
+    receipt: {
+      timer: 0,
+      linesShown: 0,
+      lines: [],
+      rank: ''
+    }
+  };
+  function hasRuling(id) {
+    return Game.activeRulings.some(r => r.id === id);
+  }
+  function createGoose() {
+    return {
+      x: CFG.W * 0.5,
+      y: CFG.H * 0.54,
+      vx: 0,
+      vy: 0,
+      aimAngle: -Math.PI * 0.25,
+      neckLen: 18,
+      neckVel: 0,
+      scaleX: 1,
+      scaleY: 1,
+      charging: false,
+      chargeTime: 0,
+      dizzyTimer: 0,
+      spinAngle: 0,
+      spinVel: 0,
+      waddlePhase: 0,
+      bowTieAngle: 0,
+      blinkTimer: 2.4,
+      honkFlash: 0
+    };
+  }
+  let nextEntityId = 1;
+  function spawnTenant(forcedKind = null, x = null, y = null, isSublet = false) {
+    // Pick appropriate tenant based on elapsed time
+    let pool = TENANT_TYPES.slice(0, 2);
+    if (Game.time > 14) pool = TENANT_TYPES.slice(0, 4);
+    if (Game.time > 32) pool = TENANT_TYPES.slice(0, 5);
+    if (Game.time > 50) pool = TENANT_TYPES;
+    const spec = forcedKind
+      ? TENANT_TYPES.find(t => t.kind === forcedKind) || TENANT_TYPES[0]
+      : pick(pool);
+    // Spawn near center rug or apartment corners away from chutes
+    let sx = x, sy = y;
+    if (sx === null || sy === null) {
+      const spots = [
+        { x: 240, y: 165 }, { x: 720, y: 165 },
+        { x: 240, y: 395 }, { x: 720, y: 395 },
+        { x: 480, y: 280 }
+      ];
+      const spot = pick(spots);
+      sx = spot.x + rand(-45, 45);
+      sy = spot.y + rand(-35, 35);
+    }
+    const r = isSublet ? Math.round(spec.r * 0.78) : spec.r;
+    const t = {
+      id: nextEntityId++,
+      spec,
+      kind: spec.kind,
+      name: isSublet ? 'Sublet ' + spec.name : spec.name,
+      x: sx,
+      y: sy,
+      vx: rand(-60, 60),
+      vy: rand(-60, 60),
+      r,
+      mass: isSublet ? spec.mass * 0.65 : spec.mass,
+      dignity: isSublet ? 1 : spec.dignityMax,
+      dignityMax: isSublet ? 1 : spec.dignityMax,
+      rent: isSublet ? Math.round(spec.rent * 0.6) : spec.rent,
+      state: 'SPAWN', // SPAWN, ROAM, ARGUE, UNDIGNIFIED, EVICTING
+      spawnScale: 0.05,
+      stateTimer: 0.35,
+      argueTimer: spec.argueEvery * rand(0.65, 1.25),
+      quote: pick(spec.quotes),
+      angle: rand(-0.2, 0.2),
+      vAngle: 0,
+      scaleX: 1.3,
+      scaleY: 0.7,
+      hitFlash: 0,
+      lastHonkedTime: -10,
+      billiardChain: 0,
+      blinkTimer: rand(1.5, 4.0),
+      isSublet
+    };
+    Game.tenants.push(t);
+    spawnParticles(sx, sy, spec.color, 10, 110);
+    return t;
+  }
+  function spawnParticles(x, y, color, count = 8, speed = 150, size = 4) {
+    if (Game.particles.length > 260) {
+      Game.particles.splice(0, count);
+    }
+    for (let i = 0; i < count; i++) {
+      const a = fxRand(0, Math.PI * 2);
+      const sp = fxRand(speed * 0.25, speed);
+      Game.particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        r: fxRand(size * 0.6, size * 1.35),
+        color,
+        life: fxRand(0.22, 0.52),
+        maxLife: 0.52
+      });
+    }
+  }
+  function addFloatText(x, y, text, color = '#f6f1e6', size = 15, life = 0.95) {
+    if (Game.floatTexts.length > 35) Game.floatTexts.shift();
+    Game.floatTexts.push({
+      x, y,
+      vx: fxRand(-18, 18),
+      vy: -58,
+      text, color, size,
+      life, maxLife: life
+    });
+  }
+  function addTrauma(amount) {
+    Game.trauma = Math.min(1.0, Game.trauma + amount);
+  }
+  function triggerHitStop(duration) {
+    Game.hitStop = Math.max(Game.hitStop, duration);
+  }
+  // ============================================================================
+  // 8. GAME FLOW: RESET, RULINGS, EVICTIONS, RECEIPT
+  // ============================================================================
+  function startNewRun() {
+    rng = makeRNG((Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0);
+    Game.time = 0;
+    Game.hitStop = 0;
+    Game.timeScale = 1;
+    Game.trauma = 0;
+    Game.rent = 0;
+    Game.displayRent = 0;
+    Game.occupancy = 18;
+    Game.combo = 0;
+    Game.comboTimer = 0;
+    Game.maxCombo = 0;
+    Game.nextSpawnTimer = 0.8;
+    Game.nextRulingTimer = CFG.RULING_INTERVAL;
+    Game.rulingCount = 0;
+    Game.activeRulings = [];
+    Game.rulingBanner = null;
+    Game.goose = createGoose();
+    Game.tenants = [];
+    Game.particles = [];
+    Game.shockwaves = [];
+    Game.floatTexts = [];
+    Game.rugAngle = 0;
+    Game.rugSpin = 0;
+    Game.ledger.x = Game.ledger.homeX;
+    Game.ledger.y = Game.ledger.homeY;
+    Game.ledger.vx = 0;
+    Game.ledger.vy = 0;
+    Game.ledger.angle = 0;
+    Game.ledger.vAngle = 0;
+    Game.ledger.assaults = 0;
+    Game.stats = {
+      evicted: 0,
+      perjuriesShattered: 0,
+      collaterals: 0,
+      selfHonkDizzy: 0,
+      chuteCounts: [0, 0, 0, 0],
+      rulingsSurvived: 0,
+      honksFired: 0
+    };
+    // Initial welcoming committee of squatters
+    spawnTenant('OTTOMAN', 320, 220);
+    spawnTenant('LAMP', 640, 230);
+    spawnTenant('OTTOMAN', 610, 370);
+    state = 'PLAY';
+  }
+  function enactNextRuling() {
+    Game.rulingCount++;
+    Game.stats.rulingsSurvived++;
+    // Every 3rd ruling is guaranteed helpful breather
+    const wantHelpful = (Game.rulingCount % 3 === 0);
+    const activeIds = new Set(Game.activeRulings.map(r => r.id));
+    let candidates = RULINGS.filter(r => !activeIds.has(r.id) && r.helpful === wantHelpful);
+    if (candidates.length === 0) {
+      candidates = RULINGS.filter(r => !activeIds.has(r.id));
+    }
+    if (candidates.length === 0) return;
+    const chosen = pick(candidates);
+    if (Game.activeRulings.length >= CFG.MAX_RULINGS) {
+      Game.activeRulings.shift();
+    }
+    Game.activeRulings.push(chosen);
+    Game.rulingBanner = {
+      ruling: chosen,
+      timer: 4.2,
+      dur: 4.2
+    };
+    AudioSys.gavel();
+    addTrauma(0.35);
+    triggerHitStop(0.055);
+  }
+  function triggerGameOver() {
+    state = 'DYING';
+    Game.timeScale = 0.25;
+    Game.dyingTimer = 1.35;
+    AudioSys.updateInhale(false, 0);
+    AudioSys.gavel();
+    addTrauma(0.8);
+    if (Game.rent > highScore) {
+      highScore = Game.rent;
+      try {
+        localStorage.setItem('honkcourt_best_v1', String(highScore));
+      } catch (e) {}
+    }
+    // Build receipt lines
+    const s = Game.stats;
+    const favChuteIdx = s.chuteCounts.indexOf(Math.max(...s.chuteCounts));
+    const favChute = CFG.CHUTES[favChuteIdx] ? CFG.CHUTES[favChuteIdx].label : 'NONE';
+    let rank = 'SQUATTER BAIT';
+    if (Game.rent >= 800) rank = 'JUNIOR BEAK PARALEGAL';
+    if (Game.rent >= 2000) rank = 'CERTIFIED FEATHER BAILIFF';
+    if (Game.rent >= 4000) rank = 'SOVEREIGN HONK MAGISTRATE';
+    if (Game.rent >= 7000) rank = 'SUPREME LANDLORD OF THE POND';
+    if (Game.rent >= 11000) rank = 'THE BUILDING ITSELF';
+    Game.receipt = {
+      timer: 0,
+      linesShown: 0,
+      rank,
+      lines: [
+        ['TENANTS EVICTED', String(s.evicted)],
+        ['OBJECTIONS SHATTERED (2.5X)', String(s.perjuriesShattered)],
+        ['BILLIARD COLLATERAL HITS', String(s.collaterals)],
+        ['FAVORITE EXIT', favChute],
+        ['OVERCOMMITTED SNEEZE-HONKS', String(s.selfHonkDizzy)],
+        ['LEDGER ASSAULTS', String(Game.ledger.assaults)],
+        ['HOA RULINGS SURVIVED', String(s.rulingsSurvived)],
+        ['PEAK EVICTION COMBO', s.evicted > 0 ? 'x' + Game.maxCombo : 'x0'],
+        ['TOTAL RENT RECOVERED', '$' + Game.rent.toLocaleString()]
+      ]
+    };
+  }
+  // ============================================================================
+  // 9. HONK & PHYSICS SIMULATION
+  // ============================================================================
+  function releaseHonk(overcharged = false) {
+    const g = Game.goose;
+    const ratio = clamp(g.chargeTime / CFG.GOOSE.CHARGE_TIME, 0.18, 1.35);
+    const hasMega = hasRuling('MEGAPHONE');
+    g.charging = false;
+    g.chargeTime = 0;
+    AudioSys.updateInhale(false, 0);
+    Game.stats.honksFired++;
+    let fireAngle = g.aimAngle;
+    if (overcharged) {
+      // Over-committed Honk-Sneeze!
+      g.dizzyTimer = 1.65;
+      g.spinVel = 22;
+      fireAngle += rand(-0.65, 0.65);
+      Game.stats.selfHonkDizzy++;
+      addFloatText(g.x, g.y - 26, 'OVER-HONKED!', '#ff6b6b', 16, 1.1);
+    }
+    const power = overcharged ? 1.28 : clamp(ratio, 0.22, 1.05);
+    AudioSys.honk(power, overcharged || hasMega);
+    // Recoil opposite to aim!
+    const smallGooseMult = hasRuling('SMALL_GOOSE') ? 1.38 : 1.0;
+    const shagMult = hasRuling('SHAG_CARPET') ? 1.32 : 1.0;
+    const recoilSpeed = lerp(CFG.GOOSE.RECOIL_MIN, CFG.GOOSE.RECOIL_MAX, power) * smallGooseMult;
+    g.vx -= Math.cos(fireAngle) * recoilSpeed;
+    g.vy -= Math.sin(fireAngle) * recoilSpeed;
+    g.neckLen = 36;
+    g.neckVel = 180;
+    g.scaleX = 1.42;
+    g.scaleY = 0.68;
+    g.honkFlash = 0.18;
+    if (power > 0.72 && !overcharged) {
+      g.spinVel = (rng() < 0.5 ? 1 : -1) * 14 * power;
+    }
+    const range = lerp(CFG.GOOSE.HONK_RANGE_MIN, CFG.GOOSE.HONK_RANGE_MAX, power) * (hasMega ? 1.25 : 1.0);
+    const arc = CFG.GOOSE.HONK_ARC * (hasMega ? 1.42 : 1.0);
+    // Visual shockwave cone
+    Game.shockwaves.push({
+      x: g.x + Math.cos(fireAngle) * 18,
+      y: g.y + Math.sin(fireAngle) * 18,
+      angle: fireAngle,
+      arc,
+      maxR: range,
+      r: 18,
+      life: 0.22,
+      maxLife: 0.22,
+      mega: overcharged || hasMega || power > 0.88
+    });
+    addTrauma(0.14 + power * 0.24);
+    // Check if the physical Lease Ledger HUD is inside the honk cone!
+    const led = Game.ledger;
+    const ldx = led.x - g.x;
+    const ldy = led.y - g.y;
+    const lDist = Math.hypot(ldx, ldy);
+    if (lDist < range + 45) {
+      const la = Math.atan2(ldy, ldx);
+      if (Math.abs(normAngle(la - fireAngle)) <= arc * 0.6) {
+        led.vx += Math.cos(la) * 480 * power;
+        led.vy += Math.sin(la) * 480 * power;
+        led.vAngle += rand(-14, 14);
+        led.assaults++;
+        led.flash = 0.25;
+        if (led.assaults % 3 === 1) {
+          addFloatText(led.x, led.y + 28, '"STOP HONKING THE LEASE!"', '#ffd166', 13, 0.9);
+        }
+      }
+    }
+    // Apply Honk blast to all tenants inside the cone
+    let shatteredAny = false;
+    for (let i = 0; i < Game.tenants.length; i++) {
+      const t = Game.tenants[i];
+      if (t.state === 'EVICTING') continue;
+      const dx = t.x - g.x;
+      const dy = t.y - g.y;
+      const d = Math.hypot(dx, dy);
+      if (d > range + t.r) continue;
+      const dirAngle = Math.atan2(dy, dx);
+      const diff = Math.abs(normAngle(dirAngle - fireAngle));
+      if (diff > arc * 0.5 && d > t.r + 22) continue;
+      const falloff = clamp(1.15 - d / (range + t.r), 0.35, 1.15);
+      let force = (540 + power * 680) * falloff * shagMult / Math.pow(t.mass, 0.55);
+      // DID WE CATCH THEM MID-ARGUMENT?! (OBJECTION SHATTERED!)
+      const isArguing = (t.state === 'ARGUE');
+      const dignityDmg = (power >= 0.72 ? 2 : 1) + (hasMega ? 1 : 0);
+      if (isArguing) {
+        t.dignity = 0;
+        t.state = 'UNDIGNIFIED';
+        t.stateTimer = 4.2;
+        force *= 2.45; // 2.45x launch velocity!
+        t.vAngle = (rng() < 0.5 ? -1 : 1) * 18;
+        shatteredAny = true;
+        Game.stats.perjuriesShattered++;
+        spawnParticles(t.x, t.y, '#ffd166', 18, 280, 5);
+        addFloatText(t.x, t.y - t.r - 12, 'OBJECTION OVERRULED! 2.5x', '#ffd166', 16, 1.15);
+      } else {
+        t.dignity = Math.max(0, t.dignity - dignityDmg);
+        if (t.dignity <= 0 && t.state !== 'UNDIGNIFIED') {
+          t.state = 'UNDIGNIFIED';
+          t.stateTimer = 3.6;
+          force *= 1.45;
+          t.vAngle = (rng() < 0.5 ? -1 : 1) * 11;
+          addFloatText(t.x, t.y - t.r - 8, 'UNDIGNIFIED!', '#4ecdc4', 14, 0.85);
+        }
+      }
+      t.vx += Math.cos(dirAngle) * force;
+      t.vy += Math.sin(dirAngle) * force;
+      t.scaleX = 1.45;
+      t.scaleY = 0.62;
+      t.hitFlash = 0.2;
+      t.lastHonkedTime = Game.time;
+      t.billiardChain = isArguing ? 2 : 1;
+    }
+    if (shatteredAny) {
+      AudioSys.shatter();
+      triggerHitStop(0.075);
+      addTrauma(0.35);
+    }
+  }
+  function isPointInChute(x, y, r, isUndignified) {
+    const openBonus = hasRuling('OPEN_CONCEPT') ? 1.45 : 1.0;
+    for (let i = 0; i < CFG.CHUTES.length; i++) {
+      const c = CFG.CHUTES[i];
+      const cw = (c.side === 'top' || c.side === 'bottom') ? c.w * openBonus : c.w;
+      const ch = (c.side === 'left' || c.side === 'right') ? c.h * openBonus : c.h;
+      if (c.side === 'top' && y - r < CFG.WALL + 6 && Math.abs(x - c.x) < cw * 0.5 - r * 0.25) return c;
+      if (c.side === 'bottom' && y + r > CFG.H - CFG.WALL - 6 && Math.abs(x - c.x) < cw * 0.5 - r * 0.25) return c;
+      if (c.side === 'left' && x - r < CFG.WALL + 6 && Math.abs(y - c.y) < ch * 0.5 - r * 0.25) return c;
+      if (c.side === 'right' && x + r > CFG.W - CFG.WALL - 6 && Math.abs(y - c.y) < ch * 0.5 - r * 0.25) return c;
+    }
+    return null;
+  }
+  function evictTenant(t, chute) {
+    t.state = 'EVICTING';
+    t.evictChute = chute;
+    t.stateTimer = 0.28;
+    Game.combo++;
+    Game.comboTimer = 3.8;
+    if (Game.combo > Game.maxCombo) Game.maxCombo = Game.combo;
+    Game.stats.evicted++;
+    Game.stats.chuteCounts[chute.id]++;
+    const hikeMult = hasRuling('RENT_HIKE') ? 2 : 1;
+    const billiardBonus = t.billiardChain > 1 ? 1.5 : 1.0;
+    const payout = Math.round(t.rent * Game.combo * hikeMult * billiardBonus);
+    Game.rent += payout;
+    // Clear occupancy pressure!
+    const relief = (9.5 + t.mass * 3.5) * (hasRuling('RENT_HIKE') ? 1.35 : 1.0);
+    Game.occupancy = Math.max(0, Game.occupancy - relief);
+    AudioSys.evict(Game.combo);
+    triggerHitStop(0.048);
+    addTrauma(0.26);
+    spawnParticles(t.x, t.y, '#ffd166', 16, 220, 5);
+    const tag = t.billiardChain > 1
+      ? `BANK SHOT EVICTION! +$${payout}`
+      : (Game.combo > 1 ? `EVICTED x${Game.combo}! +$${payout}` : `EVICTED! +$${payout}`);
+    addFloatText(
+      clamp(t.x, 110, CFG.W - 110),
+      clamp(t.y, 70, CFG.H - 70),
+      tag,
+      '#ffd166',
+      Game.combo > 2 ? 18 : 15,
+      1.2
+    );
+    // Illegal Subletting Ruling: heavy furniture spawns a tiny angry Ottoman on eviction!
+    if (hasRuling('SUBLET_BOOM') && !t.isSublet && t.mass >= 1.4 && Game.tenants.length < 13) {
+      const sub = spawnTenant('OTTOMAN', CFG.W * 0.5 + rand(-90, 90), CFG.H * 0.5 + rand(-60, 60), true);
+      addFloatText(sub.x, sub.y - 20, '"SQUATTER SUBLET!"', '#ff6b6b', 13, 0.95);
+    }
+  }
+  // ============================================================================
+  // 10. MAIN FIXED-TIMESTEP UPDATE
+  // ============================================================================
+  function updateSimulation(dt) {
+    if (state === 'TITLE') {
+      updateTitle(dt);
+      return;
+    }
+    if (state === 'RECEIPT') {
+      updateReceipt(dt);
+      return;
+    }
+    // Handle hit-stop freeze
+    if (Game.hitStop > 0) {
+      Game.hitStop -= dt;
+      updateVisualEffectsOnly(dt);
+      return;
+    }
+    const effDt = dt * Game.timeScale;
+    Game.time += effDt;
+    if (state === 'DYING') {
+      Game.dyingTimer -= dt;
+      if (Game.dyingTimer <= 0) {
+        state = 'RECEIPT';
+        return;
+      }
+    }
+    // Smooth score ticker
+    if (Game.displayRent < Game.rent) {
+      Game.displayRent = Math.min(Game.rent, Game.displayRent + Math.ceil((Game.rent - Game.displayRent) * 0.18));
+    }
+    // Combo decay
+    if (Game.comboTimer > 0) {
+      Game.comboTimer -= effDt;
+      if (Game.comboTimer <= 0) Game.combo = 0;
+    }
+    // Ruling banner timer
+    if (Game.rulingBanner) {
+      Game.rulingBanner.timer -= dt;
+      if (Game.rulingBanner.timer <= 0) Game.rulingBanner = null;
+    }
+    // Enact new HOA Emergency Ruling every 22s
+    if (state === 'PLAY') {
+      Game.nextRulingTimer -= effDt;
+      if (Game.nextRulingTimer <= 0) {
+        Game.nextRulingTimer = CFG.RULING_INTERVAL;
+        enactNextRuling();
+      }
+    }
+    // Spawn curve: logarithmic ramp so it stays brisk and funny
+    if (state === 'PLAY') {
+      Game.nextSpawnTimer -= effDt;
+      const activeCount = Game.tenants.filter(t => t.state !== 'EVICTING').length;
+      if (Game.nextSpawnTimer <= 0 || activeCount === 0) {
+        const difficulty = 1 + 0.65 * Math.log2(1 + Game.time / 22);
+        const interval = clamp(3.5 / difficulty, 1.15, 3.4);
+        Game.nextSpawnTimer = interval;
+        if (activeCount < 14) {
+          spawnTenant();
+        }
+      }
+      // Occupancy meter climbs with active squatters (grace period for first 10s)
+      const grace = Game.time < 10 ? 0.35 : 1.0;
+      const rate = (CFG.PASSIVE_RENT_LOSS + activeCount * CFG.TENANT_OCC_RATE) * grace;
+      Game.occupancy = clamp(Game.occupancy + rate * effDt, 0, CFG.MAX_OCCUPANCY);
+      if (Game.occupancy >= CFG.MAX_OCCUPANCY && state === 'PLAY') {
+        triggerGameOver();
+      }
+    }
+    // Environmental forces from active HOA Rulings
+    const envFric = hasRuling('WAXED_FLOORS') ? 0.28 : (hasRuling('SHAG_CARPET') ? 1.55 : 1.0);
+    const wallBounce = hasRuling('RUBBER_MOULDING') ? 1.32 : 0.78;
+    const tiltForceX = hasRuling('TILT_EAST') ? 165 : 0;
+    const fanActive = hasRuling('PENTHOUSE_FAN');
+    if (fanActive) {
+      Game.rugSpin = lerp(Game.rugSpin, 2.4, effDt * 2);
+      Game.rugAngle += Game.rugSpin * effDt;
+    } else {
+      Game.rugSpin = lerp(Game.rugSpin, 0, effDt * 3);
+      Game.rugAngle += Game.rugSpin * effDt;
+    }
+    // Update Goose Landlord
+    updateGoose(effDt, envFric, wallBounce, tiltForceX, fanActive);
+    // Update Physical Lease Ledger HUD
+    updateLedger(effDt);
+    // Update Tenants & Collisions
+    updateTenants(effDt, envFric, wallBounce, tiltForceX, fanActive);
+    // Visual effects
+    updateVisualEffectsOnly(effDt);
+  }
+  function updateGoose(dt, envFric, wallBounce, tiltForceX, fanActive) {
+    const g = Game.goose;
+    const gRadius = hasRuling('SMALL_GOOSE') ? CFG.GOOSE.R * 0.68 : CFG.GOOSE.R;
+    const speedMult = (hasRuling('SMALL_GOOSE') ? 1.25 : 1.0) * (hasRuling('COFFEE_SPILL') ? 1.32 : 1.0);
+    const chargeSpeedMult = hasRuling('COFFEE_SPILL') ? 1.65 : 1.0;
+    // Movement input (WASD / Arrows)
+    let ix = 0, iy = 0;
+    if (Input.keys.has('KeyW') || Input.keys.has('ArrowUp')) iy -= 1;
+    if (Input.keys.has('KeyS') || Input.keys.has('ArrowDown')) iy += 1;
+    if (Input.keys.has('KeyA') || Input.keys.has('ArrowLeft')) ix -= 1;
+    if (Input.keys.has('KeyD') || Input.keys.has('ArrowRight')) ix += 1;
+    if (ix !== 0 || iy !== 0) {
+      const len = Math.hypot(ix, iy);
+      ix /= len; iy /= len;
+      if (g.dizzyTimer > 0) {
+        // Inverted dizzy controls!
+        ix = -ix; iy = -iy;
+      }
+      const chargeSlow = g.charging ? 0.58 : 1.0;
+      g.vx += ix * CFG.GOOSE.ACCEL * speedMult * chargeSlow * dt;
+      g.vy += iy * CFG.GOOSE.ACCEL * speedMult * chargeSlow * dt;
+      g.waddlePhase += dt * 16 * speedMult;
+    }
+    // Aiming towards mouse cursor
+    const targetAim = Math.atan2(Input.mouseY - g.y, Input.mouseX - g.x);
+    const aimDiff = normAngle(targetAim - g.aimAngle);
+    g.aimAngle = normAngle(g.aimAngle + aimDiff * Math.min(1, dt * 22));
+    // Charging Honk (Mouse Left or Spacebar)
+    const holdingHonk = (Input.mouseDown || Input.keys.has('Space')) && state === 'PLAY';
+    if (holdingHonk && g.dizzyTimer <= 0) {
+      if (!g.charging) {
+        g.charging = true;
+        g.chargeTime = 0;
+      }
+      g.chargeTime += dt * chargeSpeedMult;
+      const chargeRatio = g.chargeTime / CFG.GOOSE.CHARGE_TIME;
+      AudioSys.updateInhale(true, chargeRatio);
+      // Spring neck back while inhaling
+      g.neckLen = lerp(g.neckLen, 9, dt * 12);
+      g.scaleX = lerp(g.scaleX, 0.86, dt * 10);
+      g.scaleY = lerp(g.scaleY, 1.18, dt * 10);
+      // Inhale suction pulls nearby lightweight clutter slightly toward goose!
+      for (let i = 0; i < Game.tenants.length; i++) {
+        const t = Game.tenants[i];
+        if (t.state === 'EVICTING') continue;
+        const dx = g.x - t.x;
+        const dy = g.y - t.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 24 && d < CFG.GOOSE.INHALE_PULL_RANGE) {
+          const pull = (1 - d / CFG.GOOSE.INHALE_PULL_RANGE) * CFG.GOOSE.INHALE_PULL_FORCE * dt / t.mass;
+          t.vx += (dx / d) * pull;
+          t.vy += (dy / d) * pull;
+        }
+      }
+      // Over-committed charge triggers automatic dizzy sneeze-honk!
+      if (g.chargeTime >= CFG.GOOSE.OVERCHARGE_TIME) {
+        releaseHonk(true);
+      }
+    } else if (g.charging) {
+      releaseHonk(false);
+    } else {
+      AudioSys.updateInhale(false, 0);
+    }
+    // Environmental forces
+    g.vx += tiltForceX * dt;
+    if (fanActive) {
+      const fdx = g.x - CFG.W * 0.5;
+      const fdy = g.y - CFG.H * 0.5;
+      const fd = Math.hypot(fdx, fdy) || 1;
+      if (fd < 250) {
+        const swirl = (1 - fd / 250) * 320;
+        g.vx += (-fdy / fd) * swirl * dt;
+        g.vy += (fdx / fd) * swirl * dt;
+      }
+    }
+    // Friction & position update
+    const fric = Math.exp(-CFG.GOOSE.FRIC * envFric * dt);
+    g.vx *= fric;
+    g.vy *= fric;
+    g.x += g.vx * dt;
+    g.y += g.vy * dt;
+    // Wall collisions for Goose (Goose cannot fall down chutes, only bounce off railings)
+    const minX = CFG.WALL + gRadius;
+    const maxX = CFG.W - CFG.WALL - gRadius;
+    const minY = CFG.WALL + gRadius;
+    const maxY = CFG.H - CFG.WALL - gRadius;
+    if (g.x < minX) { g.x = minX; g.vx = Math.abs(g.vx) * wallBounce; AudioSys.bump(0.3); }
+    if (g.x > maxX) { g.x = maxX; g.vx = -Math.abs(g.vx) * wallBounce; AudioSys.bump(0.3); }
+    if (g.y < minY) { g.y = minY; g.vy = Math.abs(g.vy) * wallBounce; AudioSys.bump(0.3); }
+    if (g.y > maxY) { g.y = maxY; g.vy = -Math.abs(g.vy) * wallBounce; AudioSys.bump(0.3); }
+    // Recover spring animations
+    if (!g.charging) {
+      const neckSpring = (18 - g.neckLen) * 140;
+      g.neckVel = (g.neckVel + neckSpring * dt) * Math.exp(-12 * dt);
+      g.neckLen += g.neckVel * dt;
+    }
+    g.scaleX = lerp(g.scaleX, 1, dt * 12);
+    g.scaleY = lerp(g.scaleY, 1, dt * 12);
+    if (g.dizzyTimer > 0) g.dizzyTimer -= dt;
+    if (g.honkFlash > 0) g.honkFlash -= dt;
+    g.spinAngle += g.spinVel * dt;
+    g.spinVel *= Math.exp(-7 * dt);
+    if (Math.abs(g.spinVel) < 0.2) g.spinAngle = lerp(g.spinAngle, 0, dt * 12);
+    g.blinkTimer -= dt;
+    if (g.blinkTimer < -0.12) g.blinkTimer = rand(2.2, 4.8);
+  }
+  function updateLedger(dt) {
+    const led = Game.ledger;
+    const k = 55;
+    const damp = Math.exp(-6.5 * dt);
+    led.vx = (led.vx + (led.homeX - led.x) * k * dt) * damp;
+    led.vy = (led.vy + (led.homeY - led.y) * k * dt) * damp;
+    led.x += led.vx * dt;
+    led.y += led.vy * dt;
+    led.vAngle = (led.vAngle - led.angle * 65 * dt) * damp;
+    led.angle += led.vAngle * dt;
+    if (led.flash > 0) led.flash -= dt;
+  }
+  function updateTenants(dt, envFric, wallBounce, tiltForceX, fanActive) {
+    const g = Game.goose;
+    const gRadius = hasRuling('SMALL_GOOSE') ? CFG.GOOSE.R * 0.68 : CFG.GOOSE.R;
+    const lawyerMult = hasRuling('LAWYER_UP') ? 1.45 : 1.0;
+    const openChutes = hasRuling('OPEN_CONCEPT');
+    for (let i = Game.tenants.length - 1; i >= 0; i--) {
+      const t = Game.tenants[i];
+      if (t.state === 'EVICTING') {
+        t.stateTimer -= dt;
+        t.spawnScale = Math.max(0.01, t.stateTimer / 0.28);
+        t.angle += 18 * dt;
+        t.x += t.evictChute.nx * 140 * dt;
+        t.y += t.evictChute.ny * 140 * dt;
+        if (t.stateTimer <= 0) {
+          Game.tenants.splice(i, 1);
+        }
+        continue;
+      }
+      if (t.state === 'SPAWN') {
+        t.stateTimer -= dt;
+        t.spawnScale = lerp(1, 0.1, Math.max(0, t.stateTimer / 0.35));
+        if (t.stateTimer <= 0) {
+          t.spawnScale = 1;
+          t.state = 'ROAM';
+        }
+      }
+      // AI State machine: ROAM <-> ARGUE <-> UNDIGNIFIED
+      if (t.state === 'ROAM') {
+        // March stubbornly toward the plush center rug or away from chutes
+        const targetX = CFG.W * 0.5 + Math.cos(t.id * 1.7 + Game.time * 0.7) * 140;
+        const targetY = CFG.H * 0.5 + Math.sin(t.id * 2.3 + Game.time * 0.7) * 95;
+        const dx = targetX - t.x;
+        const dy = targetY - t.y;
+        const d = Math.hypot(dx, dy) || 1;
+        t.vx += (dx / d) * t.spec.speed * 2.4 * dt;
+        t.vy += (dy / d) * t.spec.speed * 2.4 * dt;
+        t.argueTimer -= dt * lawyerMult;
+        if (t.argueTimer <= 0) {
+          t.state = 'ARGUE';
+          t.stateTimer = t.spec.argueDur;
+          t.quote = pick(t.spec.quotes);
+          t.scaleX = 1.22;
+          t.scaleY = 0.82;
+          AudioSys.objection(t.id);
+          // Stubborn furniture pushes a mini counter-wave if Goose is right in its face,
+          // and the Sovereign Citizen Fridge honks back!
+          const gDist = Math.hypot(g.x - t.x, g.y - t.y);
+          const pushRadius = t.kind === 'FRIDGE' ? 145 : 85;
+          if (gDist < pushRadius) {
+            const ang = Math.atan2(g.y - t.y, g.x - t.x);
+            const push = t.kind === 'FRIDGE' ? 320 : 145;
+            g.vx += Math.cos(ang) * push;
+            g.vy += Math.sin(ang) * push;
+          }
+        }
+      } else if (t.state === 'ARGUE') {
+        t.stateTimer -= dt;
+        if (t.stateTimer <= 0) {
+          t.state = 'ROAM';
+          t.argueTimer = t.spec.argueEvery * rand(0.75, 1.25);
+        }
+      } else if (t.state === 'UNDIGNIFIED') {
+        t.stateTimer -= dt;
+        t.angle += t.vAngle * dt;
+        t.vAngle *= Math.exp(-2.5 * dt);
+        // Open-concept chutes gently magnetize Undignified furniture toward nearest exit
+        if (openChutes) {
+          let bestC = null, bestD = 999999;
+          for (let c of CFG.CHUTES) {
+            const cd = distSq(t.x, t.y, c.x, c.y);
+            if (cd < bestD) { bestD = cd; bestC = c; }
+          }
+          if (bestC && bestD < 240 * 240) {
+            const ang = Math.atan2(bestC.y - t.y, bestC.x - t.x);
+            t.vx += Math.cos(ang) * 260 * dt;
+            t.vy += Math.sin(ang) * 260 * dt;
+          }
+        }
+        if (t.stateTimer <= 0) {
+          t.state = 'ROAM';
+          t.dignity = Math.ceil(t.dignityMax * 0.5);
+          t.angle = 0;
+          t.vAngle = 0;
+          t.billiardChain = 0;
+        }
+      }
+      // Environmental forces
+      t.vx += tiltForceX * dt;
+      if (fanActive) {
+        const fdx = t.x - CFG.W * 0.5;
+        const fdy = t.y - CFG.H * 0.5;
+        const fd = Math.hypot(fdx, fdy) || 1;
+        if (fd < 260) {
+          const swirl = (1 - fd / 260) * 340 / Math.sqrt(t.mass);
+          t.vx += (-fdy / fd) * swirl * dt;
+          t.vy += (fdx / fd) * swirl * dt;
+        }
+      }
+      // Apply floor friction (Undignified furniture slides much further!)
+      const slideFactor = t.state === 'UNDIGNIFIED' ? 0.42 : 1.0;
+      const fric = Math.exp(-3.8 * envFric * slideFactor * dt);
+      t.vx *= fric;
+      t.vy *= fric;
+      t.x += t.vx * dt;
+      t.y += t.vy * dt;
+      // Check if tenant entered an Eviction Chute!
+      const speed = Math.hypot(t.vx, t.vy);
+      const chute = isPointInChute(t.x, t.y, t.r, t.state === 'UNDIGNIFIED');
+      if (chute && (t.state === 'UNDIGNIFIED' || speed > 135 || Game.time - t.lastHonkedTime < 1.6)) {
+        evictTenant(t, chute);
+        continue;
+      }
+      // Wall collisions
+      const minX = CFG.WALL + t.r;
+      const maxX = CFG.W - CFG.WALL - t.r;
+      const minY = CFG.WALL + t.r;
+      const maxY = CFG.H - CFG.WALL - t.r;
+      if (t.x < minX) { t.x = minX; t.vx = Math.abs(t.vx) * wallBounce; }
+      if (t.x > maxX) { t.x = maxX; t.vx = -Math.abs(t.vx) * wallBounce; }
+      if (t.y < minY) { t.y = minY; t.vy = Math.abs(t.vy) * wallBounce; }
+      if (t.y > maxY) { t.y = maxY; t.vy = -Math.abs(t.vy) * wallBounce; }
+      // Recover squash/stretch
+      t.scaleX = lerp(t.scaleX, 1, dt * 10);
+      t.scaleY = lerp(t.scaleY, 1, dt * 10);
+      if (t.hitFlash > 0) t.hitFlash -= dt;
+      t.blinkTimer -= dt;
+      if (t.blinkTimer < -0.12) t.blinkTimer = rand(1.8, 4.5);
+      // Goose <-> Tenant collision
+      const gdx = t.x - g.x;
+      const gdy = t.y - g.y;
+      const gdSq = gdx * gdx + gdy * gdy;
+      const minDist = t.r + gRadius;
+      if (gdSq < minDist * minDist && gdSq > 0.0001) {
+        const gd = Math.sqrt(gdSq);
+        const nx = gdx / gd;
+        const ny = gdy / gd;
+        const overlap = minDist - gd;
+        t.x += nx * overlap * 0.55;
+        t.y += ny * overlap * 0.55;
+        g.x -= nx * overlap * 0.45;
+        g.y -= ny * overlap * 0.45;
+        const relVx = t.vx - g.vx;
+        const relVy = t.vy - g.vy;
+        const sepVel = relVx * nx + relVy * ny;
+        if (sepVel < 0) {
+          const imp = -sepVel * 1.15;
+          t.vx += nx * imp / t.mass;
+          t.vy += ny * imp / t.mass;
+          g.vx -= nx * imp * 0.65;
+          g.vy -= ny * imp * 0.65;
+          AudioSys.bump(0.35);
+        }
+      }
+    }
+    // Tenant <-> Tenant Billiard Collisions!
+    for (let i = 0; i < Game.tenants.length; i++) {
+      const a = Game.tenants[i];
+      if (a.state === 'EVICTING') continue;
+      for (let j = i + 1; j < Game.tenants.length; j++) {
+        const b = Game.tenants[j];
+        if (b.state === 'EVICTING') continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dSq = dx * dx + dy * dy;
+        const minDist = a.r + b.r;
+        if (dSq < minDist * minDist && dSq > 0.0001) {
+          const d = Math.sqrt(dSq);
+          const nx = dx / d;
+          const ny = dy / d;
+          const overlap = minDist - d;
+          const totalMass = a.mass + b.mass;
+          a.x -= nx * overlap * (b.mass / totalMass);
+          a.y -= ny * overlap * (b.mass / totalMass);
+          b.x += nx * overlap * (a.mass / totalMass);
+          b.y += ny * overlap * (a.mass / totalMass);
+          const rvx = b.vx - a.vx;
+          const rvy = b.vy - a.vy;
+          const velAlongNormal = rvx * nx + rvy * ny;
+          if (velAlongNormal < 0) {
+            const restitution = 0.92;
+            const jImpulse = -(1 + restitution) * velAlongNormal / (1 / a.mass + 1 / b.mass);
+            const ix = jImpulse * nx;
+            const iy = jImpulse * ny;
+            a.vx -= ix / a.mass;
+            a.vy -= iy / a.mass;
+            b.vx += ix / b.mass;
+            b.vy += iy / b.mass;
+            const impactSpeed = Math.abs(velAlongNormal);
+            if (impactSpeed > 155) {
+              AudioSys.bump(clamp(impactSpeed / 500, 0.25, 1));
+              a.scaleX = 1.25; a.scaleY = 0.78;
+              b.scaleX = 1.25; b.scaleY = 0.78;
+              spawnParticles((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, '#f6f1e6', 5, 110, 3);
+              // Billiard Dignity transfer! Fast furniture strips dignity from what it slams into
+              if (a.state === 'UNDIGNIFIED' || (Game.time - a.lastHonkedTime < 1.2 && impactSpeed > 220)) {
+                b.dignity = Math.max(0, b.dignity - 1);
+                b.lastHonkedTime = Game.time;
+                b.billiardChain = Math.max(b.billiardChain, (a.billiardChain || 1) + 1);
+                Game.stats.collaterals++;
+                if (b.dignity <= 0 && b.state !== 'UNDIGNIFIED') {
+                  b.state = 'UNDIGNIFIED';
+                  b.stateTimer = 3.2;
+                  b.vAngle = 12;
+                  addFloatText(b.x, b.y - b.r, 'COLLATERAL!', '#4ecdc4', 13, 0.8);
+                }
+              }
+              if (b.state === 'UNDIGNIFIED' || (Game.time - b.lastHonkedTime < 1.2 && impactSpeed > 220)) {
+                a.dignity = Math.max(0, a.dignity - 1);
+                a.lastHonkedTime = Game.time;
+                a.billiardChain = Math.max(a.billiardChain, (b.billiardChain || 1) + 1);
+                Game.stats.collaterals++;
+                if (a.dignity <= 0 && a.state !== 'UNDIGNIFIED') {
+                  a.state = 'UNDIGNIFIED';
+                  a.stateTimer = 3.2;
+                  a.vAngle = -12;
+                  addFloatText(a.x, a.y - a.r, 'COLLATERAL!', '#4ecdc4', 13, 0.8);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  function updateVisualEffectsOnly(dt) {
+    // Trauma screenshake
+    Game.trauma = Math.max(0, Game.trauma - dt * 2.6);
+    const shakeAmt = Game.trauma * Game.trauma * 10;
+    Game.shakeX = Math.sin(Game.time * 57) * shakeAmt;
+    Game.shakeY = Math.cos(Game.time * 63) * shakeAmt;
+    for (let i = Game.shockwaves.length - 1; i >= 0; i--) {
+      const s = Game.shockwaves[i];
+      s.life -= dt;
+      s.r = lerp(s.maxR, 18, Math.max(0, s.life / s.maxLife));
+      if (s.life <= 0) Game.shockwaves.splice(i, 1);
+    }
+    for (let i = Game.particles.length - 1; i >= 0; i--) {
+      const p = Game.particles[i];
+      p.life -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= Math.exp(-5 * dt);
+      p.vy *= Math.exp(-5 * dt);
+      if (p.life <= 0) Game.particles.splice(i, 1);
+    }
+    for (let i = Game.floatTexts.length - 1; i >= 0; i--) {
+      const f = Game.floatTexts[i];
+      f.life -= dt;
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      if (f.life <= 0) Game.floatTexts.splice(i, 1);
+    }
+  }
+  function updateTitle(dt) {
+    Game.time += dt;
+    if (!Game.goose) {
+      Game.goose = createGoose();
+      spawnTenant('OTTOMAN', 240, 210);
+      spawnTenant('RECLINER', 720, 210);
+      spawnTenant('FRIDGE', 710, 390);
+      spawnTenant('LAMP', 250, 390);
+    }
+    Game.goose.aimAngle = Math.sin(Game.time * 1.4) * 0.6;
+    Game.goose.waddlePhase += dt * 8;
+    for (const t of Game.tenants) {
+      if (t.state === 'SPAWN') {
+        t.spawnScale = 1;
+        t.state = 'ARGUE';
+        t.stateTimer = 999;
+      }
+    }
+    if (Input.mouseJustDown || Input.justPressed.has('Space') || Input.justPressed.has('Enter')) {
+      AudioSys.honk(0.75, false);
+      startNewRun();
+    }
+  }
+  function updateReceipt(dt) {
+    Game.time += dt;
+    Game.receipt.timer += dt;
+    const targetLines = Math.min(Game.receipt.lines.length + 1, Math.floor(Game.receipt.timer / 0.24));
+    if (targetLines > Game.receipt.linesShown) {
+      Game.receipt.linesShown = targetLines;
+      AudioSys.clack();
+    }
+    if ((Game.receipt.timer > 0.65 && (Input.mouseJustDown || Input.justPressed.has('Space') || Input.justPressed.has('KeyR'))) ||
+        Input.justPressed.has('KeyR')) {
+      AudioSys.honk(0.7, false);
+      startNewRun();
+    }
+  }
+  // ============================================================================
+  // 11. PROCEDURAL RENDERING ENGINE
+  // ============================================================================
+  function drawGooglyEye(x, y, r, lookX, lookY, blinking, dizzyTime = 0) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (blinking) {
+      ctx.strokeStyle = '#141118';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-r, 0);
+      ctx.lineTo(r, 0);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#141118';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    let px = 0, py = 0;
+    if (dizzyTime > 0) {
+      px = Math.cos(Game.time * 22 + x) * (r * 0.45);
+      py = Math.sin(Game.time * 22 + y) * (r * 0.45);
+    } else {
+      const ang = Math.atan2(lookY - y, lookX - x);
+      const dist = Math.min(r * 0.42, Math.hypot(lookX - x, lookY - y) * 0.04);
+      px = Math.cos(ang) * dist;
+      py = Math.sin(ang) * dist;
+    }
+    ctx.fillStyle = '#141118';
+    ctx.beginPath();
+    ctx.arc(px, py, r * 0.48, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  function renderArena() {
+    const waxed = hasRuling('WAXED_FLOORS');
+    const shag = hasRuling('SHAG_CARPET');
+    // Hardwood floor background
+    ctx.fillStyle = waxed ? '#3a2e3f' : (shag ? '#3f4e3a' : '#2e242c');
+    ctx.fillRect(0, 0, CFG.W, CFG.H);
+    // Parquet floor planks
+    ctx.strokeStyle = waxed ? 'rgba(255,255,255,0.09)' : 'rgba(18,12,20,0.35)';
+    ctx.lineWidth = 2;
+    const plankH = 40;
+    for (let y = CFG.WALL; y < CFG.H - CFG.WALL; y += plankH) {
+      ctx.beginPath();
+      ctx.moveTo(CFG.WALL, y);
+      ctx.lineTo(CFG.W - CFG.WALL, y);
+      ctx.stroke();
+      const offset = ((y / plankH) % 2) * 60;
+      for (let x = CFG.WALL + offset; x < CFG.W - CFG.WALL; x += 120) {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + plankH);
+        ctx.stroke();
+      }
+    }
+    // Center ornamental rug (rotates when Ceiling Fan ruling is active!)
+    ctx.save();
+    ctx.translate(CFG.W * 0.5, CFG.H * 0.5);
+    ctx.rotate(Game.rugAngle);
+    ctx.fillStyle = '#5c2c45';
+    ctx.strokeStyle = '#d4a373';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(-190, -115, 380, 230, 16);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(244, 162, 97, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-172, -98, 344, 196, 10);
+    ctx.stroke();
+    if (hasRuling('PENTHOUSE_FAN')) {
+      // Draw spinning ceiling fan shadow blades
+      ctx.fillStyle = 'rgba(15, 10, 20, 0.24)';
+      for (let i = 0; i < 4; i++) {
+        ctx.save();
+        ctx.rotate(i * Math.PI * 0.5 + Game.time * 5.5);
+        ctx.beginPath();
+        ctx.roundRect(14, -14, 155, 28, 12);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+    // Tilt indicator arrows if TILT_EAST is active
+    if (hasRuling('TILT_EAST')) {
+      ctx.fillStyle = 'rgba(255, 209, 102, 0.16)';
+      const shift = (Game.time * 90) % 120;
+      for (let x = 140 + shift; x < CFG.W - 140; x += 120) {
+        for (let y = 130; y < CFG.H - 120; y += 150) {
+          ctx.beginPath();
+          ctx.moveTo(x, y - 14);
+          ctx.lineTo(x + 22, y);
+          ctx.lineTo(x, y + 14);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    }
+    // Outer Apartment Walls
+    const rubber = hasRuling('RUBBER_MOULDING');
+    ctx.fillStyle = '#19141f';
+    ctx.fillRect(0, 0, CFG.W, CFG.WALL);
+    ctx.fillRect(0, CFG.H - CFG.WALL, CFG.W, CFG.WALL);
+    ctx.fillRect(0, 0, CFG.WALL, CFG.H);
+    ctx.fillRect(CFG.W - CFG.WALL, 0, CFG.WALL, CFG.H);
+    ctx.strokeStyle = rubber ? '#ff6b6b' : '#4a3e56';
+    ctx.lineWidth = rubber ? 5 : 3;
+    ctx.strokeRect(CFG.WALL, CFG.WALL, CFG.W - CFG.WALL * 2, CFG.H - CFG.WALL * 2);
+    // Draw the 4 Eviction Chutes
+    const openBonus = hasRuling('OPEN_CONCEPT') ? 1.45 : 1.0;
+    for (const c of CFG.CHUTES) {
+      const cw = (c.side === 'top' || c.side === 'bottom') ? c.w * openBonus : c.w;
+      const ch = (c.side === 'left' || c.side === 'right') ? c.h * openBonus : c.h;
+      const cx = c.x - cw * 0.5;
+      const cy = c.y - ch * 0.5;
+      // Chute void pit
+      ctx.fillStyle = '#0b080e';
+      ctx.fillRect(cx, cy, cw, ch);
+      // Hazard chevrons
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(cx + 2, cy + 2, cw - 4, ch - 4);
+      // Animated beckoning arrows inside chute
+      const pulse = 0.45 + 0.35 * Math.sin(Game.time * 6 + c.id);
+      ctx.fillStyle = `rgba(78, 205, 196, ${pulse})`;
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(c.label, c.x - c.nx * 14, c.y - c.ny * 14);
+    }
+  }
+  function renderTenants() {
+    const g = Game.goose;
+    for (const t of Game.tenants) {
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      // Drop shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.34)';
+      ctx.beginPath();
+      ctx.ellipse(0, t.r * 0.55, t.r * 0.92 * t.spawnScale, t.r * 0.45 * t.spawnScale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const wobble = t.state === 'ARGUE' ? Math.sin(Game.time * 38) * 0.12 : Math.sin(Game.time * 5 + t.id) * 0.04;
+      ctx.rotate(t.angle + wobble);
+      ctx.scale(t.scaleX * t.spawnScale, t.scaleY * t.spawnScale);
+      // Golden Perjury Ring when mid-sentence!
+      if (t.state === 'ARGUE') {
+        const ringPulse = 1 + 0.14 * Math.sin(Game.time * 24);
+        ctx.strokeStyle = '#ffd166';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, (t.r + 9) * ringPulse, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (t.state === 'UNDIGNIFIED') {
+        ctx.strokeStyle = '#4ecdc4';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.arc(0, 0, t.r + 6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // Main furniture body
+      ctx.fillStyle = t.hitFlash > 0 ? '#ffffff' : t.spec.color;
+      ctx.strokeStyle = '#141118';
+      ctx.lineWidth = 3;
+      const r = t.r;
+      if (t.spec.shape === 'circle') {
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = t.spec.trim;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.48, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else if (t.spec.shape === 'rect') {
+        // Sovereign Citizen Fridge
+        ctx.beginPath();
+        ctx.roundRect(-r * 0.88, -r, r * 1.76, r * 2, 7);
+        ctx.fill();
+        ctx.stroke();
+        // Freezer door line & handle
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.85, -r * 0.25);
+        ctx.lineTo(r * 0.85, -r * 0.25);
+        ctx.stroke();
+        ctx.fillStyle = '#f6f1e6';
+        ctx.fillRect(r * 0.48, -r * 0.75, 4, r * 1.3);
+      } else if (t.spec.shape === 'chair') {
+        // Tenured La-Z-Boy
+        ctx.beginPath();
+        ctx.roundRect(-r, -r * 0.85, r * 2, r * 1.7, 9);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = t.spec.trim;
+        ctx.beginPath();
+        ctx.roundRect(-r * 0.7, -r * 0.45, r * 1.4, r * 1.1, 5);
+        ctx.fill();
+        ctx.stroke();
+      } else if (t.spec.shape === 'bush') {
+        // Emotional Support Ficus
+        ctx.fillStyle = t.spec.trim;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = t.hitFlash > 0 ? '#ffffff' : t.spec.color;
+        for (let a = 0; a < 6; a++) {
+          const ang = (a / 6) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(Math.cos(ang) * r * 0.45, Math.sin(ang) * r * 0.45, r * 0.56, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      } else {
+        // Squatter Ottoman tufted cushion
+        ctx.beginPath();
+        ctx.roundRect(-r, -r * 0.85, r * 2, r * 1.7, 10);
+        ctx.fill();
+        ctx.stroke();
+      }
+      // Expressive Googly Eyes tracking the Goose!
+      const eyeSpread = Math.min(9, r * 0.36);
+      const eyeY = -r * 0.15;
+      const blinking = t.blinkTimer < 0;
+      drawGooglyEye(-eyeSpread, eyeY, 5.2, g.x - t.x, g.y - t.y, blinking, t.state === 'UNDIGNIFIED' ? 1 : 0);
+      drawGooglyEye(eyeSpread, eyeY, 5.2, g.x - t.x, g.y - t.y, blinking, t.state === 'UNDIGNIFIED' ? 1 : 0);
+      // Animated shouting mouth when arguing!
+      if (t.state === 'ARGUE') {
+        ctx.fillStyle = '#141118';
+        ctx.beginPath();
+        ctx.ellipse(0, r * 0.32, 6.5, 4 + Math.sin(Game.time * 40) * 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (t.state === 'UNDIGNIFIED') {
+        ctx.strokeStyle = '#141118';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, r * 0.38, 4.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+      // Dignity Pips (Crown badges above multi-dignity furniture)
+      if (t.state !== 'EVICTING' && t.dignityMax > 1) {
+        const pipW = 10;
+        const startX = t.x - ((t.dignityMax - 1) * pipW) * 0.5;
+        const pipY = t.y + t.r + 9;
+        for (let p = 0; p < t.dignityMax; p++) {
+          ctx.fillStyle = p < t.dignity ? '#ffd166' : '#2f2838';
+          ctx.strokeStyle = '#141118';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(startX + p * pipW, pipY, 3.8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+      // Speech Bubble when mid-argument!
+      if (t.state === 'ARGUE') {
+        renderSpeechBubble(t.x, t.y - t.r - 18, t.quote);
+      }
+    }
+  }
+  function renderSpeechBubble(x, y, text) {
+    ctx.save();
+    ctx.font = 'bold 11px monospace';
+    const w = ctx.measureText(text).width + 16;
+    const h = 22;
+    const bx = clamp(x, w * 0.5 + 14, CFG.W - w * 0.5 - 14);
+    const by = Math.max(36, y);
+    ctx.fillStyle = '#ffd166';
+    ctx.strokeStyle = '#141118';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(bx - w * 0.5, by - h, w, h, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#141118';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, bx, by - h * 0.5);
+    ctx.restore();
+  }
+  function renderGoose() {
+    const g = Game.goose;
+    const smallMult = hasRuling('SMALL_GOOSE') ? 0.72 : 1.0;
+    const hasMega = hasRuling('MEGAPHONE');
+    // Aiming Cone Telegraph while charging (or subtle dotted line when idle)
+    const chargeRatio = clamp(g.chargeTime / CFG.GOOSE.CHARGE_TIME, 0, 1.25);
+    const arc = CFG.GOOSE.HONK_ARC * (hasMega ? 1.42 : 1.0);
+    const range = lerp(CFG.GOOSE.HONK_RANGE_MIN, CFG.GOOSE.HONK_RANGE_MAX, Math.max(0.22, chargeRatio)) * (hasMega ? 1.25 : 1.0);
+    ctx.save();
+    ctx.translate(g.x, g.y);
+    if (g.charging) {
+      const overWarn = g.chargeTime > CFG.GOOSE.CHARGE_TIME * 0.95;
+      ctx.fillStyle = overWarn
+        ? `rgba(255, 107, 107, ${0.18 + 0.1 * Math.sin(Game.time * 45)})`
+        : 'rgba(255, 209, 102, 0.15)';
+      ctx.strokeStyle = overWarn ? '#ff6b6b' : '#ffd166';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, range, g.aimAngle - arc * 0.5, g.aimAngle + arc * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      // Recoil trajectory preview arrow behind the goose
+      const recoilLen = 35 + chargeRatio * 55;
+      const backA = g.aimAngle + Math.PI;
+      ctx.strokeStyle = 'rgba(78, 205, 196, 0.75)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(backA) * recoilLen, Math.sin(backA) * recoilLen);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      // Subtle aim reticle
+      ctx.strokeStyle = 'rgba(246, 241, 230, 0.22)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(g.aimAngle) * 24, Math.sin(g.aimAngle) * 24);
+      ctx.lineTo(Math.cos(g.aimAngle) * 78, Math.sin(g.aimAngle) * 78);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    ctx.beginPath();
+    ctx.ellipse(0, 12 * smallMult, 18 * smallMult, 9 * smallMult, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Rotate & scale Goose body
+    const waddleTilt = Math.sin(g.waddlePhase) * 0.09;
+    ctx.rotate(g.aimAngle + g.spinAngle + waddleTilt);
+    ctx.scale(g.scaleX * smallMult, g.scaleY * smallMult);
+    // Orange webbed feet paddling
+    const footOffset = Math.sin(g.waddlePhase) * 5;
+    ctx.fillStyle = '#f4a261';
+    ctx.strokeStyle = '#141118';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(-6 + footOffset, -11, 6, 3.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(-6 - footOffset, 11, 6, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Plump white Goose body
+    ctx.fillStyle = g.honkFlash > 0 ? '#ffd166' : '#f6f1e6';
+    ctx.strokeStyle = '#141118';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(-3, 0, 18, 13.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Landlord Green Visor / Red Bowtie on chest!
+    ctx.fillStyle = '#e63946';
+    ctx.beginPath();
+    ctx.moveTo(8, -5);
+    ctx.lineTo(13, 0);
+    ctx.lineTo(8, 5);
+    ctx.lineTo(3, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Elastic S-curve neck + head
+    const headX = g.neckLen;
+    ctx.strokeStyle = '#141118';
+    ctx.lineWidth = 11;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(7, 0);
+    ctx.lineTo(headX, 0);
+    ctx.stroke();
+    ctx.strokeStyle = '#f6f1e6';
+    ctx.lineWidth = 6.5;
+    ctx.beginPath();
+    ctx.moveTo(7, 0);
+    ctx.lineTo(headX, 0);
+    ctx.stroke();
+    // Goose Head
+    ctx.fillStyle = '#f6f1e6';
+    ctx.strokeStyle = '#141118';
+    ctx.lineWidth = 2.8;
+    ctx.beginPath();
+    ctx.arc(headX + 3, 0, 8.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Orange Beak (opens wide during honk flash or charge!)
+    const beakOpen = (g.charging || g.honkFlash > 0) ? 0.32 : 0.05;
+    ctx.fillStyle = '#ff9f1c';
+    ctx.beginPath();
+    ctx.moveTo(headX + 9, -4 - beakOpen * 6);
+    ctx.lineTo(headX + 21, -beakOpen * 9);
+    ctx.lineTo(headX + 9, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(headX + 9, 0);
+    ctx.lineTo(headX + 20, beakOpen * 9);
+    ctx.lineTo(headX + 9, 4 + beakOpen * 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Angry Landlord Eyes
+    drawGooglyEye(headX + 4, -3.5, 3.3, 30, -3, g.blinkTimer < 0, g.dizzyTimer);
+    drawGooglyEye(headX + 4, 3.5, 3.3, 30, 3, g.blinkTimer < 0, g.dizzyTimer);
+    ctx.restore();
+    // Dizzy stars if over-honked
+    if (g.dizzyTimer > 0) {
+      for (let s = 0; s < 3; s++) {
+        const a = Game.time * 8 + (s * Math.PI * 2) / 3;
+        const sx = g.x + Math.cos(a) * 22;
+        const sy = g.y - 22 + Math.sin(a) * 8;
+        ctx.fillStyle = '#ffd166';
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  function renderEffects() {
+    // Honk Shockwave Rings
+    for (const s of Game.shockwaves) {
+      const alpha = clamp(s.life / s.maxLife, 0, 1);
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.strokeStyle = s.mega
+        ? `rgba(255, 209, 102, ${alpha * 0.95})`
+        : `rgba(246, 241, 230, ${alpha * 0.85})`;
+      ctx.lineWidth = s.mega ? 6 : 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, s.r, s.angle - s.arc * 0.5, s.angle + s.arc * 0.5);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(78, 205, 196, ${alpha * 0.55})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, s.r * 0.72, s.angle - s.arc * 0.45, s.angle + s.arc * 0.45);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Particles
+    for (const p of Game.particles) {
+      const alpha = clamp(p.life / p.maxLife, 0, 1);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // Floating Text Popups
+    for (const f of Game.floatTexts) {
+      const alpha = clamp(f.life / f.maxLife, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `bold ${f.size}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = '#141118';
+      ctx.lineWidth = 4;
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.restore();
+    }
+  }
+  function renderHUD() {
+    // 1. Physical Lease Ledger (Score + Combo) — Top Left, reactive to Honks!
+    const led = Game.ledger;
+    ctx.save();
+    ctx.translate(led.x, led.y);
+    ctx.rotate(led.angle);
+    ctx.fillStyle = led.flash > 0 ? '#ffd166' : '#231d2b';
+    ctx.strokeStyle = '#f6f1e6';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(-led.w * 0.5, -led.h * 0.5, led.w, led.h, 7);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = led.flash > 0 ? '#141118' : '#ffd166';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('RENT COLLECTED', -led.w * 0.5 + 12, -led.h * 0.5 + 16);
+    ctx.fillStyle = led.flash > 0 ? '#141118' : '#f6f1e6';
+    ctx.font = 'bold 21px monospace';
+    ctx.fillText('$' + Game.displayRent.toLocaleString(), -led.w * 0.5 + 12, -led.h * 0.5 + 40);
+    if (Game.combo > 1) {
+      ctx.fillStyle = '#4ecdc4';
+      ctx.font = 'bold 15px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`x${Game.combo} STREAK`, led.w * 0.5 - 12, -led.h * 0.5 + 38);
+    }
+    ctx.restore();
+    // 2. Squatting Occupancy Meter — Top Right
+    const occW = 248;
+    const occH = 48;
+    const occX = CFG.W - occW - 56;
+    const occY = 20;
+    const occRatio = clamp(Game.occupancy / CFG.MAX_OCCUPANCY, 0, 1);
+    const danger = occRatio > 0.75;
+    ctx.save();
+    if (danger) {
+      ctx.translate(Math.sin(Game.time * 36) * 2.5, 0);
+    }
+    ctx.fillStyle = '#231d2b';
+    ctx.strokeStyle = danger ? '#ff6b6b' : '#f6f1e6';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(occX, occY, occW, occH, 7);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = danger ? '#ff6b6b' : '#f6f1e6';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('SQUATTER OCCUPANCY', occX + 12, occY + 16);
+    ctx.textAlign = 'right';
+    ctx.fillText(Math.round(Game.occupancy) + '%', occX + occW - 12, occY + 16);
+    // Bar track
+    ctx.fillStyle = '#141118';
+    ctx.fillRect(occX + 12, occY + 25, occW - 24, 13);
+    ctx.fillStyle = occRatio > 0.8 ? '#ff6b6b' : (occRatio > 0.5 ? '#ffd166' : '#4ecdc4');
+    ctx.fillRect(occX + 12, occY + 25, (occW - 24) * occRatio, 13);
+    ctx.restore();
+    // 3. Active HOA Bylaws Pills — Bottom Left
+    let pillX = 56;
+    const pillY = CFG.H - 36;
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    for (const r of Game.activeRulings) {
+      const label = r.title.split(':')[1] ? r.title.split(':')[1].trim() : r.title;
+      const pw = ctx.measureText(label).width + 18;
+      ctx.fillStyle = r.helpful ? 'rgba(78, 205, 196, 0.22)' : 'rgba(255, 107, 107, 0.22)';
+      ctx.strokeStyle = r.helpful ? '#4ecdc4' : '#ff6b6b';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pw, 22, 5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#f6f1e6';
+      ctx.fillText(label, pillX + 9, pillY + 15);
+      pillX += pw + 8;
+    }
+    // Mute / Restart tiny helper — Bottom Right
+    ctx.fillStyle = 'rgba(246, 241, 230, 0.55)';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`[M] ${AudioSys.isMuted() ? 'UNMUTE' : 'MUTE'}   [R] RESTART`, CFG.W - 56, CFG.H - 21);
+    // 4. HOA Emergency Ruling Banner Announcement
+    if (Game.rulingBanner) {
+      const b = Game.rulingBanner;
+      const slide = clamp((b.dur - b.timer) * 6, 0, 1) * clamp(b.timer * 4, 0, 1);
+      const by = lerp(-80, 92, slide);
+      ctx.save();
+      ctx.translate(CFG.W * 0.5, by);
+      ctx.fillStyle = '#19141f';
+      ctx.strokeStyle = b.ruling.helpful ? '#4ecdc4' : '#ffd166';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(-270, -28, 540, 56, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = b.ruling.helpful ? '#4ecdc4' : '#ffd166';
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('HOA EMERGENCY RULING — ' + b.ruling.title.toUpperCase(), 0, -7);
+      ctx.fillStyle = '#f6f1e6';
+      ctx.font = '12px monospace';
+      ctx.fillText(b.ruling.desc, 0, 14);
+      ctx.restore();
+    }
+    // Debug overlay (`)
+    if (debugOpen) {
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(12, 85, 220, 95);
+      ctx.fillStyle = '#4ecdc4';
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`TIME: ${Game.time.toFixed(1)}s | TENANTS: ${Game.tenants.length}`, 20, 102);
+      ctx.fillText(`RULING IN: ${Game.nextRulingTimer.toFixed(1)}s`, 20, 118);
+      ctx.fillText(`PARTICLES: ${Game.particles.length}`, 20, 134);
+      ctx.fillText(`SEED: ${initialSeed}`, 20, 150);
+    }
+  }
+  function renderTitleOverlay() {
+    ctx.fillStyle = 'rgba(16, 12, 22, 0.84)';
+    ctx.fillRect(0, 0, CFG.W, CFG.H);
+    ctx.save();
+    ctx.translate(CFG.W * 0.5, CFG.H * 0.5);
+    // Card
+    ctx.fillStyle = '#231d2b';
+    ctx.strokeStyle = '#ffd166';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(-330, -210, 660, 420, 14);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#ffd166';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('MUNICIPAL HOUSING AUTHORITY FORM 99-HONK', 0, -172);
+    ctx.fillStyle = '#f6f1e6';
+    ctx.font = 'bold 38px monospace';
+    ctx.fillText('THE GOOSE IS A LANDLORD', 0, -126);
+    ctx.fillStyle = '#4ecdc4';
+    ctx.font = 'bold 15px monospace';
+    ctx.fillText('YOU OWN THE BUILDING. THE FURNITURE REFUSES TO PAY RENT.', 0, -92);
+    // Three visual rule panels
+    const rules = [
+      ['1. INHALE & HONK', 'WASD to waddle. Hold CLICK or SPACE to inhale, release to blast furniture toward the 4 wall chutes (and recoil backward!).'],
+      ['2. SHATTER OBJECTIONS (2.5x!)', 'Furniture argues back! Blast a piece while its GOLDEN SPEECH BUBBLE is open to shatter its Dignity for 2.5x launch power.'],
+      ['3. SURVIVE HOA RULINGS', 'Every 22 seconds the HOA rewrites physics. Keep Squatter Occupancy below 100%!']
+    ];
+    let ry = -48;
+    for (const [head, body] of rules) {
+      ctx.fillStyle = '#19141f';
+      ctx.strokeStyle = '#4a3e56';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-285, ry, 570, 56, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffd166';
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(head, -268, ry + 20);
+      ctx.fillStyle = '#f6f1e6';
+      ctx.font = '11.5px monospace';
+      ctx.fillText(body, -268, ry + 41);
+      ry += 68;
+    }
+    if (highScore > 0) {
+      ctx.fillStyle = '#4ecdc4';
+      ctx.font = 'bold 14px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`HIGHEST RENT RECOVERED: $${highScore.toLocaleString()}`, 0, 162);
+    }
+    const pulse = 0.65 + 0.35 * Math.sin(Game.time * 7);
+    ctx.fillStyle = `rgba(255, 209, 102, ${pulse})`;
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('[ CLICK OR PRESS SPACE TO SERVE EVICTIONS ]', 0, 190);
+    ctx.restore();
+  }
+  function renderReceiptOverlay() {
+    ctx.fillStyle = 'rgba(14, 11, 18, 0.86)';
+    ctx.fillRect(0, 0, CFG.W, CFG.H);
+    ctx.save();
+    ctx.translate(CFG.W * 0.5, CFG.H * 0.5);
+    // Paper receipt
+    const rw = 470;
+    const rh = 450;
+    ctx.fillStyle = '#f4efe1';
+    ctx.strokeStyle = '#141118';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.roundRect(-rw * 0.5, -rh * 0.5, rw, rh, 6);
+    ctx.fill();
+    ctx.stroke();
+    // Header
+    ctx.fillStyle = '#141118';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('EVICTION COURT DOCKET', 0, -rh * 0.5 + 36);
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = '#b5382a';
+    ctx.fillText('NOTICE: SQUATTER OCCUPANCY REACHED 100%', 0, -rh * 0.5 + 56);
+    // Dashed divider
+    ctx.strokeStyle = '#141118';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(-rw * 0.5 + 24, -rh * 0.5 + 70);
+    ctx.lineTo(rw * 0.5 - 24, -rh * 0.5 + 70);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Line items
+    const rec = Game.receipt;
+    let ly = -rh * 0.5 + 98;
+    ctx.font = 'bold 13px monospace';
+    for (let i = 0; i < Math.min(rec.lines.length, rec.linesShown); i++) {
+      const [label, val] = rec.lines[i];
+      const isTotal = i === rec.lines.length - 1;
+      if (isTotal) ly += 8;
+      ctx.fillStyle = isTotal ? '#b5382a' : '#141118';
+      ctx.font = isTotal ? 'bold 16px monospace' : 'bold 13px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, -rw * 0.5 + 30, ly);
+      ctx.textAlign = 'right';
+      ctx.fillText(val, rw * 0.5 - 30, ly);
+      ly += 27;
+    }
+    // Rubber-stamped Landlord Rank
+    if (rec.linesShown > rec.lines.length) {
+      ctx.save();
+      ctx.translate(0, rh * 0.5 - 82);
+      ctx.rotate(-0.04);
+      ctx.strokeStyle = '#b5382a';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-185, -20, 370, 38);
+      ctx.fillStyle = '#b5382a';
+      ctx.font = 'bold 15px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('RANK: ' + rec.rank, 0, 5);
+      ctx.restore();
+    }
+    ctx.fillStyle = '#141118';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('[ CLICK OR PRESS R / SPACE TO APPEAL ]', 0, rh * 0.5 - 22);
+    ctx.restore();
+  }
+  function render() {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    // Apply camera screenshake
+    ctx.save();
+    ctx.translate(Game.shakeX, Game.shakeY);
+    renderArena();
+    if (state !== 'TITLE') {
+      renderTenants();
+      renderGoose();
+      renderEffects();
+      renderHUD();
+    } else if (Game.tenants.length > 0 && Game.goose) {
+      renderTenants();
+      renderGoose();
+    }
+    ctx.restore();
+    if (state === 'TITLE') {
+      renderTitleOverlay();
+    } else if (state === 'RECEIPT') {
+      renderReceiptOverlay();
+    }
+    ctx.restore();
+  }
+  // ============================================================================
+  // 12. MAIN ENGINE LOOP & GLOBAL SHORTCUTS
+  // ============================================================================
+  let lastTime = performance.now();
+  let accumulator = 0;
+  function frame(now) {
+    let frameDt = (now - lastTime) / 1000;
+    lastTime = now;
+    if (frameDt > 0.1) frameDt = 0.1;
+    // Instant meta keys
+    if (Input.justPressed.has('KeyM')) {
+      AudioSys.toggleMute();
+    }
+    if (Input.justPressed.has('Backquote')) {
+      debugOpen = !debugOpen;
+    }
+    if (Input.justPressed.has('KeyR') && (state === 'PLAY' || state === 'DYING')) {
+      AudioSys.honk(0.6, false);
+      startNewRun();
+    }
+    accumulator += frameDt;
+    let steps = 0;
+    while (accumulator >= CFG.DT && steps < 6) {
+      updateSimulation(CFG.DT);
+      Input.justPressed.clear();
+      Input.mouseJustDown = false;
+      Input.mouseJustUp = false;
+      accumulator -= CFG.DT;
+      steps++;
+    }
+    if (steps === 6) accumulator = 0;
+    render();
+    requestAnimationFrame(frame);
+  }
+  // Expose debug hook for automated verification
+  window.__HONKCOURT__ = {
+    getState: () => state,
+    startNewRun,
+    enactNextRuling,
+    triggerGameOver,
+    Game
+  };
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
