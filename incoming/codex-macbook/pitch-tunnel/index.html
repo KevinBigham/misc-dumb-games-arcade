@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#07131b">
+<title>PITCH TUNNEL — A Nine-Zone Mind Game</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #030a0f; }
+  body {
+    display: grid; place-items: center; overscroll-behavior: none;
+    font-family: "Courier New", ui-monospace, monospace;
+    background: radial-gradient(ellipse at 50% 35%, #132b35 0%, #07131b 52%, #03090d 100%);
+  }
+  canvas {
+    display: block; width: 1200px; height: 760px; max-width: 100vw; max-height: 100vh;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    outline: none; box-shadow: 0 24px 100px #000a;
+  }
+  #sr { position: fixed; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+</style>
+</head>
+<body>
+<canvas id="game" tabindex="0" role="application" aria-label="PITCH TUNNEL. A three-inning baseball mind game. Q W E select pitch type, number keys 1 through 9 select a zone, Space locks a pitch or swings, P pauses, and M toggles sound. Mouse and touch controls are also available."></canvas>
+<div id="sr" aria-live="polite"></div>
+<script>
+(() => {
+'use strict';
+
+// PITCH TUNNEL — all visuals, simulation, and audio are generated locally.
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha: false });
+const sr = document.getElementById('sr');
+const W = 1200, H = 760, STEP = 1 / 60;
+const C = {
+  ink: '#07131b', deep: '#0b1c25', panel: '#102832', line: '#29434a',
+  cream: '#f3ead2', muted: '#91a8a6', mint: '#70f2bd', orange: '#ff805d',
+  gold: '#f6c85f', red: '#ff5964', blue: '#72b7ff', white: '#ffffff'
+};
+const TYPES = ['fastball', 'curve', 'change'];
+const TYPE_META = {
+  fastball: { short: 'FAST', key: 'Q', color: C.orange, duration: 1.04, fatigue: 7, label: 'FASTBALL', note: 'STRIKE / FUEL' },
+  curve:    { short: 'CURV', key: 'W', color: C.mint, duration: 1.20, fatigue: 9, label: 'CURVEBALL', note: 'CHASE / RISK' },
+  change:   { short: 'CHNG', key: 'E', color: C.gold, duration: 1.31, fatigue: 5, label: 'CHANGEUP', note: 'TIMING / DROP' }
+};
+const ZONE = { x: 504, y: 294, w: 192, h: 228 };
+const TUNNEL_POINT = { x: 600, y: 356 };
+const RELEASE_POINT = { x: 600, y: 254 };
+const SAVE_KEY = 'pitchTunnel.save.v1';
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const ease = t => t * t * (3 - 2 * t);
+const rand = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
+const pick = arr => arr[(Math.random() * arr.length) | 0];
+const countKey = () => `${game.balls}-${game.strikes}`;
+const situation = () => game.strikes > game.balls ? 'ahead' : game.balls > game.strikes ? 'behind' : 'even';
+
+let save = { wins: 0, losses: 0, ties: 0, muted: false };
+try {
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (raw) {
+    const data = JSON.parse(raw);
+    for (const k of ['wins', 'losses', 'ties']) {
+      if (Number.isInteger(data[k]) && data[k] >= 0 && data[k] < 100000) save[k] = data[k];
+    }
+    if (typeof data.muted === 'boolean') save.muted = data.muted;
+  }
+} catch (_) { /* Storage can be disabled; the game remains fully playable. */ }
+function persist() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (_) {}
+}
+
+class AudioPark {
+  constructor() { this.ac = null; this.master = null; this.crowd = null; this.excitement = 0; }
+  init() {
+    if (this.ac) { if (this.ac.state === 'suspended') this.ac.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try {
+      this.ac = new AC();
+      this.master = this.ac.createGain();
+      this.master.gain.value = save.muted ? 0 : 0.72;
+      this.master.connect(this.ac.destination);
+      const length = this.ac.sampleRate * 2;
+      const buffer = this.ac.createBuffer(1, length, this.ac.sampleRate);
+      const data = buffer.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < length; i++) {
+        last = last * 0.84 + (Math.random() * 2 - 1) * 0.16;
+        data[i] = last * (0.72 + 0.28 * Math.sin(i * 0.00019));
+      }
+      const source = this.ac.createBufferSource();
+      source.buffer = buffer; source.loop = true;
+      const filter = this.ac.createBiquadFilter();
+      filter.type = 'bandpass'; filter.frequency.value = 510; filter.Q.value = 0.52;
+      this.crowd = this.ac.createGain(); this.crowd.gain.value = 0.045;
+      source.connect(filter); filter.connect(this.crowd); this.crowd.connect(this.master);
+      source.start();
+    } catch (_) { this.ac = null; }
+  }
+  mute() {
+    if (!this.ac || !this.master) return;
+    this.master.gain.setTargetAtTime(save.muted ? 0 : 0.72, this.ac.currentTime, 0.025);
+  }
+  tone(freq, duration, type = 'square', volume = 0.08, endFreq = freq) {
+    if (!this.ac || save.muted) return;
+    const t = this.ac.currentTime;
+    const osc = this.ac.createOscillator(), gain = this.ac.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), t + duration);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(volume, t + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+    osc.connect(gain); gain.connect(this.master); osc.start(t); osc.stop(t + duration + 0.02);
+  }
+  noise(duration = 0.1, volume = 0.12, frequency = 900) {
+    if (!this.ac || save.muted) return;
+    const len = Math.max(1, (this.ac.sampleRate * duration) | 0);
+    const buf = this.ac.createBuffer(1, len, this.ac.sampleRate), data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = this.ac.createBufferSource(), filter = this.ac.createBiquadFilter(), gain = this.ac.createGain();
+    src.buffer = buf; filter.type = 'bandpass'; filter.frequency.value = frequency; filter.Q.value = 0.7;
+    gain.gain.value = volume; src.connect(filter); filter.connect(gain); gain.connect(this.master); src.start();
+  }
+  ui() { this.tone(520, 0.055, 'square', 0.045, 660); }
+  lock() { this.tone(180, 0.09, 'square', 0.07, 280); this.tone(620, 0.05, 'sine', 0.04, 740); }
+  pitch() { this.noise(0.18, 0.045, 1200); }
+  swing() { this.noise(0.13, 0.12, 1450); this.tone(130, 0.1, 'sine', 0.05, 70); }
+  strike() { this.tone(160, 0.16, 'square', 0.1, 105); }
+  ball() { this.tone(350, 0.09, 'sine', 0.055, 390); }
+  hit(q) { this.noise(0.08, 0.19, 1900); this.tone(92, 0.16, 'triangle', 0.16, 48); if (q > 0.8) this.cheer(1); }
+  cheer(amount = 0.7) {
+    this.excitement = Math.max(this.excitement, amount);
+    this.noise(0.55, 0.08 * amount, 650);
+    this.tone(330, 0.16, 'square', 0.035, 440);
+    setTimeout(() => this.tone(440, 0.2, 'square', 0.035, 550), 100);
+  }
+  update(dt) {
+    this.excitement = Math.max(0, this.excitement - dt * 0.35);
+    if (this.crowd && this.ac) this.crowd.gain.setTargetAtTime(0.04 + this.excitement * 0.12, this.ac.currentTime, 0.12);
+  }
+}
+const audio = new AudioPark();
+
+// A rolling 20-choice model: global frequencies + P(next | previous) Markov counts.
+class HabitModel {
+  constructor() { this.entries = []; }
+  clear() { this.entries.length = 0; }
+  push(type, zone, key, situ) {
+    this.entries.push({ type, zone, countKey: key, situation: situ });
+    if (this.entries.length > 20) this.entries.shift();
+  }
+  distribution(key) {
+    const values = key === 'type' ? TYPES : [0,1,2,3,4,5,6,7,8];
+    const freq = Object.fromEntries(values.map(v => [v, 0]));
+    const trans = Object.fromEntries(values.map(v => [v, 0]));
+    const n = this.entries.length;
+    for (const e of this.entries) freq[e[key]]++;
+    let transitions = 0;
+    if (n > 1) {
+      const previous = this.entries[n - 1][key];
+      for (let i = 1; i < n; i++) {
+        if (this.entries[i - 1][key] === previous) { trans[this.entries[i][key]]++; transitions++; }
+      }
+    }
+    const out = {};
+    for (const v of values) {
+      const f = n ? freq[v] / n : 1 / values.length;
+      const m = transitions ? trans[v] / transitions : f;
+      const markovWeight = transitions >= 2 ? 0.58 : transitions ? 0.35 : 0;
+      out[v] = f * (1 - markovWeight) + m * markovWeight;
+    }
+    return out;
+  }
+  confidence(key) {
+    const d = this.distribution(key), n = this.entries.length;
+    const raw = Math.max(...Object.values(d));
+    const baseline = 1 / (key === 'type' ? 3 : 9);
+    return clamp((raw - baseline) / (1 - baseline) * Math.min(1, n / 6), 0, 1);
+  }
+  report(key) {
+    let rows = this.entries.filter(e => e.countKey === key);
+    let label = `ON ${key.replace('-', '–')}`;
+    if (!rows.length) {
+      const last = this.entries[this.entries.length - 1];
+      if (last) rows = this.entries.filter(e => e.situation === last.situation);
+      label = last ? `WHEN ${last.situation.toUpperCase()}` : 'EARLY SAMPLE';
+    }
+    if (!rows.length) rows = this.entries.slice();
+    const counts = { fastball: 0, curve: 0, change: 0 };
+    rows.forEach(e => counts[e.type]++);
+    const best = TYPES.reduce((a, b) => counts[a] >= counts[b] ? a : b);
+    const pct = rows.length ? Math.round(counts[best] / rows.length * 100) : 0;
+    return { label, pct, type: best, n: rows.length };
+  }
+}
+
+const playerPitches = new HabitModel();
+const playerGuesses = new HabitModel();
+const cpuPitches = new HabitModel();
+
+const game = {
+  inning: 1, side: 0, balls: 0, strikes: 0, outs: 0, bases: [false, false, false],
+  score: [0, 0], hits: [0, 0], lines: [[0,0,0],[0,0,0]],
+  playerFatigue: 0, cpuFatigue: 0, phase: 'select', pitch: null, result: null,
+  selectedType: 'fastball', selectedZone: 4, resultTimer: 0, report: null,
+  halfTitle: '', halfSub: '', lastAnnouncement: 'Three innings. Nine zones. Nowhere to hide.',
+  stats: null, recordSaved: false, flash: 0, shake: 0, swingAnim: 0, time: 0
+};
+function freshStats() {
+  return { pitches: [0,0], strikes: [0,0], homeRuns: [0,0], strikeouts: [0,0], walks: [0,0], bestRead: 0, swings: 0, guessedBoth: 0 };
+}
+game.stats = freshStats();
+let mode = 'title', paused = false, globalTime = 0;
+
+function announce(text) {
+  game.lastAnnouncement = text;
+  sr.textContent = text;
+}
+function resetCount() { game.balls = 0; game.strikes = 0; }
+function startGame() {
+  game.inning = 1; game.side = 0; game.outs = 0; game.bases = [false,false,false];
+  game.score = [0,0]; game.hits = [0,0]; game.lines = [[0,0,0],[0,0,0]];
+  game.playerFatigue = 0; game.cpuFatigue = 0; game.pitch = null; game.result = null;
+  game.selectedType = 'fastball'; game.selectedZone = 4; game.stats = freshStats();
+  game.recordSaved = false; game.flash = 0; game.shake = 0; game.swingAnim = 0;
+  playerPitches.clear(); playerGuesses.clear(); cpuPitches.clear();
+  resetCount(); game.phase = 'select'; game.resultTimer = 0; game.report = null;
+  mode = 'game'; paused = false;
+  announce('Top one. You bat for the Neon Moths. Read the release.');
+  audio.lock();
+}
+function finishGame() {
+  mode = 'box'; game.phase = 'select'; game.pitch = null;
+  if (!game.recordSaved) {
+    if (game.score[0] > game.score[1]) save.wins++;
+    else if (game.score[0] < game.score[1]) save.losses++;
+    else save.ties++;
+    save.ties = Math.max(0, save.ties);
+    game.recordSaved = true; persist();
+  }
+  audio.cheer(1);
+}
+
+function fatigueName(value) { return value < 30 ? 'FRESH' : value < 65 ? 'WORN' : 'GASSED'; }
+function zoneCenter(index) {
+  const col = index % 3, row = (index / 3) | 0;
+  return { x: ZONE.x + (col + 0.5) * ZONE.w / 3, y: ZONE.y + (row + 0.5) * ZONE.h / 3 };
+}
+function weightedChoice(distribution) {
+  let r = Math.random(), sum = 0;
+  for (const k of Object.keys(distribution)) { sum += distribution[k]; if (r <= sum) return k; }
+  return Object.keys(distribution)[0];
+}
+function predictedKey(model, key) {
+  const d = model.distribution(key);
+  return Object.keys(d).reduce((a,b) => d[a] >= d[b] ? a : b);
+}
+
+function cpuSelectPitch() {
+  // The CPU chooses against what it expects the player to guess, not a dominant fixed pitch.
+  const guessedType = playerGuesses.distribution('type');
+  const guessedZone = playerGuesses.distribution('zone');
+  const f = game.cpuFatigue / 100;
+  const typeScores = {};
+  for (const t of TYPES) {
+    let score = -guessedType[t] * 1.75 + rand(-0.16, 0.16);
+    if (game.strikes === 2 && t !== 'fastball') score += 0.26;
+    if (game.balls >= 2 && t === 'fastball') score += 0.36;
+    if (t === 'change' && cpuPitches.entries.length && cpuPitches.entries[cpuPitches.entries.length - 1].type === 'fastball') score += 0.18;
+    if (t === 'curve') score -= f * 0.24;
+    if (t === 'fastball') score -= f * 0.15;
+    if (t === 'change') score += f * 0.08;
+    typeScores[t] = score;
+  }
+  const type = TYPES.reduce((a,b) => typeScores[a] >= typeScores[b] ? a : b);
+  let bestZone = 4, best = Infinity;
+  for (let z = 0; z < 9; z++) {
+    const edge = z === 4 ? 0 : (z % 2 === 0 ? 0.11 : 0.055);
+    let score = guessedZone[z] * 1.45 + rand(-0.07, 0.07);
+    if (game.strikes === 2) score -= edge;
+    if (game.balls >= 2) score += edge * 2.2;
+    if (z === 4 && game.balls >= 2) score -= 0.13;
+    if (score < best) { best = score; bestZone = z; }
+  }
+  return { type, zone: bestZone };
+}
+function cpuMakeGuess() {
+  const td = playerPitches.distribution('type'), zd = playerPitches.distribution('zone');
+  // Mostly selects the MAP prediction, but retains uncertainty instead of cheating.
+  const type = Math.random() < 0.82 ? predictedKey(playerPitches, 'type') : weightedChoice(td);
+  const zone = Number(Math.random() < 0.76 ? predictedKey(playerPitches, 'zone') : weightedChoice(zd));
+  const read = Math.max(playerPitches.confidence('type'), playerPitches.confidence('zone'));
+  game.stats.bestRead = Math.max(game.stats.bestRead, read);
+  return { type, zone, read };
+}
+
+function makePitch(type, zone, fatigue, playerBatting, guess) {
+  const target = zoneCenter(zone);
+  const f = fatigue / 100;
+  const meta = TYPE_META[type];
+  let x = target.x + rand(-1,1) * (5 + fatigue * 0.12);
+  let y = target.y + rand(-1,1) * (5 + fatigue * 0.11);
+  const col = zone % 3, row = (zone / 3) | 0;
+  const edge = zone !== 4;
+  let wasteChance = type === 'fastball' ? 0.025 + f * 0.08 : 0.075 + f * 0.14;
+  if (game.strikes === 2 && edge) wasteChance += playerBatting ? 0.48 : 0.13;
+  if (type === 'curve' && edge) wasteChance += 0.08;
+  if (Math.random() < wasteChance) {
+    const dx = col === 0 ? -1 : col === 2 ? 1 : rand(-0.35,0.35);
+    const dy = row === 0 ? -1 : row === 2 ? 1 : (type === 'change' ? 1 : rand(-0.3,0.3));
+    const magnitude = rand(34, 52) + fatigue * 0.15;
+    x += dx * magnitude; y += dy * magnitude;
+  }
+  if (type === 'change') y += 7;
+  if (type === 'curve') x += (col === 0 ? -1 : 1) * 5;
+  const isStrike = x >= ZONE.x && x <= ZONE.x + ZONE.w && y >= ZONE.y && y <= ZONE.y + ZONE.h;
+  const duration = meta.duration + f * (type === 'fastball' ? 0.18 : 0.10);
+  return {
+    type, zone, final: {x,y}, isStrike, duration, t: 0, playerBatting, guess, countKey: countKey(),
+    swung: false, decided: false, willSwing: false, swingAt: 0, trailSeed: Math.random(),
+    typeMatch: guess.type === type, zoneMatch: guess.zone === zone
+  };
+}
+function prepareCpuSwing(pitch) {
+  const f = game.playerFatigue / 100;
+  const timingSigma = 0.112 - (pitch.typeMatch ? 0.019 : 0) - (pitch.zoneMatch ? 0.015 : 0) - pitch.guess.read * 0.022 + f * 0.022;
+  const error = (rand(-1,1) + rand(-1,1) + rand(-1,1)) * timingSigma;
+  const chase = game.strikes === 2 ? 0.46 : game.balls > game.strikes ? 0.12 : 0.27;
+  pitch.willSwing = pitch.isStrike || Math.random() < chase;
+  pitch.swingAt = pitch.duration + error;
+  pitch.decided = true;
+}
+function lockSelection() {
+  if (mode !== 'game' || paused || game.phase !== 'select') return;
+  audio.init(); audio.lock();
+  const key = countKey(), situ = situation(), type = game.selectedType, zone = game.selectedZone;
+  let pitch;
+  if (game.side === 0) {
+    const actual = cpuSelectPitch();
+    pitch = makePitch(actual.type, actual.zone, game.cpuFatigue, true, { type, zone, read: 0 });
+    if (pitch.typeMatch && pitch.zoneMatch) game.stats.guessedBoth++;
+    playerGuesses.push(type, zone, key, situ);
+    cpuPitches.push(actual.type, actual.zone, key, situ);
+    game.cpuFatigue = clamp(game.cpuFatigue + TYPE_META[actual.type].fatigue, 0, 100);
+    game.stats.pitches[1]++;
+    if (pitch.isStrike) game.stats.strikes[1]++;
+    announce(`Pitch on the way. Your call: ${TYPE_META[type].label}, zone ${zone + 1}.`);
+  } else {
+    const guess = cpuMakeGuess();
+    pitch = makePitch(type, zone, game.playerFatigue, false, guess);
+    playerPitches.push(type, zone, key, situ);
+    game.playerFatigue = clamp(game.playerFatigue + TYPE_META[type].fatigue, 0, 100);
+    game.stats.pitches[0]++;
+    if (pitch.isStrike) game.stats.strikes[0]++;
+    announce(`You deliver the ${TYPE_META[type].label}. The Wraiths are reading your patterns.`);
+  }
+  game.pitch = pitch; game.phase = 'flight'; game.result = null; game.swingAnim = 0;
+  audio.pitch();
+}
+function swing() {
+  if (mode !== 'game' || paused || game.phase !== 'flight' || !game.pitch || game.side !== 0 || game.pitch.swung) return;
+  game.pitch.swung = true; game.stats.swings++;
+  resolveSwing(game.pitch.t - game.pitch.duration);
+}
+function timingWindow(p) {
+  return 0.105 + (p.typeMatch ? 0.042 : 0) + (p.zoneMatch ? 0.035 : 0) + (p.playerBatting ? game.cpuFatigue : game.playerFatigue) * 0.00018;
+}
+function addRuns(n) {
+  if (!n) return;
+  game.score[game.side] += n;
+  game.lines[game.side][game.inning - 1] += n;
+}
+function advanceWalk() {
+  let runs = 0;
+  if (game.bases[0]) {
+    if (game.bases[1]) {
+      if (game.bases[2]) runs++;
+      game.bases[2] = true;
+    }
+    game.bases[1] = true;
+  }
+  game.bases[0] = true; addRuns(runs); return runs;
+}
+function advanceHit(n) {
+  let runs = 0;
+  const next = [false,false,false];
+  for (let i = 2; i >= 0; i--) {
+    if (!game.bases[i]) continue;
+    const dest = i + n;
+    if (dest >= 3) runs++; else next[dest] = true;
+  }
+  if (n >= 4) runs++; else next[n - 1] = true;
+  game.bases = next; addRuns(runs); return runs;
+}
+function setResult(title, detail, color, atBatOver, kind, quality = 0) {
+  game.result = { title, detail, color, atBatOver, kind, quality, countKey: game.pitch ? game.pitch.countKey : countKey() };
+  game.resultTimer = kind === 'foul' || kind === 'strike' || kind === 'ball' ? 1.12 : 1.48;
+  game.phase = 'result'; game.flash = kind === 'homer' ? 0.8 : 0.28;
+  if (kind === 'out' || kind === 'strikeout') game.shake = 0.16;
+}
+function resolveSwing(error) {
+  const p = game.pitch;
+  if (!p || game.phase !== 'flight') return;
+  audio.swing(); game.swingAnim = 0.34;
+  const abs = Math.abs(error), windowSize = timingWindow(p);
+  const who = game.side === 0 ? 'You' : 'The Wraiths';
+  if (abs > windowSize) {
+    game.strikes++;
+    const timing = error < 0 ? 'OUT IN FRONT' : 'LATE ON IT';
+    if (game.strikes >= 3) {
+      game.outs++; game.stats.strikeouts[1 - game.side]++;
+      setResult('STRIKE THREE', `${who} ${game.side === 0 ? 'chase' : 'chases'} • ${timing}`, C.orange, true, 'strikeout');
+      announce(`${game.side === 0 ? 'You are' : 'The Wraiths are'} rung up swinging. ${game.outs} out${game.outs === 1 ? '' : 's'}.`);
+      audio.strike();
+    } else {
+      setResult('SWING & MISS', `${timing} • ${game.balls}–${game.strikes}`, C.orange, false, 'miss');
+      announce(`Swing and a miss. ${timing.toLowerCase()}.`); audio.strike();
+    }
+    return;
+  }
+  const timing = 1 - abs / windowSize;
+  const quality = clamp(timing * 0.82 + (p.typeMatch ? 0.09 : 0) + (p.zoneMatch ? 0.09 : 0) - (p.isStrike ? 0 : 0.09), 0, 1);
+  const timingText = error < -0.025 ? 'EARLY' : error > 0.025 ? 'LATE' : 'BARRELED';
+  audio.hit(quality);
+  if (quality < 0.27 || (quality < 0.43 && Math.random() < 0.44)) {
+    if (game.strikes < 2) game.strikes++;
+    setResult('FOUL BALL', `${timingText} • ${game.strikes === 2 ? 'still ' : ''}${game.balls}–${game.strikes}`, C.cream, false, 'foul', quality);
+    announce('Fought off into the seats. The duel continues.'); return;
+  }
+  if (quality < 0.58) {
+    game.outs++;
+    const outType = quality < 0.43 ? 'WEAK GROUNDOUT' : pick(['FLY OUT', 'LINE OUT', 'GROUNDOUT']);
+    setResult(outType, `${timingText} • contact quality ${Math.round(quality * 100)}`, C.cream, true, 'out', quality);
+    announce(`${outType.toLowerCase()}. ${game.outs} away in the ${game.side === 0 ? 'top' : 'bottom'}.`); return;
+  }
+  let bases = 1, title = 'SINGLE';
+  if (quality >= 0.91) { bases = 4; title = 'HOME RUN'; }
+  else if (quality >= 0.82) { bases = 3; title = 'TRIPLE'; }
+  else if (quality >= 0.70) { bases = 2; title = 'DOUBLE'; }
+  const runs = advanceHit(bases);
+  game.hits[game.side]++;
+  if (bases === 4) game.stats.homeRuns[game.side]++;
+  setResult(title, `${timingText} • ${runs ? `${runs} RUN${runs > 1 ? 'S' : ''} SCORE` : 'RUNNERS ADVANCE'}`, bases === 4 ? C.gold : C.mint, true, bases === 4 ? 'homer' : 'hit', quality);
+  announce(bases === 4 ? `That one is gone! ${who} ${game.side === 0 ? 'leave' : 'leaves'} the yard${runs > 1 ? ` for ${runs} runs` : ''}!` : `${title.toLowerCase()} into the gap${runs ? `, ${runs} scores` : ''}.`);
+  spawnBurst(p.final.x, p.final.y, bases === 4 ? C.gold : C.mint, bases === 4 ? 46 : 22);
+}
+function resolveTake() {
+  const p = game.pitch;
+  if (!p || game.phase !== 'flight') return;
+  if (p.isStrike) {
+    game.strikes++;
+    if (game.strikes >= 3) {
+      game.outs++; game.stats.strikeouts[1 - game.side]++;
+      setResult('CALLED STRIKE THREE', 'THE PAINT GETS THE CALL', C.orange, true, 'strikeout');
+      announce(`Called strike three. ${game.outs} out${game.outs === 1 ? '' : 's'}.`); audio.strike();
+    } else {
+      setResult('CALLED STRIKE', `${game.balls}–${game.strikes} • TAKE THE READ`, C.orange, false, 'strike');
+      announce(`Strike ${game.strikes}. The tunnel held a little too long.`); audio.strike();
+    }
+  } else {
+    game.balls++;
+    if (game.balls >= 4) {
+      const runs = advanceWalk(); game.stats.walks[1 - game.side]++;
+      setResult('BALL FOUR • WALK', runs ? 'A RUN IS FORCED HOME' : 'DISCIPLINE WINS THE COUNT', C.blue, true, 'walk');
+      announce(`Ball four. A free pass${runs ? ' forces home a run' : ''}.`); audio.ball();
+    } else {
+      setResult('BALL', `${game.balls}–${game.strikes} • GOOD TAKE`, C.blue, false, 'ball');
+      announce(`Ball ${game.balls}. It never found the plate.`); audio.ball();
+    }
+  }
+}
+function makeScoutingReport() {
+  const model = game.side === 0 ? cpuPitches : playerPitches;
+  const key = game.result ? game.result.countKey : countKey();
+  const r = model.report(key);
+  const read = Math.max(playerPitches.confidence('type'), playerPitches.confidence('zone'));
+  return {
+    heading: game.side === 0 ? 'DUGOUT SCOUTING' : 'CPU SCOUTING YOU',
+    line: `${r.label}: ${r.pct}% ${TYPE_META[r.type].label}${r.pct === 100 ? 'S' : ''}`,
+    sample: `${r.n} PITCH${r.n === 1 ? '' : 'ES'} IN SAMPLE • LAST 20 TRACKED`,
+    read: game.side === 1 ? `CPU READ CONFIDENCE  ${Math.round(read * 100)}%` : `YOUR GUESS HISTORY  ${playerGuesses.entries.length}/20`,
+    tip: game.side === 1 ? (read > 0.45 ? 'YOUR PATTERNS ARE LOUD. BREAK THE SEQUENCE.' : 'STAY UNPREDICTABLE. THE READ IS WEAK.') : 'CORRECT TYPE + ZONE GUESSES EXPAND YOUR TIMING WINDOW.'
+  };
+}
+function continueAfterResult() {
+  if (game.outs >= 3) { advanceHalf(); return; }
+  if (game.result && game.result.atBatOver) {
+    game.report = makeScoutingReport(); resetCount(); game.phase = 'report';
+  } else {
+    game.phase = 'select'; game.pitch = null; game.selectedType = 'fastball'; game.selectedZone = 4;
+  }
+}
+function advanceReport() {
+  if (game.phase !== 'report') return;
+  game.phase = 'select'; game.pitch = null; game.result = null;
+  game.selectedType = 'fastball'; game.selectedZone = 4;
+  announce(`${game.side === 0 ? 'Next Moths hitter' : 'Next Wraiths hitter'}. Count is oh and oh.`); audio.ui();
+}
+function advanceHalf() {
+  game.pitch = null; game.result = null; game.bases = [false,false,false]; resetCount(); game.outs = 0;
+  if (game.side === 0) {
+    game.side = 1; game.halfTitle = `BOTTOM ${game.inning}`; game.halfSub = 'YOU PITCH • BREAK THEIR READ';
+    announce(`Bottom ${game.inning}. You take the ball for the Neon Moths.`);
+  } else {
+    if (game.inning >= 3) { finishGame(); return; }
+    game.inning++; game.side = 0;
+    game.playerFatigue = Math.max(0, game.playerFatigue - 26);
+    game.cpuFatigue = Math.max(0, game.cpuFatigue - 26);
+    game.halfTitle = `TOP ${game.inning}`; game.halfSub = 'YOU BAT • BOTH ARMS RECOVER 26';
+    announce(`Top ${game.inning}. Both pitchers get a breather.`);
+  }
+  game.phase = 'half'; audio.cheer(0.35);
+}
+function continueHalf() {
+  if (game.phase !== 'half') return;
+  game.phase = 'select'; game.selectedType = 'fastball'; game.selectedZone = 4; audio.ui();
+}
+
+// Fixed-size particle pool: bounded work even during a home-run celebration.
+const particles = Array.from({length: 90}, () => ({ active: false, x:0, y:0, vx:0, vy:0, life:0, max:1, color:C.mint, size:3 }));
+function spawnBurst(x, y, color, count) {
+  let made = 0;
+  for (const p of particles) {
+    if (p.active) continue;
+    p.active = true; p.x = x; p.y = y; p.vx = rand(-190,190); p.vy = rand(-230,40);
+    p.life = p.max = rand(0.45,1.1); p.color = Math.random() < 0.28 ? C.cream : color; p.size = rand(2,6);
+    if (++made >= count) break;
+  }
+}
+function updateParticles(dt) {
+  for (const p of particles) {
+    if (!p.active) continue;
+    p.life -= dt; if (p.life <= 0) { p.active = false; continue; }
+    p.vy += 260 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+  }
+}
+
+function update(dt) {
+  globalTime += dt; audio.update(dt); updateParticles(dt);
+  if (paused || mode !== 'game') return;
+  game.time += dt; game.flash = Math.max(0, game.flash - dt * 2.4); game.shake = Math.max(0, game.shake - dt);
+  game.swingAnim = Math.max(0, game.swingAnim - dt);
+  if (game.phase === 'flight' && game.pitch) {
+    const p = game.pitch; p.t += dt;
+    if (!p.playerBatting && !p.decided && p.t / p.duration >= 0.69) prepareCpuSwing(p);
+    if (!p.playerBatting && p.decided && p.willSwing && !p.swung && p.t >= p.swingAt) {
+      p.swung = true; resolveSwing(p.swingAt - p.duration);
+    } else if (game.phase === 'flight' && p.t >= p.duration + 0.13) {
+      if (!p.swung) resolveTake();
+    }
+  } else if (game.phase === 'result') {
+    game.resultTimer -= dt;
+    if (game.resultTimer <= 0) continueAfterResult();
+  }
+}
+
+function ballPosition(p, progress) {
+  const q = clamp(progress, 0, 1.04);
+  if (q <= 0.65) {
+    const u = ease(q / 0.65);
+    return { x: lerp(RELEASE_POINT.x, TUNNEL_POINT.x, u), y: lerp(RELEASE_POINT.y, TUNNEL_POINT.y, u) + Math.sin(u * Math.PI) * 3 };
+  }
+  const u = ease(clamp((q - 0.65) / 0.35, 0, 1));
+  let x = lerp(TUNNEL_POINT.x, p.final.x, u), y = lerp(TUNNEL_POINT.y, p.final.y, u);
+  if (p.type === 'curve') x += Math.sin(u * Math.PI) * (p.final.x < 600 ? -18 : 18) * (1 - u * 0.35);
+  if (p.type === 'change') y += Math.sin(u * Math.PI) * 16;
+  if (q > 1) y += (q - 1) * 250;
+  return {x,y};
+}
+
+// Canvas layout and drawing helpers.
+let hotspots = [], pointer = {x:-1000,y:-1000};
+function rr(x,y,w,h,r=8) {
+  const d = Math.min(r,w/2,h/2); ctx.beginPath(); ctx.moveTo(x+d,y); ctx.arcTo(x+w,y,x+w,y+h,d); ctx.arcTo(x+w,y+h,x,y+h,d); ctx.arcTo(x,y+h,x,y,d); ctx.arcTo(x,y,x+w,y,d); ctx.closePath();
+}
+function rect(x,y,w,h,fill,stroke=null,lw=1) { rr(x,y,w,h,5); ctx.fillStyle=fill; ctx.fill(); if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.stroke();} }
+function text(str,x,y,size=18,color=C.cream,align='left',font='mono') {
+  ctx.fillStyle=color; ctx.textAlign=align; ctx.textBaseline='middle';
+  ctx.font = font === 'display' ? `900 ${size}px Arial Black, Impact, sans-serif` : font === 'bold' ? `bold ${size}px Courier New, monospace` : `${size}px Courier New, monospace`;
+  ctx.fillText(str,x,y);
+}
+function line(x1,y1,x2,y2,color=C.line,width=1) { ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke(); }
+function button(id,x,y,w,h,label,action,opt={}) {
+  const disabled = !!opt.disabled, hover = !disabled && pointer.x>=x && pointer.x<=x+w && pointer.y>=y && pointer.y<=y+h;
+  const selected = !!opt.selected;
+  rect(x,y,w,h,disabled ? '#0b1a21' : selected ? (opt.color || C.mint) : hover ? '#24434b' : '#142f39', selected ? (opt.color || C.mint) : hover ? C.cream : C.line, selected ? 2 : 1);
+  text(label,x+w/2,y+h/2+(opt.sub?-7:0),opt.size||16,disabled?'#526c70':selected?C.ink:(opt.color||C.cream),'center','bold');
+  if(opt.sub) text(opt.sub,x+w/2,y+h/2+13,10,selected?C.ink:C.muted,'center');
+  if(!disabled) hotspots.push({id,x,y,w,h,action});
+}
+function panel(x,y,w,h,accent=C.line) {
+  rect(x,y,w,h,'#0b1c25ee',accent,1); line(x+1,y+1,x+w-1,y+1,accent,2);
+}
+function drawScanlines() {
+  ctx.fillStyle='rgba(0,0,0,0.055)';
+  for(let y=0;y<H;y+=4) ctx.fillRect(0,y,W,1);
+}
+function drawLights() {
+  for (const x of [90,1110]) {
+    ctx.save(); ctx.globalAlpha=0.055+Math.sin(globalTime*0.8+x)*0.008; ctx.fillStyle=C.cream;
+    ctx.beginPath(); ctx.moveTo(x-35,72);ctx.lineTo(x+35,72);ctx.lineTo(x+190,570);ctx.lineTo(x-190,570);ctx.closePath();ctx.fill();ctx.restore();
+    rect(x-45,60,90,25,'#1b3035'); for(let i=0;i<5;i++){ctx.fillStyle=C.cream;ctx.globalAlpha=0.65;ctx.fillRect(x-37+i*17,65,10,10);}ctx.globalAlpha=1;
+  }
+}
+const crowd = Array.from({length:230},(_,i)=>({x:(i*83)%1200,y:114+((i*47)%104),c:i%11===0?C.orange:i%7===0?C.gold:i%5===0?C.mint:'#3c565b',s:1+(i%3)}));
+function drawStadium() {
+  const g=ctx.createLinearGradient(0,90,0,620);g.addColorStop(0,'#102630');g.addColorStop(0.48,'#10242a');g.addColorStop(1,'#173d36');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  drawLights();
+  ctx.fillStyle='#0a171e';ctx.fillRect(0,100,W,132);
+  for(const p of crowd){ctx.globalAlpha=0.42+0.12*Math.sin(globalTime*1.5+p.x);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,p.s*2,p.s);}ctx.globalAlpha=1;
+  ctx.fillStyle='#17382f';ctx.beginPath();ctx.moveTo(0,222);ctx.lineTo(W,222);ctx.lineTo(W,640);ctx.lineTo(0,640);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#214b3b';ctx.beginPath();ctx.moveTo(600,230);ctx.lineTo(1080,620);ctx.lineTo(120,620);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#cdd7b966';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(600,530);ctx.lineTo(90,650);ctx.moveTo(600,530);ctx.lineTo(1110,650);ctx.stroke();
+  ctx.fillStyle='#896e4e';ctx.beginPath();ctx.ellipse(600,345,75,25,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#a98b61';ctx.beginPath();ctx.ellipse(600,338,45,13,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#0a1b20aa';ctx.fillRect(0,555,W,70);
+}
+function drawPitcher() {
+  const p=game.pitch, throwing=p&&game.phase!=='select';
+  const phase=throwing?clamp(p.t/0.36,0,1):0;
+  ctx.save();ctx.translate(600,247);ctx.fillStyle='#081218';
+  ctx.beginPath();ctx.arc(0,-28,12,0,Math.PI*2);ctx.fill();
+  ctx.fillRect(-14,-17,28,43);ctx.fillRect(-13,23,9,39);ctx.fillRect(4,23,9,39);
+  ctx.save();ctx.translate(-8,-10);ctx.rotate(-0.4-phase*1.9);ctx.fillRect(-5,0,10,38);ctx.restore();
+  ctx.save();ctx.translate(9,-9);ctx.rotate(0.45+phase*1.25);ctx.fillRect(-5,0,10,35);ctx.restore();
+  ctx.fillStyle=C.orange;ctx.fillRect(-13,-16,26,5);ctx.fillRect(-11,-43,22,5);ctx.restore();
+}
+function drawBatter() {
+  const swinging=game.swingAnim>0 || (game.pitch&&game.pitch.swung);
+  const u=swinging?1-clamp(game.swingAnim/0.34,0,1):0;
+  ctx.save();ctx.translate(824,470);ctx.fillStyle='#081218';
+  ctx.beginPath();ctx.arc(0,-78,17,0,Math.PI*2);ctx.fill();ctx.fillRect(-17,-60,34,70);
+  ctx.fillRect(-15,3,12,64);ctx.fillRect(5,3,12,64);
+  ctx.save();ctx.translate(-7,-48);ctx.rotate(-0.8+u*2.1);ctx.fillRect(-6,0,12,52);ctx.fillStyle=C.cream;ctx.fillRect(17,-75,7,104);ctx.restore();
+  ctx.fillStyle=C.mint;ctx.fillRect(-17,-58,34,6);ctx.restore();
+  ctx.fillStyle=C.cream;ctx.beginPath();ctx.moveTo(580,542);ctx.lineTo(620,542);ctx.lineTo(610,556);ctx.lineTo(590,556);ctx.closePath();ctx.fill();
+}
+function drawZoneGrid(x=ZONE.x,y=ZONE.y,w=ZONE.w,h=ZONE.h,interactive=false) {
+  const selected=game.selectedZone;
+  for(let i=0;i<9;i++){
+    const col=i%3,row=(i/3)|0,cw=w/3,ch=h/3,zx=x+col*cw,zy=y+row*ch;
+    if(interactive){
+      button(`zone-${i}`,zx,zy,cw-3,ch-3,String(i+1),()=>{game.selectedZone=i;audio.ui();},{selected:selected===i,size:15,color:C.mint});
+    }else{
+      ctx.fillStyle=selected===i&&game.phase==='select'?'#70f2bd18':'#07131b18';ctx.fillRect(zx,zy,cw,ch);
+      ctx.strokeStyle=selected===i&&game.phase==='select'?C.mint:'#e9efd052';ctx.lineWidth=selected===i&&game.phase==='select'?3:1;ctx.strokeRect(zx,zy,cw,ch);
+      text(String(i+1),zx+8,zy+11,10,'#f3ead278');
+    }
+  }
+  ctx.strokeStyle=C.cream;ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);
+}
+function drawPitch() {
+  const p=game.pitch;if(!p)return;
+  const q=p.t/p.duration;
+  if(game.phase==='flight'&&q>0.62){
+    ctx.save();ctx.globalAlpha=clamp((q-0.62)*5,0,0.5);ctx.strokeStyle=C.mint;ctx.lineWidth=2;ctx.setLineDash([5,7]);ctx.beginPath();ctx.arc(p.final.x,p.final.y,27+Math.sin(globalTime*10)*2,0,Math.PI*2);ctx.stroke();ctx.restore();
+  }
+  for(let i=7;i>=0;i--){
+    const t=q-i*0.022;if(t<0)continue;const pos=ballPosition(p,t);ctx.globalAlpha=(8-i)/38;ctx.fillStyle=game.phase==='result'?TYPE_META[p.type].color:C.cream;ctx.beginPath();ctx.arc(pos.x,pos.y,3+clamp(t,0,1)*5,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;const pos=ballPosition(p,q),r=4+clamp(q,0,1)*9;
+  ctx.fillStyle=C.cream;ctx.beginPath();ctx.arc(pos.x,pos.y,r,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=C.orange;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(pos.x,pos.y,r*0.62,-1.1,1.1);ctx.stroke();ctx.beginPath();ctx.arc(pos.x,pos.y,r*0.62,2.05,4.25);ctx.stroke();
+  if(game.phase==='result'){
+    text(TYPE_META[p.type].short,600,263,13,TYPE_META[p.type].color,'center','bold');
+    text(`GUESS ${p.typeMatch?'✓':'×'} TYPE  ${p.zoneMatch?'✓':'×'} ZONE`,600,281,11,p.typeMatch&&p.zoneMatch?C.mint:C.muted,'center');
+  }
+}
+function drawBases(x,y,scale=1) {
+  const pts=[[x,y-22*scale],[x+22*scale,y],[x,y+22*scale],[x-22*scale,y]];
+  const order=[1,2,0];
+  ctx.save();ctx.translate(0,0);
+  for(let i=0;i<4;i++){
+    const idx=order[i];ctx.save();ctx.translate(pts[i][0],pts[i][1]);ctx.rotate(Math.PI/4);ctx.fillStyle=game.bases[idx]?C.gold:'#18333b';ctx.strokeStyle=game.bases[idx]?C.gold:C.muted;ctx.lineWidth=1.5;ctx.fillRect(-7*scale,-7*scale,14*scale,14*scale);ctx.strokeRect(-7*scale,-7*scale,14*scale,14*scale);ctx.restore();
+  }ctx.restore();
+}
+function drawScoreboard() {
+  panel(24,20,1152,82,C.line);
+  text('PITCH TUNNEL',45,42,15,C.mint,'left','bold');text(`INNING ${game.inning}  ${game.side===0?'▲ TOP':'▼ BOTTOM'}`,45,72,16,C.cream);
+  text('MOTHS',268,42,13,C.mint,'left','bold');text(String(game.score[0]),268,71,29,C.cream,'left','display');
+  text('WRAITHS',377,42,13,C.orange,'left','bold');text(String(game.score[1]),377,71,29,C.cream,'left','display');
+  line(500,32,500,90,C.line);
+  text('COUNT',530,39,11,C.muted);text(`${game.balls} – ${game.strikes}`,530,70,28,C.cream,'left','display');
+  text('OUTS',665,39,11,C.muted);
+  for(let i=0;i<3;i++){ctx.fillStyle=i<game.outs?C.orange:'#1d3a42';ctx.beginPath();ctx.arc(674+i*24,69,7,0,Math.PI*2);ctx.fill();}
+  drawBases(830,65,0.82);
+  text(game.side===0?'YOU BAT':'YOU PITCH',940,40,12,game.side===0?C.mint:C.orange,'left','bold');
+  const fatigue=game.side===0?game.cpuFatigue:game.playerFatigue;
+  text(`${game.side===0?'CPU':'YOUR'} ARM • ${fatigueName(fatigue)}`,940,66,11,C.muted);
+  rect(940,79,190,7,'#19333b');ctx.fillStyle=fatigue>65?C.orange:C.mint;ctx.fillRect(941,80,188*fatigue/100,5);
+}
+function drawReadPanel() {
+  const model=game.side===0?playerGuesses:playerPitches;
+  const read=Math.max(model.confidence('type'),model.confidence('zone'));
+  panel(24,132,238,113,C.line);
+  text('CPU PATTERN READ',43,154,12,C.orange,'left','bold');
+  text(read<0.22?'STATIC':read<0.48?'WARM':'LOCKED IN',43,181,22,read<0.22?C.muted:read<0.48?C.gold:C.orange,'left','display');
+  rect(43,199,194,8,'#1a333b');ctx.fillStyle=read<0.48?C.gold:C.orange;ctx.fillRect(44,200,192*read,6);
+  text(game.side===0?'READING YOUR GUESSES':'READING YOUR CALLS',43,228,10,C.muted);
+}
+function drawTunnelPanel() {
+  panel(938,132,238,113,C.line);
+  text('TUNNEL WINDOW',957,154,12,C.mint,'left','bold');
+  text('65%',957,186,30,C.cream,'left','display');text('IDENTICAL',1050,184,10,C.muted);
+  line(957,207,1155,207,C.line,5);line(957,207,1073,207,C.mint,5);line(1073,201,1073,213,C.orange,2);
+  text('RELEASE',957,229,9,C.muted);text('BREAK',1128,229,9,C.orange);
+}
+function drawControls() {
+  ctx.fillStyle='#07131bf5';ctx.fillRect(0,578,W,182);line(0,578,W,578,C.line,2);
+  text(game.side===0?'1–9  GUESS LOCATION':'1–9  CALL LOCATION',43,599,11,C.muted);
+  drawZoneGrid(43,615,153,123,true);
+  text(game.side===0?'Q/W/E  GUESS PITCH':'Q/W/E  SELECT PITCH',231,599,11,C.muted);
+  TYPES.forEach((t,i)=>{
+    button(`type-${t}`,231+i*172,615,158,58,`${TYPE_META[t].key}  ${TYPE_META[t].short}`,()=>{game.selectedType=t;audio.ui();},{selected:game.selectedType===t,color:TYPE_META[t].color,sub:TYPE_META[t].note,size:16});
+  });
+  const p=game.pitch;
+  const detail=game.phase==='flight'?(game.side===0?'WATCH THE LATE BREAK':'CPU BATTER IS COMMITTED'):`${TYPE_META[game.selectedType].label}  •  ZONE ${game.selectedZone+1}`;
+  text(detail,231,704,12,game.phase==='flight'?C.muted:C.cream);
+  if(game.phase==='flight'&&game.side===0){
+    button('swing',814,615,343,88,'SPACE / TAP TO SWING',swing,{color:C.orange,size:22,disabled:p&&p.swung});
+  }else if(game.phase==='flight'){
+    button('cpu-flight',814,615,343,88,'PITCH IN FLIGHT',null,{disabled:true,size:19});
+  }else{
+    button('lock',814,615,343,88,game.side===0?'SPACE  LOCK GUESS':'SPACE  DELIVER PITCH',lockSelection,{color:C.mint,size:20});
+  }
+  text(game.side===0?'MATCH TYPE + ZONE = LARGER CONTACT WINDOW':'FATIGUE SLOWS VELOCITY AND LOOSENS CONTROL',814,728,10,C.muted);
+}
+function drawAnnouncer() {
+  rect(278,523,644,37,'#07131be8',C.line);text('RADIO',295,542,10,C.gold,'left','bold');
+  let msg=game.lastAnnouncement;if(msg.length>67)msg=msg.slice(0,66)+'…';text(msg,351,542,11,C.cream);
+}
+function drawResult() {
+  if(!game.result)return;
+  const r=game.result;
+  ctx.save();ctx.globalAlpha=0.96;panel(350,125,500,103,r.color);ctx.restore();
+  text(r.title,600,158,28,r.color,'center','display');
+  text(r.detail,600,198,12,C.cream,'center','bold');
+}
+function drawGame() {
+  drawStadium();drawScoreboard();drawReadPanel();drawTunnelPanel();drawPitcher();drawBatter();drawZoneGrid();drawPitch();drawAnnouncer();drawControls();drawResult();
+  for(const p of particles){if(!p.active)continue;ctx.globalAlpha=clamp(p.life/p.max,0,1);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,p.size,p.size);}ctx.globalAlpha=1;
+  if(game.flash>0){ctx.fillStyle=`rgba(243,234,210,${game.flash*0.12})`;ctx.fillRect(0,0,W,H);}
+}
+function drawReport() {
+  drawStadium();drawScoreboard();ctx.fillStyle='#030a0edb';ctx.fillRect(0,0,W,H);
+  const r=game.report;if(!r)return;
+  panel(220,150,760,454,C.mint);
+  text('POST-AT-BAT / LIVE TELEMETRY',600,184,12,C.muted,'center','bold');
+  text(r.heading,600,227,28,C.mint,'center','display');line(270,256,930,256,C.line);
+  text(r.line,600,302,25,C.cream,'center','display');text(r.sample,600,337,12,C.muted,'center');
+  panel(280,368,640,63,C.line);text(r.read,600,391,17,C.orange,'center','bold');text(r.tip,600,416,11,C.cream,'center');
+  if(game.result)text(`LAST PLAY  •  ${game.result.title}`,600,466,13,game.result.color,'center','bold');
+  text('Randomness weakens the model. Repetition feeds it.',600,500,12,C.muted,'center');
+  button('next-ab',405,531,390,52,'SPACE  NEXT BATTER',advanceReport,{color:C.mint,size:18});
+}
+function drawHalf() {
+  drawStadium();drawScoreboard();ctx.fillStyle='#030a0ee8';ctx.fillRect(0,0,W,H);
+  text('SIDE RETIRED',600,245,14,C.orange,'center','bold');text(game.halfTitle,600,314,58,C.cream,'center','display');
+  text(game.halfSub,600,369,16,C.mint,'center','bold');
+  text(`MOTHS ${game.score[0]}  —  ${game.score[1]} WRAITHS`,600,420,23,C.cream,'center','display');
+  button('next-half',420,480,360,62,'SPACE  TAKE THE FIELD',continueHalf,{color:C.orange,size:18});
+}
+function drawTitle() {
+  drawStadium();ctx.fillStyle='#031017a8';ctx.fillRect(0,0,W,H);
+  text('AN ORIGINAL NINE-ZONE MIND GAME',52,48,12,C.mint,'left','bold');
+  text(`RECORD  ${save.wins}–${save.losses}${save.ties?`–${save.ties}`:''}`,1148,48,12,C.cream,'right','bold');
+  text('PITCH',64,174,104,C.cream,'left','display');text('TUNNEL',60,272,104,C.mint,'left','display');
+  text('NEON MOTHS',70,330,15,C.mint,'left','bold');text('VS',191,330,12,C.muted);text('IRON WRAITHS',226,330,15,C.orange,'left','bold');
+  text('Three innings. Two minds. One disappearing baseball.',68,377,16,C.cream);
+  const cards=[['01  READ','Guess type + zone.','Then own the timing.'],['02  DECEIVE','Same first 65%.','Different final 35%.'],['03  ADAPT','The CPU learns 20','choices + transitions.']];
+  cards.forEach((card,i)=>{const x=66+i*245;panel(x,423,226,119,i===1?C.mint:C.line);text(card[0],x+16,447,12,i===1?C.mint:C.orange,'left','bold');text(card[1],x+16,483,13,C.cream);text(card[2],x+16,508,13,C.muted);});
+  button('start',67,575,650,70,'SPACE / CLICK  —  PLAY BALL',startGame,{color:C.orange,size:24});
+  text('Q/W/E TYPE   •   1–9 ZONE   •   SPACE LOCK / SWING',68,679,12,C.cream);
+  text('P PAUSE   •   M SOUND   •   MOUSE + TOUCH',68,707,11,C.muted);
+  // Title-screen tunnel diagram: shared origin, three late-breaking outcomes.
+  panel(790,114,355,454,C.line);text('THE LAST 35%',968,144,13,C.orange,'center','bold');
+  const origin={x:968,y:190},mid={x:968,y:326};
+  ctx.lineWidth=3;
+  for(let i=0;i<3;i++){
+    const end={x:877+i*91,y:480-(i===1?32:0)},color=TYPE_META[TYPES[i]].color;
+    ctx.strokeStyle=C.cream;ctx.globalAlpha=0.38;ctx.beginPath();ctx.moveTo(origin.x,origin.y);ctx.lineTo(mid.x,mid.y);ctx.stroke();
+    ctx.globalAlpha=0.9;ctx.strokeStyle=color;ctx.beginPath();ctx.moveTo(mid.x,mid.y);ctx.quadraticCurveTo(mid.x+(i-1)*18,390,end.x,end.y);ctx.stroke();
+    text(TYPE_META[TYPES[i]].short,end.x,513,11,color,'center','bold');
+  }
+  ctx.globalAlpha=1;ctx.fillStyle=C.cream;ctx.beginPath();ctx.arc(origin.x,origin.y,7,0,Math.PI*2);ctx.fill();
+  line(928,326,1008,326,C.orange,2);text('TUNNEL BREAK',968,308,10,C.cream,'center');
+}
+function drawBoxScore() {
+  const g=ctx.createLinearGradient(0,0,W,H);g.addColorStop(0,'#0d252e');g.addColorStop(1,'#050d13');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  text('FINAL / THREE INNINGS',58,50,13,C.mint,'left','bold');
+  const won=game.score[0]>game.score[1],tied=game.score[0]===game.score[1];
+  text(tied?'DEAD EVEN':won?'MOTHS WIN':'WRAITHS WIN',57,112,49,tied?C.gold:won?C.mint:C.orange,'left','display');
+  text(`${game.score[0]}  —  ${game.score[1]}`,1145,110,54,C.cream,'right','display');
+  panel(55,165,1090,222,C.line);
+  const cols=[410,520,630,740,850,960];
+  text('CLUB',87,195,12,C.muted,'left','bold');['1','2','3','R','H'].forEach((s,i)=>text(s,cols[i],195,12,C.muted,'center','bold'));
+  line(80,218,1120,218,C.line);
+  ['NEON MOTHS','IRON WRAITHS'].forEach((name,row)=>{
+    const y=253+row*67;text(name,87,y,17,row===0?C.mint:C.orange,'left','bold');
+    for(let i=0;i<3;i++)text(String(game.lines[row][i]),cols[i],y,20,C.cream,'center','bold');
+    text(String(game.score[row]),cols[3],y,25,C.cream,'center','display');text(String(game.hits[row]),cols[4],y,22,C.cream,'center','display');
+  });
+  panel(55,417,529,190,C.line);text('YOUR PITCHING LINE',81,445,12,C.orange,'left','bold');
+  text(`${game.stats.pitches[0]}`,85,492,37,C.cream,'left','display');text('PITCHES',166,493,11,C.muted);
+  text(`${Math.round(game.stats.strikes[0]/Math.max(1,game.stats.pitches[0])*100)}%`,266,492,37,C.cream,'left','display');text('STRIKES',370,493,11,C.muted);
+  text(`${game.stats.strikeouts[0]} K   •   ${game.stats.walks[0]} BB   •   ${game.stats.homeRuns[0]} HR ALLOWED`,84,548,14,C.cream);
+  text(`PEAK CPU READ  ${Math.round(game.stats.bestRead*100)}%`,84,579,12,C.orange);
+  panel(614,417,531,190,C.line);text('YOUR AT-BAT DATA',640,445,12,C.mint,'left','bold');
+  text(`${game.stats.swings}`,645,492,37,C.cream,'left','display');text('SWINGS',726,493,11,C.muted);
+  text(`${game.stats.guessedBoth}`,826,492,37,C.cream,'left','display');text('PERFECT READS',907,493,11,C.muted);
+  text(`${game.stats.homeRuns[0]} HR   •   ${game.stats.strikeouts[1]} K   •   ${game.stats.walks[1]} BB`,644,548,14,C.cream);
+  text(`CAREER RECORD  ${save.wins} W  /  ${save.losses} L${save.ties?`  /  ${save.ties} T`:''}`,644,579,12,C.mint);
+  button('rematch',55,645,528,66,'SPACE  REMATCH',startGame,{color:C.orange,size:21});
+  button('title',614,645,531,66,'T  RETURN TO TITLE',()=>{mode='title';audio.ui();},{color:C.mint,size:20});
+}
+function drawPause() {
+  ctx.fillStyle='#02090de8';ctx.fillRect(0,0,W,H);panel(345,192,510,374,C.orange);
+  text('TIME CALLED',600,250,37,C.cream,'center','display');text('THE COUNT WILL WAIT.',600,291,13,C.muted,'center');
+  button('resume',410,332,380,57,'P / SPACE  RESUME',()=>{paused=false;audio.ui();},{color:C.mint,size:18});
+  button('restart-pause',410,407,380,57,'RESTART GAME',startGame,{color:C.orange,size:17});
+  button('quit-title',410,482,380,50,'RETURN TO TITLE',()=>{mode='title';paused=false;audio.ui();},{size:16});
+}
+function drawSound() {
+  button('sound',1081,716,94,28,save.muted?'M  OFF':'M  ON',()=>{save.muted=!save.muted;audio.init();audio.mute();persist();},{size:11,color:save.muted?C.muted:C.mint});
+}
+function render() {
+  ctx.save();
+  if(game.shake>0&&mode==='game'&&!paused)ctx.translate(rand(-3,3)*game.shake/0.16,rand(-3,3)*game.shake/0.16);
+  hotspots=[];
+  if(mode==='title')drawTitle();else if(mode==='box')drawBoxScore();else if(game.phase==='report')drawReport();else if(game.phase==='half')drawHalf();else drawGame();
+  ctx.restore();
+  if(paused&&mode==='game'){hotspots=[];drawPause();}
+  drawScanlines();drawSound();
+}
+
+function activatePrimary() {
+  audio.init();
+  if(mode==='title')startGame();else if(mode==='box')startGame();
+  else if(paused){paused=false;audio.ui();}
+  else if(game.phase==='select')lockSelection();else if(game.phase==='flight')swing();
+  else if(game.phase==='report')advanceReport();else if(game.phase==='half')continueHalf();
+}
+window.addEventListener('keydown',e=>{
+  const key=e.key.toLowerCase();
+  if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(key))e.preventDefault();
+  audio.init();canvas.focus();
+  if(key==='m'){save.muted=!save.muted;audio.mute();persist();return;}
+  if((key==='p'||key==='escape')&&mode==='game'&&game.phase!=='report'&&game.phase!=='half'){paused=!paused;audio.ui();return;}
+  if(key===' '||key==='enter'){activatePrimary();return;}
+  if(mode==='box'&&key==='t'){mode='title';audio.ui();return;}
+  if(mode!=='game'||paused||game.phase!=='select')return;
+  if(key==='q'){game.selectedType='fastball';audio.ui();}
+  else if(key==='w'){game.selectedType='curve';audio.ui();}
+  else if(key==='e'){game.selectedType='change';audio.ui();}
+  else if(/^[1-9]$/.test(key)){game.selectedZone=Number(key)-1;audio.ui();}
+},{passive:false});
+function pointerPosition(e){const r=canvas.getBoundingClientRect();pointer.x=(e.clientX-r.left)/r.width*W;pointer.y=(e.clientY-r.top)/r.height*H;}
+canvas.addEventListener('pointermove',e=>{pointerPosition(e);canvas.style.cursor=hotspots.some(b=>pointer.x>=b.x&&pointer.x<=b.x+b.w&&pointer.y>=b.y&&pointer.y<=b.y+b.h)?'pointer':'default';});
+canvas.addEventListener('pointerdown',e=>{
+  e.preventDefault();pointerPosition(e);audio.init();canvas.focus();
+  for(let i=hotspots.length-1;i>=0;i--){const b=hotspots[i];if(pointer.x>=b.x&&pointer.x<=b.x+b.w&&pointer.y>=b.y&&pointer.y<=b.y+b.h){b.action();return;}}
+},{passive:false});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+let dpr=1;
+function resize(){
+  const scale=Math.min(window.innerWidth/W,window.innerHeight/H);
+  canvas.style.width=`${Math.floor(W*scale)}px`;canvas.style.height=`${Math.floor(H*scale)}px`;
+  dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.imageSmoothingEnabled=true;
+}
+window.addEventListener('resize',resize);resize();
+let last=performance.now(),acc=0,fps=60,fpsFrames=0,fpsTime=0;
+function frame(now){
+  const elapsed=Math.min(0.05,(now-last)/1000);last=now;acc+=elapsed;
+  while(acc>=STEP){update(STEP);acc-=STEP;}
+  render();fpsFrames++;fpsTime+=elapsed;if(fpsTime>=0.5){fps=Math.round(fpsFrames/fpsTime);fpsFrames=0;fpsTime=0;}
+  requestAnimationFrame(frame);
+}
+window.__gameProbe=()=>({mode,phase:game.phase,inning:game.inning,side:game.side,balls:game.balls,strikes:game.strikes,outs:game.outs,score:[...game.score],hits:[...game.hits],fps,playerChoices:playerPitches.entries.length,guessChoices:playerGuesses.entries.length,muted:save.muted,paused});
+window.__GAME_READY__=true;
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
