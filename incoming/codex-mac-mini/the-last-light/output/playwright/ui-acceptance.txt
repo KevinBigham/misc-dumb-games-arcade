@@ -1,0 +1,75 @@
+### Result
+{"passed":["depth promotion and contract extension","modal error feedback and accepted trade","download export, create another team, validated file import"],"viewportWidths":[390,768,1440],"download":"sideline-chi-2005-week-1.json","pageErrors":[]}
+### Ran Playwright code
+```js
+await (// Additional UI acceptance on the built site. Use a separate disposable browser profile.
+async (page) => {
+  const errors = [], stages = [];
+  page.on('pageerror', e => errors.push(e.message));
+  const read = () => page.evaluate(() => JSON.parse(localStorage.getItem('sideline.franchise')));
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const nav = name => page.getByRole('navigation').getByRole('button', { name, exact: true }).click();
+  const close = () => page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await page.reload(); let s = await read();
+  await nav('Team roster');
+  const backup = s.players.find(p => p.teamId === s.userTeam && p.position === 'QB' && p.depth === 1);
+  await page.locator(`[data-player="${backup.id}"]`).first().click();
+  await page.getByRole('button', { name: 'Move to top of depth chart', exact: true }).click();
+  s = await read(); assert(s.players.find(p => p.id === backup.id).depth === 0, 'Depth promotion failed');
+  const expiring = s.players.find(p => p.teamId === s.userTeam && p.years === 1);
+  await page.locator(`[data-player="${expiring.id}"]`).first().click();
+  await page.getByRole('button', { name: /Extend 3 years/ }).click();
+  s = await read(); assert(s.players.find(p => p.id === expiring.id).years === 4, 'Extension failed');
+  stages.push('depth promotion and contract extension');
+  await nav('Transactions');
+  await page.locator('.player-cell').first().click();
+  await page.getByRole('button', { name: /Sign 2 years/ }).click();
+  assert(await page.locator('.dialog-status').isVisible(), 'Validation error is invisible inside modal');
+  assert((await page.locator('.dialog-status').textContent()).includes('53-man'), 'Roster limit error missing');
+  await close();
+  await page.getByRole('button', { name: 'Trade desk', exact: true }).click();
+  const value = p => Math.round(p.overall ** 2 / 100 + Math.max(0, 28 - p.age) * 2 + (p.years > 1 ? 3 : 0) + (p.position === 'QB' ? 10 : 0) - p.salary / 1200 - p.injury * 2);
+  const outgoing = s.players.filter(p => p.teamId === s.userTeam && p.position === 'QB').sort((a, b) => value(b) - value(a))[0];
+  const incoming = s.players.filter(p => p.teamId === 0 && p.position === 'QB').sort((a, b) => value(a) - value(b))[0];
+  await page.getByLabel('Outgoing player').selectOption(outgoing.id);
+  await page.getByLabel('Partner team').selectOption('0');
+  await page.getByLabel('Incoming player').selectOption(incoming.id);
+  await page.getByRole('button', { name: 'Propose trade', exact: true }).click();
+  s = await read(); assert(s.players.find(p => p.id === incoming.id).teamId === s.userTeam, 'Trade failed');
+  stages.push('modal error feedback and accepted trade');
+  await nav('Settings');
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export franchise', exact: true }).click();
+  const download = await downloaded;
+  await download.saveAs('/Users/tkevinbigham/Game/output/playwright/franchise-export.json');
+  const original = await read();
+  await page.getByRole('button', { name: 'Create new franchise', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Team', exact: true }).selectOption('29');
+  await page.getByLabel('League seed').fill('1776');
+  await page.getByRole('button', { name: 'Start new franchise', exact: true }).click();
+  s = await read(); assert(s.userTeam === 29 && s.seed === 1776, 'New franchise selection failed');
+  await nav('Settings');
+  await page.locator('#import-file').setInputFiles('/Users/tkevinbigham/Game/output/playwright/franchise-export.json');
+  await page.getByRole('button', { name: 'Import franchise', exact: true }).click();
+  s = await read(); assert(s.userTeam === original.userTeam && s.rngState === original.rngState, 'Portable save import failed');
+  assert(JSON.stringify(s.players) === JSON.stringify(original.players), 'Import changed roster data');
+  stages.push('download export, create another team, validated file import');
+  await nav('Overview');
+  const sizes = [];
+  for (const [width, height] of [[390, 844], [768, 1024], [1440, 1000]]) {
+    await page.setViewportSize({ width, height });
+    for (const name of ['Overview', 'Team roster', 'Scouting & draft', 'Owner’s office']) {
+      await nav(name);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+      assert(!overflow, `Horizontal page overflow: ${name} at ${width}px`);
+    }
+    sizes.push(width);
+  }
+  await nav('Overview'); assert(errors.length === 0, errors.join(', '));
+  return { passed: stages, viewportWidths: sizes, download: download.suggestedFilename(), pageErrors: errors };
+}
+)(page);
+```
+### Events
+- Downloading file sideline-chi-2005-week-1.json ...
+- Downloaded file sideline-chi-2005-week-1.json to ".playwright-cli/sideline-chi-2005-week-1.json"

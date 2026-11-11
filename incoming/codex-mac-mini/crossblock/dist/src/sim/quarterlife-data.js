@@ -1,0 +1,143 @@
+export const LIFE_CARDS = Object.freeze({
+  cook: { title: 'Actually cook', tag: 'home', icon: 'bowl', color: 'sage', subtitle: 'The spinach has one more day. So do you.', effects: { cash: -24, energy: -6, peace: 10 }, food: 4, note: 'Four meals. One pan. A wildly inflated sense of competence.' },
+  walk: { title: 'Touch actual grass', tag: 'move', icon: 'sun', color: 'butter', subtitle: 'A little walk for your enormous feelings.', effects: { energy: 10, peace: 12 }, note: 'You saw a dog in a sweater. Suddenly, things are possible.' },
+  gig: { title: 'Do the side quest', tag: 'work', icon: 'laptop', color: 'lavender', subtitle: 'Your little freelance thing has a deadline.', effects: { cash: 135, energy: -22, peace: -7 }, note: 'Invoice sent. You are now a small business with a large headache.' },
+  sleep: { title: 'Become horizontal', tag: 'rest', icon: 'moon', color: 'blue', subtitle: 'Your bed has never asked for a deliverable.', effects: { energy: 29, peace: 7 }, note: 'Eight hours. You wake up with the processing power of a new laptop.' },
+  host: { title: 'Dinner at mine?', tag: 'social', icon: 'heart', color: 'peach', subtitle: 'Same three friends. Same six stories. Perfect.', effects: { cash: -35, energy: -10, peace: 9, social: 22 }, memory: 'Kitchen-table lore', note: 'Everyone stayed too late. Nobody checked their phone.' },
+  drinks: { title: 'Just one drink', tag: 'social', icon: 'glass', color: 'peach', subtitle: 'A sentence that has never been legally binding.', effects: { cash: -65, energy: -18, peace: 9, social: 27 }, memory: 'The very long one drink', note: 'It was three drinks and fries. The lore was worth at least some of it.' },
+  call: { title: 'Make the phone call', tag: 'social', icon: 'phone', color: 'sage', subtitle: 'They miss you. You can literally just call.', effects: { energy: -3, peace: 9, social: 16 }, note: 'A 40-minute call that started with “nothing, really.”' },
+  create: { title: 'Make something bad', tag: 'create', icon: 'spark', color: 'lavender', subtitle: 'A hobby. Without a business plan. Radical.', effects: { energy: -9, peace: 19 }, memory: 'Art with no target audience', note: 'It is not good. It is yours. That is the entire point.' },
+  admin: { title: 'The scary little task', tag: 'admin', icon: 'check', color: 'butter', subtitle: 'Three weeks of dread. Eleven actual minutes.', effects: { energy: -9, peace: 17 }, note: 'Appointment booked. Unread email answered. You can feel a new color.' },
+  clean: { title: 'Reset the apartment', tag: 'home', icon: 'spark', color: 'sage', subtitle: 'The chair would like to stop being a wardrobe.', effects: { energy: -12, peace: 18 }, tidy: 3, note: 'There is a floor under there. A pretty good one, actually.' },
+  date: { title: 'Go on the date', tag: 'chance', icon: 'heart', color: 'peach', subtitle: 'Their bio says “fluent in sarcasm.” Hmm.', effects: { cash: -38, energy: -12, social: 12 }, chance: true, note: 'You wore the good outfit. The rest is up to the universe.' },
+  takeaway: { title: 'Order your usual', tag: 'rest', icon: 'bowl', color: 'butter', subtitle: 'You deserve a treat. The app knows this.', effects: { cash: -32, energy: 19, peace: 9 }, note: 'Delivery fee. Service fee. Small-order fee. Emotionally necessary noodles.' },
+  thrift: { title: 'The thrift-store lap', tag: 'create', icon: 'shirt', color: 'lavender', subtitle: 'Maybe the version of you with a lamp is happy.', effects: { cash: -22, energy: -7, peace: 12, social: 6 }, memory: 'The objectively terrible lamp', note: 'A tiny ceramic goose. It chose you. This is your aesthetic now.' },
+  sell: { title: 'Sell the impulse buy', tag: 'work', icon: 'box', color: 'blue', subtitle: '“Is this available?” × 47. Someone is coming.', effects: { cash: 82, energy: -13, peace: -3 }, note: 'The buyer arrived 19 minutes late. The chair is no longer your problem.' },
+  boundary: { title: 'Respectfully, no', tag: 'boundary', icon: 'shield', color: 'lavender', subtitle: '“I can’t make it” is a complete sentence.', effects: { energy: 14, peace: 16, social: -6 }, note: 'You declined. Nobody died. This information feels significant.' },
+  scroll: { title: 'Just five minutes', tag: 'chance', icon: 'phone', color: 'blue', subtitle: 'A raccoon is washing a grape. You must know more.', effects: { energy: -8, peace: -8, social: 4 }, scroll: true, note: 'Your screen-time report would like a word.' },
+  coffee: { title: 'Little coffee, big walk', tag: 'move', icon: 'mug', color: 'butter', subtitle: 'Financially debatable. Spiritually necessary.', effects: { cash: -7, energy: 13, peace: 11 }, note: 'You carried that cup like a tiny emotional-support trophy.' },
+  friend: { title: 'Show up for a friend', tag: 'social', icon: 'heart', color: 'peach', subtitle: 'They said “it’s fine.” You know that voice.', effects: { cash: -12, energy: -10, peace: 12, social: 23 }, memory: 'You were there', note: 'You brought snacks and no advice. Exactly the right move.' },
+});
+
+export const LIFE_UPGRADES = Object.freeze({
+  rice: { title: 'Rice cooker era', icon: 'bowl', description: 'Cooking makes 2 extra meals. Stocked meals soften the daily energy drain.', flavor: 'The most stable relationship in your kitchen.' },
+  boundaries: { title: 'Work email: muted', icon: 'shield', description: 'Daily peace drain drops from 3 to 1. Your evenings belong to you.', flavor: 'Per my last boundary.' },
+  pillow: { title: 'The good pillow', icon: 'moon', description: 'Every rest card restores 8 extra energy.', flavor: 'A personality change disguised as bedding.' },
+  regulars: { title: 'Third-place regular', icon: 'heart', description: 'Every social card gives 6 extra connection.', flavor: 'Somebody knows your order. You exist.' },
+  rates: { title: 'Know your worth', icon: 'laptop', description: 'Side gigs and selling things earn $35 more.', flavor: 'A rate increase. A shaky hand. Send.' },
+  buffer: { title: 'Forgotten refund', icon: 'box', description: 'Get $130 right now. Past you did one thing right.', flavor: 'The universe has processed your return.' },
+});
+
+export const LIFE_EVENTS = Object.freeze([
+  { id: 'moving', from: 'SAM · CAN WE TALK?', icon: 'box', title: 'One of your people is moving.', text: 'A new city. A good opportunity. You are happy for them and a little devastated. Both things fit.', options: [
+    { label: 'One last ridiculous night', detail: '−$45 · −10 energy · +22 connection · a memory', effects: { cash: -45, energy: -10, social: 22 }, memory: 'The goodbye that lasted four hours', reply: 'You said “we’ll visit” 14 times. This time, you put a date in the calendar.' },
+    { label: 'Help with boxes. Bring snacks.', detail: '−$10 · −8 energy · +18 connection · a memory', effects: { cash: -10, energy: -8, social: 18, peace: 6 }, memory: 'Carrying the heavy end', reply: 'Some friendships sound like a heartfelt speech. Some sound like “pivot.”' },
+    { label: 'Make a standing phone date', detail: '+12 connection · +8 peace', effects: { social: 12, peace: 8 }, reply: 'Different ZIP codes. Same extremely niche sense of humor.' },
+  ] },
+  { id: 'parent', from: 'FAMILY CHAT · 8:41 AM', icon: 'phone', title: '“So… what’s the plan?”', text: 'A normal question that somehow sounds like you have been summoned before a board of directors.', options: [
+    { label: 'Pitch a five-year plan', detail: '−10 peace · +8 connection', effects: { peace: -10, social: 8 }, reply: 'The plan included a kitchen island. You currently own one fork you really like.' },
+    { label: 'Tell them one real thing you’re proud of', detail: '+12 peace · +10 connection', effects: { peace: 12, social: 10 }, reply: 'You told them about the thing you made. They asked to see it. That was nice.' },
+    { label: '“Still figuring it out. Pass the potatoes.”', detail: '+14 peace · a boundary', effects: { peace: 14 }, boundary: true, reply: 'The conversation moved on. So did the potatoes. A successful intervention.' },
+  ] },
+  { id: 'quiet', from: 'YOUR BRAIN · 10:37 PM', icon: 'moon', title: 'It’s a little too quiet tonight.', text: 'You wanted time alone. You got it. Now your thoughts have pulled up a chair.', options: [
+    { label: 'Send the honest text', detail: '+16 connection · +8 peace', effects: { social: 16, peace: 8 }, reply: '“Me too, honestly.” Two people feel less alone now.' },
+    { label: 'Comfort movie. Phone facedown.', detail: '+15 energy · +8 peace', effects: { energy: 15, peace: 8 }, reply: 'You know every line. That is exactly why you put it on.' },
+    { label: 'Visit the 24-hour supermarket', detail: '−$9 · +11 peace · a memory', effects: { cash: -9, peace: 11 }, memory: 'Fluorescent-light side quest', reply: 'You bought a mango at midnight. Nobody can stop you. You are an adult.' },
+  ] },
+  { id: 'couch', from: 'MARKETPLACE · AN OPPORTUNITY', icon: 'box', title: 'FREE couch. Must collect.', text: 'It is beautiful. It is free. It is on the fourth floor, and the lift is “a vibe.”', options: [
+    { label: 'Assemble the moving crew', detail: '−$25 · −18 energy · +12 connection · a memory', effects: { cash: -25, energy: -18, social: 12, peace: 10 }, tidy: 4, memory: 'The great sofa expedition', reply: 'The couch fits. Your friend’s car will never forget. Payment: pizza.' },
+    { label: 'Measure the doorway first', detail: '+12 peace · +$20', effects: { peace: 12, cash: 20 }, reply: 'It wouldn’t fit. You sold your unused tape measure after. An efficient arc.' },
+    { label: 'Love the couch you’re with', detail: '+8 peace · +6 energy · a boundary', effects: { peace: 8, energy: 6 }, boundary: true, reply: 'Your current sofa has never made you climb four flights of stairs.' },
+  ] },
+  { id: 'gym', from: 'THE GROUP CHAT · A NEW ERA', icon: 'energy', title: '“Let’s become morning people.”', text: 'Someone has proposed a 6 am workout. The same person who texted a meme at 2:17 am.', options: [
+    { label: 'A heroic one-day experiment', detail: '−14 energy · +16 connection · a memory', effects: { energy: -14, social: 16, peace: 7 }, memory: 'The 6 am character-building incident', reply: 'You were the only ones there. Afterwards, breakfast felt like an achievement.' },
+    { label: 'Counteroffer: an afternoon walk', detail: '+10 energy · +10 connection · +6 peace', effects: { energy: 10, social: 10, peace: 6 }, reply: 'Everyone immediately agreed. Democracy works.' },
+    { label: 'Support them from under the duvet', detail: '+15 energy · a boundary', effects: { energy: 15 }, boundary: true, reply: 'You sent a motivational GIF at 9:30. Leadership has many forms.' },
+  ] },
+  { id: 'hobby', from: 'YOUR CAMERA ROLL · 842 SCREENSHOTS', icon: 'spark', title: 'Remember that thing you wanted to try?', text: 'Pottery. Guitar. Running. A newsletter. The screenshot collection has become a museum of possible selves.', options: [
+    { label: 'Book the beginner class', detail: '−$40 · −8 energy · +18 peace · a memory', effects: { cash: -40, energy: -8, peace: 18, social: 8 }, memory: 'Proud owner of a very crooked mug', reply: 'Everyone was terrible. Everyone was happy. You signed the bottom of your mug.' },
+    { label: 'Try it badly, at home, for free', detail: '−5 energy · +15 peace · a memory', effects: { energy: -5, peace: 15 }, memory: 'Beginner’s permission slip', reply: 'Twenty minutes. No post. No monetization. Something unlocked.' },
+    { label: 'Delete the aspirational screenshots', detail: '+10 peace · a boundary', effects: { peace: 10 }, boundary: true, reply: 'You do not owe your past self every hobby they briefly wanted.' },
+  ] },
+  { id: 'wedding', from: 'MIA · THE GROUP CHAT', icon: 'heart', title: 'The destination wedding.', text: '“No pressure at all!!” says the invitation that costs a security deposit.', options: [
+    { label: 'Go all in', detail: '−$210 · +24 connection · a memory', effects: { cash: -210, social: 24, energy: -10 }, memory: 'Wedding dance-floor legend', reply: 'You danced with somebody’s uncle. He absolutely had moves.' },
+    { label: 'Celebrate them locally', detail: '−$25 · +12 connection · +8 peace', effects: { cash: -25, social: 12, peace: 8 }, reply: 'A picnic, a heartfelt toast, and no airport security. They loved it.' },
+    { label: 'Send love. Keep the rent.', detail: '+10 peace · −5 connection · a boundary', effects: { peace: 10, social: -5 }, boundary: true, reply: '“Totally understand ❤️.” The guilt was mostly in your head.' },
+  ] },
+  { id: 'work', from: 'YOUR MANAGER · 6:03 PM', icon: 'laptop', title: 'Quick thing before you log off…', text: 'It is neither quick nor a thing. It is a spreadsheet with 14 tabs.', options: [
+    { label: 'Paid overtime? I’m in.', detail: '+$90 · −18 energy · −8 peace', effects: { cash: 90, energy: -18, peace: -8 }, reply: 'You made the chart. The chart will be mentioned for 11 seconds.' },
+    { label: 'Tomorrow-me can handle it', detail: '+12 peace · a boundary', effects: { peace: 12 }, boundary: true, reply: 'You closed the laptop. The office continued to exist.' },
+    { label: 'Ask a coworker for help', detail: '−6 energy · +9 connection', effects: { energy: -6, social: 9 }, reply: 'Turns out everyone was confused. Now you have a work friend.' },
+  ] },
+  { id: 'engaged', from: 'SAM · 4 PHOTOS', icon: 'phone', title: 'Another engagement post.', text: 'One friend bought a house. One is having a baby. You bought the wrong bin bags.', options: [
+    { label: 'Comparison spiral', detail: '−12 peace · +8 energy', effects: { peace: -12, energy: 8 }, reply: 'You scrolled horizontally on your bed. Different life. Different clock.' },
+    { label: 'Send an actual congratulations', detail: '+12 connection · +6 peace', effects: { social: 12, peace: 6 }, reply: 'Being happy for them did not take anything away from you.' },
+    { label: 'Mute. Go live your own life.', detail: '+12 peace · a boundary', effects: { peace: 12 }, boundary: true, reply: 'The feed got quieter. Your own life got a little louder.' },
+  ] },
+  { id: 'car', from: 'LIFE · UNSOLICITED UPDATE', icon: 'box', title: 'The check-engine light.', text: 'A tiny orange icon has entered your financial planning process.', options: [
+    { label: 'Get it fixed properly', detail: '−$110 · +12 peace', effects: { cash: -110, peace: 12 }, reply: 'It was a sensor. You would like the sensor to apologize.' },
+    { label: 'A friend knows a friend', detail: '−$45 · −7 energy · +5 connection', effects: { cash: -45, energy: -7, social: 5 }, reply: 'Fixed in a driveway. Payment accepted in cash and listening to a story.' },
+    { label: 'Bus era. For now.', detail: '−12 energy · +3 peace', effects: { energy: -12, peace: 3 }, reply: 'You found a podcast. You also found 18 stops you did not know existed.' },
+  ] },
+  { id: 'plans', from: 'MIA · THE GROUP CHAT', icon: 'glass', title: '“We should do something.”', text: 'Eleven messages. Four polls. Zero plans. The group chat needs a protagonist.', options: [
+    { label: 'Book the whole thing', detail: '−$48 · +20 connection · a memory', effects: { cash: -48, social: 20, energy: -8 }, memory: 'The plan that left the chat', reply: 'Everyone showed up. You have achieved the impossible.' },
+    { label: 'Park. 6 pm. Bring snacks.', detail: '−$8 · +15 connection · a memory', effects: { cash: -8, social: 15 }, memory: 'Sunset on the cheap', reply: 'Someone brought a speaker. Someone brought a watermelon. A perfect night.' },
+    { label: 'Love you. Next time.', detail: '+12 energy · −4 connection · a boundary', effects: { energy: 12, social: -4 }, boundary: true, reply: 'The group chat sent a heart. Your sofa sent a standing ovation.' },
+  ] },
+  { id: 'delivery', from: 'BANK APP · WE NOTICED', icon: 'bowl', title: 'Your food app knows your name.', text: '“You saved $3 on delivery!” You have spent $71 trying to avoid making a sandwich.', options: [
+    { label: 'Delete the app. Make toast.', detail: '+8 peace · +3 stocked meals', effects: { peace: 8 }, food: 3, reply: 'Toast is actually great. This discovery feels like forbidden knowledge.' },
+    { label: 'One last noodle situation', detail: '−$28 · +16 energy · +5 peace', effects: { cash: -28, energy: 16, peace: 5 }, reply: 'The noodles were good. The “one last” part remains under review.' },
+    { label: 'Cook with a friend', detail: '−$16 · +12 connection · +2 meals', effects: { cash: -16, social: 12 }, food: 2, reply: 'You made too much pasta. A very fixable problem.' },
+  ] },
+  { id: 'birthday', from: 'CALENDAR · A PERSONAL ATTACK', icon: 'spark', title: 'Your birthday is coming.', text: 'You are somehow both too young for this and too old for that.', options: [
+    { label: 'Tiny dinner. Good people.', detail: '−$40 · +18 connection · a memory', effects: { cash: -40, social: 18, peace: 8 }, memory: 'Candles with your people', reply: 'There was a terrible photo of everyone laughing. You kept it.' },
+    { label: 'A solo day that is actually yours', detail: '−$15 · +20 peace · a memory', effects: { cash: -15, peace: 20 }, memory: 'A date with yourself', reply: 'You did exactly what you wanted. No consensus required.' },
+    { label: 'No production this year', detail: '+12 energy · +8 peace · a boundary', effects: { energy: 12, peace: 8 }, boundary: true, reply: 'You are allowed to exist without organizing an event about it.' },
+  ] },
+  { id: 'laundry', from: 'THE CHAIR · 23 ITEMS', icon: 'shirt', title: 'The laundry has unionized.', text: 'Your “not clean, not dirty” chair is demanding official wardrobe status.', options: [
+    { label: 'The full reset', detail: '−14 energy · +18 peace · tidy apartment', effects: { energy: -14, peace: 18 }, tidy: 4, reply: 'Matching socks. Clean sheets. This might be what wealth feels like.' },
+    { label: 'One load. Small win.', detail: '−5 energy · +8 peace · a little tidier', effects: { energy: -5, peace: 8 }, tidy: 2, reply: 'You did a manageable amount. It still counts.' },
+    { label: 'The chair gets a promotion', detail: '+5 energy · −5 peace', effects: { energy: 5, peace: -5 }, reply: 'It is now Head of Textile Operations. Compensation remains one hoodie.' },
+  ] },
+  { id: 'ticket', from: 'SAM · URGENT BUT FUN', icon: 'spark', title: 'There’s one spare ticket.', text: 'Your favorite band. Tonight. You were going to reorganize your passwords.', options: [
+    { label: 'Make a core memory', detail: '−$70 · −12 energy · +15 connection · a memory', effects: { cash: -70, energy: -12, social: 15, peace: 12 }, memory: 'That song, live', reply: 'They played the song. For four minutes, there were no unread emails.' },
+    { label: 'Pre-show hang, then home', detail: '−$12 · +10 connection · +5 peace', effects: { cash: -12, social: 10, peace: 5 }, reply: 'Best of both worlds. Home in time to be smug about bedtime.' },
+    { label: 'Enjoy it for me', detail: '+10 energy · a boundary', effects: { energy: 10 }, boundary: true, reply: 'Sam sent a blurry video. You watched it in your good pajamas.' },
+  ] },
+  { id: 'subscription', from: 'BANK APP · $19.99', icon: 'phone', title: 'The free trial became a lifestyle.', text: 'You have been paying for an app that teaches you to breathe.', options: [
+    { label: 'Cancel. Request a refund.', detail: '+$40 · −5 energy · +8 peace', effects: { cash: 40, energy: -5, peace: 8 }, reply: 'Refund approved. You exhaled for free.' },
+    { label: 'Audit every subscription', detail: '+$65 · −12 energy · +10 peace', effects: { cash: 65, energy: -12, peace: 10 }, reply: 'Three streaming services. A fax app. You have never sent a fax.' },
+    { label: 'Cancel this one. Enough for today.', detail: '+5 peace', effects: { peace: 5 }, reply: 'A tiny leak patched. You do not have to fix everything tonight.' },
+  ] },
+]);
+
+export const DAY_LINES = [
+  'Too young to have it figured out. Too old to sleep weird.',
+  'Your five-year plan currently covers dinner.',
+  'You have food at home. Emotionally, this is complicated.',
+  'An errand is a side quest with parking.',
+  'Paid. Briefly wealthy. Spiritually unstoppable.',
+  'Two days off. Seventeen ideas. One human body.',
+  'The Sunday scaries have joined the group chat.',
+  'Your childhood dream job did not mention the emails.',
+  'A clean water bottle counts as personal growth.',
+  'You are allowed to be a work in progress with nice socks.',
+  'Everyone is improvising. Some just have better lighting.',
+  'Direct deposit: the love language of your twenties.',
+  'A free afternoon. Do not accidentally give it to your phone.',
+  'Rest is a plan. Put it on the calendar.',
+  'Halfway through. Still here. Pretty impressive, actually.',
+  'Your parents at 26: a house. You at 26: a very good playlist.',
+  'Your friend’s milestone is not your deadline.',
+  'The small stuff is most of the stuff.',
+  'Payday. The bank balance gets a brief redemption arc.',
+  'Romanticize the boring parts. They are most of the runtime.',
+  'The group chat is a place. Visit occasionally.',
+  'Final week. Main character. Supporting budget.',
+  'A little less comparison. A little more lunch.',
+  'Doing okay is wildly underrated.',
+  'Future you has requested fewer surprises.',
+  'One last payday. Do not celebrate with a new personality.',
+  'You made a life in the middle of all the admin.',
+  'Rent day. Deep breath. Let’s see what mattered.',
+];

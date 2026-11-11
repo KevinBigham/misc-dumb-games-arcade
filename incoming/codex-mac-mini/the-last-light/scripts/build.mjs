@@ -1,0 +1,24 @@
+import { cp, mkdir, rm, stat } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { buildLastLight } from './build-last-light.mjs';
+import { buildMoonStandalone } from './build-moon.mjs';
+
+const root = fileURLToPath(new URL('../', import.meta.url));
+const dist = join(root, 'dist');
+await import('./build-quarterlife.mjs');
+await import('./build-honk.mjs');
+await import('./build-crossblock.mjs');
+const crossblockFiles = ['crossblock.html', 'crossblock-play.html'];
+for (const file of [...crossblockFiles, 'src/crossblock-main.js']) await stat(join(root, file));
+for (const file of ['index.html', 'echo.html', 'moon.html', 'src/moon-main.js', 'src/franchise-main.js', 'src/franchise.css', 'src/sim/franchise.js', 'src/main.js']) await stat(join(root, file));
+await rm(dist, { recursive: true, force: true });
+await mkdir(dist, { recursive: true });
+for (const path of ['index.html', 'echo.html', 'moon.html', 'favicon.svg', 'src']) await cp(join(root, path), join(dist, path), { recursive: true });
+await buildMoonStandalone(root, join(dist, 'moon.html'));
+await cp(join(dist, 'moon.html'), join(root, 'moon-play.html'));
+await cp(join(root, 'last-light.html'), join(dist, 'last-light.html'));
+await buildLastLight(root, join(dist, 'last-light-standalone.html'));
+for (const file of crossblockFiles) await cp(join(root, file), join(dist, file));
+await cp(join(root, 'twenty-six.html'), join(dist, 'twenty-six.html'));
+console.log('Release built in dist/ — no dependencies, tests, docs, or development artifacts included.');
