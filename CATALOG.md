@@ -26,14 +26,14 @@ Made by (the AI model or agent that built each game, as the collection notes rec
 
 - Claude: 36
 - Gemini (Antigravity): 28
-- Kimi: 19
+- Kimi: 12
 - Claude Opus: 10
 - Claude Fable: 9
+- Codex: 8
 - Antigravity: 8
 - Claude + others: 1
-- Codex: 1
 
-Seven of the Kimi games (Sideline, Echo Requiem, Crossblock, Please Feed the Moon, The Last Light, 26: Doing My Best and Honk If You're Employed) came from the Mac mini Game folder; Kevin confirmed they were made by Kimi K3.1. "Antigravity" means the game came from Antigravity on a MacBook and the notes do not name the model; the Mac mini Antigravity games are credited to Gemini in their README.
+"Antigravity" means the game came from Antigravity on a MacBook and the notes do not name the model; the Mac mini Antigravity games are credited to Gemini in their README.
 
 ### Sports GM and dynasty sims
 
@@ -52,7 +52,7 @@ Seven of the Kimi games (Sideline, Echo Requiem, Crossblock, Please Feed the Moo
 | One More Season | sports season sim | Claude | overnight research batch | cloud PR #2 | [play](games/one-more-season/) | Different game from the Mac mini One More Season: Ironvale Rovers FC |
 | One More Season: Ironvale Rovers FC | 5-a-side football season sim | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/one-more-season-ironvale/) | Different game from the cloud One More Season, despite the shared name |
 | Pro Swim Dynasty | pro swim league GM sim | Antigravity | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/pro-swim-dynasty/) | Real swim club names other than Blue Springs Power Cats were replaced with made-up ones |
-| SIDELINE — Franchise Football | football franchise sim | Kimi | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/sideline/) | Seven team nicknames that matched real teams in other leagues were renamed |
+| SIDELINE — Franchise Football | football franchise sim | Codex | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/sideline/) | Seven team nicknames that matched real teams in other leagues were renamed |
 | Turn & Tide | swimming dynasty sim | Claude | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/turn-and-tide/) | Real swim club names other than Blue Springs Power Cats were replaced with made-up ones |
 | Vanguard Dynasty | pro basketball front office sim | Claude | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/vanguard-dynasty/) |  |
 
@@ -80,7 +80,7 @@ Seven of the Kimi games (Sideline, Echo Requiem, Crossblock, Please Feed the Moo
 | Aegis-Zero: Graze Overclock | graze bullet-heaven roguelite | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 (Nov 9) | [play](games/aegis-zero/) | Perk names that used real game studios and games were renamed |
 | Aegis: Volt-Lash | tether-parry arena roguelite | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini Cowork PR #20 | [play](games/volt-lash/) |  |
 | Argon Studio Collection | game launcher | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/argon-studio/) | Launcher for the 13 Argon games; borrowed game names and inspiration credits removed. Same games are also listed one by one |
-| ECHO REQUIEM | temporal arena shooter | Kimi | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/echo-requiem/) |  |
+| ECHO REQUIEM | temporal arena shooter | Codex | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/echo-requiem/) |  |
 | Ember Loop | lantern roguelite | Kimi | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/ember-loop/) |  |
 | Frostbore | mining | Claude Fable | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/frostbore/) |  |
 | Gloamrush | firefly survival | Claude Opus | Opus (audit blueprint) | cloud PR #2 | [play](games/gloamrush/) |  |
@@ -89,10 +89,10 @@ Seven of the Kimi games (Sideline, Echo Requiem, Crossblock, Please Feed the Moo
 | Kinetic Chain | arcade dasher | Claude | Claude (Cowork, MacBook) | MacBook Cowork PR #14 | [play](games/kinetic-chain/) |  |
 | Nine Lives Overdrive | cat roguelike | Claude | Games project | cloud PR #2 | [play](games/nine-lives-overdrive/) |  |
 | Paradox Protocol: The Mirror Engine | thought-experiment arena | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/paradox-protocol/) |  |
-| Please Feed the Moon | arcade shooter | Kimi | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/please-feed-the-moon/) |  |
+| Please Feed the Moon | arcade shooter | Codex | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/please-feed-the-moon/) |  |
 | SOUPERMARKET SWEEP: Aisles of the Damned | supermarket action | Kimi | Kimi (MacBook) | Kimi Work PR #7 | [play](games/soupermarket-sweep/) | Newest build from the Kimi Work collection (Nov 8) |
 | Spore Storm | survival | Claude Fable | Fable (Nov 5 sprint) | cloud PR #2 | [play](games/spore-storm/) |  |
-| THE LAST LIGHT | night survival | Kimi | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/the-last-light/) |  |
+| THE LAST LIGHT | night survival | Codex | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/the-last-light/) |  |
 | The Metaphysical Deli at the End of Your Forehead | surreal arena | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/metaphysical-deli/) |  |
 | VOIDBREAKER: OMEGA | twin-stick bullet heaven | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/voidbreaker-omega/) | Weapon names that borrowed from a sports game and a real player were replaced |
 | VOIDBREAKER: OVERDRIVE | twin-stick roguelite | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/voidbreaker-overdrive/) | Older version of Voidbreaker Omega |
@@ -139,7 +139,7 @@ Seven of the Kimi games (Sideline, Echo Requiem, Crossblock, Please Feed the Moo
 |---|---|---|---|---|---|---|
 | Blackout Dispatch | storm power-grid routing | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/blackout-dispatch/) |  |
 | Clause & Effect | code puzzle | Claude | overnight research batch | cloud PR #2 | [play](games/clause-and-effect/) |  |
-| CROSSBLOCK | block puzzle | Kimi | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/crossblock/) |  |
+| CROSSBLOCK | block puzzle | Codex | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/crossblock/) |  |
 | Junkyard Courier | cargo packing and routing | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/junkyard-courier/) |  |
 | Keystone Forge | polyomino puzzle | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/keystone-forge/) | Subtitle and guide text no longer name Tetris |
 | Kiln Words | word game | Claude Opus | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/kiln-words/) |  |
@@ -178,7 +178,7 @@ Seven of the Kimi games (Sideline, Echo Requiem, Crossblock, Please Feed the Moo
 
 | Game | Genre | Made by | Batch or machine | Source | Play | Notes |
 |---|---|---|---|---|---|---|
-| 26: Doing My Best | life sim | Kimi | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/twenty-six/) |  |
+| 26: Doing My Best | life sim | Codex | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/twenty-six/) |  |
 | Comet Orchard | idle | Claude Opus | Opus (Nov 5 sprint) | cloud PR #2 | [play](games/comet-orchard/) |  |
 | Lowbell | incremental | Claude | overnight research batch | cloud PR #2 | [play](games/lowbell/) |  |
 | Songmill | quota factory | Claude | overnight research batch | cloud PR #2 | [play](games/songmill/) |  |
@@ -190,7 +190,7 @@ Seven of the Kimi games (Sideline, Echo Requiem, Crossblock, Please Feed the Moo
 |---|---|---|---|---|---|---|
 | Accordion Courtroom // Honk at Law | courtroom physics brawler | Antigravity | Antigravity (MacBook Air) | Antigravity MacBook Air PR #12 | [play](games/accordion-courtroom/) |  |
 | Chairborne: Live at 11! | TV studio chair arena | Antigravity | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/chairborne-live/) |  |
-| HONK IF YOU'RE EMPLOYED | workplace arcade | Kimi | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/honk-if-youre-employed/) |  |
+| HONK IF YOU'RE EMPLOYED | workplace arcade | Codex | Mac mini (Codex collection) | Mac mini Codex PR #6 | [play](games/honk-if-youre-employed/) |  |
 | HonkCourt: The Goose Is a Landlord | eviction physics brawler | Antigravity | Antigravity (MacBook Air) | Antigravity MacBook Air PR #12 | [play](games/honkcourt/) |  |
 | Piñata Panic! | 3D piñata survival | Kimi | Kimi (MacBook Air) | Kimi Work PR #7 (Nov 9 update) | [play](games/pinata-panic/) | One upgrade renamed (was a real candy brand) |
 | STAMP DUTY: Executive Disorder | office arena brawler | Kimi | Kimi (MacBook Air) | Kimi Work PR #7 (Nov 9 update) | [play](games/executive-disorder/) |  |
