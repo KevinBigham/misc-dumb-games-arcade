@@ -1,0 +1,4375 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Chrono-Vortex: The God-Forge Arena | GOAT Edition</title>
+  </head>
+  <body style="margin:0; background:#05070f; color:#f8fafc;">
+    <main id="game-root" style="padding:12px;"></main>
+    <script type="module">
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+
+// node_modules/invokers-polyfill/invoker.js
+function isSupported() {
+  return typeof HTMLButtonElement !== "undefined" && "command" in HTMLButtonElement.prototype && "source" in ((globalThis.CommandEvent || {}).prototype || {});
+}
+function apply() {
+  document.addEventListener(
+    "invoke",
+    (e) => {
+      if (e.type == "invoke" && e.isTrusted) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }
+    },
+    true
+  );
+  document.addEventListener(
+    "command",
+    (e) => {
+      if (e.type == "command" && e.isTrusted) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }
+    },
+    true
+  );
+  function enumerate(obj, key, enumerable = true) {
+    Object.defineProperty(obj, key, {
+      ...Object.getOwnPropertyDescriptor(obj, key),
+      enumerable
+    });
+  }
+  function getRootNode2(node) {
+    if (node && typeof node.getRootNode === "function") {
+      return node.getRootNode();
+    }
+    if (node && node.parentNode) return getRootNode2(node.parentNode);
+    return node;
+  }
+  const commandEventSourceElements = /* @__PURE__ */ new WeakMap();
+  const commandEventActions = /* @__PURE__ */ new WeakMap();
+  class CommandEvent extends Event {
+    constructor(type, invokeEventInit = {}) {
+      super(type, invokeEventInit);
+      const { source, command } = invokeEventInit;
+      if (source != null && !(source instanceof Element)) {
+        throw new TypeError(`source must be an element`);
+      }
+      commandEventSourceElements.set(this, source || null);
+      commandEventActions.set(
+        this,
+        command !== void 0 ? String(command) : ""
+      );
+    }
+    get [Symbol.toStringTag]() {
+      return "CommandEvent";
+    }
+    get source() {
+      if (!commandEventSourceElements.has(this)) {
+        throw new TypeError("illegal invocation");
+      }
+      const source = commandEventSourceElements.get(this);
+      if (!(source instanceof Element)) return null;
+      const invokerRoot = getRootNode2(source);
+      if (invokerRoot !== getRootNode2(this.target || document)) {
+        return invokerRoot.host;
+      }
+      return source;
+    }
+    get command() {
+      if (!commandEventActions.has(this)) {
+        throw new TypeError("illegal invocation");
+      }
+      return commandEventActions.get(this);
+    }
+    get action() {
+      throw new Error(
+        "CommandEvent#action was renamed to CommandEvent#command"
+      );
+    }
+    get invoker() {
+      throw new Error(
+        "CommandEvent#invoker was renamed to CommandEvent#source"
+      );
+    }
+  }
+  enumerate(CommandEvent.prototype, "source");
+  enumerate(CommandEvent.prototype, "command");
+  class InvokeEvent extends Event {
+    constructor(type, invokeEventInit = {}) {
+      super(type, invokeEventInit);
+      throw new Error(
+        "InvokeEvent has been deprecated, it has been renamed to `CommandEvent`"
+      );
+    }
+  }
+  const invokerAssociatedElements = /* @__PURE__ */ new WeakMap();
+  function applyInvokerMixin(ElementClass) {
+    Object.defineProperties(ElementClass.prototype, {
+      commandForElement: {
+        enumerable: true,
+        configurable: true,
+        set(targetElement) {
+          if (this.hasAttribute("invokeaction")) {
+            throw new TypeError(
+              "Element has deprecated `invokeaction` attribute, replace with `command`"
+            );
+          } else if (this.hasAttribute("invoketarget")) {
+            throw new TypeError(
+              "Element has deprecated `invoketarget` attribute, replace with `commandfor`"
+            );
+          } else if (targetElement === null) {
+            this.removeAttribute("commandfor");
+            invokerAssociatedElements.delete(this);
+          } else if (!(targetElement instanceof Element)) {
+            throw new TypeError(`commandForElement must be an element or null`);
+          } else {
+            this.setAttribute("commandfor", "");
+            const targetRootNode = getRootNode2(targetElement);
+            const thisRootNode = getRootNode2(this);
+            if (thisRootNode === targetRootNode || targetRootNode === this.ownerDocument) {
+              invokerAssociatedElements.set(this, targetElement);
+            } else {
+              invokerAssociatedElements.delete(this);
+            }
+          }
+        },
+        get() {
+          if (this.localName !== "button") {
+            return null;
+          }
+          if (this.hasAttribute("invokeaction") || this.hasAttribute("invoketarget")) {
+            console.warn(
+              "Element has deprecated `invoketarget` or `invokeaction` attribute, use `commandfor` and `command` instead"
+            );
+            return null;
+          }
+          if (this.disabled) {
+            return null;
+          }
+          if (this.form && this.getAttribute("type") !== "button") {
+            console.warn(
+              "Element with `commandFor` is a form participant. It should explicitly set `type=button` in order for `commandFor` to work"
+            );
+            return null;
+          }
+          const targetElement = invokerAssociatedElements.get(this);
+          if (targetElement) {
+            if (targetElement.isConnected) {
+              return targetElement;
+            } else {
+              invokerAssociatedElements.delete(this);
+              return null;
+            }
+          }
+          const root2 = getRootNode2(this);
+          const idref = this.getAttribute("commandfor");
+          if ((root2 instanceof Document || root2 instanceof ShadowRoot) && idref) {
+            return root2.getElementById(idref) || null;
+          }
+          return null;
+        }
+      },
+      command: {
+        enumerable: true,
+        configurable: true,
+        get() {
+          const value = this.getAttribute("command") || "";
+          if (value.startsWith("--")) return value;
+          const valueLower = value.toLowerCase();
+          switch (valueLower) {
+            case "show-modal":
+            case "close":
+            case "toggle-popover":
+            case "hide-popover":
+            case "show-popover":
+              return valueLower;
+          }
+          return "";
+        },
+        set(value) {
+          this.setAttribute("command", value);
+        }
+      },
+      invokeAction: {
+        enumerable: false,
+        configurable: true,
+        get() {
+          throw new Error(
+            `invokeAction is deprecated. It has been renamed to command`
+          );
+        },
+        set(value) {
+          throw new Error(
+            `invokeAction is deprecated. It has been renamed to command`
+          );
+        }
+      },
+      invokeTargetElement: {
+        enumerable: false,
+        configurable: true,
+        get() {
+          throw new Error(
+            `invokeTargetElement is deprecated. It has been renamed to command`
+          );
+        },
+        set(value) {
+          throw new Error(
+            `invokeTargetElement is deprecated. It has been renamed to command`
+          );
+        }
+      }
+    });
+  }
+  const onHandlers = /* @__PURE__ */ new WeakMap();
+  Object.defineProperties(HTMLElement.prototype, {
+    oncommand: {
+      enumerable: true,
+      configurable: true,
+      get() {
+        oncommandObserver.takeRecords();
+        return onHandlers.get(this) || null;
+      },
+      set(handler) {
+        const existing = onHandlers.get(this) || null;
+        if (existing) {
+          this.removeEventListener("command", existing);
+        }
+        onHandlers.set(
+          this,
+          typeof handler === "object" || typeof handler === "function" ? handler : null
+        );
+        if (typeof handler == "function") {
+          this.addEventListener("command", handler);
+        }
+      }
+    }
+  });
+  function applyOnCommandHandler(els) {
+    for (const el of els) {
+      el.oncommand = new Function("event", el.getAttribute("oncommand"));
+    }
+  }
+  const oncommandObserver = new MutationObserver((records) => {
+    for (const record of records) {
+      const { target } = record;
+      if (record.type === "childList") {
+        applyOnCommandHandler(target.querySelectorAll("[oncommand]"));
+      } else {
+        applyOnCommandHandler([target]);
+      }
+    }
+  });
+  oncommandObserver.observe(document, {
+    subtree: true,
+    childList: true,
+    attributeFilter: ["oncommand"]
+  });
+  applyOnCommandHandler(document.querySelectorAll("[oncommand]"));
+  function handleInvokerActivation(event) {
+    if (event.defaultPrevented) return;
+    if (event.type !== "click") return;
+    const oldInvoker = event.target.closest(
+      "button[invoketarget], button[invokeaction], input[invoketarget], input[invokeaction]"
+    );
+    if (oldInvoker) {
+      console.warn(
+        "Elements with `invoketarget` or `invokeaction` are deprecated and should be renamed to use `commandfor` and `command` respectively"
+      );
+      if (oldInvoker.matches("input")) {
+        throw new Error("Input elements no longer support `commandfor`");
+      }
+    }
+    const source = event.target.closest("button[commandfor], button[command]");
+    if (!source) return;
+    if (source.form && source.getAttribute("type") !== "button") {
+      event.preventDefault();
+      throw new Error(
+        "Element with `commandFor` is a form participant. It should explicitly set `type=button` in order for `commandFor` to work. In order for it to act as a Submit button, it must not have command or commandfor attributes"
+      );
+    }
+    if (source.hasAttribute("command") !== source.hasAttribute("commandfor")) {
+      const attr = source.hasAttribute("command") ? "command" : "commandfor";
+      const missing = source.hasAttribute("command") ? "commandfor" : "command";
+      throw new Error(
+        `Element with ${attr} attribute must also have a ${missing} attribute to function.`
+      );
+    }
+    if (source.command !== "show-popover" && source.command !== "hide-popover" && source.command !== "toggle-popover" && source.command !== "show-modal" && source.command !== "close" && !source.command.startsWith("--")) {
+      console.warn(
+        `"${source.command}" is not a valid command value. Custom commands must begin with --`
+      );
+      return;
+    }
+    const invokee = source.commandForElement;
+    if (!invokee) return;
+    const invokeEvent = new CommandEvent("command", {
+      command: source.command,
+      source,
+      cancelable: true
+    });
+    invokee.dispatchEvent(invokeEvent);
+    if (invokeEvent.defaultPrevented)
+      return;
+    const command = invokeEvent.command.toLowerCase();
+    if (invokee.popover) {
+      const canShow = !invokee.matches(":popover-open");
+      const shouldShow = canShow && (command === "toggle-popover" || command === "show-popover");
+      const shouldHide = !canShow && command === "hide-popover";
+      if (shouldShow) {
+        invokee.showPopover({ source });
+      } else if (shouldHide) {
+        invokee.hidePopover();
+      }
+    } else if (invokee.localName === "dialog") {
+      const canShow = !invokee.hasAttribute("open");
+      const shouldShow = canShow && command === "show-modal";
+      const shouldHide = !canShow && command === "close";
+      if (shouldShow) {
+        invokee.showModal();
+      } else if (shouldHide) {
+        invokee.close();
+      }
+    }
+  }
+  function setupInvokeListeners(target) {
+    target.addEventListener("click", handleInvokerActivation, true);
+  }
+  function observeShadowRoots(ElementClass, callback) {
+    const attachShadow = ElementClass.prototype.attachShadow;
+    ElementClass.prototype.attachShadow = function(init) {
+      const shadow = attachShadow.call(this, init);
+      callback(shadow);
+      return shadow;
+    };
+    const attachInternals = ElementClass.prototype.attachInternals;
+    ElementClass.prototype.attachInternals = function() {
+      const internals = attachInternals.call(this);
+      if (internals.shadowRoot) callback(internals.shadowRoot);
+      return internals;
+    };
+  }
+  applyInvokerMixin(HTMLButtonElement);
+  observeShadowRoots(HTMLElement, (shadow) => {
+    setupInvokeListeners(shadow);
+    oncommandObserver.observe(shadow, { attributeFilter: ["oncommand"] });
+    applyOnCommandHandler(shadow.querySelectorAll("[oncommand]"));
+  });
+  setupInvokeListeners(document);
+  Object.assign(globalThis, { CommandEvent, InvokeEvent });
+}
+var init_invoker = __esm({
+  "node_modules/invokers-polyfill/invoker.js"() {
+  }
+});
+
+// node_modules/invokers-polyfill/index.js
+var invokers_polyfill_exports = {};
+var init_invokers_polyfill = __esm({
+  "node_modules/invokers-polyfill/index.js"() {
+    init_invoker();
+    if (!isSupported()) apply();
+  }
+});
+
+// node_modules/@oddbird/popover-polyfill/dist/popover.js
+var popover_exports = {};
+function queuePopoverToggleEventTask(element, oldState, newState) {
+  popoverToggleTaskQueue.set(
+    element,
+    setTimeout(() => {
+      if (!popoverToggleTaskQueue.has(element)) return;
+      element.dispatchEvent(
+        new ToggleEvent("toggle", {
+          cancelable: false,
+          oldState,
+          newState
+        })
+      );
+    }, 0)
+  );
+}
+function getPopoverVisibilityState(popover) {
+  return visibilityState.get(popover) || "hidden";
+}
+function lastSetElement(set) {
+  return [...set].pop();
+}
+function popoverTargetAttributeActivationBehavior(element) {
+  const popover = element.popoverTargetElement;
+  if (!(popover instanceof HTMLElement)) {
+    return;
+  }
+  const visibility = getPopoverVisibilityState(popover);
+  if (element.popoverTargetAction === "show" && visibility === "showing") {
+    return;
+  }
+  if (element.popoverTargetAction === "hide" && visibility === "hidden") return;
+  if (visibility === "showing") {
+    hidePopover(popover, true, true);
+  } else if (checkPopoverValidity(popover, false)) {
+    popoverInvoker.set(popover, element);
+    showPopover(popover);
+  }
+}
+function checkPopoverValidity(element, expectedToBeShowing) {
+  if (element.popover !== "auto" && element.popover !== "manual" && element.popover !== "hint") {
+    return false;
+  }
+  if (!element.isConnected) return false;
+  if (expectedToBeShowing && getPopoverVisibilityState(element) !== "showing") {
+    return false;
+  }
+  if (!expectedToBeShowing && getPopoverVisibilityState(element) !== "hidden") {
+    return false;
+  }
+  if (element instanceof HTMLDialogElement2 && element.hasAttribute("open")) {
+    return false;
+  }
+  if (document.fullscreenElement === element) return false;
+  return true;
+}
+function getStackPosition(popover) {
+  if (!popover) return 0;
+  const autoPopovers = autoPopoverList.get(document) || /* @__PURE__ */ new Set();
+  const hintPopovers = hintPopoverList.get(document) || /* @__PURE__ */ new Set();
+  if (hintPopovers.has(popover)) {
+    return [...hintPopovers].indexOf(popover) + autoPopovers.size + 1;
+  }
+  if (autoPopovers.has(popover)) {
+    return [...autoPopovers].indexOf(popover) + 1;
+  }
+  return 0;
+}
+function topMostClickedPopover(target) {
+  const clickedPopover = nearestInclusiveOpenPopover(target);
+  const invokerPopover = nearestInclusiveTargetPopoverForInvoker(target);
+  if (getStackPosition(clickedPopover) > getStackPosition(invokerPopover)) {
+    return clickedPopover;
+  }
+  return invokerPopover;
+}
+function topmostAutoOrHintPopover(document2) {
+  let topmostPopover;
+  const hintPopovers = hintPopoverList.get(document2) || /* @__PURE__ */ new Set();
+  const autoPopovers = autoPopoverList.get(document2) || /* @__PURE__ */ new Set();
+  const usedStack = hintPopovers.size > 0 ? hintPopovers : autoPopovers.size > 0 ? autoPopovers : null;
+  if (usedStack) {
+    topmostPopover = lastSetElement(usedStack);
+    if (!topmostPopover.isConnected) {
+      usedStack.delete(topmostPopover);
+      return topmostAutoOrHintPopover(document2);
+    }
+    return topmostPopover;
+  }
+  return null;
+}
+function topMostPopoverInList(list) {
+  for (const popover of list || []) {
+    if (!popover.isConnected) {
+      list.delete(popover);
+    } else {
+      return popover;
+    }
+  }
+  return null;
+}
+function getRootNode(node) {
+  if (typeof node.getRootNode === "function") {
+    return node.getRootNode();
+  }
+  if (node.parentNode) return getRootNode(node.parentNode);
+  return node;
+}
+function nearestInclusiveOpenPopover(node) {
+  while (node) {
+    if (node instanceof HTMLElement && node.popover === "auto" && visibilityState.get(node) === "showing") {
+      return node;
+    }
+    node = node instanceof Element && node.assignedSlot || node.parentElement || getRootNode(node);
+    if (node instanceof ShadowRoot2) node = node.host;
+    if (node instanceof Document) return;
+  }
+}
+function nearestInclusiveTargetPopoverForInvoker(node) {
+  while (node) {
+    const nodePopover = node.popoverTargetElement;
+    if (nodePopover instanceof HTMLElement) return nodePopover;
+    node = node.parentElement || getRootNode(node);
+    if (node instanceof ShadowRoot2) node = node.host;
+    if (node instanceof Document) return;
+  }
+}
+function topMostPopoverAncestor(newPopover, list) {
+  const popoverPositions = /* @__PURE__ */ new Map();
+  let i = 0;
+  for (const popover of list || []) {
+    popoverPositions.set(popover, i);
+    i += 1;
+  }
+  popoverPositions.set(newPopover, i);
+  i += 1;
+  let topMostPopoverAncestor2 = null;
+  function checkAncestor(candidate) {
+    if (!candidate) return;
+    let okNesting = false;
+    let candidateAncestor = null;
+    let candidatePosition = null;
+    while (!okNesting) {
+      candidateAncestor = nearestInclusiveOpenPopover(candidate) || null;
+      if (candidateAncestor === null) return;
+      if (!popoverPositions.has(candidateAncestor)) return;
+      if (newPopover.popover === "hint" || candidateAncestor.popover === "auto") {
+        okNesting = true;
+      }
+      if (!okNesting) {
+        candidate = candidateAncestor.parentElement;
+      }
+    }
+    candidatePosition = popoverPositions.get(candidateAncestor);
+    if (topMostPopoverAncestor2 === null || popoverPositions.get(topMostPopoverAncestor2) < candidatePosition) {
+      topMostPopoverAncestor2 = candidateAncestor;
+    }
+  }
+  checkAncestor(newPopover.parentElement || getRootNode(newPopover));
+  return topMostPopoverAncestor2;
+}
+function isFocusable(focusTarget) {
+  if (focusTarget.hidden || focusTarget instanceof ShadowRoot2) return false;
+  if (focusTarget instanceof HTMLButtonElement || focusTarget instanceof HTMLInputElement || focusTarget instanceof HTMLSelectElement || focusTarget instanceof HTMLTextAreaElement || focusTarget instanceof HTMLOptGroupElement || focusTarget instanceof HTMLOptionElement || focusTarget instanceof HTMLFieldSetElement) {
+    if (focusTarget.disabled) return false;
+  }
+  if (focusTarget instanceof HTMLInputElement && focusTarget.type === "hidden") {
+    return false;
+  }
+  if (focusTarget instanceof HTMLAnchorElement && focusTarget.href === "") {
+    return false;
+  }
+  return typeof focusTarget.tabIndex === "number" && focusTarget.tabIndex !== -1;
+}
+function focusDelegate(focusTarget) {
+  if (focusTarget.shadowRoot && focusTarget.shadowRoot.delegatesFocus !== true) {
+    return null;
+  }
+  let whereToLook = focusTarget;
+  if (whereToLook.shadowRoot) {
+    whereToLook = whereToLook.shadowRoot;
+  }
+  let autoFocusDelegate = whereToLook.querySelector("[autofocus]");
+  if (autoFocusDelegate) {
+    return autoFocusDelegate;
+  } else {
+    const slots = whereToLook.querySelectorAll("slot");
+    for (const slot of slots) {
+      const assignedElements = slot.assignedElements({ flatten: true });
+      for (const el of assignedElements) {
+        if (el.hasAttribute("autofocus")) {
+          return el;
+        } else {
+          autoFocusDelegate = el.querySelector("[autofocus]");
+          if (autoFocusDelegate) {
+            return autoFocusDelegate;
+          }
+        }
+      }
+    }
+  }
+  const walker = focusTarget.ownerDocument.createTreeWalker(
+    whereToLook,
+    NodeFilter.SHOW_ELEMENT
+  );
+  let descendant = walker.currentNode;
+  while (descendant) {
+    if (isFocusable(descendant)) {
+      return descendant;
+    }
+    descendant = walker.nextNode();
+  }
+}
+function popoverFocusingSteps(subject) {
+  var _a;
+  (_a = focusDelegate(subject)) == null ? void 0 : _a.focus();
+}
+function showPopover(element) {
+  if (!checkPopoverValidity(element, false)) {
+    return;
+  }
+  const document2 = element.ownerDocument;
+  if (!element.dispatchEvent(
+    new ToggleEvent("beforetoggle", {
+      cancelable: true,
+      oldState: "closed",
+      newState: "open"
+    })
+  )) {
+    return;
+  }
+  if (!checkPopoverValidity(element, false)) {
+    return;
+  }
+  let shouldRestoreFocus = false;
+  const originalType = element.popover;
+  let stackToAppendTo = null;
+  const autoAncestor = topMostPopoverAncestor(
+    element,
+    autoPopoverList.get(document2) || /* @__PURE__ */ new Set()
+  );
+  const hintAncestor = topMostPopoverAncestor(
+    element,
+    hintPopoverList.get(document2) || /* @__PURE__ */ new Set()
+  );
+  if (originalType === "auto") {
+    closeAllOpenPopoversInList(
+      hintPopoverList.get(document2) || /* @__PURE__ */ new Set(),
+      shouldRestoreFocus,
+      true
+    );
+    const ancestor = autoAncestor || document2;
+    hideAllPopoversUntil(ancestor, shouldRestoreFocus, true);
+    stackToAppendTo = "auto";
+  }
+  if (originalType === "hint") {
+    if (hintAncestor) {
+      hideAllPopoversUntil(hintAncestor, shouldRestoreFocus, true);
+      stackToAppendTo = "hint";
+    } else {
+      closeAllOpenPopoversInList(
+        hintPopoverList.get(document2) || /* @__PURE__ */ new Set(),
+        shouldRestoreFocus,
+        true
+      );
+      if (autoAncestor) {
+        hideAllPopoversUntil(autoAncestor, shouldRestoreFocus, true);
+        stackToAppendTo = "auto";
+      } else {
+        stackToAppendTo = "hint";
+      }
+    }
+  }
+  if (originalType === "auto" || originalType === "hint") {
+    if (originalType !== element.popover || !checkPopoverValidity(element, false)) {
+      return;
+    }
+    if (!topmostAutoOrHintPopover(document2)) {
+      shouldRestoreFocus = true;
+    }
+    if (stackToAppendTo === "auto") {
+      if (!autoPopoverList.has(document2)) {
+        autoPopoverList.set(document2, /* @__PURE__ */ new Set());
+      }
+      autoPopoverList.get(document2).add(element);
+    } else if (stackToAppendTo === "hint") {
+      if (!hintPopoverList.has(document2)) {
+        hintPopoverList.set(document2, /* @__PURE__ */ new Set());
+      }
+      hintPopoverList.get(document2).add(element);
+    }
+  }
+  previouslyFocusedElements.delete(element);
+  const originallyFocusedElement = document2.activeElement;
+  element.classList.add(":popover-open");
+  visibilityState.set(element, "showing");
+  if (!topLayerElements.has(document2)) {
+    topLayerElements.set(document2, /* @__PURE__ */ new Set());
+  }
+  topLayerElements.get(document2).add(element);
+  setInvokerAriaExpanded(popoverInvoker.get(element), true);
+  popoverFocusingSteps(element);
+  if (shouldRestoreFocus && originallyFocusedElement && element.popover === "auto") {
+    previouslyFocusedElements.set(element, originallyFocusedElement);
+  }
+  queuePopoverToggleEventTask(element, "closed", "open");
+}
+function hidePopover(element, focusPreviousElement = false, fireEvents = false) {
+  var _a, _b;
+  if (!checkPopoverValidity(element, true)) {
+    return;
+  }
+  const document2 = element.ownerDocument;
+  if (["auto", "hint"].includes(element.popover)) {
+    hideAllPopoversUntil(element, focusPreviousElement, fireEvents);
+    if (!checkPopoverValidity(element, true)) {
+      return;
+    }
+  }
+  const autoList = autoPopoverList.get(document2) || /* @__PURE__ */ new Set();
+  const autoPopoverListContainsElement = autoList.has(element) && lastSetElement(autoList) === element;
+  setInvokerAriaExpanded(popoverInvoker.get(element), false);
+  popoverInvoker.delete(element);
+  if (fireEvents) {
+    element.dispatchEvent(
+      new ToggleEvent("beforetoggle", {
+        oldState: "open",
+        newState: "closed"
+      })
+    );
+    if (autoPopoverListContainsElement && lastSetElement(autoList) !== element) {
+      hideAllPopoversUntil(element, focusPreviousElement, fireEvents);
+    }
+    if (!checkPopoverValidity(element, true)) {
+      return;
+    }
+  }
+  (_a = topLayerElements.get(document2)) == null ? void 0 : _a.delete(element);
+  autoList.delete(element);
+  (_b = hintPopoverList.get(document2)) == null ? void 0 : _b.delete(element);
+  element.classList.remove(":popover-open");
+  visibilityState.set(element, "hidden");
+  if (fireEvents) {
+    queuePopoverToggleEventTask(element, "open", "closed");
+  }
+  const previouslyFocusedElement = previouslyFocusedElements.get(element);
+  if (previouslyFocusedElement) {
+    previouslyFocusedElements.delete(element);
+    if (focusPreviousElement) {
+      previouslyFocusedElement.focus();
+    }
+  }
+}
+function closeAllOpenPopovers(document2, focusPreviousElement = false, fireEvents = false) {
+  let popover = topmostAutoOrHintPopover(document2);
+  while (popover) {
+    hidePopover(popover, focusPreviousElement, fireEvents);
+    popover = topmostAutoOrHintPopover(document2);
+  }
+}
+function closeAllOpenPopoversInList(list, focusPreviousElement = false, fireEvents = false) {
+  let popover = topMostPopoverInList(list);
+  while (popover) {
+    hidePopover(popover, focusPreviousElement, fireEvents);
+    popover = topMostPopoverInList(list);
+  }
+}
+function hidePopoverStackUntil(endpoint, set, focusPreviousElement, fireEvents) {
+  let repeatingHide = false;
+  let hasRunOnce = false;
+  while (repeatingHide || !hasRunOnce) {
+    hasRunOnce = true;
+    let lastToHide = null;
+    let foundEndpoint = false;
+    for (const popover of set) {
+      if (popover === endpoint) {
+        foundEndpoint = true;
+      } else if (foundEndpoint) {
+        lastToHide = popover;
+        break;
+      }
+    }
+    if (!lastToHide) return;
+    while (getPopoverVisibilityState(lastToHide) === "showing" && set.size) {
+      hidePopover(lastSetElement(set), focusPreviousElement, fireEvents);
+    }
+    if (set.has(endpoint) && lastSetElement(set) !== endpoint) {
+      repeatingHide = true;
+    }
+    if (repeatingHide) {
+      fireEvents = false;
+    }
+  }
+}
+function hideAllPopoversUntil(endpoint, focusPreviousElement, fireEvents) {
+  var _a, _b;
+  const document2 = endpoint.ownerDocument || endpoint;
+  if (endpoint instanceof Document) {
+    return closeAllOpenPopovers(document2, focusPreviousElement, fireEvents);
+  }
+  if ((_a = hintPopoverList.get(document2)) == null ? void 0 : _a.has(endpoint)) {
+    hidePopoverStackUntil(
+      endpoint,
+      hintPopoverList.get(document2),
+      focusPreviousElement,
+      fireEvents
+    );
+    return;
+  }
+  closeAllOpenPopoversInList(
+    hintPopoverList.get(document2) || /* @__PURE__ */ new Set(),
+    focusPreviousElement,
+    fireEvents
+  );
+  if (!((_b = autoPopoverList.get(document2)) == null ? void 0 : _b.has(endpoint))) {
+    return;
+  }
+  hidePopoverStackUntil(
+    endpoint,
+    autoPopoverList.get(document2),
+    focusPreviousElement,
+    fireEvents
+  );
+}
+function lightDismissOpenPopovers(event) {
+  if (!event.isTrusted) return;
+  const target = event.composedPath()[0];
+  if (!target) return;
+  const document2 = target.ownerDocument;
+  const topMostPopover = topmostAutoOrHintPopover(document2);
+  if (!topMostPopover) return;
+  const ancestor = topMostClickedPopover(target);
+  if (ancestor && event.type === "pointerdown") {
+    popoverPointerDownTargets.set(document2, ancestor);
+  } else if (event.type === "pointerup") {
+    const sameTarget = popoverPointerDownTargets.get(document2) === ancestor;
+    popoverPointerDownTargets.delete(document2);
+    if (sameTarget) {
+      hideAllPopoversUntil(ancestor || document2, false, true);
+    }
+  }
+}
+function setInvokerAriaExpanded(el, force = false) {
+  if (!el) return;
+  if (!initialAriaExpandedValue.has(el)) {
+    initialAriaExpandedValue.set(el, el.getAttribute("aria-expanded"));
+  }
+  const popover = el.popoverTargetElement;
+  if (popover instanceof HTMLElement && popover.popover === "auto") {
+    el.setAttribute("aria-expanded", String(force));
+  } else {
+    const initialValue = initialAriaExpandedValue.get(el);
+    if (!initialValue) {
+      el.removeAttribute("aria-expanded");
+    } else {
+      el.setAttribute("aria-expanded", initialValue);
+    }
+  }
+}
+function isSupported2() {
+  return typeof HTMLElement !== "undefined" && typeof HTMLElement.prototype === "object" && "popover" in HTMLElement.prototype;
+}
+function patchSelectorFn(object, name, mapper) {
+  const original = object[name];
+  Object.defineProperty(object, name, {
+    value(selector) {
+      return original.call(this, mapper(selector));
+    }
+  });
+}
+function hasLayerSupport() {
+  return typeof globalThis.CSSLayerBlockRule === "function";
+}
+function getStyles() {
+  const useLayer = hasLayerSupport();
+  return `
+${useLayer ? "@layer popover-polyfill {" : ""}
+  :where([popover]) {
+    position: fixed;
+    z-index: 2147483647;
+    inset: 0;
+    padding: 0.25em;
+    width: fit-content;
+    height: fit-content;
+    border-width: initial;
+    border-color: initial;
+    border-image: initial;
+    border-style: solid;
+    background-color: canvas;
+    color: canvastext;
+    overflow: auto;
+    margin: auto;
+  }
+
+  :where([popover]:not(.\\:popover-open)) {
+    display: none;
+  }
+
+  :where(dialog[popover].\\:popover-open) {
+    display: block;
+  }
+
+  :where(dialog[popover][open]) {
+    display: revert;
+  }
+
+  :where([anchor].\\:popover-open) {
+    inset: auto;
+  }
+
+  :where([anchor]:popover-open) {
+    inset: auto;
+  }
+
+  @supports not (background-color: canvas) {
+    :where([popover]) {
+      background-color: white;
+      color: black;
+    }
+  }
+
+  @supports (width: -moz-fit-content) {
+    :where([popover]) {
+      width: -moz-fit-content;
+      height: -moz-fit-content;
+    }
+  }
+
+  @supports not (inset: 0) {
+    :where([popover]) {
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+  }
+${useLayer ? "}" : ""}
+`;
+}
+function injectStyles(root2) {
+  const styles = getStyles();
+  if (popoverStyleSheet === null) {
+    try {
+      popoverStyleSheet = new CSSStyleSheet();
+      popoverStyleSheet.replaceSync(styles);
+    } catch {
+      popoverStyleSheet = false;
+    }
+  }
+  if (popoverStyleSheet === false) {
+    const sheet = document.createElement("style");
+    sheet.textContent = styles;
+    if (root2 instanceof Document) {
+      root2.head.prepend(sheet);
+    } else {
+      root2.prepend(sheet);
+    }
+  } else {
+    root2.adoptedStyleSheets = [popoverStyleSheet, ...root2.adoptedStyleSheets];
+  }
+}
+function apply2() {
+  if (typeof window === "undefined") return;
+  window.ToggleEvent = window.ToggleEvent || ToggleEvent;
+  function rewriteSelector(selector) {
+    if (selector == null ? void 0 : selector.includes(":popover-open")) {
+      selector = selector.replace(
+        nonEscapedPopoverSelector,
+        "$1.\\:popover-open"
+      );
+    }
+    return selector;
+  }
+  patchSelectorFn(Document.prototype, "querySelector", rewriteSelector);
+  patchSelectorFn(Document.prototype, "querySelectorAll", rewriteSelector);
+  patchSelectorFn(Element.prototype, "querySelector", rewriteSelector);
+  patchSelectorFn(Element.prototype, "querySelectorAll", rewriteSelector);
+  patchSelectorFn(Element.prototype, "matches", rewriteSelector);
+  patchSelectorFn(Element.prototype, "closest", rewriteSelector);
+  patchSelectorFn(
+    DocumentFragment.prototype,
+    "querySelectorAll",
+    rewriteSelector
+  );
+  Object.defineProperties(HTMLElement.prototype, {
+    popover: {
+      enumerable: true,
+      configurable: true,
+      get() {
+        if (!this.hasAttribute("popover")) return null;
+        const value = (this.getAttribute("popover") || "").toLowerCase();
+        if (value === "" || value == "auto") return "auto";
+        if (value == "hint") return "hint";
+        return "manual";
+      },
+      set(value) {
+        if (value === null) {
+          this.removeAttribute("popover");
+        } else {
+          this.setAttribute("popover", value);
+        }
+      }
+    },
+    showPopover: {
+      enumerable: true,
+      configurable: true,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      value(options = {}) {
+        showPopover(this);
+      }
+    },
+    hidePopover: {
+      enumerable: true,
+      configurable: true,
+      value() {
+        hidePopover(this, true, true);
+      }
+    },
+    togglePopover: {
+      enumerable: true,
+      configurable: true,
+      value(options = {}) {
+        if (typeof options === "boolean") {
+          options = { force: options };
+        }
+        if (visibilityState.get(this) === "showing" && options.force === void 0 || options.force === false) {
+          hidePopover(this, true, true);
+        } else if (options.force === void 0 || options.force === true) {
+          showPopover(this);
+        }
+        return visibilityState.get(this) === "showing";
+      }
+    }
+  });
+  const originalAttachShadow = Element.prototype.attachShadow;
+  if (originalAttachShadow) {
+    Object.defineProperties(Element.prototype, {
+      attachShadow: {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value(options) {
+          const shadowRoot = originalAttachShadow.call(this, options);
+          injectStyles(shadowRoot);
+          return shadowRoot;
+        }
+      }
+    });
+  }
+  const originalAttachInternals = HTMLElement.prototype.attachInternals;
+  if (originalAttachInternals) {
+    Object.defineProperties(HTMLElement.prototype, {
+      attachInternals: {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value() {
+          const internals = originalAttachInternals.call(this);
+          if (internals.shadowRoot) {
+            injectStyles(internals.shadowRoot);
+          }
+          return internals;
+        }
+      }
+    });
+  }
+  const popoverTargetAssociatedElements = /* @__PURE__ */ new WeakMap();
+  function applyPopoverInvokerElementMixin(ElementClass) {
+    Object.defineProperties(ElementClass.prototype, {
+      popoverTargetElement: {
+        enumerable: true,
+        configurable: true,
+        set(targetElement) {
+          if (targetElement === null) {
+            this.removeAttribute("popovertarget");
+            popoverTargetAssociatedElements.delete(this);
+          } else if (!(targetElement instanceof Element)) {
+            throw new TypeError(
+              `popoverTargetElement must be an element or null`
+            );
+          } else {
+            this.setAttribute("popovertarget", "");
+            popoverTargetAssociatedElements.set(this, targetElement);
+          }
+        },
+        get() {
+          if (this.localName !== "button" && this.localName !== "input") {
+            return null;
+          }
+          if (this.localName === "input" && this.type !== "reset" && this.type !== "image" && this.type !== "button") {
+            return null;
+          }
+          if (this.disabled) {
+            return null;
+          }
+          if (this.form && this.type === "submit") {
+            return null;
+          }
+          const targetElement = popoverTargetAssociatedElements.get(this);
+          if (targetElement && targetElement.isConnected) {
+            return targetElement;
+          } else if (targetElement && !targetElement.isConnected) {
+            popoverTargetAssociatedElements.delete(this);
+            return null;
+          }
+          const root2 = getRootNode(this);
+          const idref = this.getAttribute("popovertarget");
+          if ((root2 instanceof Document || root2 instanceof ShadowRoot22) && idref) {
+            return root2.getElementById(idref) || null;
+          }
+          return null;
+        }
+      },
+      popoverTargetAction: {
+        enumerable: true,
+        configurable: true,
+        get() {
+          const value = (this.getAttribute("popovertargetaction") || "").toLowerCase();
+          if (value === "show" || value === "hide") return value;
+          return "toggle";
+        },
+        set(value) {
+          this.setAttribute("popovertargetaction", value);
+        }
+      }
+    });
+  }
+  applyPopoverInvokerElementMixin(HTMLButtonElement);
+  applyPopoverInvokerElementMixin(HTMLInputElement);
+  const handleInvokerActivation = (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    const composedPath = event.composedPath();
+    const target = composedPath[0];
+    if (!(target instanceof Element) || (target == null ? void 0 : target.shadowRoot)) {
+      return;
+    }
+    const root2 = getRootNode(target);
+    if (!(root2 instanceof ShadowRoot22 || root2 instanceof Document)) {
+      return;
+    }
+    const invoker = composedPath.find(
+      (el) => {
+        var _a;
+        return (_a = el.matches) == null ? void 0 : _a.call(el, "[popovertargetaction],[popovertarget]");
+      }
+    );
+    if (invoker) {
+      popoverTargetAttributeActivationBehavior(invoker);
+      event.preventDefault();
+      return;
+    }
+  };
+  const onKeydown = (event) => {
+    const key = event.key;
+    const target = event.target;
+    if (!event.defaultPrevented && target && (key === "Escape" || key === "Esc")) {
+      hideAllPopoversUntil(target.ownerDocument, true, true);
+    }
+  };
+  const addEventListeners = (root2) => {
+    root2.addEventListener("click", handleInvokerActivation);
+    root2.addEventListener("keydown", onKeydown);
+    root2.addEventListener("pointerdown", lightDismissOpenPopovers);
+    root2.addEventListener("pointerup", lightDismissOpenPopovers);
+  };
+  addEventListeners(document);
+  injectStyles(document);
+}
+var ToggleEvent, popoverToggleTaskQueue, ShadowRoot2, HTMLDialogElement2, topLayerElements, autoPopoverList, hintPopoverList, visibilityState, popoverInvoker, previouslyFocusedElements, popoverPointerDownTargets, initialAriaExpandedValue, ShadowRoot22, nonEscapedPopoverSelector, popoverStyleSheet;
+var init_popover = __esm({
+  "node_modules/@oddbird/popover-polyfill/dist/popover.js"() {
+    ToggleEvent = class extends Event {
+      oldState;
+      newState;
+      constructor(type, { oldState = "", newState = "", ...init } = {}) {
+        super(type, init);
+        this.oldState = String(oldState || "");
+        this.newState = String(newState || "");
+      }
+    };
+    popoverToggleTaskQueue = /* @__PURE__ */ new WeakMap();
+    ShadowRoot2 = globalThis.ShadowRoot || function() {
+    };
+    HTMLDialogElement2 = globalThis.HTMLDialogElement || function() {
+    };
+    topLayerElements = /* @__PURE__ */ new WeakMap();
+    autoPopoverList = /* @__PURE__ */ new WeakMap();
+    hintPopoverList = /* @__PURE__ */ new WeakMap();
+    visibilityState = /* @__PURE__ */ new WeakMap();
+    popoverInvoker = /* @__PURE__ */ new WeakMap();
+    previouslyFocusedElements = /* @__PURE__ */ new WeakMap();
+    popoverPointerDownTargets = /* @__PURE__ */ new WeakMap();
+    initialAriaExpandedValue = /* @__PURE__ */ new WeakMap();
+    ShadowRoot22 = globalThis.ShadowRoot || function() {
+    };
+    nonEscapedPopoverSelector = /(^|[^\\]):popover-open\b/g;
+    popoverStyleSheet = null;
+    if (!isSupported2()) apply2();
+  }
+});
+
+// games/12-chrono-vortex/src/audio.ts
+var COMBO_SCALE_HZ = [
+  293.66,
+  // D4
+  329.63,
+  // E4
+  349.23,
+  // F4
+  440,
+  // A4
+  493.88,
+  // B4
+  523.25,
+  // C5
+  587.33,
+  // D5
+  659.25,
+  // E5
+  698.46,
+  // F5
+  880,
+  // A5
+  987.77,
+  // B5
+  1174.66
+  // D6
+];
+var ChronoAudioEngine = class {
+  ctx = null;
+  muted = false;
+  comboStep = 0;
+  ensureContext() {
+    if (this.muted || typeof window === "undefined") return null;
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        try {
+          this.ctx = new AudioCtx();
+        } catch {
+          this.ctx = null;
+        }
+      }
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      void this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  isMuted() {
+    return this.muted;
+  }
+  setMuted(mute) {
+    this.muted = mute;
+  }
+  toggleMute() {
+    this.muted = !this.muted;
+    return this.muted;
+  }
+  playEvent(event, comboCount = 1) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const scaleIdx = Math.min(COMBO_SCALE_HZ.length - 1, Math.max(0, comboCount - 1));
+    const comboFreq = COMBO_SCALE_HZ[scaleIdx] ?? 440;
+    try {
+      switch (event.type) {
+        case "BUMPER_RICOCHET": {
+          this.playTone(ctx, comboFreq, "triangle", 0.16, 0.14, now, comboFreq * 1.25);
+          this.playTone(ctx, comboFreq * 1.5, "sine", 0.22, 0.08, now + 0.03);
+          break;
+        }
+        case "DASH_SLAM":
+        case "DOMINO_COLLISION":
+        case "WALL_SLAM": {
+          this.playTone(ctx, 135, "sawtooth", 0.14, 0.16, now, 52);
+          this.playTone(ctx, comboFreq * 0.75, "triangle", 0.12, 0.1, now);
+          break;
+        }
+        case "PARRY_DEFLECT": {
+          this.playTone(ctx, 660, "sine", 0.18, 0.15, now, 1320);
+          this.playTone(ctx, 990, "triangle", 0.24, 0.11, now + 0.04, 1480);
+          break;
+        }
+        case "ECHO_SPAWNED": {
+          this.playTone(ctx, 320, "sine", 0.28, 0.14, now, 760);
+          this.playTone(ctx, 480, "triangle", 0.3, 0.1, now + 0.06, 960);
+          break;
+        }
+        case "ENEMY_SHATTERED": {
+          this.playTone(ctx, comboFreq, "sawtooth", 0.2, 0.14, now, comboFreq * 1.5);
+          this.playTone(ctx, 95, "triangle", 0.22, 0.18, now, 42);
+          break;
+        }
+        case "OVERDRIVE_TRIGGERED":
+        case "SECTOR_CLEARED":
+        case "RELIC_CLAIMED": {
+          const chord = [293.66, 440, 587.33, 880];
+          chord.forEach((f, idx) => {
+            this.playTone(ctx, f, "triangle", 0.36, 0.11, now + idx * 0.05, f * 1.05);
+          });
+          break;
+        }
+        case "PLAYER_DAMAGED": {
+          this.playTone(ctx, 160, "sawtooth", 0.24, 0.18, now, 65);
+          break;
+        }
+        case "VICTORY": {
+          const fanfare = [293.66, 369.99, 440, 587.33, 880];
+          fanfare.forEach((f, idx) => {
+            this.playTone(ctx, f, "triangle", 0.45, 0.13, now + idx * 0.08);
+          });
+          break;
+        }
+        case "GAME_OVER": {
+          const fall = [293.66, 261.63, 220, 146.83];
+          fall.forEach((f, idx) => {
+            this.playTone(ctx, f, "sawtooth", 0.35, 0.12, now + idx * 0.1);
+          });
+          break;
+        }
+      }
+    } catch {
+    }
+  }
+  playTone(ctx, freq, type, durationSec, gainPeak, startTime, endFreq) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, startTime);
+    if (endFreq) {
+      osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), startTime + durationSec);
+    }
+    gain.gain.setValueAtTime(1e-4, startTime);
+    gain.gain.linearRampToValueAtTime(gainPeak, startTime + 0.015);
+    gain.gain.exponentialRampToValueAtTime(1e-4, startTime + durationSec);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + durationSec + 0.02);
+  }
+  destroy() {
+    if (this.ctx) {
+      void this.ctx.close().catch(() => {
+      });
+      this.ctx = null;
+    }
+  }
+};
+
+// games/12-chrono-vortex/src/config.ts
+var CHRONO_CONFIG = {
+  GAME_ID: "12-chrono-vortex",
+  GAME_NUMBER: 12,
+  TITLE: "Chrono-Vortex: The God-Forge Arena",
+  SUBTITLE: "Time-Looping Kinetic Pinball-Brawler & Bullet-Alchemist Roguelite",
+  ACCENT_COLOR: "#f59e0b",
+  DEFAULT_SEED: 20261108,
+  SAVE_KEY: "argon_game12_chrono_vortex_v1",
+  SAVE_VERSION: 1,
+  FIXED_STEP_MS: 1e3 / 60,
+  ARENA_WIDTH: 960,
+  ARENA_HEIGHT: 600,
+  ARENA_CENTER_X: 480,
+  ARENA_CENTER_Y: 300,
+  ARENA_RADIUS: 272,
+  PLAYER_BASE_RADIUS: 18,
+  PLAYER_BASE_SPEED: 310,
+  PLAYER_FRICTION: 0.88,
+  PLAYER_BOUNCE_RESTITUTION: 1.15,
+  DASH_SPEED: 780,
+  DASH_DURATION_MS: 180,
+  DASH_COOLDOWN_MS: 750,
+  DASH_STAMINA_COST: 30,
+  PARRY_RADIUS: 68,
+  PARRY_DURATION_MS: 240,
+  PARRY_COOLDOWN_MS: 900,
+  ECHO_RECORD_INTERVAL_MS: 50,
+  ECHO_MAX_SAMPLES: 80,
+  ECHO_DURATION_MS: 4e3,
+  ECHO_COOLDOWN_MS: 2800,
+  ECHO_MAX_ACTIVE: 3,
+  OVERDRIVE_MAX: 100,
+  OVERDRIVE_DURATION_MS: 5e3,
+  COMBO_DECAY_MS: 3600,
+  MAX_SECTORS: 5
+};
+
+// games/12-chrono-vortex/src/content.ts
+var STRIKER_CHASSIS = [
+  {
+    id: "vanguard-g",
+    name: "VANGUARD-G",
+    title: 'The "Big G" Kinetic Titan',
+    tagline: "Heavy pinball juggernaut built for catastrophic wall-slams and multi-bank ricochets.",
+    color: "#f59e0b",
+    secondaryColor: "#fde047",
+    maxHp: 130,
+    speedMultiplier: 1,
+    knockbackMultiplier: 1.35,
+    parryRadiusMultiplier: 1,
+    echoDurationMultiplier: 1,
+    signaturePassive: "Titan Impact: +35% Ricochet Knockback & Dash triggers a 95px seismic shockwave."
+  },
+  {
+    id: "phantom-x",
+    name: "PHANTOM-X",
+    title: "Chrono-Ghost Assassin",
+    tagline: "Hyper-agile temporal drifter that weaves up to 3 long-lasting Echo Clones simultaneously.",
+    color: "#38bdf8",
+    secondaryColor: "#a855f7",
+    maxHp: 100,
+    speedMultiplier: 1.18,
+    knockbackMultiplier: 1.05,
+    parryRadiusMultiplier: 1.05,
+    echoDurationMultiplier: 1.45,
+    signaturePassive: "Time Weaver: +45% Echo Ghost lifespan & -25% Echo Cooldown."
+  },
+  {
+    id: "prism-9",
+    name: "PRISM-9",
+    title: "Arcane Bullet Alchemist",
+    tagline: "Transmutes enemy bullet-hell barrages into homing prism storms and elemental novas.",
+    color: "#ec4899",
+    secondaryColor: "#2dd4bf",
+    maxHp: 110,
+    speedMultiplier: 1.08,
+    knockbackMultiplier: 1.1,
+    parryRadiusMultiplier: 1.35,
+    echoDurationMultiplier: 1.15,
+    signaturePassive: "Prism Refraction: +35% Parry Aura radius & Parries spawn +1 extra homing shard."
+  }
+];
+var ENEMY_ARCHETYPES = {
+  "gear-hound": {
+    id: "gear-hound",
+    name: "Gear-Hound Automaton",
+    role: "Kinetic Rusher (Pinball Ammo)",
+    baseHp: 42,
+    radius: 15,
+    speed: 145,
+    mass: 0.8,
+    contactDamage: 10,
+    scoreValue: 120,
+    color: "#fb923c",
+    outlineColor: "#fed7aa",
+    fireCooldownMs: 0,
+    projectileSpeed: 0,
+    description: "Lightweight clockwork drone. Slam it into heavier foes like a high-speed pinball!"
+  },
+  "prism-sniper": {
+    id: "prism-sniper",
+    name: "Prism-Lens Marksman",
+    role: "Ranged Volley Artillery",
+    baseHp: 56,
+    radius: 16,
+    speed: 95,
+    mass: 1,
+    contactDamage: 12,
+    scoreValue: 180,
+    color: "#e879f9",
+    outlineColor: "#fae8ff",
+    fireCooldownMs: 2100,
+    projectileSpeed: 255,
+    description: "Orbits the perimeter firing plasma orbs. Use Pulse Parry [Q/Right-Click] to reflect its shots!"
+  },
+  "void-juggernaut": {
+    id: "void-juggernaut",
+    name: "Obsidian Anvil-Golem",
+    role: "Heavy Bruiser (Weak to Wall/Bumper Slams)",
+    baseHp: 135,
+    radius: 24,
+    speed: 68,
+    mass: 1.9,
+    contactDamage: 18,
+    scoreValue: 320,
+    color: "#818cf8",
+    outlineColor: "#e0e7ff",
+    fireCooldownMs: 2900,
+    projectileSpeed: 210,
+    description: "Massive armor plating shrugs off light hits, but takes 2.5x shatter damage from Bumper & Wall impacts!"
+  },
+  "arc-weaver": {
+    id: "arc-weaver",
+    name: "Tesla-Coil Weaver",
+    role: "Tri-Shot Disruptor",
+    baseHp: 72,
+    radius: 17,
+    speed: 112,
+    mass: 1.1,
+    contactDamage: 14,
+    scoreValue: 240,
+    color: "#2dd4bf",
+    outlineColor: "#ccfbf1",
+    fireCooldownMs: 2300,
+    projectileSpeed: 240,
+    description: "Fires 3-way shock spreads. Discharges chain lightning to nearby enemies when slammed."
+  },
+  "chrono-warden": {
+    id: "chrono-warden",
+    name: "Paradox Aegis Warden",
+    role: "Directional Shield Elite",
+    baseHp: 110,
+    radius: 20,
+    speed: 88,
+    mass: 1.4,
+    contactDamage: 16,
+    scoreValue: 380,
+    color: "#38bdf8",
+    outlineColor: "#bae6fd",
+    fireCooldownMs: 1950,
+    projectileSpeed: 265,
+    description: "Projects a frontal temporal barrier. Flank it with a Chrono-Ghost Echo or bank-shot off a bumper!"
+  },
+  "kronos-omega": {
+    id: "kronos-omega",
+    name: "KRONOS-OMEGA, ARCHITECT OF ETERNITY",
+    role: "3-Phase God-Forge Apex Boss",
+    baseHp: 950,
+    radius: 36,
+    speed: 78,
+    mass: 2.8,
+    contactDamage: 24,
+    scoreValue: 5e3,
+    color: "#f43f5e",
+    outlineColor: "#fde047",
+    fireCooldownMs: 1350,
+    projectileSpeed: 275,
+    description: "Sovereign of the Chrono-Vortex. Shifts between Spiral Barrages, Gravity Wells, and Temporal Clones."
+  }
+};
+var SECTORS = [
+  {
+    sector: 1,
+    name: "Sector I: The Clockwork Crucible",
+    subtitle: "Ignition of the Pinball Anvil",
+    lore: "Bank your Striker and enemy drones into the 4 Elemental Resonance Bumpers to ignite exponential Chain Multipliers.",
+    themeColor: "#f59e0b",
+    accentColor: "#38bdf8",
+    targetKills: 10,
+    isBossSector: false,
+    gravityWellStrength: 0,
+    bumpers: [
+      { xOffset: -115, yOffset: -95, radius: 28, element: "SOLAR", label: "Solar Anvil" },
+      { xOffset: 115, yOffset: -95, radius: 28, element: "ARC", label: "Arc Coil" },
+      { xOffset: -115, yOffset: 95, radius: 28, element: "CRYO", label: "Cryo Prism" },
+      { xOffset: 115, yOffset: 95, radius: 28, element: "SOLAR", label: "Solar Anvil" }
+    ],
+    enemyWeights: [
+      { type: "gear-hound", weight: 55 },
+      { type: "prism-sniper", weight: 35 },
+      { type: "void-juggernaut", weight: 10 }
+    ]
+  },
+  {
+    sector: 2,
+    name: "Sector II: Astral Prism Vault",
+    subtitle: "Bullet Alchemy & Refraction Geometry",
+    lore: "Prism-Snipers and Arc-Weavers flood the arena. Trigger Pulse Parry [Q / Right-Click] to transmute enemy fire into Homing Shards!",
+    themeColor: "#ec4899",
+    accentColor: "#2dd4bf",
+    targetKills: 13,
+    isBossSector: false,
+    gravityWellStrength: 0,
+    bumpers: [
+      { xOffset: 0, yOffset: -130, radius: 30, element: "ARC", label: "Zenith Tesla" },
+      { xOffset: -135, yOffset: 0, radius: 28, element: "CRYO", label: "West Cryo-Lens" },
+      { xOffset: 135, yOffset: 0, radius: 28, element: "SOLAR", label: "East Solar-Lens" },
+      { xOffset: 0, yOffset: 130, radius: 30, element: "VOID", label: "Nadir Void-Core" }
+    ],
+    enemyWeights: [
+      { type: "gear-hound", weight: 30 },
+      { type: "prism-sniper", weight: 35 },
+      { type: "arc-weaver", weight: 25 },
+      { type: "void-juggernaut", weight: 10 }
+    ]
+  },
+  {
+    sector: 3,
+    name: "Sector III: Singularity Foundry",
+    subtitle: "Orbital Slingshots & Heavy Collisions",
+    lore: "A central Void Singularity curves trajectories. Slingshot Obsidian Juggernauts into the bumpers for 2.5x Shatter Crits!",
+    themeColor: "#8b5cf6",
+    accentColor: "#f43f5e",
+    targetKills: 15,
+    isBossSector: false,
+    gravityWellStrength: 42,
+    bumpers: [
+      { xOffset: 0, yOffset: 0, radius: 34, element: "VOID", label: "Singularity Core" },
+      { xOffset: -140, yOffset: -85, radius: 26, element: "SOLAR", label: "Solar Bumper" },
+      { xOffset: 140, yOffset: -85, radius: 26, element: "ARC", label: "Arc Bumper" },
+      { xOffset: -140, yOffset: 85, radius: 26, element: "CRYO", label: "Cryo Bumper" },
+      { xOffset: 140, yOffset: 85, radius: 26, element: "SOLAR", label: "Solar Bumper" }
+    ],
+    enemyWeights: [
+      { type: "gear-hound", weight: 25 },
+      { type: "void-juggernaut", weight: 30 },
+      { type: "arc-weaver", weight: 25 },
+      { type: "chrono-warden", weight: 20 }
+    ]
+  },
+  {
+    sector: 4,
+    name: "Sector IV: The Paradox Loom",
+    subtitle: "Crossfire of the Temporal Ghosts",
+    lore: "Paradox Wardens deflect frontal attacks. Spawn Chrono-Ghost Echoes [E] to execute 4-way temporal pincer combos!",
+    themeColor: "#06b6d4",
+    accentColor: "#fbbf24",
+    targetKills: 18,
+    isBossSector: false,
+    gravityWellStrength: 25,
+    bumpers: [
+      { xOffset: -85, yOffset: 0, radius: 30, element: "VOID", label: "Alpha Loom" },
+      { xOffset: 85, yOffset: 0, radius: 30, element: "VOID", label: "Omega Loom" },
+      { xOffset: 0, yOffset: -135, radius: 26, element: "ARC", label: "North Conduit" },
+      { xOffset: 0, yOffset: 135, radius: 26, element: "SOLAR", label: "South Conduit" }
+    ],
+    enemyWeights: [
+      { type: "chrono-warden", weight: 35 },
+      { type: "arc-weaver", weight: 25 },
+      { type: "prism-sniper", weight: 20 },
+      { type: "void-juggernaut", weight: 20 }
+    ]
+  },
+  {
+    sector: 5,
+    name: "Sector V: Throne of Kronos-Omega",
+    subtitle: "Final Reckoning in the God-Forge",
+    lore: "Shatter Kronos-Omega across 3 cosmic phases! Parry his Supernova Rings, ricochet his Clockwork Hounds into his core, and unleash Overdrive!",
+    themeColor: "#f43f5e",
+    accentColor: "#fde047",
+    targetKills: 1,
+    isBossSector: true,
+    gravityWellStrength: 30,
+    bumpers: [
+      { xOffset: -130, yOffset: -100, radius: 28, element: "SOLAR", label: "Solar Star-Anvil" },
+      { xOffset: 130, yOffset: -100, radius: 28, element: "ARC", label: "Arc Star-Anvil" },
+      { xOffset: -130, yOffset: 100, radius: 28, element: "CRYO", label: "Cryo Star-Anvil" },
+      { xOffset: 130, yOffset: 100, radius: 28, element: "VOID", label: "Void Star-Anvil" }
+    ],
+    enemyWeights: [
+      { type: "gear-hound", weight: 50 },
+      { type: "prism-sniper", weight: 30 },
+      { type: "chrono-warden", weight: 20 }
+    ]
+  }
+];
+var GOD_FORGE_RELICS = [
+  {
+    id: "celestial-bumper-spurs",
+    name: "Celestial Bumper Spurs",
+    school: "KINETIC",
+    rarity: "RARE",
+    icon: "\u26A1",
+    color: "#f59e0b",
+    description: "Bumper collisions grant +45% velocity and deal +55% bonus Elemental Nova damage."
+  },
+  {
+    id: "newtonian-guillotine",
+    name: "Newtonian Guillotine",
+    school: "KINETIC",
+    rarity: "EPIC",
+    icon: "\u2604\uFE0F",
+    color: "#fb923c",
+    description: "Enemy-into-Enemy and Wall-Slam impacts deal +65% damage and restore 8 Stamina."
+  },
+  {
+    id: "pinball-overdrive-core",
+    name: "Pinball Overdrive Core",
+    school: "KINETIC",
+    rarity: "MYTHIC",
+    icon: "\u{1F525}",
+    color: "#ef4444",
+    description: "Every 3rd bounce in a single Dash fires a ring of 6 homing Forge Bolts."
+  },
+  {
+    id: "mobius-tape-spool",
+    name: "M\xF6bius Tape Spool",
+    school: "CHRONO",
+    rarity: "RARE",
+    icon: "\u23F3",
+    color: "#38bdf8",
+    description: "Chrono-Ghost Echoes last +2.0 seconds longer and deal +40% ramming damage."
+  },
+  {
+    id: "paradox-rewind-anchor",
+    name: "Paradox Rewind Anchor",
+    school: "CHRONO",
+    rarity: "EPIC",
+    icon: "\u23EA",
+    color: "#a855f7",
+    description: "Spawning a Chrono-Ghost heals 12 HP and triggers a Free Pulse Parry at both positions."
+  },
+  {
+    id: "trinity-timeline-loom",
+    name: "Trinity Timeline Loom",
+    school: "CHRONO",
+    rarity: "MYTHIC",
+    icon: "\u{1F300}",
+    color: "#818cf8",
+    description: "Echo cooldown reduced by 35%. Active Chrono-Ghosts fire homing bolts every 1.2s."
+  },
+  {
+    id: "philosophers-ricochet",
+    name: "Philosopher's Ricochet",
+    school: "ALCHEMY",
+    rarity: "RARE",
+    icon: "\u{1F48E}",
+    color: "#ec4899",
+    description: "Parried enemy projectiles deal +75% damage and pierce through 1 additional target."
+  },
+  {
+    id: "supernova-crucible",
+    name: "Supernova Crucible",
+    school: "ALCHEMY",
+    rarity: "EPIC",
+    icon: "\u2600\uFE0F",
+    color: "#f43f5e",
+    description: "Solar & Arc Bumpers ignite enemies for 3s; ignited foes explode on death."
+  },
+  {
+    id: "absolute-zero-lens",
+    name: "Absolute Zero Lens",
+    school: "ALCHEMY",
+    rarity: "RARE",
+    icon: "\u2744\uFE0F",
+    color: "#06b6d4",
+    description: "Cryo & Void Bumpers slow enemies by 50% and make them take +40% Shatter Damage."
+  },
+  {
+    id: "vampiric-gyroscope",
+    name: "Vampiric Gyroscope",
+    school: "AEGIS",
+    rarity: "EPIC",
+    icon: "\u{1FA78}",
+    color: "#10b981",
+    description: "Eliminating an enemy while at 4x+ Combo Chain restores 5 HP and +12 Overdrive."
+  },
+  {
+    id: "mirror-aegis-capacitor",
+    name: "Mirror Aegis Capacitor",
+    school: "AEGIS",
+    rarity: "RARE",
+    icon: "\u{1F6E1}\uFE0F",
+    color: "#2dd4bf",
+    description: "Pulse Parry radius increased by +35% and successful parries reset Dash cooldown."
+  },
+  {
+    id: "god-forge-crown",
+    name: "Crown of the GOAT Architect",
+    school: "AEGIS",
+    rarity: "MYTHIC",
+    icon: "\u{1F451}",
+    color: "#fde047",
+    description: "+35 Max HP, +20% All Damage, and Overdrive unleashes continuous Lightning Storms."
+  }
+];
+
+// games/12-chrono-vortex/src/rng.ts
+function createRng(seed) {
+  const clean = (Math.abs(Math.floor(seed)) || 20261108) >>> 0;
+  return {
+    seed: clean,
+    state: clean === 0 ? 1831565813 : clean,
+    calls: 0
+  };
+}
+function nextRandom(rng) {
+  rng.calls += 1;
+  let t = rng.state += 1831565813;
+  t = Math.imul(t ^ t >>> 15, t | 1);
+  t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+  rng.state = t >>> 0;
+  return ((t ^ t >>> 14) >>> 0) / 4294967296;
+}
+function nextFloat(rng, min, max) {
+  return min + nextRandom(rng) * (max - min);
+}
+function nextInt(rng, min, maxInclusive) {
+  return Math.floor(nextFloat(rng, min, maxInclusive + 1));
+}
+
+// games/12-chrono-vortex/src/simulation.ts
+function getChassisDef(chassisId) {
+  return STRIKER_CHASSIS.find((c) => c.id === chassisId) ?? STRIKER_CHASSIS[0];
+}
+function getSectorDef(sector) {
+  const idx = Math.max(0, Math.min(SECTORS.length - 1, sector - 1));
+  return SECTORS[idx];
+}
+function hasRelic(state, relicId) {
+  return state.relicIds.includes(relicId);
+}
+function pushEvent(state, type, x, y, text, color, intensity = 1) {
+  state.events.push({ type, x, y, text, color, intensity });
+}
+function buildSectorBumpers(sector) {
+  const def = getSectorDef(sector);
+  return def.bumpers.map((b, idx) => ({
+    id: idx + 1,
+    x: CHRONO_CONFIG.ARENA_CENTER_X + b.xOffset,
+    y: CHRONO_CONFIG.ARENA_CENTER_Y + b.yOffset,
+    radius: b.radius,
+    element: b.element,
+    label: b.label,
+    pulseTimerMs: 0,
+    hitCount: 0
+  }));
+}
+function createInitialChronoState(seed = CHRONO_CONFIG.DEFAULT_SEED, chassisId = "vanguard-g") {
+  const rng = createRng(seed);
+  const chassis = getChassisDef(chassisId);
+  const sectorDef = getSectorDef(1);
+  const state = {
+    seed: rng.seed,
+    rng,
+    status: "PLAYING",
+    sector: 1,
+    sectorKills: 0,
+    sectorTargetKills: sectorDef.targetKills,
+    totalKills: 0,
+    score: 0,
+    elapsedMs: 0,
+    comboCount: 0,
+    comboMultiplier: 1,
+    comboTimerMs: 0,
+    bestComboChain: 0,
+    hitStopMs: 0,
+    nextEntityId: 100,
+    player: {
+      chassisId: chassis.id,
+      x: CHRONO_CONFIG.ARENA_CENTER_X,
+      y: CHRONO_CONFIG.ARENA_CENTER_Y + 125,
+      vx: 0,
+      vy: 0,
+      radius: CHRONO_CONFIG.PLAYER_BASE_RADIUS,
+      aimAngle: -Math.PI / 2,
+      moveDirX: 0,
+      moveDirY: 0,
+      hp: chassis.maxHp,
+      maxHp: chassis.maxHp,
+      stamina: 100,
+      maxStamina: 100,
+      dashTimerMs: 0,
+      dashCooldownMs: 0,
+      parryTimerMs: 0,
+      parryCooldownMs: 0,
+      echoCooldownMs: 0,
+      invulnTimerMs: 0,
+      overdriveMeter: 25,
+      overdriveTimerMs: 0,
+      bouncesThisDash: 0,
+      baseDamageMultiplier: 1
+    },
+    echoHistory: [],
+    echoRecordTimerMs: 0,
+    ghosts: [],
+    bumpers: buildSectorBumpers(1),
+    enemies: [],
+    projectiles: [],
+    relicIds: [],
+    draftOptions: [],
+    spawnTimerMs: 400,
+    overdriveBoltTimerMs: 0,
+    ledger: {
+      kineticSlamDamage: 0,
+      bumperNovaDamage: 0,
+      parryAlchemyDamage: 0,
+      chronoEchoDamage: 0,
+      totalBankShots: 0,
+      totalParries: 0,
+      totalEchoesSpawned: 0,
+      totalWallSlams: 0,
+      lastDamageBy: "None"
+    },
+    events: []
+  };
+  for (let i = 0; i < 24; i++) {
+    const angle = i / 24 * Math.PI * 2;
+    state.echoHistory.push({
+      x: CHRONO_CONFIG.ARENA_CENTER_X + Math.cos(angle) * 65,
+      y: CHRONO_CONFIG.ARENA_CENTER_Y + Math.sin(angle) * 65,
+      vx: -Math.sin(angle) * 260,
+      vy: Math.cos(angle) * 260,
+      aimAngle: angle + Math.PI / 2,
+      isDashing: i % 6 === 0,
+      isParrying: i % 10 === 0
+    });
+  }
+  spawnSectorEnemy(state, "gear-hound", CHRONO_CONFIG.ARENA_CENTER_X - 90, CHRONO_CONFIG.ARENA_CENTER_Y - 110);
+  spawnSectorEnemy(state, "gear-hound", CHRONO_CONFIG.ARENA_CENTER_X + 90, CHRONO_CONFIG.ARENA_CENTER_Y - 110);
+  spawnSectorEnemy(state, "prism-sniper", CHRONO_CONFIG.ARENA_CENTER_X, CHRONO_CONFIG.ARENA_CENTER_Y - 165);
+  return state;
+}
+function cloneChronoState(state) {
+  return structuredClone(state);
+}
+function spawnSectorEnemy(state, forcedType, forcedX, forcedY) {
+  const sectorDef = getSectorDef(state.sector);
+  let chosenType = forcedType ?? "gear-hound";
+  if (!forcedType) {
+    const totalWeight = sectorDef.enemyWeights.reduce((acc, w) => acc + w.weight, 0);
+    let roll = nextFloat(state.rng, 0, totalWeight);
+    for (const entry of sectorDef.enemyWeights) {
+      roll -= entry.weight;
+      if (roll <= 0) {
+        chosenType = entry.type;
+        break;
+      }
+    }
+  }
+  const arch = ENEMY_ARCHETYPES[chosenType];
+  let x = forcedX;
+  let y = forcedY;
+  if (x === void 0 || y === void 0) {
+    const spawnAngle = nextFloat(state.rng, 0, Math.PI * 2);
+    const spawnDist = nextFloat(state.rng, 145, CHRONO_CONFIG.ARENA_RADIUS - 36);
+    x = CHRONO_CONFIG.ARENA_CENTER_X + Math.cos(spawnAngle) * spawnDist;
+    y = CHRONO_CONFIG.ARENA_CENTER_Y + Math.sin(spawnAngle) * spawnDist;
+    const dx = x - state.player.x;
+    const dy = y - state.player.y;
+    if (Math.hypot(dx, dy) < 95) {
+      x = CHRONO_CONFIG.ARENA_CENTER_X - Math.cos(spawnAngle) * spawnDist;
+      y = CHRONO_CONFIG.ARENA_CENTER_Y - Math.sin(spawnAngle) * spawnDist;
+    }
+  }
+  const sectorHpScale = 1 + (state.sector - 1) * 0.14;
+  const maxHp = Math.round(arch.baseHp * sectorHpScale);
+  const enemy = {
+    id: state.nextEntityId++,
+    type: chosenType,
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    radius: arch.radius,
+    hp: maxHp,
+    maxHp,
+    mass: arch.mass,
+    facingAngle: Math.atan2(state.player.y - y, state.player.x - x),
+    fireTimerMs: arch.fireCooldownMs > 0 ? nextFloat(state.rng, 700, arch.fireCooldownMs) : 0,
+    knockbackTimerMs: 0,
+    burnTimerMs: 0,
+    chillTimerMs: 0,
+    flashTimerMs: 0,
+    bossPhase: 1,
+    summonTimerMs: 4200
+  };
+  state.enemies.push(enemy);
+  return enemy;
+}
+function addCombo(state, amount, x, y) {
+  state.comboCount += amount;
+  state.comboTimerMs = CHRONO_CONFIG.COMBO_DECAY_MS;
+  if (state.comboCount > state.bestComboChain) {
+    state.bestComboChain = state.comboCount;
+  }
+  if (state.comboCount >= 18) {
+    state.comboMultiplier = 16;
+  } else if (state.comboCount >= 11) {
+    state.comboMultiplier = 8;
+  } else if (state.comboCount >= 6) {
+    state.comboMultiplier = 4;
+  } else if (state.comboCount >= 2) {
+    state.comboMultiplier = 2;
+  } else {
+    state.comboMultiplier = 1;
+  }
+  state.player.overdriveMeter = Math.min(
+    CHRONO_CONFIG.OVERDRIVE_MAX,
+    state.player.overdriveMeter + amount * 4.5
+  );
+  if (state.player.overdriveMeter >= CHRONO_CONFIG.OVERDRIVE_MAX && state.player.overdriveTimerMs <= 0) {
+    triggerOverdrive(state, x, y);
+  }
+}
+function triggerOverdrive(state, x, y) {
+  state.player.overdriveMeter = 0;
+  state.player.overdriveTimerMs = CHRONO_CONFIG.OVERDRIVE_DURATION_MS;
+  state.player.stamina = state.player.maxStamina;
+  pushEvent(
+    state,
+    "OVERDRIVE_TRIGGERED",
+    x,
+    y,
+    "\u26A1 GOD-FORGE OVERDRIVE UNLEASHED! \u26A1",
+    "#fde047",
+    2
+  );
+}
+function spawnAlliedHomingBolt(state, x, y, angle, baseDamage, sourceTag) {
+  const pierce = hasRelic(state, "philosophers-ricochet") ? 2 : 1;
+  const dmgBoost = sourceTag === "PARRY" && hasRelic(state, "philosophers-ricochet") ? 1.75 : 1;
+  const speed = 440;
+  state.projectiles.push({
+    id: state.nextEntityId++,
+    x,
+    y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    radius: 7,
+    damage: Math.round(baseDamage * dmgBoost * state.player.baseDamageMultiplier),
+    isAllied: true,
+    isHoming: true,
+    pierceLeft: pierce,
+    color: sourceTag === "PARRY" ? "#2dd4bf" : sourceTag === "ECHO" ? "#38bdf8" : "#fde047",
+    ttlMs: 2600,
+    sourceName: sourceTag
+  });
+}
+function damageEnemy(state, enemy, rawDamage, sourceCategory, label) {
+  if (enemy.hp <= 0) return;
+  let multiplier = state.player.baseDamageMultiplier * (1 + (state.comboMultiplier - 1) * 0.18);
+  if (state.player.overdriveTimerMs > 0) {
+    multiplier *= 1.35;
+  }
+  if (hasRelic(state, "god-forge-crown")) {
+    multiplier *= 1.2;
+  }
+  if (enemy.chillTimerMs > 0 && hasRelic(state, "absolute-zero-lens")) {
+    multiplier *= 1.4;
+  }
+  const finalDamage = Math.max(1, Math.round(rawDamage * multiplier));
+  enemy.hp -= finalDamage;
+  enemy.flashTimerMs = 130;
+  if (sourceCategory === "KINETIC") state.ledger.kineticSlamDamage += finalDamage;
+  else if (sourceCategory === "BUMPER") state.ledger.bumperNovaDamage += finalDamage;
+  else if (sourceCategory === "PARRY") state.ledger.parryAlchemyDamage += finalDamage;
+  else if (sourceCategory === "ECHO") state.ledger.chronoEchoDamage += finalDamage;
+  if (label) {
+    pushEvent(
+      state,
+      sourceCategory === "BUMPER" ? "BUMPER_RICOCHET" : "DASH_SLAM",
+      enemy.x,
+      enemy.y - enemy.radius,
+      `${label} -${finalDamage}`,
+      sourceCategory === "BUMPER" ? "#fde047" : sourceCategory === "PARRY" ? "#2dd4bf" : sourceCategory === "ECHO" ? "#38bdf8" : "#fb923c",
+      1.1
+    );
+  }
+  if (enemy.type === "kronos-omega" && enemy.hp > 0) {
+    const hpRatio = enemy.hp / enemy.maxHp;
+    if (hpRatio <= 0.66 && enemy.bossPhase === 1) {
+      enemy.bossPhase = 2;
+      pushEvent(
+        state,
+        "BOSS_PHASE_SHIFT",
+        enemy.x,
+        enemy.y,
+        "\u26A0\uFE0F KRONOS PHASE II: SINGULARITY OVERCLOCK!",
+        "#f43f5e",
+        2
+      );
+      spawnSectorEnemy(state, "gear-hound");
+      spawnSectorEnemy(state, "prism-sniper");
+    } else if (hpRatio <= 0.33 && enemy.bossPhase === 2) {
+      enemy.bossPhase = 3;
+      pushEvent(
+        state,
+        "BOSS_PHASE_SHIFT",
+        enemy.x,
+        enemy.y,
+        "\u{1F525} KRONOS PHASE III: ETERNITY SUPERNOVA!",
+        "#fde047",
+        2.4
+      );
+      spawnSectorEnemy(state, "gear-hound");
+      spawnSectorEnemy(state, "chrono-warden");
+    }
+  }
+  if (enemy.hp <= 0) {
+    handleEnemyDefeated(state, enemy);
+  }
+}
+function handleEnemyDefeated(state, enemy) {
+  const arch = ENEMY_ARCHETYPES[enemy.type];
+  const scoreGain = arch.scoreValue * state.comboMultiplier;
+  state.score += scoreGain;
+  state.totalKills += 1;
+  if (enemy.type === "kronos-omega") {
+    state.sectorKills = state.sectorTargetKills;
+  } else if (!getSectorDef(state.sector).isBossSector) {
+    state.sectorKills += 1;
+  }
+  state.hitStopMs = Math.max(state.hitStopMs, enemy.type === "kronos-omega" ? 140 : 32);
+  pushEvent(
+    state,
+    "ENEMY_SHATTERED",
+    enemy.x,
+    enemy.y,
+    `\u{1F4A5} ${arch.name.split(" ")[0]} SHATTERED! +${scoreGain}`,
+    arch.outlineColor,
+    enemy.type === "kronos-omega" ? 2.5 : 1.35
+  );
+  if (hasRelic(state, "vampiric-gyroscope") && state.comboMultiplier >= 4) {
+    state.player.hp = Math.min(state.player.maxHp, state.player.hp + 5);
+    state.player.overdriveMeter = Math.min(
+      CHRONO_CONFIG.OVERDRIVE_MAX,
+      state.player.overdriveMeter + 12
+    );
+  }
+  if (enemy.burnTimerMs > 0 && hasRelic(state, "supernova-crucible")) {
+    for (const other of state.enemies) {
+      if (other.id !== enemy.id && other.hp > 0) {
+        const d = Math.hypot(other.x - enemy.x, other.y - enemy.y);
+        if (d <= 115) {
+          damageEnemy(state, other, 28, "BUMPER", "IGNITE NOVA");
+        }
+      }
+    }
+  }
+  if (enemy.type === "arc-weaver") {
+    for (const other of state.enemies) {
+      if (other.id !== enemy.id && other.hp > 0) {
+        const d = Math.hypot(other.x - enemy.x, other.y - enemy.y);
+        if (d <= 125) {
+          damageEnemy(state, other, 22, "KINETIC", "ARC DISCHARGE");
+        }
+      }
+    }
+  }
+}
+function triggerBumperResonance(state, bumper, triggerSource) {
+  bumper.pulseTimerMs = 340;
+  bumper.hitCount += 1;
+  state.ledger.totalBankShots += 1;
+  state.player.stamina = Math.min(state.player.maxStamina, state.player.stamina + 16);
+  addCombo(state, 1, bumper.x, bumper.y);
+  const novaRadius = hasRelic(state, "celestial-bumper-spurs") ? 138 : 108;
+  const baseNovaDmg = (triggerSource === "ENEMY" ? 28 : 20) * (hasRelic(state, "celestial-bumper-spurs") ? 1.55 : 1);
+  const colorMap = {
+    SOLAR: "#f59e0b",
+    CRYO: "#06b6d4",
+    ARC: "#2dd4bf",
+    VOID: "#a855f7"
+  };
+  pushEvent(
+    state,
+    "BUMPER_RICOCHET",
+    bumper.x,
+    bumper.y,
+    `${bumper.element} BANK ${state.comboMultiplier}x!`,
+    colorMap[bumper.element],
+    1.25
+  );
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) continue;
+    const dist = Math.hypot(enemy.x - bumper.x, enemy.y - bumper.y);
+    if (dist <= novaRadius + enemy.radius) {
+      if (bumper.element === "SOLAR") {
+        enemy.burnTimerMs = 3e3;
+      } else if (bumper.element === "CRYO") {
+        enemy.chillTimerMs = 3500;
+      } else if (bumper.element === "VOID") {
+        const angleToBumper = Math.atan2(bumper.y - enemy.y, bumper.x - enemy.x);
+        enemy.vx += Math.cos(angleToBumper) * 190;
+        enemy.vy += Math.sin(angleToBumper) * 190;
+      } else if (bumper.element === "ARC") {
+        enemy.knockbackTimerMs = Math.max(enemy.knockbackTimerMs, 260);
+      }
+      damageEnemy(state, enemy, baseNovaDmg, "BUMPER", `${bumper.element} PULSE`);
+    }
+  }
+}
+function triggerPulseParry(state, originX, originY, isFromEcho = false) {
+  const chassis = getChassisDef(state.player.chassisId);
+  const relicScale = hasRelic(state, "mirror-aegis-capacitor") ? 1.35 : 1;
+  const parryRadius = CHRONO_CONFIG.PARRY_RADIUS * chassis.parryRadiusMultiplier * relicScale;
+  let convertedCount = 0;
+  for (const proj of state.projectiles) {
+    if (proj.isAllied) continue;
+    const dist = Math.hypot(proj.x - originX, proj.y - originY);
+    if (dist <= parryRadius + proj.radius) {
+      proj.isAllied = true;
+      proj.isHoming = true;
+      proj.color = "#2dd4bf";
+      proj.ttlMs = 2800;
+      proj.pierceLeft = hasRelic(state, "philosophers-ricochet") ? 2 : 1;
+      const boost = hasRelic(state, "philosophers-ricochet") ? 1.75 : 1.25;
+      proj.damage = Math.round(proj.damage * 2.4 * boost * state.player.baseDamageMultiplier);
+      proj.vx = -proj.vx * 1.45;
+      proj.vy = -proj.vy * 1.45;
+      convertedCount += 1;
+      if (state.player.chassisId === "prism-9") {
+        const baseAngle = Math.atan2(proj.vy, proj.vx);
+        spawnAlliedHomingBolt(state, proj.x, proj.y, baseAngle + 0.35, 24, "PARRY");
+      }
+    }
+  }
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) continue;
+    const dx = enemy.x - originX;
+    const dy = enemy.y - originY;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 0 && dist <= parryRadius + enemy.radius) {
+      const nx = dx / dist;
+      const ny = dy / dist;
+      enemy.vx += nx * (260 / enemy.mass);
+      enemy.vy += ny * (260 / enemy.mass);
+      enemy.knockbackTimerMs = Math.max(enemy.knockbackTimerMs, 350);
+    }
+  }
+  if (convertedCount > 0) {
+    state.ledger.totalParries += convertedCount;
+    addCombo(state, convertedCount, originX, originY);
+    applyParryScoreBonus(state, convertedCount);
+    if (hasRelic(state, "mirror-aegis-capacitor")) {
+      state.player.dashCooldownMs = 0;
+      state.player.stamina = Math.min(state.player.maxStamina, state.player.stamina + 25);
+    }
+    pushEvent(
+      state,
+      "PARRY_DEFLECT",
+      originX,
+      originY,
+      `\u{1F6E1}\uFE0F ALCHEMY PARRY x${convertedCount}!`,
+      "#2dd4bf",
+      1.5
+    );
+  } else if (!isFromEcho) {
+    pushEvent(state, "PARRY_DEFLECT", originX, originY, "PULSE AEGIS", "#38bdf8", 0.8);
+  }
+  return convertedCount;
+}
+function applyParryScoreBonus(state, count) {
+  state.score += count * 95 * state.comboMultiplier;
+}
+function applyChronoInput(state, action) {
+  if (action.type === "TOGGLE_PAUSE") {
+    if (state.status === "PLAYING") {
+      state.status = "PAUSED";
+    } else if (state.status === "PAUSED") {
+      state.status = "PLAYING";
+    }
+    return;
+  }
+  if (action.type === "SWITCH_CHASSIS") {
+    const chassis = getChassisDef(action.chassisId);
+    state.player.chassisId = chassis.id;
+    const hpRatio = state.player.hp / Math.max(1, state.player.maxHp);
+    state.player.maxHp = chassis.maxHp + (hasRelic(state, "god-forge-crown") ? 35 : 0);
+    state.player.hp = Math.max(1, Math.round(state.player.maxHp * hpRatio));
+    return;
+  }
+  if (state.status === "RELIC_DRAFT") {
+    if (action.type === "SELECT_RELIC") {
+      const chosen = state.draftOptions.find((id) => id === action.relicId) ?? state.draftOptions[0];
+      if (chosen && !state.relicIds.includes(chosen)) {
+        state.relicIds.push(chosen);
+        const relicDef = GOD_FORGE_RELICS.find((r) => r.id === chosen);
+        if (chosen === "god-forge-crown") {
+          state.player.maxHp += 35;
+          state.player.hp = Math.min(state.player.maxHp, state.player.hp + 35);
+        }
+        pushEvent(
+          state,
+          "RELIC_CLAIMED",
+          state.player.x,
+          state.player.y,
+          `\u2728 RELIC FORGED: ${relicDef?.name ?? chosen}!`,
+          relicDef?.color ?? "#fde047",
+          1.6
+        );
+      }
+      advanceToNextSector(state);
+    } else if (action.type === "SACRIFICE_RELIC_FOR_UPGRADE") {
+      state.player.maxHp += 25;
+      state.player.hp = Math.min(state.player.maxHp, state.player.hp + 40);
+      state.player.baseDamageMultiplier = Number(
+        (state.player.baseDamageMultiplier + 0.15).toFixed(2)
+      );
+      pushEvent(
+        state,
+        "RELIC_CLAIMED",
+        state.player.x,
+        state.player.y,
+        "\u{1F528} ANVIL SMELT: +25 MAX HP & +15% BASE POWER!",
+        "#f59e0b",
+        1.6
+      );
+      advanceToNextSector(state);
+    }
+    return;
+  }
+  if (state.status !== "PLAYING") return;
+  const { player } = state;
+  switch (action.type) {
+    case "SET_MOVE": {
+      const mag = Math.hypot(action.dx, action.dy);
+      if (mag > 1e-3) {
+        player.moveDirX = action.dx / mag;
+        player.moveDirY = action.dy / mag;
+      } else {
+        player.moveDirX = 0;
+        player.moveDirY = 0;
+      }
+      break;
+    }
+    case "SET_AIM": {
+      const dx = action.worldX - player.x;
+      const dy = action.worldY - player.y;
+      if (Math.hypot(dx, dy) > 2) {
+        player.aimAngle = Math.atan2(dy, dx);
+      }
+      break;
+    }
+    case "DASH_STRIKE": {
+      if (player.dashCooldownMs > 0 || player.stamina < CHRONO_CONFIG.DASH_STAMINA_COST) {
+        return;
+      }
+      if (typeof action.targetX === "number" && typeof action.targetY === "number") {
+        const dx = action.targetX - player.x;
+        const dy = action.targetY - player.y;
+        if (Math.hypot(dx, dy) > 2) {
+          player.aimAngle = Math.atan2(dy, dx);
+        }
+      } else if (Math.hypot(player.moveDirX, player.moveDirY) > 0.1) {
+        player.aimAngle = Math.atan2(player.moveDirY, player.moveDirX);
+      }
+      player.stamina = Math.max(0, player.stamina - CHRONO_CONFIG.DASH_STAMINA_COST);
+      player.dashTimerMs = CHRONO_CONFIG.DASH_DURATION_MS;
+      player.dashCooldownMs = CHRONO_CONFIG.DASH_COOLDOWN_MS;
+      player.invulnTimerMs = Math.max(player.invulnTimerMs, 200);
+      player.bouncesThisDash = 0;
+      const chassis = getChassisDef(player.chassisId);
+      const dashVel = CHRONO_CONFIG.DASH_SPEED * chassis.speedMultiplier;
+      player.vx = Math.cos(player.aimAngle) * dashVel;
+      player.vy = Math.sin(player.aimAngle) * dashVel;
+      if (player.chassisId === "vanguard-g") {
+        for (const enemy of state.enemies) {
+          if (enemy.hp <= 0) continue;
+          const dist = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+          if (dist <= 95 + enemy.radius) {
+            const ang = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+            enemy.vx += Math.cos(ang) * 280;
+            enemy.vy += Math.sin(ang) * 280;
+            enemy.knockbackTimerMs = Math.max(enemy.knockbackTimerMs, 350);
+            damageEnemy(state, enemy, 18, "KINETIC", "TITAN TREMOR");
+          }
+        }
+      }
+      pushEvent(state, "DASH_SLAM", player.x, player.y, "KINETIC DASH!", chassis.color, 1);
+      break;
+    }
+    case "PULSE_PARRY": {
+      if (player.parryCooldownMs > 0) return;
+      player.parryTimerMs = CHRONO_CONFIG.PARRY_DURATION_MS;
+      player.parryCooldownMs = CHRONO_CONFIG.PARRY_COOLDOWN_MS;
+      const count = triggerPulseParry(state, player.x, player.y, false);
+      if (count > 0) {
+        applyParryScoreBonus(state, count);
+      }
+      break;
+    }
+    case "SPAWN_ECHO": {
+      if (player.echoCooldownMs > 0 || state.echoHistory.length === 0) return;
+      const chassis = getChassisDef(player.chassisId);
+      const cooldownScale = (player.chassisId === "phantom-x" ? 0.75 : 1) * (hasRelic(state, "trinity-timeline-loom") ? 0.65 : 1);
+      player.echoCooldownMs = Math.round(CHRONO_CONFIG.ECHO_COOLDOWN_MS * cooldownScale);
+      const extraDurationMs = hasRelic(state, "mobius-tape-spool") ? 2e3 : 0;
+      const totalDurationMs = Math.round(CHRONO_CONFIG.ECHO_DURATION_MS * chassis.echoDurationMultiplier) + extraDurationMs;
+      const recordedSamples = state.echoHistory.map((s) => ({ ...s }));
+      const firstSample = recordedSamples[0];
+      if (state.ghosts.length >= CHRONO_CONFIG.ECHO_MAX_ACTIVE) {
+        state.ghosts.shift();
+      }
+      const ghost = {
+        id: state.nextEntityId++,
+        x: firstSample.x,
+        y: firstSample.y,
+        vx: firstSample.vx,
+        vy: firstSample.vy,
+        aimAngle: firstSample.aimAngle,
+        isDashing: true,
+        isParrying: firstSample.isParrying,
+        samples: recordedSamples,
+        sampleIndex: 0,
+        sampleAccumulatorMs: 0,
+        remainingMs: totalDurationMs,
+        maxDurationMs: totalDurationMs,
+        boltCooldownMs: 600
+      };
+      state.ghosts.push(ghost);
+      state.ledger.totalEchoesSpawned += 1;
+      if (action.rewindPlayer && recordedSamples.length > 2) {
+        const anchor = recordedSamples[0];
+        player.x = anchor.x;
+        player.y = anchor.y;
+        player.vx = anchor.vx;
+        player.vy = anchor.vy;
+        player.invulnTimerMs = Math.max(player.invulnTimerMs, 350);
+      }
+      if (hasRelic(state, "paradox-rewind-anchor")) {
+        player.hp = Math.min(player.maxHp, player.hp + 12);
+        const c1 = triggerPulseParry(state, player.x, player.y, true);
+        const c2 = triggerPulseParry(state, ghost.x, ghost.y, true);
+        if (c1 + c2 > 0) applyParryScoreBonus(state, c1 + c2);
+      }
+      pushEvent(
+        state,
+        "ECHO_SPAWNED",
+        ghost.x,
+        ghost.y,
+        action.rewindPlayer ? "\u23EA TIMELINE REWIND & FORK!" : "\u23F3 CHRONO-GHOST DEPLOYED!",
+        "#38bdf8",
+        1.4
+      );
+      break;
+    }
+    case "ACTIVATE_OVERDRIVE": {
+      if (player.overdriveMeter >= 50 && player.overdriveTimerMs <= 0) {
+        triggerOverdrive(state, player.x, player.y);
+      }
+      break;
+    }
+  }
+}
+function advanceToNextSector(state) {
+  state.sector += 1;
+  state.sectorKills = 0;
+  const sectorDef = getSectorDef(state.sector);
+  state.sectorTargetKills = sectorDef.targetKills;
+  state.status = "PLAYING";
+  state.enemies = [];
+  state.projectiles = [];
+  state.bumpers = buildSectorBumpers(state.sector);
+  state.player.x = CHRONO_CONFIG.ARENA_CENTER_X;
+  state.player.y = CHRONO_CONFIG.ARENA_CENTER_Y + 135;
+  state.player.vx = 0;
+  state.player.vy = 0;
+  state.player.hp = Math.min(state.player.maxHp, state.player.hp + 20);
+  state.player.stamina = state.player.maxStamina;
+  if (sectorDef.isBossSector) {
+    spawnSectorEnemy(
+      state,
+      "kronos-omega",
+      CHRONO_CONFIG.ARENA_CENTER_X,
+      CHRONO_CONFIG.ARENA_CENTER_Y - 110
+    );
+    spawnSectorEnemy(
+      state,
+      "gear-hound",
+      CHRONO_CONFIG.ARENA_CENTER_X - 110,
+      CHRONO_CONFIG.ARENA_CENTER_Y - 40
+    );
+    spawnSectorEnemy(
+      state,
+      "gear-hound",
+      CHRONO_CONFIG.ARENA_CENTER_X + 110,
+      CHRONO_CONFIG.ARENA_CENTER_Y - 40
+    );
+  } else {
+    spawnSectorEnemy(state);
+    spawnSectorEnemy(state);
+    spawnSectorEnemy(state);
+  }
+}
+function openRelicDraftOrVictory(state) {
+  if (state.sector >= CHRONO_CONFIG.MAX_SECTORS) {
+    state.status = "VICTORY";
+    state.score += 2500 + state.player.hp * 20;
+    pushEvent(
+      state,
+      "VICTORY",
+      state.player.x,
+      state.player.y,
+      "\u{1F451} KRONOS-OMEGA SHATTERED! ETERNITY CONQUERED!",
+      "#fde047",
+      3
+    );
+    return;
+  }
+  state.status = "RELIC_DRAFT";
+  const unowned = GOD_FORGE_RELICS.filter((r) => !state.relicIds.includes(r.id));
+  const pool = unowned.length >= 3 ? [...unowned] : [...GOD_FORGE_RELICS];
+  const picks = [];
+  while (picks.length < 3 && pool.length > 0) {
+    const idx = nextInt(state.rng, 0, pool.length - 1);
+    picks.push(pool[idx].id);
+    pool.splice(idx, 1);
+  }
+  state.draftOptions = picks;
+  pushEvent(
+    state,
+    "SECTOR_CLEARED",
+    state.player.x,
+    state.player.y,
+    `\u{1F3C6} SECTOR ${state.sector} CLEARED! CHOOSE A GOD-FORGE RELIC!`,
+    "#fde047",
+    2
+  );
+}
+function registerPinballBounceOnPlayer(state) {
+  const { player } = state;
+  if (player.dashTimerMs > 0 || Math.hypot(player.vx, player.vy) > 250) {
+    player.bouncesThisDash += 1;
+    player.dashTimerMs = Math.min(240, player.dashTimerMs + 95);
+    if (hasRelic(state, "pinball-overdrive-core") && player.bouncesThisDash % 3 === 0) {
+      for (let i = 0; i < 6; i++) {
+        const ang = i / 6 * Math.PI * 2;
+        spawnAlliedHomingBolt(state, player.x, player.y, ang, 22, "KINETIC");
+      }
+    }
+  }
+}
+function stepChronoState(state, dtMs) {
+  if (state.status !== "PLAYING") return;
+  if (state.hitStopMs > 0) {
+    state.hitStopMs = Math.max(0, state.hitStopMs - dtMs);
+    return;
+  }
+  const dtSec = dtMs / 1e3;
+  state.elapsedMs += dtMs;
+  const { player } = state;
+  const chassis = getChassisDef(player.chassisId);
+  const sectorDef = getSectorDef(state.sector);
+  player.dashTimerMs = Math.max(0, player.dashTimerMs - dtMs);
+  player.dashCooldownMs = Math.max(0, player.dashCooldownMs - dtMs);
+  player.parryTimerMs = Math.max(0, player.parryTimerMs - dtMs);
+  player.parryCooldownMs = Math.max(0, player.parryCooldownMs - dtMs);
+  player.echoCooldownMs = Math.max(0, player.echoCooldownMs - dtMs);
+  player.invulnTimerMs = Math.max(0, player.invulnTimerMs - dtMs);
+  const staminaRegenRate = player.overdriveTimerMs > 0 ? 55 : 26;
+  player.stamina = Math.min(player.maxStamina, player.stamina + staminaRegenRate * dtSec);
+  if (player.overdriveTimerMs > 0) {
+    player.overdriveTimerMs = Math.max(0, player.overdriveTimerMs - dtMs);
+    state.overdriveBoltTimerMs -= dtMs;
+    if (state.overdriveBoltTimerMs <= 0) {
+      state.overdriveBoltTimerMs = hasRelic(state, "god-forge-crown") ? 320 : 520;
+      spawnAlliedHomingBolt(state, player.x, player.y, player.aimAngle, 26, "KINETIC");
+    }
+  }
+  if (state.comboTimerMs > 0) {
+    state.comboTimerMs = Math.max(0, state.comboTimerMs - dtMs);
+    if (state.comboTimerMs === 0) {
+      state.comboCount = 0;
+      state.comboMultiplier = 1;
+    }
+  }
+  state.echoRecordTimerMs += dtMs;
+  if (state.echoRecordTimerMs >= CHRONO_CONFIG.ECHO_RECORD_INTERVAL_MS) {
+    state.echoRecordTimerMs = 0;
+    state.echoHistory.push({
+      x: player.x,
+      y: player.y,
+      vx: player.vx,
+      vy: player.vy,
+      aimAngle: player.aimAngle,
+      isDashing: player.dashTimerMs > 0,
+      isParrying: player.parryTimerMs > 0
+    });
+    if (state.echoHistory.length > CHRONO_CONFIG.ECHO_MAX_SAMPLES) {
+      state.echoHistory.shift();
+    }
+  }
+  if (player.dashTimerMs <= 0) {
+    const moveSpeed = CHRONO_CONFIG.PLAYER_BASE_SPEED * chassis.speedMultiplier * (player.overdriveTimerMs > 0 ? 1.22 : 1);
+    const accel = 1850 * dtSec;
+    if (Math.hypot(player.moveDirX, player.moveDirY) > 0.05) {
+      player.vx += player.moveDirX * accel;
+      player.vy += player.moveDirY * accel;
+      const speedMag = Math.hypot(player.vx, player.vy);
+      if (speedMag > moveSpeed) {
+        player.vx = player.vx / speedMag * moveSpeed;
+        player.vy = player.vy / speedMag * moveSpeed;
+      }
+    } else {
+      player.vx *= Math.pow(CHRONO_CONFIG.PLAYER_FRICTION, dtMs / 16.67);
+      player.vy *= Math.pow(CHRONO_CONFIG.PLAYER_FRICTION, dtMs / 16.67);
+    }
+  }
+  if (sectorDef.gravityWellStrength > 0) {
+    const gx = CHRONO_CONFIG.ARENA_CENTER_X - player.x;
+    const gy = CHRONO_CONFIG.ARENA_CENTER_Y - player.y;
+    const gDist = Math.max(45, Math.hypot(gx, gy));
+    player.vx += gx / gDist * sectorDef.gravityWellStrength * dtSec;
+    player.vy += gy / gDist * sectorDef.gravityWellStrength * dtSec;
+  }
+  player.x += player.vx * dtSec;
+  player.y += player.vy * dtSec;
+  const distFromCenter = Math.hypot(
+    player.x - CHRONO_CONFIG.ARENA_CENTER_X,
+    player.y - CHRONO_CONFIG.ARENA_CENTER_Y
+  );
+  const maxPlayerDist = CHRONO_CONFIG.ARENA_RADIUS - player.radius;
+  if (distFromCenter > maxPlayerDist) {
+    const nx = (player.x - CHRONO_CONFIG.ARENA_CENTER_X) / distFromCenter;
+    const ny = (player.y - CHRONO_CONFIG.ARENA_CENTER_Y) / distFromCenter;
+    player.x = CHRONO_CONFIG.ARENA_CENTER_X + nx * maxPlayerDist;
+    player.y = CHRONO_CONFIG.ARENA_CENTER_Y + ny * maxPlayerDist;
+    const dot = player.vx * nx + player.vy * ny;
+    if (dot > 0) {
+      player.vx = (player.vx - 2 * dot * nx) * CHRONO_CONFIG.PLAYER_BOUNCE_RESTITUTION;
+      player.vy = (player.vy - 2 * dot * ny) * CHRONO_CONFIG.PLAYER_BOUNCE_RESTITUTION;
+      registerPinballBounceOnPlayer(state);
+    }
+  }
+  for (const bumper of state.bumpers) {
+    if (bumper.pulseTimerMs > 0) {
+      bumper.pulseTimerMs = Math.max(0, bumper.pulseTimerMs - dtMs);
+    }
+    const dx = player.x - bumper.x;
+    const dy = player.y - bumper.y;
+    const dist = Math.hypot(dx, dy);
+    const minDist = player.radius + bumper.radius;
+    if (dist < minDist && dist > 1e-3) {
+      const nx = dx / dist;
+      const ny = dy / dist;
+      player.x = bumper.x + nx * (minDist + 2);
+      player.y = bumper.y + ny * (minDist + 2);
+      const spurBoost = hasRelic(state, "celestial-bumper-spurs") ? 1.45 : 1;
+      const bounceSpeed = Math.max(540, Math.hypot(player.vx, player.vy) * 1.25) * spurBoost;
+      player.vx = nx * bounceSpeed;
+      player.vy = ny * bounceSpeed;
+      player.dashTimerMs = Math.max(player.dashTimerMs, 150);
+      player.invulnTimerMs = Math.max(player.invulnTimerMs, 180);
+      registerPinballBounceOnPlayer(state);
+      triggerBumperResonance(state, bumper, "PLAYER");
+    }
+  }
+  for (let i = state.ghosts.length - 1; i >= 0; i--) {
+    const ghost = state.ghosts[i];
+    ghost.remainingMs -= dtMs;
+    if (ghost.remainingMs <= 0) {
+      state.ghosts.splice(i, 1);
+      continue;
+    }
+    ghost.sampleAccumulatorMs += dtMs;
+    if (ghost.sampleAccumulatorMs >= CHRONO_CONFIG.ECHO_RECORD_INTERVAL_MS && ghost.samples.length > 0) {
+      ghost.sampleAccumulatorMs = 0;
+      ghost.sampleIndex = (ghost.sampleIndex + 1) % ghost.samples.length;
+      const sample = ghost.samples[ghost.sampleIndex];
+      ghost.x = sample.x;
+      ghost.y = sample.y;
+      ghost.vx = sample.vx;
+      ghost.vy = sample.vy;
+      ghost.aimAngle = sample.aimAngle;
+      ghost.isDashing = sample.isDashing;
+      ghost.isParrying = sample.isParrying;
+    } else {
+      ghost.x += ghost.vx * dtSec * 0.5;
+      ghost.y += ghost.vy * dtSec * 0.5;
+    }
+    if (hasRelic(state, "trinity-timeline-loom")) {
+      ghost.boltCooldownMs -= dtMs;
+      if (ghost.boltCooldownMs <= 0) {
+        ghost.boltCooldownMs = 1150;
+        spawnAlliedHomingBolt(state, ghost.x, ghost.y, ghost.aimAngle, 20, "ECHO");
+      }
+    }
+    if (ghost.isParrying) {
+      const c = triggerPulseParry(state, ghost.x, ghost.y, true);
+      if (c > 0) applyParryScoreBonus(state, c);
+    }
+    for (const bumper of state.bumpers) {
+      const dist = Math.hypot(ghost.x - bumper.x, ghost.y - bumper.y);
+      if (dist < CHRONO_CONFIG.PLAYER_BASE_RADIUS + bumper.radius && bumper.pulseTimerMs <= 0) {
+        triggerBumperResonance(state, bumper, "GHOST");
+      }
+    }
+    for (const enemy of state.enemies) {
+      if (enemy.hp <= 0) continue;
+      const dx = enemy.x - ghost.x;
+      const dy = enemy.y - ghost.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < enemy.radius + CHRONO_CONFIG.PLAYER_BASE_RADIUS && dist > 1e-3) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        enemy.x = ghost.x + nx * (enemy.radius + CHRONO_CONFIG.PLAYER_BASE_RADIUS + 2);
+        enemy.y = ghost.y + ny * (enemy.radius + CHRONO_CONFIG.PLAYER_BASE_RADIUS + 2);
+        enemy.vx = nx * (360 / enemy.mass);
+        enemy.vy = ny * (360 / enemy.mass);
+        enemy.knockbackTimerMs = Math.max(enemy.knockbackTimerMs, 420);
+        const echoRelicMult = hasRelic(state, "mobius-tape-spool") ? 1.4 : 1;
+        damageEnemy(
+          state,
+          enemy,
+          Math.round(24 * echoRelicMult),
+          "ECHO",
+          "ECHO STRIKE"
+        );
+        addCombo(state, 1, enemy.x, enemy.y);
+      }
+    }
+  }
+  state.spawnTimerMs -= dtMs;
+  const maxConcurrentEnemies = sectorDef.isBossSector ? 5 : 6 + state.sector;
+  if (state.spawnTimerMs <= 0 && state.enemies.length < maxConcurrentEnemies && (!sectorDef.isBossSector || state.enemies.some((e) => e.type === "kronos-omega"))) {
+    state.spawnTimerMs = Math.max(1250, 2600 - state.sector * 180);
+    spawnSectorEnemy(state);
+  }
+  for (let i = 0; i < state.enemies.length; i++) {
+    const enemy = state.enemies[i];
+    if (enemy.hp <= 0) continue;
+    const arch = ENEMY_ARCHETYPES[enemy.type];
+    enemy.flashTimerMs = Math.max(0, enemy.flashTimerMs - dtMs);
+    if (enemy.burnTimerMs > 0) {
+      const prevSec = Math.ceil(enemy.burnTimerMs / 500);
+      enemy.burnTimerMs = Math.max(0, enemy.burnTimerMs - dtMs);
+      const nextSec = Math.ceil(enemy.burnTimerMs / 500);
+      if (prevSec !== nextSec) {
+        damageEnemy(state, enemy, 8, "BUMPER");
+        if (enemy.hp <= 0) continue;
+      }
+    }
+    if (enemy.chillTimerMs > 0) {
+      enemy.chillTimerMs = Math.max(0, enemy.chillTimerMs - dtMs);
+    }
+    const chillSlow = enemy.chillTimerMs > 0 ? 0.5 : 1;
+    const toPlayerX = player.x - enemy.x;
+    const toPlayerY = player.y - enemy.y;
+    const distToPlayer = Math.max(1, Math.hypot(toPlayerX, toPlayerY));
+    enemy.facingAngle = Math.atan2(toPlayerY, toPlayerX);
+    if (enemy.knockbackTimerMs > 0) {
+      enemy.knockbackTimerMs = Math.max(0, enemy.knockbackTimerMs - dtMs);
+      enemy.vx *= Math.pow(0.95, dtMs / 16.67);
+      enemy.vy *= Math.pow(0.95, dtMs / 16.67);
+    } else {
+      const desiredSpeed = arch.speed * chillSlow;
+      if (enemy.type === "prism-sniper") {
+        const tangentX = -toPlayerY / distToPlayer;
+        const tangentY = toPlayerX / distToPlayer;
+        const radialFactor = distToPlayer < 170 ? -0.5 : distToPlayer > 220 ? 0.5 : 0;
+        enemy.vx = (tangentX * 0.8 + toPlayerX / distToPlayer * radialFactor) * desiredSpeed;
+        enemy.vy = (tangentY * 0.8 + toPlayerY / distToPlayer * radialFactor) * desiredSpeed;
+      } else {
+        enemy.vx = toPlayerX / distToPlayer * desiredSpeed;
+        enemy.vy = toPlayerY / distToPlayer * desiredSpeed;
+      }
+    }
+    enemy.x += enemy.vx * dtSec;
+    enemy.y += enemy.vy * dtSec;
+    if (arch.fireCooldownMs > 0 && enemy.knockbackTimerMs <= 0) {
+      enemy.fireTimerMs -= dtMs * chillSlow;
+      if (enemy.fireTimerMs <= 0) {
+        enemy.fireTimerMs = enemy.type === "kronos-omega" ? Math.max(680, arch.fireCooldownMs - (enemy.bossPhase - 1) * 260) : arch.fireCooldownMs;
+        if (enemy.type === "arc-weaver") {
+          for (const offset of [-0.28, 0, 0.28]) {
+            const ang = enemy.facingAngle + offset;
+            state.projectiles.push({
+              id: state.nextEntityId++,
+              x: enemy.x + Math.cos(ang) * (enemy.radius + 6),
+              y: enemy.y + Math.sin(ang) * (enemy.radius + 6),
+              vx: Math.cos(ang) * arch.projectileSpeed,
+              vy: Math.sin(ang) * arch.projectileSpeed,
+              radius: 6,
+              damage: 11,
+              isAllied: false,
+              isHoming: false,
+              pierceLeft: 1,
+              color: "#f43f5e",
+              ttlMs: 3600,
+              sourceName: arch.name
+            });
+          }
+        } else if (enemy.type === "kronos-omega") {
+          const count = enemy.bossPhase === 1 ? 6 : enemy.bossPhase === 2 ? 8 : 12;
+          const spinOffset = state.elapsedMs / 450 % (Math.PI * 2);
+          for (let b = 0; b < count; b++) {
+            const ang = spinOffset + b / count * Math.PI * 2;
+            state.projectiles.push({
+              id: state.nextEntityId++,
+              x: enemy.x + Math.cos(ang) * (enemy.radius + 8),
+              y: enemy.y + Math.sin(ang) * (enemy.radius + 8),
+              vx: Math.cos(ang) * arch.projectileSpeed,
+              vy: Math.sin(ang) * arch.projectileSpeed,
+              radius: 7,
+              damage: 14,
+              isAllied: false,
+              isHoming: false,
+              pierceLeft: 1,
+              color: enemy.bossPhase === 3 ? "#fde047" : "#fb7185",
+              ttlMs: 4200,
+              sourceName: "Kronos-Omega Supernova"
+            });
+          }
+        } else {
+          const ang = enemy.facingAngle;
+          state.projectiles.push({
+            id: state.nextEntityId++,
+            x: enemy.x + Math.cos(ang) * (enemy.radius + 6),
+            y: enemy.y + Math.sin(ang) * (enemy.radius + 6),
+            vx: Math.cos(ang) * arch.projectileSpeed,
+            vy: Math.sin(ang) * arch.projectileSpeed,
+            radius: 6,
+            damage: 12,
+            isAllied: false,
+            isHoming: false,
+            pierceLeft: 1,
+            color: "#fb7185",
+            ttlMs: 3600,
+            sourceName: arch.name
+          });
+        }
+      }
+    }
+    const eDistFromCenter = Math.hypot(
+      enemy.x - CHRONO_CONFIG.ARENA_CENTER_X,
+      enemy.y - CHRONO_CONFIG.ARENA_CENTER_Y
+    );
+    const maxEnemyDist = CHRONO_CONFIG.ARENA_RADIUS - enemy.radius;
+    if (eDistFromCenter > maxEnemyDist && eDistFromCenter > 1e-3) {
+      const nx = (enemy.x - CHRONO_CONFIG.ARENA_CENTER_X) / eDistFromCenter;
+      const ny = (enemy.y - CHRONO_CONFIG.ARENA_CENTER_Y) / eDistFromCenter;
+      enemy.x = CHRONO_CONFIG.ARENA_CENTER_X + nx * maxEnemyDist;
+      enemy.y = CHRONO_CONFIG.ARENA_CENTER_Y + ny * maxEnemyDist;
+      const dot = enemy.vx * nx + enemy.vy * ny;
+      if (dot > 0) {
+        enemy.vx = (enemy.vx - 2 * dot * nx) * 0.9;
+        enemy.vy = (enemy.vy - 2 * dot * ny) * 0.9;
+      }
+      if (enemy.knockbackTimerMs > 0) {
+        state.ledger.totalWallSlams += 1;
+        const newtonBonus = hasRelic(state, "newtonian-guillotine") ? 1.65 : 1;
+        const juggernautWeakness = enemy.type === "void-juggernaut" ? 2.5 : 1;
+        if (hasRelic(state, "newtonian-guillotine")) {
+          player.stamina = Math.min(player.maxStamina, player.stamina + 8);
+        }
+        addCombo(state, 1, enemy.x, enemy.y);
+        damageEnemy(
+          state,
+          enemy,
+          Math.round(28 * newtonBonus * juggernautWeakness),
+          "KINETIC",
+          "WALL SLAM!"
+        );
+        if (enemy.hp <= 0) continue;
+      }
+    }
+    for (const bumper of state.bumpers) {
+      const dx = enemy.x - bumper.x;
+      const dy = enemy.y - bumper.y;
+      const dist = Math.hypot(dx, dy);
+      const minDist = enemy.radius + bumper.radius;
+      if (dist < minDist && dist > 1e-3) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        enemy.x = bumper.x + nx * (minDist + 2);
+        enemy.y = bumper.y + ny * (minDist + 2);
+        enemy.vx = nx * (460 / enemy.mass);
+        enemy.vy = ny * (460 / enemy.mass);
+        if (enemy.knockbackTimerMs > 0) {
+          const juggernautWeakness = enemy.type === "void-juggernaut" ? 2.5 : 1;
+          damageEnemy(
+            state,
+            enemy,
+            Math.round(32 * juggernautWeakness),
+            "BUMPER",
+            "BUMPER SHATTER!"
+          );
+          triggerBumperResonance(state, bumper, "ENEMY");
+          if (enemy.hp <= 0) break;
+        }
+      }
+    }
+    if (enemy.hp <= 0) continue;
+    const pDx = enemy.x - player.x;
+    const pDy = enemy.y - player.y;
+    const pDist = Math.hypot(pDx, pDy);
+    const pMinDist = enemy.radius + player.radius;
+    if (pDist < pMinDist && pDist > 1e-3) {
+      const nx = pDx / pDist;
+      const ny = pDy / pDist;
+      const playerSpeed = Math.hypot(player.vx, player.vy);
+      const isStrikeState = player.dashTimerMs > 0 || player.overdriveTimerMs > 0 || playerSpeed >= 245;
+      enemy.x = player.x + nx * (pMinDist + 2);
+      enemy.y = player.y + ny * (pMinDist + 2);
+      if (isStrikeState) {
+        let shieldBlocked = false;
+        if (enemy.type === "chrono-warden" && player.overdriveTimerMs <= 0) {
+          const attackFromAngle = Math.atan2(-ny, -nx);
+          const angleDiff = Math.abs(
+            Math.atan2(
+              Math.sin(attackFromAngle - enemy.facingAngle),
+              Math.cos(attackFromAngle - enemy.facingAngle)
+            )
+          );
+          if (angleDiff < 0.75 && enemy.knockbackTimerMs <= 0) {
+            shieldBlocked = true;
+          }
+        }
+        const knockForce = 580 * chassis.knockbackMultiplier / Math.max(0.7, enemy.mass);
+        enemy.vx = nx * knockForce;
+        enemy.vy = ny * knockForce;
+        enemy.knockbackTimerMs = 520;
+        player.vx = -nx * 240;
+        player.vy = -ny * 240;
+        player.invulnTimerMs = Math.max(player.invulnTimerMs, 220);
+        registerPinballBounceOnPlayer(state);
+        addCombo(state, 1, enemy.x, enemy.y);
+        const strikeDmg = shieldBlocked ? 10 : 34;
+        damageEnemy(
+          state,
+          enemy,
+          strikeDmg,
+          "KINETIC",
+          shieldBlocked ? "SHIELD GRAZE" : "RICOCHET SLAM!"
+        );
+      } else if (player.invulnTimerMs <= 0) {
+        player.hp = Math.max(0, player.hp - arch.contactDamage);
+        player.invulnTimerMs = 650;
+        player.vx = -nx * 320;
+        player.vy = -ny * 320;
+        state.ledger.lastDamageBy = `${arch.name} (Melee Impact)`;
+        pushEvent(
+          state,
+          "PLAYER_DAMAGED",
+          player.x,
+          player.y,
+          `-${arch.contactDamage} HP (${arch.name.split(" ")[0]})`,
+          "#f43f5e",
+          1.4
+        );
+      }
+    }
+  }
+  for (let i = 0; i < state.enemies.length; i++) {
+    const a = state.enemies[i];
+    if (a.hp <= 0) continue;
+    for (let j = i + 1; j < state.enemies.length; j++) {
+      const b = state.enemies[j];
+      if (b.hp <= 0) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy);
+      const minDist = a.radius + b.radius;
+      if (dist < minDist && dist > 1e-3) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const overlap = minDist - dist;
+        a.x -= nx * (overlap * 0.5);
+        a.y -= ny * (overlap * 0.5);
+        b.x += nx * (overlap * 0.5);
+        b.y += ny * (overlap * 0.5);
+        if (a.knockbackTimerMs > 0 || b.knockbackTimerMs > 0) {
+          a.knockbackTimerMs = Math.max(a.knockbackTimerMs, 360);
+          b.knockbackTimerMs = Math.max(b.knockbackTimerMs, 360);
+          const dominoSpeed = 380;
+          a.vx = -nx * (dominoSpeed / a.mass);
+          a.vy = -ny * (dominoSpeed / a.mass);
+          b.vx = nx * (dominoSpeed / b.mass);
+          b.vy = ny * (dominoSpeed / b.mass);
+          const newtonMult = hasRelic(state, "newtonian-guillotine") ? 1.65 : 1;
+          if (hasRelic(state, "newtonian-guillotine")) {
+            player.stamina = Math.min(player.maxStamina, player.stamina + 8);
+          }
+          addCombo(state, 1, (a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
+          const dominoDmg = Math.round(30 * newtonMult);
+          damageEnemy(state, a, dominoDmg, "KINETIC", "DOMINO CRASH!");
+          damageEnemy(state, b, dominoDmg, "KINETIC", "DOMINO CRASH!");
+        }
+      }
+    }
+  }
+  state.enemies = state.enemies.filter((e) => e.hp > 0);
+  for (let i = state.projectiles.length - 1; i >= 0; i--) {
+    const proj = state.projectiles[i];
+    proj.ttlMs -= dtMs;
+    if (proj.ttlMs <= 0) {
+      state.projectiles.splice(i, 1);
+      continue;
+    }
+    if (!proj.isAllied && player.parryTimerMs > 0) {
+      const c = triggerPulseParry(state, player.x, player.y, true);
+      if (c > 0) applyParryScoreBonus(state, c);
+    }
+    if (proj.isAllied && proj.isHoming && state.enemies.length > 0) {
+      let nearest = null;
+      let nearestDist = Infinity;
+      for (const e of state.enemies) {
+        const d = Math.hypot(e.x - proj.x, e.y - proj.y);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearest = e;
+        }
+      }
+      if (nearest) {
+        const speed = Math.hypot(proj.vx, proj.vy) || 420;
+        const desiredAngle = Math.atan2(nearest.y - proj.y, nearest.x - proj.x);
+        const currentAngle = Math.atan2(proj.vy, proj.vx);
+        const diff = Math.atan2(
+          Math.sin(desiredAngle - currentAngle),
+          Math.cos(desiredAngle - currentAngle)
+        );
+        const newAngle = currentAngle + diff * Math.min(1, 9.5 * dtSec);
+        proj.vx = Math.cos(newAngle) * speed;
+        proj.vy = Math.sin(newAngle) * speed;
+      }
+    }
+    proj.x += proj.vx * dtSec;
+    proj.y += proj.vy * dtSec;
+    const pCenterDist = Math.hypot(
+      proj.x - CHRONO_CONFIG.ARENA_CENTER_X,
+      proj.y - CHRONO_CONFIG.ARENA_CENTER_Y
+    );
+    if (pCenterDist > CHRONO_CONFIG.ARENA_RADIUS + 16) {
+      state.projectiles.splice(i, 1);
+      continue;
+    }
+    if (proj.isAllied) {
+      let hitEnemy = false;
+      for (const enemy of state.enemies) {
+        if (enemy.hp <= 0) continue;
+        const d = Math.hypot(enemy.x - proj.x, enemy.y - proj.y);
+        if (d <= enemy.radius + proj.radius) {
+          const cat = proj.sourceName === "PARRY" ? "PARRY" : proj.sourceName === "ECHO" ? "ECHO" : "KINETIC";
+          damageEnemy(state, enemy, proj.damage, cat, "PRISM SHARD");
+          proj.pierceLeft -= 1;
+          if (proj.pierceLeft <= 0) {
+            hitEnemy = true;
+            break;
+          }
+        }
+      }
+      state.enemies = state.enemies.filter((e) => e.hp > 0);
+      if (hitEnemy) {
+        state.projectiles.splice(i, 1);
+        continue;
+      }
+    } else {
+      const dPlayer = Math.hypot(player.x - proj.x, player.y - proj.y);
+      if (dPlayer <= player.radius + proj.radius) {
+        state.projectiles.splice(i, 1);
+        if (player.invulnTimerMs <= 0 && player.dashTimerMs <= 0) {
+          player.hp = Math.max(0, player.hp - proj.damage);
+          player.invulnTimerMs = 550;
+          state.ledger.lastDamageBy = proj.sourceName;
+          pushEvent(
+            state,
+            "PLAYER_DAMAGED",
+            player.x,
+            player.y,
+            `-${proj.damage} HP (${proj.sourceName})`,
+            "#f43f5e",
+            1.35
+          );
+        }
+        continue;
+      }
+    }
+  }
+  if (player.hp <= 0) {
+    player.hp = 0;
+    state.status = "GAME_OVER";
+    pushEvent(
+      state,
+      "GAME_OVER",
+      player.x,
+      player.y,
+      `\u{1F480} CORE SHATTERED BY ${state.ledger.lastDamageBy.toUpperCase()}`,
+      "#f43f5e",
+      2.5
+    );
+    return;
+  }
+  if (state.sectorKills >= state.sectorTargetKills) {
+    openRelicDraftOrVictory(state);
+  }
+}
+
+// games/12-chrono-vortex/src/persistence.ts
+function createDefaultChronoCareer() {
+  return {
+    highScore: 0,
+    bestComboChain: 0,
+    highestSectorReached: 1,
+    totalVictories: 0,
+    totalEnemiesShattered: 0,
+    totalBankShots: 0,
+    totalParries: 0,
+    totalEchoesSpawned: 0,
+    discoveredRelics: [],
+    rewardedRunSeeds: []
+  };
+}
+function loadChronoSave() {
+  const defaultEnvelope = {
+    version: CHRONO_CONFIG.SAVE_VERSION,
+    career: createDefaultChronoCareer(),
+    activeRun: null
+  };
+  if (typeof window === "undefined" || !window.localStorage) {
+    return defaultEnvelope;
+  }
+  try {
+    const raw = window.localStorage.getItem(CHRONO_CONFIG.SAVE_KEY);
+    if (!raw) return defaultEnvelope;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== CHRONO_CONFIG.SAVE_VERSION || !parsed.career) {
+      return defaultEnvelope;
+    }
+    return {
+      version: CHRONO_CONFIG.SAVE_VERSION,
+      career: {
+        ...createDefaultChronoCareer(),
+        ...parsed.career,
+        discoveredRelics: Array.isArray(parsed.career.discoveredRelics) ? [...parsed.career.discoveredRelics] : [],
+        rewardedRunSeeds: Array.isArray(parsed.career.rewardedRunSeeds) ? [...parsed.career.rewardedRunSeeds] : []
+      },
+      activeRun: parsed.activeRun ? cloneChronoState(parsed.activeRun) : null
+    };
+  } catch {
+    return defaultEnvelope;
+  }
+}
+function saveChronoState(career, state) {
+  const updated = {
+    ...career,
+    discoveredRelics: [...career.discoveredRelics],
+    rewardedRunSeeds: [...career.rewardedRunSeeds]
+  };
+  if (state) {
+    if (state.score > updated.highScore) {
+      updated.highScore = state.score;
+    }
+    if (state.bestComboChain > updated.bestComboChain) {
+      updated.bestComboChain = state.bestComboChain;
+    }
+    if (state.sector > updated.highestSectorReached) {
+      updated.highestSectorReached = state.sector;
+    }
+    for (const rId of state.relicIds) {
+      if (!updated.discoveredRelics.includes(rId)) {
+        updated.discoveredRelics.push(rId);
+      }
+    }
+    const runKey = `${state.seed}:${Math.round(state.elapsedMs)}`;
+    if ((state.status === "VICTORY" || state.status === "GAME_OVER") && !updated.rewardedRunSeeds.includes(runKey)) {
+      updated.rewardedRunSeeds.push(runKey);
+      if (updated.rewardedRunSeeds.length > 50) {
+        updated.rewardedRunSeeds.shift();
+      }
+      if (state.status === "VICTORY") {
+        updated.totalVictories += 1;
+      }
+      updated.totalEnemiesShattered += state.totalKills;
+      updated.totalBankShots += state.ledger.totalBankShots;
+      updated.totalParries += state.ledger.totalParries;
+      updated.totalEchoesSpawned += state.ledger.totalEchoesSpawned;
+    }
+  }
+  const envelope = {
+    version: CHRONO_CONFIG.SAVE_VERSION,
+    career: updated,
+    activeRun: state && state.status !== "VICTORY" && state.status !== "GAME_OVER" ? cloneChronoState(state) : null
+  };
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.setItem(CHRONO_CONFIG.SAVE_KEY, JSON.stringify(envelope));
+    } catch {
+    }
+  }
+  return envelope;
+}
+
+// games/12-chrono-vortex/src/ui.ts
+if (typeof HTMLButtonElement !== "undefined" && !("commandForElement" in HTMLButtonElement.prototype)) {
+  void Promise.resolve().then(() => (init_invokers_polyfill(), invokers_polyfill_exports)).catch(() => {
+  });
+}
+if (typeof HTMLElement !== "undefined" && !("popover" in HTMLElement.prototype)) {
+  void Promise.resolve().then(() => (init_popover(), popover_exports)).catch(() => {
+  });
+}
+var ChronoUIController = class {
+  container;
+  audio;
+  callbacks;
+  debugVisible;
+  canvas;
+  ctx;
+  announcerEl;
+  hudSectorEl;
+  hudScoreEl;
+  hudComboEl;
+  hudHpBarEl;
+  hudHpTextEl;
+  hudStaminaBarEl;
+  hudOverdriveBarEl;
+  hudRelicsListEl;
+  draftOverlayEl;
+  endOverlayEl;
+  debugPanelEl;
+  telemetryPopoverBodyEl;
+  chassisButtons = [];
+  keysDown = /* @__PURE__ */ new Set();
+  callouts = [];
+  particles = [];
+  rings = [];
+  screenShake = 0;
+  lastDraftKey = "";
+  lastEndStatus = "";
+  boundKeyDown;
+  boundKeyUp;
+  constructor(container, audio, callbacks, initialDebug = false) {
+    this.container = container;
+    this.audio = audio;
+    this.callbacks = callbacks;
+    this.debugVisible = initialDebug;
+    this.boundKeyDown = (e) => this.handleKeyDown(e);
+    this.boundKeyUp = (e) => this.handleKeyUp(e);
+    this.mountDOM();
+    window.addEventListener("keydown", this.boundKeyDown);
+    window.addEventListener("keyup", this.boundKeyUp);
+  }
+  mountDOM() {
+    this.container.innerHTML = `
+      <style>
+        :root, html {
+          color-scheme: light dark;
+          --cv-bg-light: #f8fafc;
+          --cv-bg-dark: #070913;
+          --cv-panel-light: rgba(255, 255, 255, 0.92);
+          --cv-panel-dark: rgba(15, 20, 38, 0.92);
+          --cv-text-light: #0f172a;
+          --cv-text-dark: #f8fafc;
+          --cv-border-light: rgba(245, 158, 11, 0.45);
+          --cv-border-dark: rgba(245, 158, 11, 0.45);
+          --cv-bg: var(--cv-bg-dark);
+          --cv-panel: var(--cv-panel-dark);
+          --cv-text: var(--cv-text-dark);
+          --cv-border: var(--cv-border-dark);
+          --cv-scroll-thumb: #f59e0b;
+          --cv-scroll-track: #0f172a;
+          scrollbar-width: thin;
+          scrollbar-color: var(--cv-scroll-thumb) var(--cv-scroll-track);
+        }
+        @media (prefers-color-scheme: light) {
+          :root {
+            --cv-bg: var(--cv-bg-dark);
+            --cv-panel: var(--cv-panel-dark);
+            --cv-text: var(--cv-text-dark);
+          }
+        }
+        @supports (color: light-dark(white, black)) {
+          :root {
+            --cv-scroll-thumb: light-dark(#d97706, #f59e0b);
+            --cv-scroll-track: light-dark(#e2e8f0, #0f172a);
+          }
+        }
+        @supports not (scrollbar-color: auto) {
+          .cv-shell::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+          }
+          .cv-shell::-webkit-scrollbar-thumb {
+            background: var(--cv-scroll-thumb);
+          }
+          .cv-shell::-webkit-scrollbar-track {
+            background: var(--cv-scroll-track);
+          }
+        }
+        .cv-visually-hidden:where(:not(:focus-within, :active)) {
+          position: absolute !important;
+          clip-path: inset(50%) !important;
+          overflow: hidden !important;
+          width: 1px !important;
+          height: 1px !important;
+          margin: -1px !important;
+          padding: 0 !important;
+          border: 0 !important;
+          white-space: nowrap !important;
+        }
+        .cv-shell {
+          background: radial-gradient(circle at 50% 15%, #161b36 0%, #070913 75%);
+          color: #f8fafc;
+          font-family: 'Inter', system-ui, -apple-system, sans-serif;
+          border: 1px solid rgba(245, 158, 11, 0.42);
+          border-radius: 14px;
+          padding: 14px;
+          box-shadow: 0 20px 55px rgba(0, 0, 0, 0.7);
+          max-width: 1180px;
+          margin: 0 auto;
+          position: relative;
+        }
+        .cv- shell :where(button, a:any-link):focus-visible,
+        .cv-btn:focus-visible {
+          outline: 3px solid #f59e0b;
+          outline-offset: 3px;
+        }
+        .cv-topbar {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          padding-bottom: 10px;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+          margin-bottom: 12px;
+        }
+        .cv-brand-title {
+          margin: 0;
+          font-size: 1.25rem;
+          font-weight: 800;
+          letter-spacing: 0.02em;
+          background: linear-gradient(90deg, #fde047, #f59e0b, #38bdf8);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .cv-brand-sub {
+          margin: 2px 0 0;
+          font-size: 0.8rem;
+          color: #94a3b8;
+        }
+        .cv-chassis-bar {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          align-items: center;
+        }
+        .cv-btn {
+          min-block-size: 30px;
+          min-inline-size: 30px;
+          padding: 6px 12px;
+          border-radius: 8px;
+          border: 1px solid rgba(245, 158, 11, 0.4);
+          background: rgba(15, 23, 42, 0.9);
+          color: #f8fafc;
+          font-size: 0.8rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+        }
+        .cv-btn:hover {
+          background: rgba(245, 158, 11, 0.2);
+          border-color: #fde047;
+          transform: translateY(-1px);
+        }
+        .cv-btn[aria-pressed="true"] {
+          background: linear-gradient(135deg, #f59e0b, #d97706);
+          color: #090d16;
+          border-color: #fef08a;
+        }
+        .cv-hud-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+        .cv-hud-card {
+          background: rgba(15, 23, 42, 0.85);
+          border: 1px solid rgba(148, 163, 184, 0.22);
+          border-radius: 10px;
+          padding: 8px 12px;
+        }
+        .cv-hud-label {
+          font-size: 0.7rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #94a3b8;
+          display: block;
+        }
+        .cv-hud-value {
+          font-size: 1.05rem;
+          font-weight: 800;
+          color: #f8fafc;
+          margin-top: 2px;
+        }
+        .cv-meter-track {
+          height: 8px;
+          background: rgba(30, 41, 59, 0.95);
+          border-radius: 999px;
+          overflow: hidden;
+          margin-top: 5px;
+        }
+        .cv-meter-fill {
+          height: 100%;
+          border-radius: 999px;
+          transition: width 0.08s linear;
+        }
+        .cv-stage-container {
+          position: relative;
+          width: 100%;
+          display: flex;
+          justify-content: center;
+          background: #05070f;
+          border-radius: 12px;
+          border: 1px solid rgba(56, 189, 248, 0.3);
+          overflow: hidden;
+        }
+        .cv-canvas {
+          width: 100%;
+          max-width: 960px;
+          height: auto;
+          aspect-ratio: 16 / 10;
+          display: block;
+          cursor: crosshair;
+          touch-action: none;
+        }
+        .cv-overlay {
+          position: absolute;
+          inset: 0;
+          background: rgba(7, 9, 19, 0.88);
+          backdrop-filter: blur(6px);
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          padding: 20px;
+          z-index: 15;
+          text-align: center;
+        }
+        .cv-overlay[hidden] {
+          display: none !important;
+        }
+        .cv-relic-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+          gap: 12px;
+          width: 100%;
+          max-width: 780px;
+          margin: 14px 0;
+        }
+        .cv-relic-card {
+          background: rgba(15, 23, 42, 0.95);
+          border: 2px solid #f59e0b;
+          border-radius: 12px;
+          padding: 14px;
+          text-align: left;
+          cursor: pointer;
+          color: #f8fafc;
+          transition: transform 0.14s ease, box-shadow 0.14s ease;
+        }
+        .cv-relic-card:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3);
+        }
+        .cv-bottom-bar {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          margin-top: 10px;
+          font-size: 0.8rem;
+          color: #cbd5e1;
+        }
+        .cv-relic-pills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          align-items: center;
+        }
+        .cv-relic-pill {
+          padding: 3px 8px;
+          border-radius: 999px;
+          background: rgba(30, 41, 59, 0.9);
+          border: 1px solid rgba(245, 158, 11, 0.45);
+          font-size: 0.75rem;
+          font-weight: 700;
+        }
+        .cv-popover {
+          background: #0f172a;
+          color: #f8fafc;
+          border: 1px solid #38bdf8;
+          border-radius: 12px;
+          padding: 16px;
+          max-width: 420px;
+          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
+        }
+        [popover]:is(:popover-open, .\\:popover-open) {
+          display: block;
+        }
+        .cv-dialog {
+          background: #0b1120;
+          color: #f8fafc;
+          border: 1px solid #f59e0b;
+          border-radius: 14px;
+          padding: 20px;
+          max-width: 680px;
+          width: 92vw;
+          max-height: 82vh;
+          overflow-y: auto;
+        }
+        .cv-dialog::backdrop {
+          background-color: rgba(0, 0, 0, 0.65);
+          backdrop-filter: blur(3px);
+        }
+      </style>
+
+      <div class="cv-shell">
+        <div id="cv-live-announcer" class="cv-visually-hidden" aria-live="polite" aria-atomic="true"></div>
+
+        <div class="cv-topbar">
+          <div>
+            <h2 class="cv-brand-title">\u26A1 CHRONO-VORTEX: THE GOD-FORGE ARENA</h2>
+            <p class="cv-brand-sub">
+              Kinetic Pinball-Brawler &amp; Time-Echo Bullet Alchemist \xB7 Bank-Shot Enemies off Elemental Bumpers &amp; Weave Temporal Clones!
+            </p>
+          </div>
+
+          <div class="cv-chassis-bar" role="group" aria-label="Striker Chassis Selection">
+            <span style="font-size:0.75rem; color:#94a3b8; font-weight:700;">CHASSIS:</span>
+            ${STRIKER_CHASSIS.map(
+      (c, idx) => `
+              <button
+                type="button"
+                class="cv-btn"
+                data-chassis-btn="${c.id}"
+                aria-pressed="${idx === 0 ? "true" : "false"}"
+              >
+                ${c.name}
+              </button>
+            `
+    ).join("")}
+          </div>
+
+          <div style="display:flex; flex-wrap:wrap; gap:6px;">
+            <button
+              type="button"
+              class="cv-btn"
+              commandfor="chrono-telemetry-popover"
+              command="toggle-popover"
+            >
+              \u{1F4CA} Causal Ledger
+            </button>
+            <button
+              type="button"
+              class="cv-btn"
+              commandfor="chrono-codex-dialog"
+              command="show-modal"
+            >
+              \u{1F4D6} Relic &amp; Pinball Codex
+            </button>
+            <button type="button" class="cv-btn" id="cv-btn-mute" aria-pressed="false">
+              \u{1F50A} Synth: ON
+            </button>
+            <button type="button" class="cv-btn" id="cv-btn-restart">
+              \u21BB New Run
+            </button>
+          </div>
+        </div>
+
+        <div class="cv-hud-grid">
+          <div class="cv-hud-card">
+            <span class="cv-hud-label">Cosmic Crucible Sector</span>
+            <div class="cv-hud-value" id="cv-hud-sector">Sector I (0 / 10)</div>
+          </div>
+
+          <div class="cv-hud-card">
+            <span class="cv-hud-label">Score &amp; Pinball Chain</span>
+            <div class="cv-hud-value">
+              <span id="cv-hud-score">0</span> \xB7
+              <span id="cv-hud-combo" style="color:#fde047;">1x CHAIN</span>
+            </div>
+          </div>
+
+          <div class="cv-hud-card">
+            <span class="cv-hud-label">Hull Integrity <span id="cv-hud-hp-text">130 / 130</span></span>
+            <div class="cv-meter-track">
+              <div id="cv-hud-hp-bar" class="cv-meter-fill" style="width:100%; background:linear-gradient(90deg, #10b981, #34d399);"></div>
+            </div>
+          </div>
+
+          <div class="cv-hud-card">
+            <span class="cv-hud-label">Kinetic Stamina &amp; Overdrive [F]</span>
+            <div class="cv-meter-track" style="margin-bottom:4px;">
+              <div id="cv-hud-stamina-bar" class="cv-meter-fill" style="width:100%; background:#38bdf8;"></div>
+            </div>
+            <div class="cv-meter-track">
+              <div id="cv-hud-overdrive-bar" class="cv-meter-fill" style="width:25%; background:linear-gradient(90deg, #f59e0b, #fde047);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cv-stage-container">
+          <canvas
+            id="cv-arena-canvas"
+            class="cv-canvas"
+            width="${CHRONO_CONFIG.ARENA_WIDTH}"
+            height="${CHRONO_CONFIG.ARENA_HEIGHT}"
+            aria-label="Chrono-Vortex God-Forge Crucible Arena"
+          ></canvas>
+
+          <div id="cv-draft-overlay" class="cv-overlay" role="dialog" aria-label="God-Forge Relic Draft" hidden></div>
+          <div id="cv-end-overlay" class="cv-overlay" role="dialog" aria-label="Run Outcome Summary" hidden></div>
+        </div>
+
+        <div class="cv-bottom-bar">
+          <div>
+            <strong>Controls:</strong>
+            <code>WASD / Arrows</code> Drift \xB7
+            <code>Click / Space</code> Kinetic Dash-Slam \xB7
+            <code>Q / Right-Click</code> Alchemy Parry \xB7
+            <code>E</code> Spawn Chrono-Ghost \xB7
+            <code>R</code> Rewind &amp; Fork \xB7
+            <code>F</code> Overdrive
+          </div>
+          <div class="cv-relic-pills" id="cv-relics-list">
+            <span style="color:#94a3b8;">Forged Relics: None yet</span>
+          </div>
+        </div>
+
+        <pre id="cv-debug-panel" style="margin-top:8px; padding:8px; background:#020617; color:#38bdf8; font-size:0.75rem; border-radius:8px;" hidden></pre>
+
+        <div id="chrono-telemetry-popover" class="cv-popover" popover>
+          <h3 style="margin:0 0 8px; color:#38bdf8;">\u26A1 Honest Causal Combat Ledger</h3>
+          <div id="cv-telemetry-body" style="font-size:0.85rem; line-height:1.5;"></div>
+        </div>
+
+        <dialog id="chrono-codex-dialog" class="cv-dialog" closedby="any" aria-labelledby="chrono-codex-title">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h2 id="chrono-codex-title" style="margin:0; color:#fde047;">\u{1F4D6} God-Forge Tactical Manual &amp; Relic Codex</h2>
+            <button type="button" class="cv-btn" commandfor="chrono-codex-dialog" command="close">
+              Close [Esc]
+            </button>
+          </div>
+          <p style="color:#cbd5e1; font-size:0.9rem; line-height:1.5;">
+            <strong>How to Play Like a GOAT:</strong> Instead of chipping enemies down slowly, use <strong>Kinetic Dash-Slam [Space / Click]</strong> to launch enemies into the 4 <strong>Elemental Resonance Bumpers</strong>, the <strong>Octagonal Crucible Wall</strong>, or <strong>each other (Domino Collisions)</strong>! Deploy <strong>Chrono-Ghost Echoes [E]</strong> to replay your last 4 seconds of movement in parallel, and use <strong>Pulse Parry [Q / Right-Click]</strong> to transmute enemy bullets into allied homing prism shards.
+          </p>
+          <h3 style="color:#38bdf8; margin:14px 0 8px;">12 Synergistic God-Forge Relics</h3>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:8px;">
+            ${GOD_FORGE_RELICS.map(
+      (r) => `
+              <div style="padding:8px 10px; border-radius:8px; background:rgba(15,23,42,0.9); border:1px solid ${r.color};">
+                <div style="font-weight:800; color:${r.color};">${r.icon} ${r.name} <small>(${r.school})</small></div>
+                <div style="font-size:0.78rem; color:#cbd5e1; margin-top:3px;">${r.description}</div>
+              </div>
+            `
+    ).join("")}
+          </div>
+        </dialog>
+      </div>
+    `;
+    const dialog = this.container.querySelector("#chrono-codex-dialog");
+    if (dialog && typeof HTMLDialogElement !== "undefined" && !("closedBy" in HTMLDialogElement.prototype)) {
+      dialog.addEventListener("click", (event) => {
+        if (event.target !== dialog) return;
+        const rect = dialog.getBoundingClientRect();
+        const isDialogContent = rect.top <= event.clientY && event.clientY <= rect.top + rect.height && rect.left <= event.clientX && event.clientX <= rect.left + rect.width;
+        if (isDialogContent) return;
+        dialog.close();
+      });
+    }
+    this.canvas = this.container.querySelector("#cv-arena-canvas");
+    this.ctx = this.canvas?.getContext("2d") ?? null;
+    this.announcerEl = this.container.querySelector("#cv-live-announcer");
+    this.hudSectorEl = this.container.querySelector("#cv-hud-sector");
+    this.hudScoreEl = this.container.querySelector("#cv-hud-score");
+    this.hudComboEl = this.container.querySelector("#cv-hud-combo");
+    this.hudHpBarEl = this.container.querySelector("#cv-hud-hp-bar");
+    this.hudHpTextEl = this.container.querySelector("#cv-hud-hp-text");
+    this.hudStaminaBarEl = this.container.querySelector("#cv-hud-stamina-bar");
+    this.hudOverdriveBarEl = this.container.querySelector("#cv-hud-overdrive-bar");
+    this.hudRelicsListEl = this.container.querySelector("#cv-relics-list");
+    this.draftOverlayEl = this.container.querySelector("#cv-draft-overlay");
+    this.endOverlayEl = this.container.querySelector("#cv-end-overlay");
+    this.debugPanelEl = this.container.querySelector("#cv-debug-panel");
+    this.telemetryPopoverBodyEl = this.container.querySelector("#cv-telemetry-body");
+    this.chassisButtons = Array.from(
+      this.container.querySelectorAll("button[data-chassis-btn]")
+    );
+    for (const btn of this.chassisButtons) {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-chassis-btn");
+        this.callbacks.onAction({ type: "SWITCH_CHASSIS", chassisId: id });
+      });
+    }
+    const btnMute = this.container.querySelector("#cv-btn-mute");
+    btnMute?.addEventListener("click", () => {
+      const muted = this.audio.toggleMute();
+      btnMute.setAttribute("aria-pressed", String(muted));
+      btnMute.textContent = muted ? "\u{1F507} Synth: OFF" : "\u{1F50A} Synth: ON";
+    });
+    const btnRestart = this.container.querySelector("#cv-btn-restart");
+    btnRestart?.addEventListener("click", () => {
+      this.callbacks.onRestart();
+    });
+    this.canvas?.addEventListener("pointermove", (e) => {
+      const pt = this.toArenaCoords(e);
+      this.callbacks.onAction({ type: "SET_AIM", worldX: pt.x, worldY: pt.y });
+    });
+    this.canvas?.addEventListener("pointerdown", (e) => {
+      const pt = this.toArenaCoords(e);
+      if (e.button === 2) {
+        this.callbacks.onAction({ type: "PULSE_PARRY" });
+      } else {
+        this.callbacks.onAction({
+          type: "DASH_STRIKE",
+          targetX: pt.x,
+          targetY: pt.y
+        });
+      }
+    });
+    this.canvas?.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+    });
+  }
+  toArenaCoords(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    const scaleX = CHRONO_CONFIG.ARENA_WIDTH / Math.max(1, rect.width);
+    const scaleY = CHRONO_CONFIG.ARENA_HEIGHT / Math.max(1, rect.height);
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
+  }
+  handleKeyDown(e) {
+    if (document.activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
+      return;
+    }
+    const key = e.key.toLowerCase();
+    this.keysDown.add(key);
+    this.syncMoveDirection();
+    if (key === " " || key === "k") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "DASH_STRIKE" });
+    } else if (key === "q" || key === "j") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "PULSE_PARRY" });
+    } else if (key === "e") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "SPAWN_ECHO", rewindPlayer: false });
+    } else if (key === "r") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "SPAWN_ECHO", rewindPlayer: true });
+    } else if (key === "f") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "ACTIVATE_OVERDRIVE" });
+    } else if (key === "p") {
+      this.callbacks.onAction({ type: "TOGGLE_PAUSE" });
+    }
+  }
+  handleKeyUp(e) {
+    this.keysDown.delete(e.key.toLowerCase());
+    this.syncMoveDirection();
+  }
+  syncMoveDirection() {
+    let dx = 0;
+    let dy = 0;
+    if (this.keysDown.has("w") || this.keysDown.has("arrowup")) dy -= 1;
+    if (this.keysDown.has("s") || this.keysDown.has("arrowdown")) dy += 1;
+    if (this.keysDown.has("a") || this.keysDown.has("arrowleft")) dx -= 1;
+    if (this.keysDown.has("d") || this.keysDown.has("arrowright")) dx += 1;
+    this.callbacks.onAction({ type: "SET_MOVE", dx, dy });
+  }
+  isDebugVisible() {
+    return this.debugVisible;
+  }
+  setDebugVisible(visible) {
+    this.debugVisible = visible;
+    if (this.debugPanelEl) {
+      this.debugPanelEl.hidden = !visible;
+    }
+  }
+  resetVisuals() {
+    this.callouts = [];
+    this.particles = [];
+    this.rings = [];
+    this.screenShake = 0;
+    this.lastDraftKey = "";
+    this.lastEndStatus = "";
+  }
+  consumeEvents(state, events) {
+    for (const ev of events) {
+      this.audio.playEvent(ev, state.comboCount);
+      this.screenShake = Math.min(14, this.screenShake + ev.intensity * 3.5);
+      this.callouts.push({
+        x: ev.x,
+        y: ev.y,
+        vy: -42,
+        text: ev.text,
+        color: ev.color,
+        alpha: 1,
+        scale: Math.min(1.5, 0.85 + ev.intensity * 0.25)
+      });
+      this.rings.push({
+        x: ev.x,
+        y: ev.y,
+        radius: 10,
+        maxRadius: 45 + ev.intensity * 38,
+        color: ev.color,
+        alpha: 0.85
+      });
+      const sparkCount = Math.min(18, Math.round(6 * ev.intensity));
+      for (let i = 0; i < sparkCount; i++) {
+        const ang = i / sparkCount * Math.PI * 2 + i % 2 * 0.2;
+        const spd = 70 + i % 5 * 45;
+        this.particles.push({
+          x: ev.x,
+          y: ev.y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          radius: 2.5 + i % 3,
+          color: ev.color,
+          alpha: 1,
+          decay: 1.4 + i % 3 * 0.4
+        });
+      }
+      if (ev.type === "SECTOR_CLEARED" || ev.type === "VICTORY" || ev.type === "GAME_OVER" || ev.type === "RELIC_CLAIMED") {
+        if (this.announcerEl) {
+          this.announcerEl.textContent = ev.text;
+        }
+      }
+    }
+  }
+  render(state, career, dtMs) {
+    const dtSec = dtMs / 1e3;
+    const sectorDef = getSectorDef(state.sector);
+    if (this.hudSectorEl) {
+      this.hudSectorEl.textContent = sectorDef.isBossSector ? `Sector V: KRONOS-OMEGA BOSS` : `Sector ${state.sector}/5 (${state.sectorKills}/${state.sectorTargetKills} Shattered)`;
+    }
+    if (this.hudScoreEl) {
+      this.hudScoreEl.textContent = state.score.toLocaleString();
+    }
+    if (this.hudComboEl) {
+      this.hudComboEl.textContent = `${state.comboMultiplier}x CHAIN (${state.comboCount})`;
+    }
+    if (this.hudHpTextEl) {
+      this.hudHpTextEl.textContent = `${state.player.hp} / ${state.player.maxHp}`;
+    }
+    if (this.hudHpBarEl) {
+      const pct = Math.max(0, Math.min(100, state.player.hp / state.player.maxHp * 100));
+      this.hudHpBarEl.style.width = `${pct}%`;
+    }
+    if (this.hudStaminaBarEl) {
+      const pct = Math.max(
+        0,
+        Math.min(100, state.player.stamina / state.player.maxStamina * 100)
+      );
+      this.hudStaminaBarEl.style.width = `${pct}%`;
+    }
+    if (this.hudOverdriveBarEl) {
+      const pct = state.player.overdriveTimerMs > 0 ? state.player.overdriveTimerMs / CHRONO_CONFIG.OVERDRIVE_DURATION_MS * 100 : state.player.overdriveMeter;
+      this.hudOverdriveBarEl.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    }
+    for (const btn of this.chassisButtons) {
+      const id = btn.getAttribute("data-chassis-btn");
+      btn.setAttribute("aria-pressed", String(id === state.player.chassisId));
+    }
+    if (this.hudRelicsListEl) {
+      if (state.relicIds.length === 0) {
+        this.hudRelicsListEl.innerHTML = `<span style="color:#94a3b8;">Forged Relics: None yet (Clear Sector to Draft!)</span>`;
+      } else {
+        this.hudRelicsListEl.innerHTML = state.relicIds.map((id) => {
+          const def = GOD_FORGE_RELICS.find((r) => r.id === id);
+          return `<span class="cv-relic-pill" style="border-color:${def?.color ?? "#f59e0b"}">${def?.icon ?? "\u2728"} ${def?.name ?? id}</span>`;
+        }).join("");
+      }
+    }
+    if (this.telemetryPopoverBodyEl) {
+      this.telemetryPopoverBodyEl.innerHTML = `
+        <div><strong>Kinetic Slam &amp; Wall Damage:</strong> ${state.ledger.kineticSlamDamage.toLocaleString()}</div>
+        <div><strong>Elemental Bumper Nova Damage:</strong> ${state.ledger.bumperNovaDamage.toLocaleString()}</div>
+        <div><strong>Bullet Alchemy Parry Damage:</strong> ${state.ledger.parryAlchemyDamage.toLocaleString()}</div>
+        <div><strong>Chrono-Ghost Echo Damage:</strong> ${state.ledger.chronoEchoDamage.toLocaleString()}</div>
+        <hr style="border-color:rgba(148,163,184,0.2); margin:6px 0;" />
+        <div><strong>Bank-Shots:</strong> ${state.ledger.totalBankShots} \xB7 <strong>Wall Slams:</strong> ${state.ledger.totalWallSlams}</div>
+        <div><strong>Parries:</strong> ${state.ledger.totalParries} \xB7 <strong>Echoes Spawned:</strong> ${state.ledger.totalEchoesSpawned}</div>
+        <div><strong>Last Damage Source:</strong> ${state.ledger.lastDamageBy}</div>
+        <div><strong>Career High Score:</strong> ${career.highScore.toLocaleString()} (${career.totalVictories} Crowns)</div>
+      `;
+    }
+    this.syncOverlays(state, career);
+    if (this.debugPanelEl) {
+      this.debugPanelEl.hidden = !this.debugVisible;
+      if (this.debugVisible) {
+        this.debugPanelEl.textContent = JSON.stringify(
+          {
+            seed: state.seed,
+            status: state.status,
+            sector: state.sector,
+            kills: `${state.sectorKills}/${state.sectorTargetKills}`,
+            player: {
+              chassis: state.player.chassisId,
+              x: Math.round(state.player.x),
+              y: Math.round(state.player.y),
+              hp: state.player.hp,
+              overdrive: Math.round(state.player.overdriveMeter)
+            },
+            enemies: state.enemies.length,
+            ghosts: state.ghosts.length,
+            projectiles: state.projectiles.length
+          },
+          null,
+          2
+        );
+      }
+    }
+    this.renderCanvas(state, dtSec);
+  }
+  syncOverlays(state, career) {
+    if (this.draftOverlayEl) {
+      if (state.status === "RELIC_DRAFT") {
+        this.draftOverlayEl.hidden = false;
+        const draftKey = `${state.sector}:${state.draftOptions.join(",")}`;
+        if (this.lastDraftKey !== draftKey) {
+          this.lastDraftKey = draftKey;
+          const cardsHtml = state.draftOptions.map((id, idx) => {
+            const r = GOD_FORGE_RELICS.find((item) => item.id === id) ?? GOD_FORGE_RELICS[0];
+            return `
+                <button type="button" class="cv-relic-card" data-pick-relic="${r.id}" style="border-color:${r.color};">
+                  <div style="font-size:0.72rem; text-transform:uppercase; color:${r.color}; font-weight:800;">
+                    [${idx + 1}] ${r.school} \xB7 ${r.rarity}
+                  </div>
+                  <div style="font-size:1.1rem; font-weight:800; margin:4px 0;">
+                    ${r.icon} ${r.name}
+                  </div>
+                  <div style="font-size:0.82rem; color:#cbd5e1; line-height:1.4;">
+                    ${r.description}
+                  </div>
+                </button>
+              `;
+          }).join("");
+          this.draftOverlayEl.innerHTML = `
+            <h3 style="margin:0; font-size:1.5rem; color:#fde047;">
+              \u{1F3C6} SECTOR ${state.sector} CONQUERED \u2014 THE GOD-FORGE ANVIL AWAITS
+            </h3>
+            <p style="margin:6px 0 0; color:#cbd5e1; font-size:0.9rem;">
+              Bind 1 of 3 Cosmic Relics to your Striker, or Sacrifice the draft at the Anvil for raw Titan stats:
+            </p>
+            <div class="cv-relic-grid">${cardsHtml}</div>
+            <button type="button" class="cv-btn" id="cv-btn-sacrifice-relic" style="border-color:#f97316; background:rgba(249,115,22,0.2);">
+              \u{1F528} Anvil Smelt Sacrifice (+25 Max HP, +40 Heal &amp; +15% Base Damage)
+            </button>
+          `;
+          for (const card of this.draftOverlayEl.querySelectorAll(
+            "button[data-pick-relic]"
+          )) {
+            card.addEventListener("click", () => {
+              const relicId = card.getAttribute("data-pick-relic") ?? "";
+              this.callbacks.onAction({ type: "SELECT_RELIC", relicId });
+            });
+          }
+          this.draftOverlayEl.querySelector("#cv-btn-sacrifice-relic")?.addEventListener("click", () => {
+            this.callbacks.onAction({ type: "SACRIFICE_RELIC_FOR_UPGRADE" });
+          });
+        }
+      } else {
+        this.draftOverlayEl.hidden = true;
+        this.lastDraftKey = "";
+      }
+    }
+    if (this.endOverlayEl) {
+      if (state.status === "VICTORY" || state.status === "GAME_OVER") {
+        this.endOverlayEl.hidden = false;
+        const endKey = `${state.status}:${state.score}:${state.totalKills}`;
+        if (this.lastEndStatus !== endKey) {
+          this.lastEndStatus = endKey;
+          const isWin = state.status === "VICTORY";
+          this.endOverlayEl.innerHTML = `
+            <h3 style="margin:0; font-size:1.75rem; color:${isWin ? "#fde047" : "#f43f5e"};">
+              ${isWin ? "\u{1F451} GOD-FORGE SOVEREIGN! KRONOS-OMEGA SHATTERED!" : "\u{1F480} TEMPORAL CORE SHATTERED"}
+            </h3>
+            <p style="margin:6px 0 12px; color:#cbd5e1; max-width:560px;">
+              ${isWin ? "You mastered the octagonal pinball crucible, wove temporal echoes across 5 sectors, and conquered Eternity!" : `Final blow dealt by: ${state.ledger.lastDamageBy}. Tip: Trigger Pulse Parry [Q] on incoming volleys and bank enemies into Elemental Bumpers!`}
+            </p>
+            <div style="display:grid; grid-template-columns:repeat(2, minmax(180px, 1fr)); gap:8px; background:rgba(15,23,42,0.9); padding:14px; border-radius:12px; border:1px solid rgba(148,163,184,0.25); text-align:left; font-size:0.85rem; margin-bottom:14px;">
+              <div><strong>Final Score:</strong> ${state.score.toLocaleString()}</div>
+              <div><strong>Best Pinball Chain:</strong> ${state.bestComboChain} (${state.comboMultiplier}x)</div>
+              <div><strong>Kinetic Slam Damage:</strong> ${state.ledger.kineticSlamDamage.toLocaleString()}</div>
+              <div><strong>Bumper Nova Damage:</strong> ${state.ledger.bumperNovaDamage.toLocaleString()}</div>
+              <div><strong>Parry Alchemy Damage:</strong> ${state.ledger.parryAlchemyDamage.toLocaleString()}</div>
+              <div><strong>Chrono-Echo Damage:</strong> ${state.ledger.chronoEchoDamage.toLocaleString()}</div>
+              <div><strong>Bank-Shots / Wall Slams:</strong> ${state.ledger.totalBankShots} / ${state.ledger.totalWallSlams}</div>
+              <div><strong>Career High Score:</strong> ${career.highScore.toLocaleString()}</div>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button type="button" class="cv-btn" id="cv-btn-replay-same-seed" style="border-color:#38bdf8;">
+                \u21BA Replay Exact Seed (${state.seed})
+              </button>
+              <button type="button" class="cv-btn" id="cv-btn-new-seed" style="background:#f59e0b; color:#090d16;">
+                \u25B6 Launch New Crucible Run
+              </button>
+            </div>
+          `;
+          this.endOverlayEl.querySelector("#cv-btn-replay-same-seed")?.addEventListener("click", () => {
+            this.callbacks.onRestart(state.seed);
+          });
+          this.endOverlayEl.querySelector("#cv-btn-new-seed")?.addEventListener("click", () => {
+            this.callbacks.onRestart();
+          });
+        }
+      } else {
+        this.endOverlayEl.hidden = true;
+        this.lastEndStatus = "";
+      }
+    }
+  }
+  renderCanvas(state, dtSec) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const sectorDef = getSectorDef(state.sector);
+    const chassis = getChassisDef(state.player.chassisId);
+    this.screenShake = Math.max(0, this.screenShake - 28 * dtSec);
+    const shakeX = this.screenShake > 0 ? Math.sin(state.elapsedMs * 0.09) * this.screenShake : 0;
+    const shakeY = this.screenShake > 0 ? Math.cos(state.elapsedMs * 0.11) * this.screenShake : 0;
+    ctx.save();
+    ctx.clearRect(0, 0, CHRONO_CONFIG.ARENA_WIDTH, CHRONO_CONFIG.ARENA_HEIGHT);
+    ctx.translate(shakeX, shakeY);
+    ctx.fillStyle = "#050814";
+    ctx.fillRect(0, 0, CHRONO_CONFIG.ARENA_WIDTH, CHRONO_CONFIG.ARENA_HEIGHT);
+    const cx = CHRONO_CONFIG.ARENA_CENTER_X;
+    const cy = CHRONO_CONFIG.ARENA_CENTER_Y;
+    const r = CHRONO_CONFIG.ARENA_RADIUS;
+    const bgGrad = ctx.createRadialGradient(cx, cy, 18, cx, cy, r);
+    bgGrad.addColorStop(0, "rgba(30, 41, 59, 0.72)");
+    bgGrad.addColorStop(0.75, "rgba(15, 23, 42, 0.92)");
+    bgGrad.addColorStop(1, "rgba(7, 10, 25, 0.98)");
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = bgGrad;
+    ctx.fill();
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(state.elapsedMs * 25e-5);
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.13)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < 8; i++) {
+      const ang = i / 8 * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang) * 40, Math.sin(ang) * 40);
+      ctx.lineTo(Math.cos(ang) * r, Math.sin(ang) * r);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = sectorDef.themeColor;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    if (state.echoHistory.length > 2) {
+      ctx.save();
+      ctx.beginPath();
+      for (let i = 0; i < state.echoHistory.length; i++) {
+        const pt = state.echoHistory[i];
+        if (i === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.28)";
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([5, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const startPt = state.echoHistory[0];
+      ctx.beginPath();
+      ctx.arc(startPt.x, startPt.y, 7, 0, Math.PI * 2);
+      ctx.strokeStyle = "#38bdf8";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+    const bumperColors = {
+      SOLAR: "#f59e0b",
+      CRYO: "#06b6d4",
+      ARC: "#2dd4bf",
+      VOID: "#a855f7"
+    };
+    for (const bumper of state.bumpers) {
+      const col = bumperColors[bumper.element];
+      const pulseScale = bumper.pulseTimerMs > 0 ? 1 + bumper.pulseTimerMs / 340 * 0.26 : 1;
+      const drawR = bumper.radius * pulseScale;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(bumper.x, bumper.y, drawR + 6, 0, Math.PI * 2);
+      ctx.fillStyle = `${col}22`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(bumper.x, bumper.y, drawR, 0, Math.PI * 2);
+      ctx.fillStyle = "#0f172a";
+      ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = col;
+      ctx.stroke();
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "bold 10px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(bumper.element, bumper.x, bumper.y);
+      ctx.restore();
+    }
+    for (const ghost of state.ghosts) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(ghost.x, ghost.y, CHRONO_CONFIG.PLAYER_BASE_RADIUS + 4, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(56, 189, 248, 0.25)";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(ghost.x, ghost.y, CHRONO_CONFIG.PLAYER_BASE_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(168, 85, 247, 0.65)";
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#38bdf8";
+      ctx.stroke();
+      ctx.fillStyle = "#bae6fd";
+      ctx.font = "bold 9px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("ECHO", ghost.x, ghost.y - 24);
+      ctx.restore();
+    }
+    let activeBoss = null;
+    for (const enemy of state.enemies) {
+      if (enemy.type === "kronos-omega") {
+        activeBoss = enemy;
+      }
+      const arch = ENEMY_ARCHETYPES[enemy.type];
+      ctx.save();
+      if (enemy.burnTimerMs > 0) {
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, enemy.radius + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = "#f97316";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      if (enemy.chillTimerMs > 0) {
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, enemy.radius + 8, 0, Math.PI * 2);
+        ctx.strokeStyle = "#06b6d4";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      if (enemy.type === "chrono-warden") {
+        ctx.beginPath();
+        ctx.arc(
+          enemy.x,
+          enemy.y,
+          enemy.radius + 7,
+          enemy.facingAngle - 0.85,
+          enemy.facingAngle + 0.85
+        );
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 5;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+      ctx.fillStyle = enemy.flashTimerMs > 0 ? "#ffffff" : arch.color;
+      ctx.fill();
+      ctx.lineWidth = enemy.knockbackTimerMs > 0 ? 3.5 : 2;
+      ctx.strokeStyle = enemy.knockbackTimerMs > 0 ? "#fde047" : arch.outlineColor;
+      ctx.stroke();
+      if (enemy.hp < enemy.maxHp && enemy.type !== "kronos-omega") {
+        const bw = enemy.radius * 2;
+        const bx = enemy.x - enemy.radius;
+        const by = enemy.y - enemy.radius - 9;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.fillRect(bx, by, bw, 4);
+        ctx.fillStyle = "#f43f5e";
+        ctx.fillRect(bx, by, bw * Math.max(0, enemy.hp / enemy.maxHp), 4);
+      }
+      ctx.restore();
+    }
+    for (const proj of state.projectiles) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+      ctx.fillStyle = proj.color;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      ctx.restore();
+    }
+    const { player } = state;
+    ctx.save();
+    if (player.overdriveTimerMs > 0) {
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.radius + 14, 0, Math.PI * 2);
+      ctx.strokeStyle = "#fde047";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    if (player.parryTimerMs > 0) {
+      const parryR = CHRONO_CONFIG.PARRY_RADIUS * chassis.parryRadiusMultiplier;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, parryR, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(45, 212, 191, 0.18)";
+      ctx.fill();
+      ctx.strokeStyle = "#2dd4bf";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y);
+    ctx.lineTo(
+      player.x + Math.cos(player.aimAngle) * (player.radius + 18),
+      player.y + Math.sin(player.aimAngle) * (player.radius + 18)
+    );
+    ctx.strokeStyle = chassis.secondaryColor;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+    ctx.fillStyle = player.dashTimerMs > 0 ? "#fde047" : chassis.color;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+    ctx.restore();
+    for (let i = this.rings.length - 1; i >= 0; i--) {
+      const ring = this.rings[i];
+      ring.radius += (ring.maxRadius - ring.radius) * Math.min(1, 9 * dtSec);
+      ring.alpha -= 1.8 * dtSec;
+      if (ring.alpha <= 0.02) {
+        this.rings.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+      ctx.strokeStyle = ring.color;
+      ctx.globalAlpha = Math.max(0, ring.alpha);
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.x += p.vx * dtSec;
+      p.y += p.vy * dtSec;
+      p.alpha -= p.decay * dtSec;
+      if (p.alpha <= 0.02) {
+        this.particles.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.alpha);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    for (let i = this.callouts.length - 1; i >= 0; i--) {
+      const c = this.callouts[i];
+      c.y += c.vy * dtSec;
+      c.alpha -= 0.95 * dtSec;
+      if (c.alpha <= 0.02) {
+        this.callouts.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, c.alpha);
+      ctx.font = `800 ${Math.round(13 * c.scale)}px Inter, sans-serif`;
+      ctx.fillStyle = c.color;
+      ctx.textAlign = "center";
+      ctx.fillText(c.text, c.x, c.y);
+      ctx.restore();
+    }
+    if (activeBoss) {
+      const barW = 440;
+      const barH = 14;
+      const bx = cx - barW / 2;
+      const by = 18;
+      ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+      ctx.fillRect(bx, by, barW, barH);
+      ctx.fillStyle = activeBoss.bossPhase === 3 ? "#fde047" : "#f43f5e";
+      ctx.fillRect(bx, by, barW * Math.max(0, activeBoss.hp / activeBoss.maxHp), barH);
+      ctx.strokeStyle = "#fde047";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(bx, by, barW, barH);
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "bold 11px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        `KRONOS-OMEGA (PHASE ${activeBoss.bossPhase}/3) \u2014 ${activeBoss.hp} / ${activeBoss.maxHp} HP`,
+        cx,
+        by + 11
+      );
+    }
+    ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
+    ctx.font = "600 12px Inter, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(`${sectorDef.name} \u2014 ${sectorDef.subtitle}`, 18, CHRONO_CONFIG.ARENA_HEIGHT - 16);
+    ctx.restore();
+  }
+  destroy() {
+    window.removeEventListener("keydown", this.boundKeyDown);
+    window.removeEventListener("keyup", this.boundKeyUp);
+    this.container.innerHTML = "";
+  }
+};
+
+// games/12-chrono-vortex/src/index.ts
+var metadata = {
+  id: CHRONO_CONFIG.GAME_ID,
+  number: CHRONO_CONFIG.GAME_NUMBER,
+  title: CHRONO_CONFIG.TITLE,
+  subtitle: CHRONO_CONFIG.SUBTITLE,
+  genre: "Kinetic Pinball-Brawler & Time-Echo Bullet-Alchemist Roguelite",
+  primaryReference: "Hades \xB7 Demon\u2019s Tilt / Peggle \xB7 Into the Breach",
+  supportingReference: "Braid (Time-Echoes) \xB7 Ikaruga (Bullet Alchemy)",
+  oneSentenceLoop: "Ricochet your Striker and enemy automatons off 4 Elemental Resonance Bumpers inside an octagonal Cosmic Crucible, weave up to 3 parallel Chrono-Ghost Echoes of your own past 4 seconds, and parry enemy bullet-hell volleys into homing prism storms across 5 Sectors!",
+  shortGoal: "Shatter the 4 Crucible Sectors, draft synergistic God-Forge Relics (or smelt them at the Anvil), and topple the 3-Phase Boss Kronos-Omega.",
+  longGoal: "Master all 3 Striker Chassis (Vanguard-G, Phantom-X, Prism-9), unlock all 12 God-Forge Relics, and sustain a 16x Pinball Overdrive Chain.",
+  controlsSummary: "WASD / Arrows: Drift \xB7 Click / Space: Kinetic Dash-Slam \xB7 Q / Right-Click: Alchemy Parry \xB7 E: Spawn Chrono-Ghost \xB7 R: Rewind & Fork \xB7 F: Overdrive",
+  accentColor: CHRONO_CONFIG.ACCENT_COLOR
+};
+function mountGame(container, options) {
+  const savedEnvelope = loadChronoSave();
+  let career = {
+    ...savedEnvelope.career,
+    discoveredRelics: [...savedEnvelope.career.discoveredRelics],
+    rewardedRunSeeds: [...savedEnvelope.career.rewardedRunSeeds]
+  };
+  const initialSeed = options?.initialSeed ?? CHRONO_CONFIG.DEFAULT_SEED;
+  let state = options?.initialSeed === void 0 && savedEnvelope.activeRun && savedEnvelope.activeRun.status !== "VICTORY" && savedEnvelope.activeRun.status !== "GAME_OVER" ? cloneChronoState(savedEnvelope.activeRun) : createInitialChronoState(initialSeed);
+  const audio = new ChronoAudioEngine();
+  const handleAction = (action) => {
+    applyChronoInput(state, action);
+    if (state.events.length > 0) {
+      ui.consumeEvents(state, state.events);
+      state.events = [];
+    }
+    const env = saveChronoState(career, state);
+    career = env.career;
+    ui.render(state, career, CHRONO_CONFIG.FIXED_STEP_MS);
+  };
+  const handleRestart = (newSeed) => {
+    const seedToUse = typeof newSeed === "number" ? newSeed : state.seed + 104729 >>> 0;
+    state = createInitialChronoState(seedToUse, state.player.chassisId);
+    ui.resetVisuals();
+    const env = saveChronoState(career, state);
+    career = env.career;
+    ui.render(state, career, CHRONO_CONFIG.FIXED_STEP_MS);
+  };
+  const handleToggleDebug = (force) => {
+    const next = typeof force === "boolean" ? force : !ui.isDebugVisible();
+    ui.setDebugVisible(next);
+  };
+  const ui = new ChronoUIController(
+    container,
+    audio,
+    {
+      onAction: handleAction,
+      onRestart: handleRestart,
+      onToggleDebug: () => handleToggleDebug()
+    },
+    Boolean(options?.debug)
+  );
+  let rafId = 0;
+  let lastTimeMs = performance.now();
+  let accumulatorMs = 0;
+  let destroyed = false;
+  const loop = (nowMs) => {
+    if (destroyed) return;
+    const rawDt = Math.min(100, Math.max(0, nowMs - lastTimeMs));
+    lastTimeMs = nowMs;
+    accumulatorMs += rawDt;
+    const prevStatus = state.status;
+    const prevSector = state.sector;
+    while (accumulatorMs >= CHRONO_CONFIG.FIXED_STEP_MS) {
+      stepChronoState(state, CHRONO_CONFIG.FIXED_STEP_MS);
+      if (state.events.length > 0) {
+        ui.consumeEvents(state, state.events);
+        state.events = [];
+      }
+      accumulatorMs -= CHRONO_CONFIG.FIXED_STEP_MS;
+    }
+    if (state.status !== prevStatus || state.sector !== prevSector || state.score > career.highScore) {
+      const env = saveChronoState(career, state);
+      career = env.career;
+    }
+    ui.render(state, career, rawDt || CHRONO_CONFIG.FIXED_STEP_MS);
+    rafId = window.requestAnimationFrame(loop);
+  };
+  ui.render(state, career, CHRONO_CONFIG.FIXED_STEP_MS);
+  rafId = window.requestAnimationFrame(loop);
+  return {
+    destroy() {
+      destroyed = true;
+      window.cancelAnimationFrame(rafId);
+      saveChronoState(career, state);
+      audio.destroy();
+      ui.destroy();
+    },
+    getStateSnapshot() {
+      return cloneChronoState(state);
+    },
+    restartWithSeed(seed) {
+      handleRestart(seed);
+    },
+    toggleDebug(force) {
+      handleToggleDebug(force);
+      ui.render(state, career, CHRONO_CONFIG.FIXED_STEP_MS);
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_12-chrono-vortex.ts
+var root = document.getElementById("game-root");
+if (root) {
+  mountGame(root);
+}
+
+</script>
+  </body>
+</html>

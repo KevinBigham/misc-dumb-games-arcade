@@ -1,0 +1,3794 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Event Horizon: Singularity Slingshot | Argon Studio Flagship</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        padding: 1rem;
+        min-block-size: 100dvh;
+        background: #03060f;
+        color: #f8fafc;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="game-root"></main>
+    <script type="module">
+// games/12-event-horizon/src/audio.ts
+var LYDIAN_FREQUENCIES = [
+  261.63,
+  293.66,
+  329.63,
+  369.99,
+  392,
+  440,
+  493.88,
+  523.25,
+  587.33,
+  659.25,
+  739.99,
+  783.99,
+  880,
+  987.77,
+  1046.5
+];
+var HorizonAudioEngine = class {
+  ctx = null;
+  muted = false;
+  isMuted() {
+    return this.muted;
+  }
+  setMuted(mute) {
+    this.muted = mute;
+  }
+  toggleMute() {
+    this.muted = !this.muted;
+    return this.muted;
+  }
+  ensureContext() {
+    if (this.muted || typeof window === "undefined") return null;
+    if (!this.ctx) {
+      const AudioCtor = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtor) {
+        try {
+          this.ctx = new AudioCtor();
+        } catch {
+          this.ctx = null;
+        }
+      }
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      void this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  playTone(freqHz, durationSec, type = "sine", gainPeak = 0.09, slideToHz) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freqHz, now);
+      if (slideToHz) {
+        osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideToHz), now + durationSec);
+      }
+      gain.gain.setValueAtTime(1e-4, now);
+      gain.gain.linearRampToValueAtTime(gainPeak, now + 0.012);
+      gain.gain.exponentialRampToValueAtTime(1e-4, now + durationSec);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + durationSec + 0.02);
+    } catch {
+    }
+  }
+  playEvent(event) {
+    if (this.muted) return;
+    switch (event.type) {
+      case "SLINGSHOT_LAUNCH":
+        this.playTone(180, 0.18, "triangle", 0.08, 520);
+        break;
+      case "BUMPER_RICOCHET": {
+        const idx = Math.max(0, Math.min(LYDIAN_FREQUENCIES.length - 1, event.noteIndex ?? 0));
+        const baseFreq = LYDIAN_FREQUENCIES[idx];
+        this.playTone(baseFreq, 0.24, "sine", 0.1);
+        this.playTone(baseFreq * 1.5, 0.16, "triangle", 0.045);
+        break;
+      }
+      case "CONSTELLATION_ENCLOSED": {
+        const chord = [523.25, 659.25, 783.99, 987.77];
+        chord.forEach((f, i) => {
+          setTimeout(() => this.playTone(f, 0.42, "triangle", 0.075), i * 45);
+        });
+        break;
+      }
+      case "EVENT_HORIZON_SKIM":
+        this.playTone(310, 0.15, "sine", 0.065, 620);
+        break;
+      case "WORMHOLE_TRANSIT":
+        this.playTone(110, 0.35, "sawtooth", 0.09, 880);
+        break;
+      case "ROCHE_CRUSH":
+        this.playTone(440, 0.28, "sine", 0.09, 130);
+        break;
+      case "SUPERNOVA_PULSE":
+        this.playTone(150, 0.42, "sawtooth", 0.11, 55);
+        this.playTone(587.33, 0.28, "triangle", 0.08, 293.66);
+        break;
+      case "CHRONO_REWIND":
+        this.playTone(880, 0.32, "triangle", 0.09, 220);
+        break;
+      case "ENEMY_DESTROYED":
+        this.playTone(392, 0.18, "square", 0.06, 783.99);
+        break;
+      case "SHIP_DAMAGED":
+        this.playTone(140, 0.26, "sawtooth", 0.1, 65);
+        break;
+      case "RELIC_DRAFTED":
+      case "SECTOR_CLEARED":
+      case "VICTORY": {
+        const fanfare = [523.25, 659.25, 783.99, 1046.5];
+        fanfare.forEach((f, i) => {
+          setTimeout(() => this.playTone(f, 0.38, "triangle", 0.085), i * 65);
+        });
+        break;
+      }
+      case "GAME_OVER":
+        this.playTone(220, 0.55, "sawtooth", 0.09, 73.42);
+        break;
+    }
+  }
+  destroy() {
+    if (this.ctx) {
+      void this.ctx.close().catch(() => {
+      });
+      this.ctx = null;
+    }
+  }
+};
+
+// games/12-event-horizon/src/config.ts
+var HORIZON_CONFIG = {
+  GAME_ID: "12-event-horizon",
+  GAME_NUMBER: 12,
+  TITLE: "Event Horizon: Singularity Slingshot",
+  SUBTITLE: "Relativistic Orbital Billiards, Bullet-Time Gravity Tether & Constellation Relic Deckbuilder",
+  ACCENT_COLOR: "#38bdf8",
+  DEFAULT_SEED: 20261108,
+  SAVE_KEY: "argon_game12_event_horizon_save_v1",
+  SAVE_VERSION: 1,
+  FIXED_STEP_MS: 1e3 / 60,
+  ARENA_WIDTH: 960,
+  ARENA_HEIGHT: 600,
+  WALL_MARGIN: 24,
+  WALL_RESTITUTION: 0.88,
+  SHIP_RADIUS: 13,
+  BASE_MAX_HULL: 5,
+  MAX_HAWKING_ENERGY: 100,
+  INITIAL_HAWKING_ENERGY: 75,
+  PASSIVE_ENERGY_REGEN_PER_SEC: 7,
+  SKIM_ENERGY_GAIN_PER_SEC: 36,
+  BUMPER_ENERGY_GAIN: 12,
+  MIN_SLINGSHOT_SPEED: 220,
+  MAX_SLINGSHOT_SPEED: 640,
+  SPEED_OF_LIGHT_CAP: 780,
+  THRUST_ACCEL: 340,
+  SPACE_DRAG: 0.9965,
+  BULLET_TIME_SCALE: 0.16,
+  AIM_ENERGY_DRAIN_PER_SEC: 8,
+  PREDICTION_STEPS: 75,
+  PREDICTION_STEP_DT: 0.016,
+  TETHER_MAX_RANGE: 270,
+  TETHER_CENTRIPETAL_BOOST: 420,
+  TETHER_TANGENTIAL_ACCEL: 210,
+  TETHER_BEAM_DPS: 45,
+  SUPERNOVA_ENERGY_COST: 35,
+  SUPERNOVA_BASE_RADIUS: 185,
+  SUPERNOVA_DAMAGE: 65,
+  SUPERNOVA_KNOCKBACK: 440,
+  SUPERNOVA_COOLDOWN_MS: 900,
+  WORLDLINE_BUFFER_TICKS: 120,
+  REWIND_ENERGY_COST: 40,
+  INITIAL_CHRONO_CHARGES: 2,
+  MAX_CHRONO_CHARGES: 4,
+  ECHO_RADIUS: 11,
+  ECHO_DAMAGE_MULT: 1.25,
+  MIN_CONSTELLATION_VERTICES: 3,
+  CONSTELLATION_BASE_DAMAGE: 85,
+  CONSTELLATION_AREA_SCORE_FACTOR: 0.018,
+  CONSTELLATION_FLASH_DURATION_MS: 1400,
+  BASE_BUMPER_SCORE: 60,
+  SKIM_SCORE_PER_TICK: 8,
+  ROCHE_CRUSH_SCORE: 320,
+  ROCHE_CRUSH_HEAL: 1,
+  TOTAL_CAMPAIGN_SECTORS: 5,
+  ENDLESS_SPEED_CAP_WAVE: 35
+};
+
+// games/12-event-horizon/src/content.ts
+var SHIP_CHASSIS_CATALOG = {
+  VANGUARD: {
+    id: "VANGUARD",
+    name: "Vanguard Lance",
+    tagline: "Balanced Relativistic Interceptor \xB7 +25% Tether Range & Extended Trajectory Sight",
+    mass: 1,
+    maxHull: 5,
+    bumperElasticityBonus: 1,
+    tetherRangeMult: 1.25,
+    supernovaRadiusMult: 1,
+    predictionStepsBonus: 25,
+    color: "#38bdf8",
+    accentColor: "#bae6fd"
+  },
+  PHOTON_WISP: {
+    id: "PHOTON_WISP",
+    name: "Photon Wisp",
+    tagline: "Featherweight Tachyon Skimmer \xB7 +30% Bumper Ricochet Speed & Empowered Worldline Echo",
+    mass: 0.78,
+    maxHull: 4,
+    bumperElasticityBonus: 1.3,
+    tetherRangeMult: 1.1,
+    supernovaRadiusMult: 0.95,
+    predictionStepsBonus: 15,
+    color: "#f472b6",
+    accentColor: "#fbcfe8"
+  },
+  STAR_HAMMER: {
+    id: "STAR_HAMMER",
+    name: "Juggernaut Star-Hammer",
+    tagline: "Heavy Siege Dreadnought \xB7 6 Hull, Crushes Shields on Ram & +40% Supernova Shockwave",
+    mass: 1.32,
+    maxHull: 6,
+    bumperElasticityBonus: 0.95,
+    tetherRangeMult: 1,
+    supernovaRadiusMult: 1.4,
+    predictionStepsBonus: 0,
+    color: "#f59e0b",
+    accentColor: "#fde68a"
+  }
+};
+var ASTRO_RELIC_CATALOG = [
+  {
+    id: "KEPLER_SCYTHE",
+    name: "Kepler's Area Scythe",
+    symbol: "\u{1F4D0}",
+    rarity: "MYTHIC",
+    color: "#38bdf8",
+    shortHook: "+65% Constellation Polygon Damage & +1.5x Score Mult per Triangle",
+    description: "Sweeping 3+ Constellation Pegs into a closed geometric polygon deals +65% laser damage and adds +1.5x to your launch multiplier."
+  },
+  {
+    id: "HAWKING_PRISM",
+    name: "Hawking Radiation Prism",
+    symbol: "\u{1F308}",
+    rarity: "EPIC",
+    color: "#f472b6",
+    shortHook: "Event Horizon Skims Fire 3 Homing Photon Lances",
+    description: "Skimming inside any Singularity Photon Sphere emits 3 homing Photon Lances that strike the nearest enemies for 28 damage each."
+  },
+  {
+    id: "NOETHER_DYNAMO",
+    name: "Noether's Symmetry Dynamo",
+    symbol: "\u26A1",
+    rarity: "RARE",
+    color: "#fbbf24",
+    shortHook: "+0.4x Lorentz Mult & +10 Hawking Energy per Bumper Bounce",
+    description: "Conservation of angular momentum grants +0.4x relativistic combo multiplier and +10 Hawking Energy every time you ricochet off a bumper."
+  },
+  {
+    id: "SCHRODINGER_ECHO",
+    name: "Schr\xF6dinger's Wavefunction",
+    symbol: "\u{1F47B}",
+    rarity: "MYTHIC",
+    color: "#a855f7",
+    shortHook: "Chrono-Rewind Echo Deals 2.2x Damage & Triggers Bumpers",
+    description: "Rewinding your worldline spawns a superposed Quantum Echo that deals 2.2x ram damage and refunds 15 Hawking Energy."
+  },
+  {
+    id: "ROCHE_CRUSHER",
+    name: "Roche Limit Tidal Crusher",
+    symbol: "\u{1F300}",
+    rarity: "EPIC",
+    color: "#10b981",
+    shortHook: "Crushing Enemies in a Singularity Heals +1 Hull & +500 Score",
+    description: "Enemies pulled or knocked into a Gravity Well core are tidally shredded, restoring +1 Ship Hull and awarding +500 bonus points."
+  },
+  {
+    id: "TACHYON_RAIL",
+    name: "Tachyon Rail-Capacitor",
+    symbol: "\u{1F680}",
+    rarity: "RARE",
+    color: "#22d3ee",
+    shortHook: "+30% Slingshot Launch Speed & Piercing Relativistic Ram",
+    description: "Slingshot launches start +30% faster and your ship slices straight through non-boss enemies without losing momentum."
+  },
+  {
+    id: "DYSON_HARMONIC",
+    name: "Dyson Harmonic Resonator",
+    symbol: "\u{1F517}",
+    rarity: "EPIC",
+    color: "#f97316",
+    shortHook: "Quantum Tether Beam Slices Enemies for +80% Plasma DPS",
+    description: "While tethered ([Q]), the quantum cable between your ship and the anchor becomes a searing plasma wire that cuts through every enemy in its path."
+  },
+  {
+    id: "SUPERNOVA_CORE",
+    name: "Chandrasekhar Limit Core",
+    symbol: "\u{1F4A5}",
+    rarity: "MYTHIC",
+    color: "#ef4444",
+    shortHook: "+50% Supernova Radius & Free Auto-Nova Every 4th Bounce",
+    description: "Supernova Discharge ([E]) expands +50% wider, and every 4th consecutive bumper bounce in a single flight triggers a free Supernova pulse!"
+  },
+  {
+    id: "CHRONO_HOURGLASS",
+    name: "Minkowski Light-Cone Glass",
+    symbol: "\u23F3",
+    rarity: "RARE",
+    color: "#818cf8",
+    shortHook: "0-Cost Bullet-Time Aiming & +1 Max Chrono-Rewind Charge",
+    description: "Aiming in Bullet-Time drains zero Hawking Energy, extends trajectory sight by 35 steps, and immediately grants +1 Chrono-Charge."
+  },
+  {
+    id: "BINARY_ATTRACTOR",
+    name: "Lagrange Point Magnetar",
+    symbol: "\u{1F9F2}",
+    rarity: "RARE",
+    color: "#34d399",
+    shortHook: "Global Stardust Magnet & +50% Shard Score Value",
+    description: "Stardust motes and Chrono-Shards across the entire sector accelerate toward your ship automatically and grant +50% bonus score."
+  },
+  {
+    id: "LORENTZ_AEGIS",
+    name: "Lorentz Relativistic Aegis",
+    symbol: "\u{1F6E1}\uFE0F",
+    rarity: "EPIC",
+    color: "#60a5fa",
+    shortHook: "Invulnerable to Damage While Lorentz \u03B3 \u2265 2.0x",
+    description: "Relativistic time dilation shields your hull: whenever your Lorentz factor \u03B3 is 2.0x or higher, incoming hazards and projectiles deal 0 damage."
+  },
+  {
+    id: "OMEGA_MONOLITH",
+    name: "Kardashev Type-III Monolith",
+    symbol: "\u{1F451}",
+    rarity: "MYTHIC",
+    color: "#fde047",
+    shortHook: "x1.35 Multiplicative Score Bonus per Equipped Astro-Relic",
+    description: "Resonates with your entire Relic Constellation: multiplies all bumper, ram, and polygon scores by 1.35x for each Astro-Relic you hold."
+  }
+];
+var ODYSSEY_SECTORS = [
+  {
+    sectorNumber: 1,
+    id: "sector-1-kepler-nursery",
+    title: "Sector I \xB7 The Kepler Nursery",
+    subtitle: "Golden Proto-Singularity & Hexagonal Constellation Ring",
+    loreBrief: "Slingshot around the central Proto-Star! Skim its golden Photon Sphere to build Lorentz \u03B3, and bounce across 3+ Constellation Pegs to enclose a laser triangle!",
+    ambientHue: "#0ea5e9",
+    wells: [
+      {
+        id: "well-kepler-alpha",
+        name: "Kepler Proto-Singularity",
+        kind: "BLACK_HOLE",
+        x: 480,
+        y: 300,
+        mass: 31e5,
+        coreRadius: 28,
+        skimRadius: 96
+      }
+    ],
+    bumpers: [
+      { id: "bmp-1", kind: "CONSTELLATION_PEG", x: 310, y: 170, radius: 20, restitution: 1.18, harmonicNoteIndex: 0 },
+      { id: "bmp-2", kind: "CONSTELLATION_PEG", x: 650, y: 170, radius: 20, restitution: 1.18, harmonicNoteIndex: 1 },
+      { id: "bmp-3", kind: "CONSTELLATION_PEG", x: 710, y: 300, radius: 20, restitution: 1.18, harmonicNoteIndex: 2 },
+      { id: "bmp-4", kind: "CONSTELLATION_PEG", x: 650, y: 430, radius: 20, restitution: 1.18, harmonicNoteIndex: 3 },
+      { id: "bmp-5", kind: "CONSTELLATION_PEG", x: 310, y: 430, radius: 20, restitution: 1.18, harmonicNoteIndex: 4 },
+      { id: "bmp-6", kind: "OVERCHARGE_ANVIL", x: 250, y: 300, radius: 22, restitution: 1.26, harmonicNoteIndex: 5 }
+    ],
+    enemies: [
+      { kind: "VOID_DRONE", x: 480, y: 125 },
+      { kind: "VOID_DRONE", x: 615, y: 245 },
+      { kind: "VOID_DRONE", x: 615, y: 355 },
+      { kind: "VOID_DRONE", x: 480, y: 475 },
+      { kind: "PHASE_FRIGATE", x: 355, y: 245 }
+    ]
+  },
+  {
+    sectorNumber: 2,
+    id: "sector-2-roche-foundry",
+    title: "Sector II \xB7 The Roche Foundry",
+    subtitle: "Twin Binary Gravity Wells & Figure-8 Slingshot Corridor",
+    loreBrief: "Two coupled Singularities create a Lagrange corridor down the center. Thread the figure-8 or use Supernova ([E]) to knock armored Frigates into the Roche Limit!",
+    ambientHue: "#f59e0b",
+    wells: [
+      {
+        id: "well-roche-west",
+        name: "Castor Gravity Well",
+        kind: "BLACK_HOLE",
+        x: 330,
+        y: 300,
+        mass: 255e4,
+        coreRadius: 25,
+        skimRadius: 88
+      },
+      {
+        id: "well-roche-east",
+        name: "Pollux Gravity Well",
+        kind: "NEUTRON_STAR",
+        x: 630,
+        y: 300,
+        mass: 255e4,
+        coreRadius: 25,
+        skimRadius: 88
+      }
+    ],
+    bumpers: [
+      { id: "bmp-r1", kind: "CONSTELLATION_PEG", x: 480, y: 145, radius: 20, restitution: 1.2, harmonicNoteIndex: 0 },
+      { id: "bmp-r2", kind: "CONSTELLATION_PEG", x: 480, y: 455, radius: 20, restitution: 1.2, harmonicNoteIndex: 2 },
+      { id: "bmp-r3", kind: "CONSTELLATION_PEG", x: 185, y: 195, radius: 19, restitution: 1.18, harmonicNoteIndex: 3 },
+      { id: "bmp-r4", kind: "CONSTELLATION_PEG", x: 775, y: 195, radius: 19, restitution: 1.18, harmonicNoteIndex: 4 },
+      { id: "bmp-r5", kind: "CONSTELLATION_PEG", x: 185, y: 405, radius: 19, restitution: 1.18, harmonicNoteIndex: 5 },
+      { id: "bmp-r6", kind: "CONSTELLATION_PEG", x: 775, y: 405, radius: 19, restitution: 1.18, harmonicNoteIndex: 6 },
+      { id: "bmp-r7", kind: "CHRONO_CRYSTAL", x: 480, y: 300, radius: 21, restitution: 1.28, harmonicNoteIndex: 7 }
+    ],
+    enemies: [
+      { kind: "VOID_DRONE", x: 330, y: 155 },
+      { kind: "VOID_DRONE", x: 630, y: 155 },
+      { kind: "PHASE_FRIGATE", x: 330, y: 445 },
+      { kind: "PHASE_FRIGATE", x: 630, y: 445 },
+      { kind: "ENTROPY_COMET", x: 205, y: 300 },
+      { kind: "ENTROPY_COMET", x: 755, y: 300 }
+    ]
+  },
+  {
+    sectorNumber: 3,
+    id: "sector-3-dyson-choir",
+    title: "Sector III \xB7 The Dyson Choir",
+    subtitle: "Orbiting Resonance Bumpers & Tessera Shield Wardens",
+    loreBrief: "Tessera Wardens project frontal shields that deflect low-speed impacts. Whip on your Quantum Tether ([Q]) to reach Lorentz \u03B3 \u2265 2.0x or enclose them inside a Constellation Polygon!",
+    ambientHue: "#a855f7",
+    wells: [
+      {
+        id: "well-dyson-core",
+        name: "Dyson Pulsar Core",
+        kind: "NEUTRON_STAR",
+        x: 480,
+        y: 300,
+        mass: 34e5,
+        coreRadius: 26,
+        skimRadius: 98
+      }
+    ],
+    bumpers: [
+      {
+        id: "bmp-d1",
+        kind: "CONSTELLATION_PEG",
+        x: 480,
+        y: 120,
+        radius: 19,
+        restitution: 1.22,
+        harmonicNoteIndex: 0,
+        orbitCenterX: 480,
+        orbitCenterY: 300,
+        orbitRadius: 185,
+        orbitAngularSpeed: 0.45,
+        orbitPhase: 0
+      },
+      {
+        id: "bmp-d2",
+        kind: "CONSTELLATION_PEG",
+        x: 640,
+        y: 390,
+        radius: 19,
+        restitution: 1.22,
+        harmonicNoteIndex: 2,
+        orbitCenterX: 480,
+        orbitCenterY: 300,
+        orbitRadius: 185,
+        orbitAngularSpeed: 0.45,
+        orbitPhase: Math.PI * 2 / 3
+      },
+      {
+        id: "bmp-d3",
+        kind: "CONSTELLATION_PEG",
+        x: 320,
+        y: 390,
+        radius: 19,
+        restitution: 1.22,
+        harmonicNoteIndex: 4,
+        orbitCenterX: 480,
+        orbitCenterY: 300,
+        orbitRadius: 185,
+        orbitAngularSpeed: 0.45,
+        orbitPhase: Math.PI * 4 / 3
+      },
+      { id: "bmp-d4", kind: "OVERCHARGE_ANVIL", x: 210, y: 170, radius: 22, restitution: 1.28, harmonicNoteIndex: 5 },
+      { id: "bmp-d5", kind: "OVERCHARGE_ANVIL", x: 750, y: 170, radius: 22, restitution: 1.28, harmonicNoteIndex: 6 },
+      { id: "bmp-d6", kind: "CONSTELLATION_PEG", x: 210, y: 430, radius: 20, restitution: 1.2, harmonicNoteIndex: 7 },
+      { id: "bmp-d7", kind: "CONSTELLATION_PEG", x: 750, y: 430, radius: 20, restitution: 1.2, harmonicNoteIndex: 8 }
+    ],
+    enemies: [
+      { kind: "TESSERA_WARDEN", x: 350, y: 195 },
+      { kind: "TESSERA_WARDEN", x: 610, y: 195 },
+      { kind: "TESSERA_WARDEN", x: 480, y: 435 },
+      { kind: "PHASE_FRIGATE", x: 255, y: 300 },
+      { kind: "PHASE_FRIGATE", x: 705, y: 300 },
+      { kind: "VOID_DRONE", x: 480, y: 165 }
+    ]
+  },
+  {
+    sectorNumber: 4,
+    id: "sector-4-wormhole-binary",
+    title: "Sector IV \xB7 The Chrono-Shear Wormhole",
+    subtitle: "Einstein-Rosen Black Hole / White Hole Relativistic Cannon",
+    loreBrief: "Dive directly into the western Black Hole core to erupt out of the eastern White Hole at 1.65x relativistic velocity with a free shockwave!",
+    ambientHue: "#ec4899",
+    wells: [
+      {
+        id: "well-wormhole-in",
+        name: "Charybdis Singularity (Wormhole Entry)",
+        kind: "BLACK_HOLE",
+        x: 290,
+        y: 300,
+        mass: 29e5,
+        coreRadius: 30,
+        skimRadius: 94,
+        pairedWellId: "well-wormhole-out"
+      },
+      {
+        id: "well-wormhole-out",
+        name: "Scylla White Hole (Relativistic Exit)",
+        kind: "WHITE_HOLE",
+        x: 670,
+        y: 300,
+        mass: -14e5,
+        coreRadius: 28,
+        skimRadius: 92,
+        pairedWellId: "well-wormhole-in"
+      }
+    ],
+    bumpers: [
+      { id: "bmp-w1", kind: "CONSTELLATION_PEG", x: 480, y: 130, radius: 20, restitution: 1.22, harmonicNoteIndex: 0 },
+      { id: "bmp-w2", kind: "CONSTELLATION_PEG", x: 480, y: 470, radius: 20, restitution: 1.22, harmonicNoteIndex: 1 },
+      { id: "bmp-w3", kind: "CONSTELLATION_PEG", x: 790, y: 165, radius: 20, restitution: 1.22, harmonicNoteIndex: 2 },
+      { id: "bmp-w4", kind: "CONSTELLATION_PEG", x: 790, y: 435, radius: 20, restitution: 1.22, harmonicNoteIndex: 3 },
+      { id: "bmp-w5", kind: "CHRONO_CRYSTAL", x: 170, y: 165, radius: 21, restitution: 1.25, harmonicNoteIndex: 4 },
+      { id: "bmp-w6", kind: "CHRONO_CRYSTAL", x: 170, y: 435, radius: 21, restitution: 1.25, harmonicNoteIndex: 5 },
+      { id: "bmp-w7", kind: "REPULSOR_COIL", x: 480, y: 300, radius: 22, restitution: 1.32, harmonicNoteIndex: 6 }
+    ],
+    enemies: [
+      { kind: "TESSERA_WARDEN", x: 540, y: 210 },
+      { kind: "TESSERA_WARDEN", x: 540, y: 390 },
+      { kind: "ENTROPY_COMET", x: 770, y: 300 },
+      { kind: "PHASE_FRIGATE", x: 390, y: 180 },
+      { kind: "PHASE_FRIGATE", x: 390, y: 420 },
+      { kind: "VOID_DRONE", x: 670, y: 155 },
+      { kind: "VOID_DRONE", x: 670, y: 445 }
+    ]
+  },
+  {
+    sectorNumber: 5,
+    id: "sector-5-omega-architect",
+    title: "Sector V \xB7 BOSS: KARDASHEV-IX DYSON SOVEREIGN",
+    subtitle: "The Omega Singularity Ring & 4 Harmonic Anchor Pylons",
+    loreBrief: "KARDASHEV-IX guards the Omega Singularity! Ricochet across the 8 Resonance Bumpers to enclose Constellation Polygons around the Boss or ram it at high Lorentz \u03B3!",
+    ambientHue: "#f43f5e",
+    wells: [
+      {
+        id: "well-omega-heart",
+        name: "Omega Singularity Heart",
+        kind: "BLACK_HOLE",
+        x: 480,
+        y: 300,
+        mass: 35e5,
+        coreRadius: 27,
+        skimRadius: 102
+      }
+    ],
+    bumpers: [
+      { id: "bmp-b1", kind: "CONSTELLATION_PEG", x: 280, y: 140, radius: 20, restitution: 1.24, harmonicNoteIndex: 0 },
+      { id: "bmp-b2", kind: "CONSTELLATION_PEG", x: 680, y: 140, radius: 20, restitution: 1.24, harmonicNoteIndex: 1 },
+      { id: "bmp-b3", kind: "CONSTELLATION_PEG", x: 770, y: 300, radius: 20, restitution: 1.24, harmonicNoteIndex: 2 },
+      { id: "bmp-b4", kind: "CONSTELLATION_PEG", x: 680, y: 460, radius: 20, restitution: 1.24, harmonicNoteIndex: 3 },
+      { id: "bmp-b5", kind: "CONSTELLATION_PEG", x: 280, y: 460, radius: 20, restitution: 1.24, harmonicNoteIndex: 4 },
+      { id: "bmp-b6", kind: "CONSTELLATION_PEG", x: 190, y: 300, radius: 20, restitution: 1.24, harmonicNoteIndex: 5 },
+      { id: "bmp-b7", kind: "OVERCHARGE_ANVIL", x: 480, y: 115, radius: 22, restitution: 1.3, harmonicNoteIndex: 6 },
+      { id: "bmp-b8", kind: "CHRONO_CRYSTAL", x: 480, y: 485, radius: 22, restitution: 1.3, harmonicNoteIndex: 7 }
+    ],
+    enemies: [
+      { kind: "KARDASHEV_BOSS", x: 480, y: 185, hp: 420 },
+      { kind: "TESSERA_WARDEN", x: 335, y: 235 },
+      { kind: "TESSERA_WARDEN", x: 625, y: 235 },
+      { kind: "PHASE_FRIGATE", x: 355, y: 385 },
+      { kind: "PHASE_FRIGATE", x: 605, y: 385 }
+    ]
+  }
+];
+var TRICKSHOT_PUZZLES = [
+  {
+    puzzleNumber: 1,
+    id: "dojo-1-kepler-triangle",
+    title: "Dojo I \xB7 The Sacred Triangle",
+    subtitle: "1-Launch Par \xB7 Bounce off 3 Constellation Pegs to Enclose the Drone Squadron",
+    hint: "Aim toward the top-left Constellation Peg (or press [C] AI Coach) so the central Singularity bends your path around all 3 pegs!",
+    parLaunches: 1,
+    shipStartX: 160,
+    shipStartY: 300,
+    recommendedAimDeg: -32,
+    recommendedPowerPct: 0.92,
+    wells: [
+      {
+        id: "dojo1-well",
+        name: "Dojo Singularity",
+        kind: "BLACK_HOLE",
+        x: 480,
+        y: 300,
+        mass: 28e5,
+        coreRadius: 24,
+        skimRadius: 90
+      }
+    ],
+    bumpers: [
+      { id: "d1-b1", kind: "CONSTELLATION_PEG", x: 350, y: 150, radius: 24, restitution: 1.22, harmonicNoteIndex: 0 },
+      { id: "d1-b2", kind: "CONSTELLATION_PEG", x: 660, y: 180, radius: 24, restitution: 1.22, harmonicNoteIndex: 2 },
+      { id: "d1-b3", kind: "CONSTELLATION_PEG", x: 580, y: 445, radius: 24, restitution: 1.22, harmonicNoteIndex: 4 }
+    ],
+    targets: [
+      { kind: "VOID_DRONE", x: 520, y: 245, hp: 40 },
+      { kind: "VOID_DRONE", x: 560, y: 310, hp: 40 }
+    ]
+  },
+  {
+    puzzleNumber: 2,
+    id: "dojo-2-wormhole-snipe",
+    title: "Dojo II \xB7 Einstein-Rosen Bankshot",
+    subtitle: "1-Launch Par \xB7 Dive Into the Black Hole Wormhole to Erupt Through the Eastern Prism Ring",
+    hint: "Aim straight into the western Black Hole core \u2014 you will exit the eastern White Hole at 1.65x speed directly into the target cluster!",
+    parLaunches: 1,
+    shipStartX: 140,
+    shipStartY: 300,
+    recommendedAimDeg: 0,
+    recommendedPowerPct: 0.85,
+    wells: [
+      {
+        id: "dojo2-bh",
+        name: "Wormhole Entry",
+        kind: "BLACK_HOLE",
+        x: 310,
+        y: 300,
+        mass: 26e5,
+        coreRadius: 34,
+        skimRadius: 88,
+        pairedWellId: "dojo2-wh"
+      },
+      {
+        id: "dojo2-wh",
+        name: "White Hole Exit",
+        kind: "WHITE_HOLE",
+        x: 620,
+        y: 300,
+        mass: -9e5,
+        coreRadius: 28,
+        skimRadius: 84,
+        pairedWellId: "dojo2-bh"
+      }
+    ],
+    bumpers: [
+      { id: "d2-b1", kind: "CONSTELLATION_PEG", x: 760, y: 220, radius: 24, restitution: 1.24, harmonicNoteIndex: 1 },
+      { id: "d2-b2", kind: "CONSTELLATION_PEG", x: 760, y: 380, radius: 24, restitution: 1.24, harmonicNoteIndex: 3 },
+      { id: "d2-b3", kind: "OVERCHARGE_ANVIL", x: 840, y: 300, radius: 25, restitution: 1.28, harmonicNoteIndex: 5 }
+    ],
+    targets: [
+      { kind: "VOID_DRONE", x: 730, y: 300, hp: 40 },
+      { kind: "VOID_DRONE", x: 790, y: 300, hp: 40 }
+    ]
+  },
+  {
+    puzzleNumber: 3,
+    id: "dojo-3-lagrange-slingshot",
+    title: "Dojo III \xB7 The Figure-8 Lagrange Whip",
+    subtitle: "1-Launch Par \xB7 Thread Between Twin Gravity Wells to Strike Both Outer Beacons",
+    hint: "Launch slightly upward through the central Lagrange saddle so the upper well bends you right and the lower well bends you back!",
+    parLaunches: 1,
+    shipStartX: 170,
+    shipStartY: 420,
+    recommendedAimDeg: -26,
+    recommendedPowerPct: 0.95,
+    wells: [
+      {
+        id: "dojo3-w1",
+        name: "Upper Binary Star",
+        kind: "BLACK_HOLE",
+        x: 480,
+        y: 195,
+        mass: 25e5,
+        coreRadius: 24,
+        skimRadius: 82
+      },
+      {
+        id: "dojo3-w2",
+        name: "Lower Binary Star",
+        kind: "BLACK_HOLE",
+        x: 480,
+        y: 405,
+        mass: 25e5,
+        coreRadius: 24,
+        skimRadius: 82
+      }
+    ],
+    bumpers: [
+      { id: "d3-b1", kind: "CONSTELLATION_PEG", x: 350, y: 300, radius: 23, restitution: 1.25, harmonicNoteIndex: 0 },
+      { id: "d3-b2", kind: "CONSTELLATION_PEG", x: 610, y: 300, radius: 23, restitution: 1.25, harmonicNoteIndex: 2 },
+      { id: "d3-b3", kind: "CONSTELLATION_PEG", x: 770, y: 205, radius: 24, restitution: 1.25, harmonicNoteIndex: 4 }
+    ],
+    targets: [
+      { kind: "VOID_DRONE", x: 480, y: 300, hp: 40 },
+      { kind: "VOID_DRONE", x: 710, y: 250, hp: 40 }
+    ]
+  },
+  {
+    puzzleNumber: 4,
+    id: "dojo-4-prism-diamond",
+    title: "Dojo IV \xB7 The Grand Diamond Enclosure",
+    subtitle: "1-Launch Par \xB7 Ricochet Around the 4-Peg Diamond Ring to Vaporize the Core Fleet",
+    hint: "Aim into the top diamond peg at steep angle \u2014 the angled bumper geometry naturally chains all 4 vertices around the Singularity!",
+    parLaunches: 1,
+    shipStartX: 220,
+    shipStartY: 300,
+    recommendedAimDeg: -42,
+    recommendedPowerPct: 0.94,
+    wells: [
+      {
+        id: "dojo4-well",
+        name: "Diamond Singularity",
+        kind: "NEUTRON_STAR",
+        x: 520,
+        y: 300,
+        mass: 29e5,
+        coreRadius: 24,
+        skimRadius: 90
+      }
+    ],
+    bumpers: [
+      { id: "d4-b1", kind: "CONSTELLATION_PEG", x: 520, y: 120, radius: 24, restitution: 1.26, harmonicNoteIndex: 0 },
+      { id: "d4-b2", kind: "CONSTELLATION_PEG", x: 730, y: 300, radius: 24, restitution: 1.26, harmonicNoteIndex: 2 },
+      { id: "d4-b3", kind: "CONSTELLATION_PEG", x: 520, y: 480, radius: 24, restitution: 1.26, harmonicNoteIndex: 4 },
+      { id: "d4-b4", kind: "CONSTELLATION_PEG", x: 340, y: 300, radius: 22, restitution: 1.26, harmonicNoteIndex: 6 }
+    ],
+    targets: [
+      { kind: "VOID_DRONE", x: 615, y: 220, hp: 40 },
+      { kind: "VOID_DRONE", x: 615, y: 380, hp: 40 },
+      { kind: "VOID_DRONE", x: 430, y: 220, hp: 40 }
+    ]
+  },
+  {
+    puzzleNumber: 5,
+    id: "dojo-5-syzygy-master",
+    title: "Dojo V \xB7 Grandmaster Syzygy",
+    subtitle: "1-Launch Par \xB7 Combine Wormhole Acceleration + Constellation Triangle to Shatter the Warden",
+    hint: "Use the [C] AI Trickshot Coach or launch through the top bumper into the Wormhole so your 1.65x exit encloses the Warden!",
+    parLaunches: 1,
+    shipStartX: 150,
+    shipStartY: 460,
+    recommendedAimDeg: -38,
+    recommendedPowerPct: 0.96,
+    wells: [
+      {
+        id: "dojo5-bh",
+        name: "Syzygy Black Hole",
+        kind: "BLACK_HOLE",
+        x: 370,
+        y: 260,
+        mass: 27e5,
+        coreRadius: 32,
+        skimRadius: 88,
+        pairedWellId: "dojo5-wh"
+      },
+      {
+        id: "dojo5-wh",
+        name: "Syzygy White Hole",
+        kind: "WHITE_HOLE",
+        x: 650,
+        y: 260,
+        mass: -1e6,
+        coreRadius: 26,
+        skimRadius: 84,
+        pairedWellId: "dojo5-bh"
+      }
+    ],
+    bumpers: [
+      { id: "d5-b1", kind: "CONSTELLATION_PEG", x: 260, y: 170, radius: 24, restitution: 1.25, harmonicNoteIndex: 0 },
+      { id: "d5-b2", kind: "CONSTELLATION_PEG", x: 770, y: 170, radius: 24, restitution: 1.25, harmonicNoteIndex: 2 },
+      { id: "d5-b3", kind: "CONSTELLATION_PEG", x: 750, y: 420, radius: 24, restitution: 1.25, harmonicNoteIndex: 4 },
+      { id: "d5-b4", kind: "OVERCHARGE_ANVIL", x: 540, y: 430, radius: 24, restitution: 1.28, harmonicNoteIndex: 6 }
+    ],
+    targets: [
+      { kind: "TESSERA_WARDEN", x: 720, y: 290, hp: 70 },
+      { kind: "VOID_DRONE", x: 640, y: 380, hp: 40 }
+    ]
+  }
+];
+var HORIZON_VERDICTS = {
+  SACRED_GEOMETER: {
+    id: "SACRED_GEOMETER",
+    title: "Architect of the Sacred Constellation",
+    badge: "\u{1F4D0} MYTHIC GEOMETER",
+    summary: "You turned the cosmos into a Euclidean laser loom, enclosing entire Void Armadas inside glowing Shoelace Polygons."
+  },
+  HORIZON_DAREDEVIL: {
+    id: "HORIZON_DAREDEVIL",
+    title: "Photon-Sphere Daredevil",
+    badge: "\u{1F300} RELATIVISTIC ACE",
+    summary: "You danced along the razor edge of the Event Horizon, riding Hawking radiation and Lorentz time dilation above 4.0x \u03B3."
+  },
+  WORLDLINE_WEAVER: {
+    id: "WORLDLINE_WEAVER",
+    title: "Chrono-Worldline Paradox Weaver",
+    badge: "\u23F3 TEMPORAL TWIN",
+    summary: "You folded your own spacetime worldline back upon itself, letting your Phantom Echo double-strike across causality."
+  },
+  KARDASHEV_SOVEREIGN: {
+    id: "KARDASHEV_SOVEREIGN",
+    title: "Sovereign of Kardashev Type-III",
+    badge: "\u{1F451} DYSON CONQUEROR",
+    summary: "You shattered the Dyson Architect and mastered orbital momentum across every Singularity in the sector."
+  },
+  ENTROPIC_DRIFT: {
+    id: "ENTROPIC_DRIFT",
+    title: "Claimed by the Singularity",
+    badge: "\u{1F311} TIDAL COLLAPSE",
+    summary: "Gravitational shear overcame your hull\u2014study the Counterfactual Trajectory Lab to see how another orbital archetype conquers this seed!"
+  }
+};
+
+// games/12-event-horizon/src/rng.ts
+var SeededRng = class {
+  state;
+  constructor(seed = 20261108) {
+    this.state = seed >>> 0 || 322420463;
+  }
+  getState() {
+    return this.state >>> 0;
+  }
+  setState(newState) {
+    this.state = newState >>> 0 || 322420463;
+  }
+  next() {
+    let t = this.state += 1831565813;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+  nextFloat(min, max) {
+    return min + this.next() * (max - min);
+  }
+  nextInt(minInclusive, maxInclusive) {
+    const low = Math.ceil(minInclusive);
+    const high = Math.floor(maxInclusive);
+    if (high <= low) return low;
+    return low + Math.floor(this.next() * (high - low + 1));
+  }
+  pick(items) {
+    if (items.length === 0) {
+      throw new Error("Cannot pick from empty array");
+    }
+    return items[this.nextInt(0, items.length - 1)];
+  }
+  shuffle(items) {
+    const copy = [...items];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = this.nextInt(0, i);
+      const tmp = copy[i];
+      copy[i] = copy[j];
+      copy[j] = tmp;
+    }
+    return copy;
+  }
+};
+
+// games/12-event-horizon/src/simulation.ts
+function clamp(val, min, max) {
+  return Math.max(min, Math.min(max, val));
+}
+function computePolygonAreaShoelace(vertices) {
+  if (vertices.length < 3) return 0;
+  let sum = 0;
+  for (let i = 0; i < vertices.length; i++) {
+    const cur = vertices[i];
+    const next = vertices[(i + 1) % vertices.length];
+    sum += cur.x * next.y - next.x * cur.y;
+  }
+  return Math.abs(sum) * 0.5;
+}
+function isPointInPolygon(px, py, vertices) {
+  if (vertices.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const xi = vertices[i].x;
+    const yi = vertices[i].y;
+    const xj = vertices[j].x;
+    const yj = vertices[j].y;
+    const intersect = yi > py !== yj > py && px < (xj - xi) * (py - yi) / (yj - yi + 1e-9) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq <= 1e-6) {
+    return Math.hypot(px - x1, py - y1);
+  }
+  const t = clamp(((px - x1) * dx + (py - y1) * dy) / lenSq, 0, 1);
+  const projX = x1 + t * dx;
+  const projY = y1 + t * dy;
+  return Math.hypot(px - projX, py - projY);
+}
+function computeLorentzGamma(speed, bounceChain, hasNoether) {
+  const beta = clamp(speed / HORIZON_CONFIG.SPEED_OF_LIGHT_CAP, 0, 0.965);
+  const kinematicGamma = 1 / Math.sqrt(1 - beta * beta);
+  const chainBonus = bounceChain * (hasNoether ? 0.4 : 0.22);
+  return Number(clamp(kinematicGamma + chainBonus, 1, 8).toFixed(2));
+}
+function makeEnemyFromBlueprint(bp, index, sectorScale = 1) {
+  const baseHpMap = {
+    VOID_DRONE: 45,
+    PHASE_FRIGATE: 95,
+    ENTROPY_COMET: 70,
+    TESSERA_WARDEN: 135,
+    KARDASHEV_BOSS: 440
+  };
+  const radiusMap = {
+    VOID_DRONE: 15,
+    PHASE_FRIGATE: 20,
+    ENTROPY_COMET: 17,
+    TESSERA_WARDEN: 23,
+    KARDASHEV_BOSS: 44
+  };
+  const hp = Math.round((bp.hp ?? baseHpMap[bp.kind]) * sectorScale);
+  return {
+    id: `enemy-${index}-${bp.kind.toLowerCase()}`,
+    kind: bp.kind,
+    x: bp.x,
+    y: bp.y,
+    vx: bp.vx ?? 0,
+    vy: bp.vy ?? 0,
+    radius: radiusMap[bp.kind],
+    hp,
+    maxHp: hp,
+    shielded: bp.kind === "TESSERA_WARDEN" || bp.kind === "KARDASHEV_BOSS",
+    fireCooldownMs: 1800 + index % 4 * 450,
+    hitFlashMs: 0,
+    orbitAngle: index * Math.PI / 3
+  };
+}
+function createInitialHorizonState(seed = HORIZON_CONFIG.DEFAULT_SEED, options) {
+  const cleanSeed = seed >>> 0 || HORIZON_CONFIG.DEFAULT_SEED;
+  const rng = new SeededRng(cleanSeed);
+  const mode = options?.mode ?? "ODYSSEY";
+  const chassisId = options?.chassis ?? "VANGUARD";
+  const chassis = SHIP_CHASSIS_CATALOG[chassisId];
+  const startSector = options?.startSector ?? 1;
+  const state = {
+    seed: cleanSeed,
+    rngState: rng.getState(),
+    mode,
+    status: "PLAYING",
+    sector: startSector,
+    sectorTitle: "",
+    sectorSubtitle: "",
+    sectorHint: "",
+    tick: 0,
+    elapsedMs: 0,
+    score: 0,
+    launchesUsed: 0,
+    sectorLaunchesUsed: 0,
+    parLaunches: null,
+    ship: {
+      chassis: chassisId,
+      x: 190,
+      y: 300,
+      vx: 30,
+      vy: -135,
+      radius: HORIZON_CONFIG.SHIP_RADIUS,
+      hull: chassis.maxHull,
+      maxHull: chassis.maxHull,
+      hawkingEnergy: HORIZON_CONFIG.INITIAL_HAWKING_ENERGY,
+      maxHawkingEnergy: HORIZON_CONFIG.MAX_HAWKING_ENERGY,
+      chronoCharges: HORIZON_CONFIG.INITIAL_CHRONO_CHARGES,
+      maxChronoCharges: HORIZON_CONFIG.MAX_CHRONO_CHARGES,
+      lorentzGamma: 1.05,
+      peakLorentzGamma: 1.05,
+      isAiming: false,
+      aimAngleRad: -0.45,
+      aimPowerPct: 0.85,
+      tetherTargetId: null,
+      tetherKind: null,
+      invulnerableMs: 0,
+      wormholeCooldownMs: 0,
+      supernovaCooldownMs: 0,
+      skimSoundCooldownMs: 0,
+      bounceChain: 0,
+      constellationVertices: []
+    },
+    worldlineHistory: [],
+    activeEcho: null,
+    wells: [],
+    bumpers: [],
+    enemies: [],
+    projectiles: [],
+    starMotes: [],
+    activePolygons: [],
+    relics: [],
+    relicDraftChoices: [],
+    stats: {
+      enemiesVaporized: 0,
+      rocheCrushes: 0,
+      polygonsEnclosed: 0,
+      totalPolygonAreaPx2: 0,
+      wormholeTransits: 0,
+      skimsPerformed: 0,
+      rewindsUsed: 0,
+      supernovasUsed: 0,
+      bumperRicochets: 0
+    },
+    verdictId: null,
+    log: [],
+    events: []
+  };
+  loadSectorOrPuzzle(state, startSector);
+  return state;
+}
+function loadSectorOrPuzzle(state, sectorNumber) {
+  const rng = new SeededRng(state.rngState ^ sectorNumber * 2654435769);
+  state.sector = sectorNumber;
+  state.sectorLaunchesUsed = 0;
+  state.projectiles = [];
+  state.starMotes = [];
+  state.activePolygons = [];
+  state.activeEcho = null;
+  state.ship.tetherTargetId = null;
+  state.ship.tetherKind = null;
+  state.ship.bounceChain = 0;
+  state.ship.constellationVertices = [];
+  state.ship.isAiming = false;
+  if (state.mode === "TRICKSHOT_DOJO") {
+    const puzzleIndex = clamp(sectorNumber - 1, 0, TRICKSHOT_PUZZLES.length - 1);
+    const puz = TRICKSHOT_PUZZLES[puzzleIndex];
+    state.sectorTitle = puz.title;
+    state.sectorSubtitle = puz.subtitle;
+    state.sectorHint = puz.hint;
+    state.parLaunches = puz.parLaunches;
+    state.ship.x = puz.shipStartX;
+    state.ship.y = puz.shipStartY;
+    state.ship.vx = 0;
+    state.ship.vy = 0;
+    state.ship.aimAngleRad = puz.recommendedAimDeg * Math.PI / 180;
+    state.ship.aimPowerPct = puz.recommendedPowerPct;
+    state.wells = puz.wells.map((w) => ({
+      ...w,
+      pulsePhase: 0
+    }));
+    state.bumpers = puz.bumpers.map((b) => ({
+      ...b,
+      hitFlashMs: 0,
+      activatedInChain: false
+    }));
+    state.enemies = puz.targets.map((t, idx) => makeEnemyFromBlueprint(t, idx, 1));
+    state.worldlineHistory = [{ x: state.ship.x, y: state.ship.y, vx: 0, vy: 0 }];
+    state.log.unshift(`Loaded ${puz.title} (Par: ${puz.parLaunches} Launch).`);
+    state.rngState = rng.getState();
+    return;
+  }
+  const bpIndex = (sectorNumber - 1) % ODYSSEY_SECTORS.length;
+  const bp = ODYSSEY_SECTORS[bpIndex];
+  const waveScale = state.mode === "ENDLESS_SINGULARITY" ? 1 + Math.min(sectorNumber - 1, HORIZON_CONFIG.ENDLESS_SPEED_CAP_WAVE) * 0.14 : 1 + (sectorNumber - 1) * 0.08;
+  state.sectorTitle = state.mode === "ENDLESS_SINGULARITY" ? `Endless Wave ${sectorNumber} \xB7 ${bp.title.split("\xB7")[1]?.trim() ?? bp.title}` : bp.title;
+  state.sectorSubtitle = bp.subtitle;
+  state.sectorHint = bp.loreBrief;
+  state.parLaunches = null;
+  state.ship.x = 155;
+  state.ship.y = 300;
+  state.ship.vx = 25;
+  state.ship.vy = -140;
+  state.ship.aimAngleRad = -0.35;
+  state.ship.aimPowerPct = 0.88;
+  state.wells = bp.wells.map((w) => ({
+    ...w,
+    pulsePhase: 0
+  }));
+  state.bumpers = bp.bumpers.map((b) => ({
+    ...b,
+    hitFlashMs: 0,
+    activatedInChain: false
+  }));
+  state.enemies = bp.enemies.map((e, idx) => makeEnemyFromBlueprint(e, idx, waveScale));
+  if (state.mode === "ENDLESS_SINGULARITY" && sectorNumber > 1) {
+    const extraCount = Math.min(4, Math.floor(sectorNumber / 2));
+    for (let i = 0; i < extraCount; i++) {
+      const angle = rng.nextFloat(0, Math.PI * 2);
+      const dist = rng.nextFloat(150, 230);
+      const ex = clamp(480 + Math.cos(angle) * dist, 120, 840);
+      const ey = clamp(300 + Math.sin(angle) * dist, 100, 500);
+      const kinds = ["VOID_DRONE", "PHASE_FRIGATE", "ENTROPY_COMET", "TESSERA_WARDEN"];
+      const kind = rng.pick(kinds);
+      state.enemies.push(makeEnemyFromBlueprint({ kind, x: ex, y: ey }, bp.enemies.length + i, waveScale));
+    }
+  }
+  state.worldlineHistory = [
+    { x: state.ship.x, y: state.ship.y, vx: state.ship.vx, vy: state.ship.vy }
+  ];
+  state.log.unshift(`Entered ${state.sectorTitle}.`);
+  state.rngState = rng.getState();
+}
+function cloneHorizonState(state) {
+  return JSON.parse(JSON.stringify(state));
+}
+function hasRelic(state, relicId) {
+  return state.relics.includes(relicId);
+}
+function computeRelicScoreMultiplier(state) {
+  let mult = 1;
+  if (hasRelic(state, "OMEGA_MONOLITH")) {
+    mult *= Math.pow(1.35, state.relics.length);
+  }
+  return mult;
+}
+function computeGravitationalAcceleration(x, y, wells) {
+  let ax = 0;
+  let ay = 0;
+  let nearestWell = null;
+  let nearestDist = Infinity;
+  for (const well of wells) {
+    const dx = well.x - x;
+    const dy = well.y - y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearestWell = well;
+    }
+    const softDistSq = Math.max(dist * dist, (well.coreRadius + 16) * (well.coreRadius + 16));
+    const accelMag = well.mass / softDistSq;
+    if (dist > 1e-4) {
+      ax += dx / dist * accelMag;
+      ay += dy / dist * accelMag;
+    }
+  }
+  return { ax, ay, nearestWell, nearestDist };
+}
+function predictShipTrajectory(state, angleRad = state.ship.aimAngleRad, powerPct = state.ship.aimPowerPct) {
+  const chassis = SHIP_CHASSIS_CATALOG[state.ship.chassis];
+  const bonusSteps = chassis.predictionStepsBonus + (hasRelic(state, "CHRONO_HOURGLASS") ? 35 : 0);
+  const totalSteps = HORIZON_CONFIG.PREDICTION_STEPS + bonusSteps;
+  const dt = HORIZON_CONFIG.PREDICTION_STEP_DT;
+  const speedMult = hasRelic(state, "TACHYON_RAIL") ? 1.3 : 1;
+  const speed = (HORIZON_CONFIG.MIN_SLINGSHOT_SPEED + (HORIZON_CONFIG.MAX_SLINGSHOT_SPEED - HORIZON_CONFIG.MIN_SLINGSHOT_SPEED) * clamp(powerPct, 0.15, 1)) * speedMult;
+  let x = state.ship.x;
+  let y = state.ship.y;
+  let vx = Math.cos(angleRad) * speed;
+  let vy = Math.sin(angleRad) * speed;
+  let wormholeLock = 0;
+  const points = [{ x, y }];
+  for (let i = 0; i < totalSteps; i++) {
+    const { ax, ay, nearestWell, nearestDist } = computeGravitationalAcceleration(
+      x,
+      y,
+      state.wells
+    );
+    vx = (vx + ax * dt) * HORIZON_CONFIG.SPACE_DRAG;
+    vy = (vy + ay * dt) * HORIZON_CONFIG.SPACE_DRAG;
+    x += vx * dt;
+    y += vy * dt;
+    let hitBumperId;
+    let skimWellId;
+    if (nearestWell && nearestDist <= nearestWell.skimRadius) {
+      skimWellId = nearestWell.id;
+      if (nearestDist <= nearestWell.coreRadius + state.ship.radius && nearestWell.pairedWellId && wormholeLock <= 0) {
+        const exitWell = state.wells.find((w) => w.id === nearestWell.pairedWellId);
+        if (exitWell) {
+          const curSpeed = Math.hypot(vx, vy) * 1.65;
+          const dirAngle = Math.atan2(vy, vx);
+          x = exitWell.x + Math.cos(dirAngle) * (exitWell.coreRadius + state.ship.radius + 6);
+          y = exitWell.y + Math.sin(dirAngle) * (exitWell.coreRadius + state.ship.radius + 6);
+          vx = Math.cos(dirAngle) * Math.min(curSpeed, HORIZON_CONFIG.SPEED_OF_LIGHT_CAP);
+          vy = Math.sin(dirAngle) * Math.min(curSpeed, HORIZON_CONFIG.SPEED_OF_LIGHT_CAP);
+          wormholeLock = 15;
+        }
+      }
+    }
+    if (wormholeLock > 0) wormholeLock--;
+    for (const bmp of state.bumpers) {
+      const dx = x - bmp.x;
+      const dy = y - bmp.y;
+      const dist = Math.hypot(dx, dy);
+      const minDist = state.ship.radius + bmp.radius;
+      if (dist < minDist && dist > 1e-4) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        x = bmp.x + nx * (minDist + 1);
+        y = bmp.y + ny * (minDist + 1);
+        const dot = vx * nx + vy * ny;
+        if (dot < 0) {
+          const rest = bmp.restitution * chassis.bumperElasticityBonus;
+          vx = (vx - 2 * dot * nx) * rest;
+          vy = (vy - 2 * dot * ny) * rest;
+        }
+        hitBumperId = bmp.id;
+        break;
+      }
+    }
+    const minX = HORIZON_CONFIG.WALL_MARGIN + state.ship.radius;
+    const maxX = HORIZON_CONFIG.ARENA_WIDTH - HORIZON_CONFIG.WALL_MARGIN - state.ship.radius;
+    const minY = HORIZON_CONFIG.WALL_MARGIN + state.ship.radius;
+    const maxY = HORIZON_CONFIG.ARENA_HEIGHT - HORIZON_CONFIG.WALL_MARGIN - state.ship.radius;
+    if (x < minX) {
+      x = minX;
+      vx = Math.abs(vx) * HORIZON_CONFIG.WALL_RESTITUTION;
+    } else if (x > maxX) {
+      x = maxX;
+      vx = -Math.abs(vx) * HORIZON_CONFIG.WALL_RESTITUTION;
+    }
+    if (y < minY) {
+      y = minY;
+      vy = Math.abs(vy) * HORIZON_CONFIG.WALL_RESTITUTION;
+    } else if (y > maxY) {
+      y = maxY;
+      vy = -Math.abs(vy) * HORIZON_CONFIG.WALL_RESTITUTION;
+    }
+    points.push({ x, y, hitBumperId, skimWellId });
+  }
+  return points;
+}
+function computeOptimalLaunchVector(state) {
+  if (state.mode === "TRICKSHOT_DOJO") {
+    const puzIndex = clamp(state.sector - 1, 0, TRICKSHOT_PUZZLES.length - 1);
+    const puz = TRICKSHOT_PUZZLES[puzIndex];
+    if (state.sectorLaunchesUsed === 0) {
+      return {
+        angleRad: puz.recommendedAimDeg * Math.PI / 180,
+        powerPct: puz.recommendedPowerPct,
+        expectedHits: puz.targets.length + 3
+      };
+    }
+  }
+  let bestAngle = state.ship.aimAngleRad;
+  let bestPower = 0.92;
+  let bestScore = -Infinity;
+  for (let i = 0; i < 36; i++) {
+    const angle = -Math.PI + i * Math.PI * 2 / 36;
+    const power = 0.92;
+    const path = predictShipTrajectory(state, angle, power);
+    const uniqueBumpers = /* @__PURE__ */ new Set();
+    const hitEnemies = /* @__PURE__ */ new Set();
+    let skimSteps = 0;
+    for (const pt of path) {
+      if (pt.hitBumperId) uniqueBumpers.add(pt.hitBumperId);
+      if (pt.skimWellId) skimSteps += 1;
+      for (const enemy of state.enemies) {
+        if (Math.hypot(pt.x - enemy.x, pt.y - enemy.y) <= enemy.radius + state.ship.radius + 10) {
+          hitEnemies.add(enemy.id);
+        }
+      }
+    }
+    const polygonBonus = uniqueBumpers.size >= 3 ? 450 : 0;
+    const candidateScore = hitEnemies.size * 180 + uniqueBumpers.size * 110 + polygonBonus + Math.min(skimSteps, 20) * 4;
+    if (candidateScore > bestScore) {
+      bestScore = candidateScore;
+      bestAngle = angle;
+      bestPower = power;
+    }
+  }
+  return {
+    angleRad: bestAngle,
+    powerPct: bestPower,
+    expectedHits: Math.max(1, Math.round(bestScore / 150))
+  };
+}
+function awardEnemyKill(state, enemy, cause) {
+  state.stats.enemiesVaporized += 1;
+  const relicMult = computeRelicScoreMultiplier(state);
+  const baseBounty = enemy.kind === "KARDASHEV_BOSS" ? 1500 : enemy.kind === "TESSERA_WARDEN" ? 260 : enemy.kind === "PHASE_FRIGATE" ? 180 : 120;
+  const points = Math.round(baseBounty * state.ship.lorentzGamma * relicMult);
+  state.score += points;
+  state.events.push({
+    type: "ENEMY_DESTROYED",
+    x: enemy.x,
+    y: enemy.y,
+    text: `${cause} +${points}`,
+    color: cause === "CONSTELLATION" ? "#38bdf8" : cause === "ROCHE" ? "#10b981" : "#fbbf24",
+    magnitude: enemy.kind === "KARDASHEV_BOSS" ? 3 : 1.4
+  });
+  state.starMotes.push({
+    id: `mote-${state.tick}-${enemy.id}`,
+    kind: enemy.kind === "TESSERA_WARDEN" ? "CHRONO_SHARD" : "STARDUST",
+    x: enemy.x,
+    y: enemy.y,
+    vx: (enemy.x - 480) * 0.15,
+    vy: (enemy.y - 300) * 0.15,
+    value: 75,
+    ttlMs: 9e3
+  });
+}
+function triggerSupernovaPulse(state, freeAutoNova = false) {
+  const chassis = SHIP_CHASSIS_CATALOG[state.ship.chassis];
+  if (!freeAutoNova) {
+    if (state.ship.hawkingEnergy < HORIZON_CONFIG.SUPERNOVA_ENERGY_COST || state.ship.supernovaCooldownMs > 0) {
+      return;
+    }
+    state.ship.hawkingEnergy = Math.max(
+      0,
+      state.ship.hawkingEnergy - HORIZON_CONFIG.SUPERNOVA_ENERGY_COST
+    );
+    state.ship.supernovaCooldownMs = HORIZON_CONFIG.SUPERNOVA_COOLDOWN_MS;
+    state.stats.supernovasUsed += 1;
+  }
+  const relicRadiusMult = hasRelic(state, "SUPERNOVA_CORE") ? 1.5 : 1;
+  const radius = HORIZON_CONFIG.SUPERNOVA_BASE_RADIUS * chassis.supernovaRadiusMult * relicRadiusMult;
+  const damage = Math.round(HORIZON_CONFIG.SUPERNOVA_DAMAGE * state.ship.lorentzGamma);
+  state.projectiles = state.projectiles.filter((p) => {
+    if (p.friendly) return true;
+    const d = Math.hypot(p.x - state.ship.x, p.y - state.ship.y);
+    return d > radius;
+  });
+  for (const enemy of state.enemies) {
+    const dx = enemy.x - state.ship.x;
+    const dy = enemy.y - state.ship.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= radius + enemy.radius) {
+      enemy.shielded = false;
+      enemy.hp -= damage;
+      enemy.hitFlashMs = 220;
+      const nx = dist > 1e-3 ? dx / dist : 1;
+      const ny = dist > 1e-3 ? dy / dist : 0;
+      enemy.vx += nx * HORIZON_CONFIG.SUPERNOVA_KNOCKBACK;
+      enemy.vy += ny * HORIZON_CONFIG.SUPERNOVA_KNOCKBACK;
+    }
+  }
+  const remaining = [];
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) {
+      awardEnemyKill(state, enemy, "SUPERNOVA");
+    } else {
+      remaining.push(enemy);
+    }
+  }
+  state.enemies = remaining;
+  state.events.push({
+    type: "SUPERNOVA_PULSE",
+    x: state.ship.x,
+    y: state.ship.y,
+    text: freeAutoNova ? "AUTO-SUPERNOVA!" : "SUPERNOVA SHOCKWAVE!",
+    color: "#f97316",
+    magnitude: radius
+  });
+  state.log.unshift(
+    `${freeAutoNova ? "Chandrasekhar Auto-Nova" : "Supernova Shockwave"} erupted (${Math.round(radius)}px radius).`
+  );
+}
+function evaluateConstellationEnclosure(state) {
+  const verts = state.ship.constellationVertices;
+  if (verts.length < HORIZON_CONFIG.MIN_CONSTELLATION_VERTICES) return;
+  const polyVerts = verts.slice(-Math.min(verts.length, 4)).map((v) => ({ x: v.x, y: v.y }));
+  const area = computePolygonAreaShoelace(polyVerts);
+  if (area < 1200) return;
+  state.stats.polygonsEnclosed += 1;
+  state.stats.totalPolygonAreaPx2 += Math.round(area);
+  const hasKepler = hasRelic(state, "KEPLER_SCYTHE");
+  if (hasKepler) {
+    state.ship.lorentzGamma = clamp(
+      Number((state.ship.lorentzGamma + 1.5).toFixed(2)),
+      1,
+      8
+    );
+    state.ship.peakLorentzGamma = Math.max(state.ship.peakLorentzGamma, state.ship.lorentzGamma);
+  }
+  const damageMult = (hasKepler ? 1.65 : 1) * state.ship.lorentzGamma;
+  const laserDamage = Math.round(HORIZON_CONFIG.CONSTELLATION_BASE_DAMAGE * damageMult);
+  let enemiesHit = 0;
+  for (const enemy of state.enemies) {
+    const inside = isPointInPolygon(enemy.x, enemy.y, polyVerts);
+    let nearEdge = false;
+    for (let i = 0; i < polyVerts.length; i++) {
+      const a = polyVerts[i];
+      const b = polyVerts[(i + 1) % polyVerts.length];
+      if (pointToSegmentDistance(enemy.x, enemy.y, a.x, a.y, b.x, b.y) <= enemy.radius + 46) {
+        nearEdge = true;
+        break;
+      }
+    }
+    if (inside || nearEdge) {
+      enemy.shielded = false;
+      enemy.hp -= laserDamage;
+      enemy.hitFlashMs = 280;
+      enemiesHit += 1;
+    }
+  }
+  const remaining = [];
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) {
+      awardEnemyKill(state, enemy, "CONSTELLATION");
+    } else {
+      remaining.push(enemy);
+    }
+  }
+  state.enemies = remaining;
+  const relicMult = computeRelicScoreMultiplier(state);
+  const areaBonus = Math.round(
+    (area * HORIZON_CONFIG.CONSTELLATION_AREA_SCORE_FACTOR + enemiesHit * 180) * state.ship.lorentzGamma * relicMult
+  );
+  state.score += areaBonus;
+  const cx = polyVerts.reduce((acc, v) => acc + v.x, 0) / polyVerts.length;
+  const cy = polyVerts.reduce((acc, v) => acc + v.y, 0) / polyVerts.length;
+  state.activePolygons.push({
+    id: `poly-${state.tick}-${state.stats.polygonsEnclosed}`,
+    vertices: polyVerts,
+    areaPx2: Math.round(area),
+    enemiesHit,
+    scoreAwarded: areaBonus,
+    ttlMs: HORIZON_CONFIG.CONSTELLATION_FLASH_DURATION_MS,
+    maxTtlMs: HORIZON_CONFIG.CONSTELLATION_FLASH_DURATION_MS
+  });
+  state.events.push({
+    type: "CONSTELLATION_ENCLOSED",
+    x: cx,
+    y: cy,
+    text: `\u{1F4D0} CONSTELLATION ENCLOSED! +${areaBonus}`,
+    color: "#38bdf8",
+    magnitude: 2.2
+  });
+  state.log.unshift(
+    `Enclosed Constellation Polygon (${Math.round(area).toLocaleString()} px\xB2, ${enemiesHit} targets struck, +${areaBonus} pts)!`
+  );
+  const lastVertex = verts[verts.length - 1];
+  state.ship.constellationVertices = lastVertex ? [lastVertex] : [];
+  for (const bmp of state.bumpers) {
+    bmp.activatedInChain = bmp.id === lastVertex?.id;
+  }
+}
+function applyHorizonInput(state, action) {
+  if (action.type === "TOGGLE_PAUSE") {
+    if (state.status === "PLAYING") {
+      state.status = "PAUSED";
+    } else if (state.status === "PAUSED") {
+      state.status = "PLAYING";
+    }
+    return;
+  }
+  if (action.type === "SELECT_CHASSIS") {
+    const spec = SHIP_CHASSIS_CATALOG[action.chassis];
+    state.ship.chassis = action.chassis;
+    state.ship.maxHull = spec.maxHull;
+    state.ship.hull = spec.maxHull;
+    state.log.unshift(`Selected Ship Chassis: ${spec.name}.`);
+    return;
+  }
+  if (action.type === "SELECT_MODE") {
+    const fresh = createInitialHorizonState(state.seed, {
+      mode: action.mode,
+      chassis: state.ship.chassis,
+      startSector: action.sectorOrPuzzle ?? 1
+    });
+    Object.assign(state, fresh);
+    return;
+  }
+  if (action.type === "SELECT_RELIC") {
+    if (state.status !== "RELIC_DRAFT") return;
+    if (!state.relics.includes(action.relicId)) {
+      state.relics.push(action.relicId);
+    }
+    if (action.relicId === "CHRONO_HOURGLASS") {
+      state.ship.maxChronoCharges += 1;
+      state.ship.chronoCharges = Math.min(
+        state.ship.maxChronoCharges,
+        state.ship.chronoCharges + 1
+      );
+    }
+    const spec = ASTRO_RELIC_CATALOG.find((r) => r.id === action.relicId);
+    state.events.push({
+      type: "RELIC_DRAFTED",
+      x: state.ship.x,
+      y: state.ship.y,
+      text: `RELIC: ${spec?.name ?? action.relicId}`,
+      color: spec?.color ?? "#38bdf8"
+    });
+    state.log.unshift(`Drafted Astro-Relic: ${spec?.name ?? action.relicId}.`);
+    state.relicDraftChoices = [];
+    state.status = "PLAYING";
+    loadSectorOrPuzzle(state, state.sector + 1);
+    return;
+  }
+  if (state.status !== "PLAYING") return;
+  switch (action.type) {
+    case "BEGIN_AIM": {
+      state.ship.isAiming = true;
+      if (typeof action.angleRad === "number") state.ship.aimAngleRad = action.angleRad;
+      if (typeof action.powerPct === "number") {
+        state.ship.aimPowerPct = clamp(action.powerPct, 0.15, 1);
+      }
+      break;
+    }
+    case "UPDATE_AIM": {
+      state.ship.isAiming = true;
+      state.ship.aimAngleRad = action.angleRad;
+      state.ship.aimPowerPct = clamp(action.powerPct, 0.15, 1);
+      break;
+    }
+    case "CANCEL_AIM": {
+      state.ship.isAiming = false;
+      break;
+    }
+    case "LAUNCH_SLINGSHOT": {
+      const angle = action.angleRad ?? state.ship.aimAngleRad;
+      const power = clamp(action.powerPct ?? state.ship.aimPowerPct, 0.15, 1);
+      const speedMult = hasRelic(state, "TACHYON_RAIL") ? 1.3 : 1;
+      const launchSpeed = (HORIZON_CONFIG.MIN_SLINGSHOT_SPEED + (HORIZON_CONFIG.MAX_SLINGSHOT_SPEED - HORIZON_CONFIG.MIN_SLINGSHOT_SPEED) * power) * speedMult;
+      state.ship.vx = Math.cos(angle) * launchSpeed;
+      state.ship.vy = Math.sin(angle) * launchSpeed;
+      state.ship.isAiming = false;
+      state.ship.tetherTargetId = null;
+      state.ship.tetherKind = null;
+      state.ship.bounceChain = 0;
+      state.ship.constellationVertices = [];
+      for (const bmp of state.bumpers) {
+        bmp.activatedInChain = false;
+      }
+      state.launchesUsed += 1;
+      state.sectorLaunchesUsed += 1;
+      state.events.push({
+        type: "SLINGSHOT_LAUNCH",
+        x: state.ship.x,
+        y: state.ship.y,
+        text: `LAUNCH ${Math.round(launchSpeed)} u/s`,
+        color: "#38bdf8"
+      });
+      break;
+    }
+    case "NUDGE_THRUST": {
+      const mag = Math.hypot(action.dx, action.dy);
+      if (mag > 1e-4) {
+        const nx = action.dx / mag;
+        const ny = action.dy / mag;
+        state.ship.vx += nx * 42;
+        state.ship.vy += ny * 42;
+        const spd = Math.hypot(state.ship.vx, state.ship.vy);
+        if (spd > HORIZON_CONFIG.SPEED_OF_LIGHT_CAP) {
+          state.ship.vx = state.ship.vx / spd * HORIZON_CONFIG.SPEED_OF_LIGHT_CAP;
+          state.ship.vy = state.ship.vy / spd * HORIZON_CONFIG.SPEED_OF_LIGHT_CAP;
+        }
+      }
+      break;
+    }
+    case "TOGGLE_TETHER": {
+      if (state.ship.tetherTargetId) {
+        state.ship.tetherTargetId = null;
+        state.ship.tetherKind = null;
+        break;
+      }
+      const chassis = SHIP_CHASSIS_CATALOG[state.ship.chassis];
+      const maxRange = HORIZON_CONFIG.TETHER_MAX_RANGE * chassis.tetherRangeMult;
+      let bestId = null;
+      let bestKind = null;
+      let bestDist = maxRange;
+      for (const well of state.wells) {
+        const d = Math.hypot(well.x - state.ship.x, well.y - state.ship.y);
+        if (d <= bestDist) {
+          bestDist = d;
+          bestId = well.id;
+          bestKind = "WELL";
+        }
+      }
+      for (const bmp of state.bumpers) {
+        const d = Math.hypot(bmp.x - state.ship.x, bmp.y - state.ship.y);
+        if (d <= bestDist) {
+          bestDist = d;
+          bestId = bmp.id;
+          bestKind = "BUMPER";
+        }
+      }
+      if (bestId && bestKind) {
+        state.ship.tetherTargetId = bestId;
+        state.ship.tetherKind = bestKind;
+        state.ship.isAiming = false;
+      }
+      break;
+    }
+    case "TRIGGER_SUPERNOVA": {
+      triggerSupernovaPulse(state, false);
+      break;
+    }
+    case "TRIGGER_REWIND": {
+      if (state.worldlineHistory.length < 6) break;
+      const canUseCharge = state.ship.chronoCharges > 0;
+      const canUseEnergy = state.ship.hawkingEnergy >= HORIZON_CONFIG.REWIND_ENERGY_COST;
+      if (!canUseCharge && !canUseEnergy) break;
+      if (canUseCharge) {
+        state.ship.chronoCharges -= 1;
+      } else {
+        state.ship.hawkingEnergy -= HORIZON_CONFIG.REWIND_ENERGY_COST;
+      }
+      if (hasRelic(state, "SCHRODINGER_ECHO")) {
+        state.ship.hawkingEnergy = Math.min(
+          state.ship.maxHawkingEnergy,
+          state.ship.hawkingEnergy + 15
+        );
+      }
+      const recordedFrames = [...state.worldlineHistory];
+      const originFrame = recordedFrames[0];
+      state.activeEcho = {
+        active: true,
+        frames: recordedFrames,
+        frameIndex: 0,
+        x: originFrame.x,
+        y: originFrame.y,
+        vx: originFrame.vx,
+        vy: originFrame.vy,
+        radius: HORIZON_CONFIG.ECHO_RADIUS
+      };
+      state.ship.x = originFrame.x;
+      state.ship.y = originFrame.y;
+      state.ship.vx = originFrame.vx;
+      state.ship.vy = originFrame.vy;
+      state.ship.invulnerableMs = Math.max(state.ship.invulnerableMs, 900);
+      state.stats.rewindsUsed += 1;
+      state.events.push({
+        type: "CHRONO_REWIND",
+        x: state.ship.x,
+        y: state.ship.y,
+        text: "\u23F3 WORLDLINE REWIND + PHANTOM ECHO!",
+        color: "#a855f7",
+        magnitude: 2
+      });
+      state.log.unshift("Rewound 2.0s along spacetime worldline & spawned Phantom Echo Twin!");
+      break;
+    }
+    case "TRIGGER_AI_COACH": {
+      const opt = computeOptimalLaunchVector(state);
+      state.ship.aimAngleRad = opt.angleRad;
+      state.ship.aimPowerPct = opt.powerPct;
+      applyHorizonInput(state, {
+        type: "LAUNCH_SLINGSHOT",
+        angleRad: opt.angleRad,
+        powerPct: opt.powerPct
+      });
+      state.log.unshift(
+        `AI Trickshot Coach executed optimal vector (${Math.round(opt.angleRad * 180 / Math.PI)}\xB0, ${Math.round(opt.powerPct * 100)}% power).`
+      );
+      break;
+    }
+  }
+}
+function openRelicDraftOrAdvance(state) {
+  const rng = new SeededRng(state.rngState ^ state.tick * 73244475);
+  if (state.mode === "TRICKSHOT_DOJO") {
+    if (state.sector >= TRICKSHOT_PUZZLES.length) {
+      state.status = "VICTORY";
+      state.verdictId = "SACRED_GEOMETER";
+      state.events.push({
+        type: "VICTORY",
+        x: state.ship.x,
+        y: state.ship.y,
+        text: "DOJO GRANDMASTER VICTORY!",
+        color: "#38bdf8"
+      });
+      state.log.unshift("Completed all 5 Constellation Trickshot Dojo puzzles!");
+    } else {
+      loadSectorOrPuzzle(state, state.sector + 1);
+    }
+    state.rngState = rng.getState();
+    return;
+  }
+  if (state.mode === "ODYSSEY" && state.sector >= HORIZON_CONFIG.TOTAL_CAMPAIGN_SECTORS) {
+    state.status = "VICTORY";
+    state.verdictId = determineHorizonVerdict(state);
+    state.events.push({
+      type: "VICTORY",
+      x: state.ship.x,
+      y: state.ship.y,
+      text: "\u{1F451} KARDASHEV-IX DEFEATED \xB7 ODYSSEY VICTORY!",
+      color: "#fde047",
+      magnitude: 3.5
+    });
+    state.log.unshift("Shattered KARDASHEV-IX and conquered the Event Horizon Odyssey!");
+    state.rngState = rng.getState();
+    return;
+  }
+  const unowned = ASTRO_RELIC_CATALOG.filter((r) => !state.relics.includes(r.id)).map(
+    (r) => r.id
+  );
+  const pool = unowned.length >= 3 ? unowned : ASTRO_RELIC_CATALOG.map((r) => r.id);
+  state.relicDraftChoices = rng.shuffle(pool).slice(0, 3);
+  state.status = "RELIC_DRAFT";
+  state.events.push({
+    type: "SECTOR_CLEARED",
+    x: state.ship.x,
+    y: state.ship.y,
+    text: `SECTOR ${state.sector} CLEARED! CHOOSE AN ASTRO-RELIC`,
+    color: "#10b981"
+  });
+  state.rngState = rng.getState();
+}
+function determineHorizonVerdict(state) {
+  if (state.status === "GAME_OVER") {
+    return "ENTROPIC_DRIFT";
+  }
+  if (state.stats.polygonsEnclosed >= 4) {
+    return "SACRED_GEOMETER";
+  }
+  if (state.ship.peakLorentzGamma >= 3.8 || state.stats.skimsPerformed >= 20) {
+    return "HORIZON_DAREDEVIL";
+  }
+  if (state.stats.rewindsUsed >= 2) {
+    return "WORLDLINE_WEAVER";
+  }
+  return "KARDASHEV_SOVEREIGN";
+}
+function stepHorizonState(state, dtMs = HORIZON_CONFIG.FIXED_STEP_MS) {
+  if (state.status !== "PLAYING") return;
+  const timeScale = state.ship.isAiming ? HORIZON_CONFIG.BULLET_TIME_SCALE : 1;
+  const effDtMs = dtMs * timeScale;
+  const dtSec = effDtMs / 1e3;
+  state.tick += 1;
+  state.elapsedMs += effDtMs;
+  const chassis = SHIP_CHASSIS_CATALOG[state.ship.chassis];
+  state.ship.invulnerableMs = Math.max(0, state.ship.invulnerableMs - effDtMs);
+  state.ship.wormholeCooldownMs = Math.max(0, state.ship.wormholeCooldownMs - effDtMs);
+  state.ship.supernovaCooldownMs = Math.max(0, state.ship.supernovaCooldownMs - effDtMs);
+  state.ship.skimSoundCooldownMs = Math.max(0, state.ship.skimSoundCooldownMs - dtMs);
+  if (state.ship.isAiming) {
+    if (!hasRelic(state, "CHRONO_HOURGLASS")) {
+      state.ship.hawkingEnergy = Math.max(
+        0,
+        state.ship.hawkingEnergy - HORIZON_CONFIG.AIM_ENERGY_DRAIN_PER_SEC * (dtMs / 1e3)
+      );
+      if (state.ship.hawkingEnergy <= 0) {
+        state.ship.isAiming = false;
+      }
+    }
+  } else {
+    state.ship.hawkingEnergy = Math.min(
+      state.ship.maxHawkingEnergy,
+      state.ship.hawkingEnergy + HORIZON_CONFIG.PASSIVE_ENERGY_REGEN_PER_SEC * dtSec
+    );
+  }
+  for (const well of state.wells) {
+    well.pulsePhase += dtSec * 2.4;
+    if (well.orbitCenterX !== void 0 && well.orbitCenterY !== void 0 && well.orbitRadius !== void 0 && well.orbitAngularSpeed !== void 0) {
+      well.orbitPhase = (well.orbitPhase ?? 0) + well.orbitAngularSpeed * dtSec;
+      well.x = well.orbitCenterX + Math.cos(well.orbitPhase) * well.orbitRadius;
+      well.y = well.orbitCenterY + Math.sin(well.orbitPhase) * well.orbitRadius;
+    }
+  }
+  for (const bmp of state.bumpers) {
+    bmp.hitFlashMs = Math.max(0, bmp.hitFlashMs - dtMs);
+    if (bmp.orbitCenterX !== void 0 && bmp.orbitCenterY !== void 0 && bmp.orbitRadius !== void 0 && bmp.orbitAngularSpeed !== void 0) {
+      bmp.orbitPhase = (bmp.orbitPhase ?? 0) + bmp.orbitAngularSpeed * dtSec;
+      bmp.x = bmp.orbitCenterX + Math.cos(bmp.orbitPhase) * bmp.orbitRadius;
+      bmp.y = bmp.orbitCenterY + Math.sin(bmp.orbitPhase) * bmp.orbitRadius;
+    }
+  }
+  state.worldlineHistory.push({
+    x: state.ship.x,
+    y: state.ship.y,
+    vx: state.ship.vx,
+    vy: state.ship.vy
+  });
+  if (state.worldlineHistory.length > HORIZON_CONFIG.WORLDLINE_BUFFER_TICKS) {
+    state.worldlineHistory.shift();
+  }
+  if (state.activeEcho && state.activeEcho.active) {
+    const echo = state.activeEcho;
+    if (echo.frameIndex < echo.frames.length) {
+      const sample = echo.frames[echo.frameIndex];
+      echo.x = sample.x;
+      echo.y = sample.y;
+      echo.vx = sample.vx;
+      echo.vy = sample.vy;
+      echo.frameIndex += 1;
+      const echoDmgMult = HORIZON_CONFIG.ECHO_DAMAGE_MULT * (hasRelic(state, "SCHRODINGER_ECHO") ? 1.8 : 1) * (state.ship.chassis === "PHOTON_WISP" ? 1.25 : 1);
+      for (const enemy of state.enemies) {
+        const d = Math.hypot(enemy.x - echo.x, enemy.y - echo.y);
+        if (d <= enemy.radius + echo.radius && enemy.hitFlashMs <= 0) {
+          enemy.shielded = false;
+          enemy.hp -= Math.round(38 * echoDmgMult);
+          enemy.hitFlashMs = 150;
+        }
+      }
+    } else {
+      state.activeEcho = null;
+    }
+  }
+  const { ax, ay, nearestWell, nearestDist } = computeGravitationalAcceleration(
+    state.ship.x,
+    state.ship.y,
+    state.wells
+  );
+  const isDojoTee = state.mode === "TRICKSHOT_DOJO" && state.sectorLaunchesUsed === 0;
+  if (!isDojoTee) {
+    state.ship.vx += ax / chassis.mass * dtSec;
+    state.ship.vy += ay / chassis.mass * dtSec;
+  }
+  if (state.ship.tetherTargetId) {
+    const anchor = state.wells.find((w) => w.id === state.ship.tetherTargetId) ?? state.bumpers.find((b) => b.id === state.ship.tetherTargetId);
+    if (anchor) {
+      const dx = anchor.x - state.ship.x;
+      const dy = anchor.y - state.ship.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1e-3) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const tx1 = -ny;
+        const ty1 = nx;
+        const dot = state.ship.vx * tx1 + state.ship.vy * ty1;
+        const sign = dot >= 0 ? 1 : -1;
+        const tx = tx1 * sign;
+        const ty = ty1 * sign;
+        state.ship.vx += (nx * HORIZON_CONFIG.TETHER_CENTRIPETAL_BOOST + tx * HORIZON_CONFIG.TETHER_TANGENTIAL_ACCEL) * dtSec;
+        state.ship.vy += (ny * HORIZON_CONFIG.TETHER_CENTRIPETAL_BOOST + ty * HORIZON_CONFIG.TETHER_TANGENTIAL_ACCEL) * dtSec;
+        const tetherDps = HORIZON_CONFIG.TETHER_BEAM_DPS * (hasRelic(state, "DYSON_HARMONIC") ? 1.85 : 1);
+        for (const enemy of state.enemies) {
+          const beamDist = pointToSegmentDistance(
+            enemy.x,
+            enemy.y,
+            state.ship.x,
+            state.ship.y,
+            anchor.x,
+            anchor.y
+          );
+          if (beamDist <= enemy.radius + 8) {
+            enemy.shielded = false;
+            enemy.hp -= tetherDps * dtSec;
+            enemy.hitFlashMs = Math.max(enemy.hitFlashMs, 90);
+          }
+        }
+      }
+    } else {
+      state.ship.tetherTargetId = null;
+      state.ship.tetherKind = null;
+    }
+  }
+  state.ship.vx *= Math.pow(HORIZON_CONFIG.SPACE_DRAG, timeScale);
+  state.ship.vy *= Math.pow(HORIZON_CONFIG.SPACE_DRAG, timeScale);
+  const speed = Math.hypot(state.ship.vx, state.ship.vy);
+  if (speed > HORIZON_CONFIG.SPEED_OF_LIGHT_CAP) {
+    state.ship.vx = state.ship.vx / speed * HORIZON_CONFIG.SPEED_OF_LIGHT_CAP;
+    state.ship.vy = state.ship.vy / speed * HORIZON_CONFIG.SPEED_OF_LIGHT_CAP;
+  }
+  state.ship.lorentzGamma = computeLorentzGamma(
+    Math.hypot(state.ship.vx, state.ship.vy),
+    state.ship.bounceChain,
+    hasRelic(state, "NOETHER_DYNAMO")
+  );
+  state.ship.peakLorentzGamma = Math.max(state.ship.peakLorentzGamma, state.ship.lorentzGamma);
+  if (!isDojoTee) {
+    state.ship.x += state.ship.vx * dtSec;
+    state.ship.y += state.ship.vy * dtSec;
+  }
+  if (nearestWell && !isDojoTee) {
+    if (nearestDist <= nearestWell.skimRadius && nearestDist > nearestWell.coreRadius + state.ship.radius) {
+      state.ship.hawkingEnergy = Math.min(
+        state.ship.maxHawkingEnergy,
+        state.ship.hawkingEnergy + HORIZON_CONFIG.SKIM_ENERGY_GAIN_PER_SEC * dtSec
+      );
+      state.score += Math.round(HORIZON_CONFIG.SKIM_SCORE_PER_TICK * state.ship.lorentzGamma);
+      if (state.ship.skimSoundCooldownMs <= 0) {
+        state.ship.skimSoundCooldownMs = 380;
+        state.stats.skimsPerformed += 1;
+        state.events.push({
+          type: "EVENT_HORIZON_SKIM",
+          x: state.ship.x,
+          y: state.ship.y,
+          text: `PHOTON SKIM \u03B3=${state.ship.lorentzGamma.toFixed(1)}x`,
+          color: "#fbbf24"
+        });
+        if (hasRelic(state, "HAWKING_PRISM") && state.enemies.length > 0) {
+          for (let k = 0; k < Math.min(3, state.enemies.length); k++) {
+            const target = state.enemies[k % state.enemies.length];
+            const ang = Math.atan2(target.y - state.ship.y, target.x - state.ship.x);
+            state.projectiles.push({
+              id: `lance-${state.tick}-${k}`,
+              friendly: true,
+              x: state.ship.x,
+              y: state.ship.y,
+              vx: Math.cos(ang) * 460,
+              vy: Math.sin(ang) * 460,
+              radius: 6,
+              damage: 30,
+              ttlMs: 2200,
+              color: "#f472b6"
+            });
+          }
+        }
+      }
+    }
+    if (nearestDist <= nearestWell.coreRadius + state.ship.radius) {
+      if (nearestWell.pairedWellId && state.ship.wormholeCooldownMs <= 0) {
+        const exitWell = state.wells.find((w) => w.id === nearestWell.pairedWellId);
+        if (exitWell) {
+          const curSpeed = Math.max(320, Math.hypot(state.ship.vx, state.ship.vy)) * 1.65;
+          const ang = Math.atan2(state.ship.vy, state.ship.vx);
+          state.ship.x = exitWell.x + Math.cos(ang) * (exitWell.coreRadius + state.ship.radius + 8);
+          state.ship.y = exitWell.y + Math.sin(ang) * (exitWell.coreRadius + state.ship.radius + 8);
+          state.ship.vx = Math.cos(ang) * Math.min(curSpeed, HORIZON_CONFIG.SPEED_OF_LIGHT_CAP);
+          state.ship.vy = Math.sin(ang) * Math.min(curSpeed, HORIZON_CONFIG.SPEED_OF_LIGHT_CAP);
+          state.ship.wormholeCooldownMs = 650;
+          state.ship.hawkingEnergy = Math.min(
+            state.ship.maxHawkingEnergy,
+            state.ship.hawkingEnergy + 25
+          );
+          state.stats.wormholeTransits += 1;
+          state.events.push({
+            type: "WORMHOLE_TRANSIT",
+            x: state.ship.x,
+            y: state.ship.y,
+            text: "\u{1F300} WORMHOLE CANNON 1.65x!",
+            color: "#ec4899",
+            magnitude: 2.2
+          });
+          state.log.unshift(`Transited Wormhole into ${exitWell.name} at 1.65x velocity!`);
+        }
+      } else if (state.ship.wormholeCooldownMs <= 0) {
+        const dx = state.ship.x - nearestWell.x;
+        const dy = state.ship.y - nearestWell.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const nx = dx / d;
+        const ny = dy / d;
+        state.ship.x = nearestWell.x + nx * (nearestWell.coreRadius + state.ship.radius + 6);
+        state.ship.y = nearestWell.y + ny * (nearestWell.coreRadius + state.ship.radius + 6);
+        state.ship.vx = nx * 320 - ny * 220;
+        state.ship.vy = ny * 320 + nx * 220;
+        const aegisProtected = hasRelic(state, "LORENTZ_AEGIS") && state.ship.lorentzGamma >= 2;
+        if (state.ship.invulnerableMs <= 0 && !aegisProtected && state.mode !== "TRICKSHOT_DOJO" && nearestWell.kind !== "WHITE_HOLE") {
+          state.ship.hull -= 1;
+          state.ship.invulnerableMs = 1100;
+          state.events.push({
+            type: "SHIP_DAMAGED",
+            x: state.ship.x,
+            y: state.ship.y,
+            text: "HORIZON SHEAR -1 HULL",
+            color: "#ef4444"
+          });
+        }
+      }
+    }
+  }
+  for (const bmp of state.bumpers) {
+    const dx = state.ship.x - bmp.x;
+    const dy = state.ship.y - bmp.y;
+    const dist = Math.hypot(dx, dy);
+    const minDist = state.ship.radius + bmp.radius;
+    if (dist < minDist && dist > 1e-4) {
+      const nx = dx / dist;
+      const ny = dy / dist;
+      state.ship.x = bmp.x + nx * (minDist + 1);
+      state.ship.y = bmp.y + ny * (minDist + 1);
+      const dot = state.ship.vx * nx + state.ship.vy * ny;
+      if (dot < 0) {
+        const rest = bmp.restitution * chassis.bumperElasticityBonus;
+        state.ship.vx = (state.ship.vx - 2 * dot * nx) * rest;
+        state.ship.vy = (state.ship.vy - 2 * dot * ny) * rest;
+        const newSpd = Math.hypot(state.ship.vx, state.ship.vy);
+        if (newSpd < 290) {
+          state.ship.vx = state.ship.vx / (newSpd || 1) * 290;
+          state.ship.vy = state.ship.vy / (newSpd || 1) * 290;
+        }
+      }
+      bmp.hitFlashMs = 320;
+      bmp.activatedInChain = true;
+      state.ship.bounceChain += 1;
+      state.stats.bumperRicochets += 1;
+      const energyGain = HORIZON_CONFIG.BUMPER_ENERGY_GAIN + (hasRelic(state, "NOETHER_DYNAMO") ? 10 : 0);
+      state.ship.hawkingEnergy = Math.min(
+        state.ship.maxHawkingEnergy,
+        state.ship.hawkingEnergy + energyGain
+      );
+      if (bmp.kind === "CHRONO_CRYSTAL") {
+        state.ship.chronoCharges = Math.min(
+          state.ship.maxChronoCharges,
+          state.ship.chronoCharges + 1
+        );
+      }
+      const relicMult = computeRelicScoreMultiplier(state);
+      const bounceScore = Math.round(
+        HORIZON_CONFIG.BASE_BUMPER_SCORE * state.ship.bounceChain * state.ship.lorentzGamma * relicMult
+      );
+      state.score += bounceScore;
+      state.events.push({
+        type: "BUMPER_RICOCHET",
+        x: bmp.x,
+        y: bmp.y,
+        text: `x${state.ship.bounceChain} +${bounceScore}`,
+        color: "#38bdf8",
+        noteIndex: bmp.harmonicNoteIndex + state.ship.bounceChain - 1
+      });
+      const verts = state.ship.constellationVertices;
+      if (verts.length === 0 || verts[verts.length - 1].id !== bmp.id) {
+        if (!verts.some((v) => v.id === bmp.id)) {
+          verts.push({ id: bmp.id, x: bmp.x, y: bmp.y });
+        }
+      }
+      if (hasRelic(state, "SUPERNOVA_CORE") && state.ship.bounceChain % 4 === 0) {
+        triggerSupernovaPulse(state, true);
+      }
+      if (state.ship.constellationVertices.length >= HORIZON_CONFIG.MIN_CONSTELLATION_VERTICES) {
+        evaluateConstellationEnclosure(state);
+      }
+    }
+  }
+  const minX = HORIZON_CONFIG.WALL_MARGIN + state.ship.radius;
+  const maxX = HORIZON_CONFIG.ARENA_WIDTH - HORIZON_CONFIG.WALL_MARGIN - state.ship.radius;
+  const minY = HORIZON_CONFIG.WALL_MARGIN + state.ship.radius;
+  const maxY = HORIZON_CONFIG.ARENA_HEIGHT - HORIZON_CONFIG.WALL_MARGIN - state.ship.radius;
+  if (state.ship.x < minX) {
+    state.ship.x = minX;
+    state.ship.vx = Math.abs(state.ship.vx) * HORIZON_CONFIG.WALL_RESTITUTION;
+  } else if (state.ship.x > maxX) {
+    state.ship.x = maxX;
+    state.ship.vx = -Math.abs(state.ship.vx) * HORIZON_CONFIG.WALL_RESTITUTION;
+  }
+  if (state.ship.y < minY) {
+    state.ship.y = minY;
+    state.ship.vy = Math.abs(state.ship.vy) * HORIZON_CONFIG.WALL_RESTITUTION;
+  } else if (state.ship.y > maxY) {
+    state.ship.y = maxY;
+    state.ship.vy = -Math.abs(state.ship.vy) * HORIZON_CONFIG.WALL_RESTITUTION;
+  }
+  const survivingEnemies = [];
+  for (const enemy of state.enemies) {
+    enemy.hitFlashMs = Math.max(0, enemy.hitFlashMs - dtMs);
+    if (state.mode !== "TRICKSHOT_DOJO") {
+      enemy.orbitAngle += dtSec * (enemy.kind === "ENTROPY_COMET" ? 1.45 : 0.55);
+      const driftSpeed = enemy.kind === "ENTROPY_COMET" ? 55 : 22;
+      enemy.vx = enemy.vx * 0.94 + Math.cos(enemy.orbitAngle) * driftSpeed * 0.06;
+      enemy.vy = enemy.vy * 0.94 + Math.sin(enemy.orbitAngle) * driftSpeed * 0.06;
+      enemy.x = clamp(enemy.x + enemy.vx * dtSec, 65, HORIZON_CONFIG.ARENA_WIDTH - 65);
+      enemy.y = clamp(enemy.y + enemy.vy * dtSec, 65, HORIZON_CONFIG.ARENA_HEIGHT - 65);
+      enemy.fireCooldownMs -= effDtMs;
+      if (enemy.fireCooldownMs <= 0 && (enemy.kind === "PHASE_FRIGATE" || enemy.kind === "TESSERA_WARDEN" || enemy.kind === "KARDASHEV_BOSS")) {
+        enemy.fireCooldownMs = enemy.kind === "KARDASHEV_BOSS" ? 1550 : 2800;
+        const ang = Math.atan2(state.ship.y - enemy.y, state.ship.x - enemy.x);
+        state.projectiles.push({
+          id: `proj-${state.tick}-${enemy.id}`,
+          friendly: false,
+          x: enemy.x,
+          y: enemy.y,
+          vx: Math.cos(ang) * 210,
+          vy: Math.sin(ang) * 210,
+          radius: 6,
+          damage: 1,
+          ttlMs: 3600,
+          color: "#f43f5e"
+        });
+      }
+    }
+    let crushedByWell = false;
+    for (const well of state.wells) {
+      if (well.kind === "WHITE_HOLE") continue;
+      const wd = Math.hypot(enemy.x - well.x, enemy.y - well.y);
+      if (wd <= well.coreRadius + enemy.radius * 0.85 && enemy.kind !== "KARDASHEV_BOSS") {
+        crushedByWell = true;
+        state.stats.rocheCrushes += 1;
+        const bonus = hasRelic(state, "ROCHE_CRUSHER") ? 500 : HORIZON_CONFIG.ROCHE_CRUSH_SCORE;
+        state.score += bonus;
+        if (hasRelic(state, "ROCHE_CRUSHER") || state.stats.rocheCrushes % 2 === 0) {
+          state.ship.hull = Math.min(state.ship.maxHull, state.ship.hull + 1);
+        }
+        state.events.push({
+          type: "ROCHE_CRUSH",
+          x: well.x,
+          y: well.y,
+          text: `\u{1F300} ROCHE TIDAL CRUSH! +${bonus}`,
+          color: "#10b981",
+          magnitude: 2
+        });
+        awardEnemyKill(state, enemy, "ROCHE");
+        break;
+      }
+    }
+    if (crushedByWell) continue;
+    const dx = enemy.x - state.ship.x;
+    const dy = enemy.y - state.ship.y;
+    const dist = Math.hypot(dx, dy);
+    const minDist = enemy.radius + state.ship.radius;
+    if (dist <= minDist) {
+      const shipSpeed = Math.hypot(state.ship.vx, state.ship.vy);
+      const canBreakShield = state.ship.chassis === "STAR_HAMMER" || state.ship.lorentzGamma >= 1.45 || shipSpeed >= 240 || hasRelic(state, "TACHYON_RAIL");
+      if (enemy.shielded && !canBreakShield) {
+        const nx = dist > 1e-3 ? dx / dist : 1;
+        const ny = dist > 1e-3 ? dy / dist : 0;
+        state.ship.vx = -nx * 240;
+        state.ship.vy = -ny * 240;
+      } else {
+        enemy.shielded = false;
+        const ramDamage = Math.round(
+          (48 + shipSpeed * 0.14) * state.ship.lorentzGamma * chassis.mass
+        );
+        enemy.hp -= ramDamage;
+        enemy.hitFlashMs = 200;
+        const nx = dist > 1e-3 ? dx / dist : 1;
+        const ny = dist > 1e-3 ? dy / dist : 0;
+        enemy.vx += nx * 280;
+        enemy.vy += ny * 280;
+        if (!hasRelic(state, "TACHYON_RAIL") || enemy.hp > 0) {
+          state.ship.x = enemy.x - nx * (minDist + 2);
+          state.ship.y = enemy.y - ny * (minDist + 2);
+          state.ship.vx = -state.ship.vx * 0.72;
+          state.ship.vy = -state.ship.vy * 0.72;
+        }
+      }
+    }
+    if (enemy.hp <= 0) {
+      awardEnemyKill(state, enemy, "RAM");
+    } else {
+      survivingEnemies.push(enemy);
+    }
+  }
+  state.enemies = survivingEnemies;
+  const activeProjectiles = [];
+  for (const proj of state.projectiles) {
+    proj.ttlMs -= effDtMs;
+    if (proj.ttlMs <= 0) continue;
+    if (proj.friendly && state.enemies.length > 0) {
+      const target = state.enemies[0];
+      const desired = Math.atan2(target.y - proj.y, target.x - proj.x);
+      proj.vx = proj.vx * 0.88 + Math.cos(desired) * 460 * 0.12;
+      proj.vy = proj.vy * 0.88 + Math.sin(desired) * 460 * 0.12;
+    }
+    proj.x += proj.vx * dtSec;
+    proj.y += proj.vy * dtSec;
+    let consumed = false;
+    if (proj.friendly) {
+      for (const enemy of state.enemies) {
+        if (Math.hypot(enemy.x - proj.x, enemy.y - proj.y) <= enemy.radius + proj.radius) {
+          enemy.shielded = false;
+          enemy.hp -= proj.damage;
+          enemy.hitFlashMs = 160;
+          consumed = true;
+          break;
+        }
+      }
+    } else {
+      if (Math.hypot(state.ship.x - proj.x, state.ship.y - proj.y) <= state.ship.radius + proj.radius) {
+        consumed = true;
+        const aegisProtected = hasRelic(state, "LORENTZ_AEGIS") && state.ship.lorentzGamma >= 2;
+        if (state.ship.invulnerableMs <= 0 && !aegisProtected) {
+          state.ship.hull -= proj.damage;
+          state.ship.invulnerableMs = 1e3;
+          state.events.push({
+            type: "SHIP_DAMAGED",
+            x: state.ship.x,
+            y: state.ship.y,
+            text: "PLASMA HIT -1 HULL",
+            color: "#ef4444"
+          });
+        }
+      }
+    }
+    if (!consumed) {
+      activeProjectiles.push(proj);
+    }
+  }
+  state.projectiles = activeProjectiles;
+  if (state.enemies.some((e) => e.hp <= 0)) {
+    const stillAlive = [];
+    for (const enemy of state.enemies) {
+      if (enemy.hp <= 0) {
+        awardEnemyKill(state, enemy, "PHOTON_LANCE");
+      } else {
+        stillAlive.push(enemy);
+      }
+    }
+    state.enemies = stillAlive;
+  }
+  const magnetRadius = hasRelic(state, "BINARY_ATTRACTOR") ? 900 : 175;
+  const moteBonusMult = hasRelic(state, "BINARY_ATTRACTOR") ? 1.5 : 1;
+  const remainingMotes = [];
+  for (const mote of state.starMotes) {
+    mote.ttlMs -= effDtMs;
+    if (mote.ttlMs <= 0) continue;
+    const dx = state.ship.x - mote.x;
+    const dy = state.ship.y - mote.y;
+    const d = Math.hypot(dx, dy);
+    if (d <= state.ship.radius + 16) {
+      const pts = Math.round(mote.value * moteBonusMult * computeRelicScoreMultiplier(state));
+      state.score += pts;
+      state.ship.hawkingEnergy = Math.min(
+        state.ship.maxHawkingEnergy,
+        state.ship.hawkingEnergy + 8
+      );
+      if (mote.kind === "CHRONO_SHARD") {
+        state.ship.chronoCharges = Math.min(
+          state.ship.maxChronoCharges,
+          state.ship.chronoCharges + 1
+        );
+      }
+      continue;
+    }
+    if (d <= magnetRadius && d > 1e-3) {
+      mote.vx += dx / d * 520 * dtSec;
+      mote.vy += dy / d * 520 * dtSec;
+    }
+    mote.x += mote.vx * dtSec;
+    mote.y += mote.vy * dtSec;
+    remainingMotes.push(mote);
+  }
+  state.starMotes = remainingMotes;
+  state.activePolygons = state.activePolygons.map((p) => ({ ...p, ttlMs: p.ttlMs - dtMs })).filter((p) => p.ttlMs > 0);
+  if (state.ship.hull <= 0) {
+    state.ship.hull = 0;
+    state.status = "GAME_OVER";
+    state.verdictId = determineHorizonVerdict(state);
+    state.events.push({
+      type: "GAME_OVER",
+      x: state.ship.x,
+      y: state.ship.y,
+      text: "HULL BREACHED \xB7 SINGULARITY COLLAPSE",
+      color: "#ef4444"
+    });
+    state.log.unshift("Hull integrity collapsed under gravitational shear.");
+    return;
+  }
+  if (state.enemies.length === 0) {
+    openRelicDraftOrAdvance(state);
+  }
+}
+function runHorizonCounterfactuals(seed) {
+  const archetypes = [
+    {
+      id: "SACRED_GEOMETER_AI",
+      name: "Euclidean Trickshot Geometer",
+      chassis: "VANGUARD",
+      relicPref: "KEPLER_SCYTHE",
+      philosophy: "Prioritizes 3-bumper Constellation Polygon enclosures & AI Coach trickshots.",
+      useTether: false,
+      useRewind: false
+    },
+    {
+      id: "HORIZON_DAREDEVIL_AI",
+      name: "Relativistic Tether Daredevil",
+      chassis: "STAR_HAMMER",
+      relicPref: "ROCHE_CRUSHER",
+      philosophy: "Whips on Quantum Tethers ([Q]) & triggers Supernovas ([E]) for Roche Crushes.",
+      useTether: true,
+      useRewind: false
+    },
+    {
+      id: "CHRONO_WEAVER_AI",
+      name: "Worldline Paradox Weaver",
+      chassis: "PHOTON_WISP",
+      relicPref: "SCHRODINGER_ECHO",
+      philosophy: "Chains high-elasticity bumper bounces and rewinds spacetime ([R]) for Echo hits.",
+      useTether: false,
+      useRewind: true
+    }
+  ];
+  return archetypes.map((arch) => {
+    const sim = createInitialHorizonState(seed, {
+      mode: "ODYSSEY",
+      chassis: arch.chassis,
+      startSector: 1
+    });
+    sim.relics.push(arch.relicPref);
+    for (let step = 0; step < 360; step++) {
+      if (sim.status === "VICTORY" || sim.status === "GAME_OVER") break;
+      if (sim.status === "RELIC_DRAFT") {
+        const pick = sim.relicDraftChoices[0] ?? "NOETHER_DYNAMO";
+        applyHorizonInput(sim, { type: "SELECT_RELIC", relicId: pick });
+      }
+      if (step % 45 === 0) {
+        applyHorizonInput(sim, { type: "TRIGGER_AI_COACH" });
+      }
+      if (arch.useTether && step % 30 === 15) {
+        applyHorizonInput(sim, { type: "TOGGLE_TETHER" });
+      }
+      if (arch.useTether && step % 60 === 40) {
+        applyHorizonInput(sim, { type: "TRIGGER_SUPERNOVA" });
+      }
+      if (arch.useRewind && step % 75 === 50) {
+        applyHorizonInput(sim, { type: "TRIGGER_REWIND" });
+      }
+      stepHorizonState(sim, HORIZON_CONFIG.FIXED_STEP_MS);
+    }
+    const vId = determineHorizonVerdict(sim);
+    return {
+      archetypeId: arch.id,
+      archetypeName: arch.name,
+      philosophy: arch.philosophy,
+      finalScore: sim.score,
+      polygonsEnclosed: sim.stats.polygonsEnclosed,
+      peakLorentzGamma: sim.ship.peakLorentzGamma,
+      sectorsCleared: sim.sector,
+      verdictTitle: HORIZON_VERDICTS[vId]?.title ?? vId
+    };
+  });
+}
+
+// games/12-event-horizon/src/persistence.ts
+function createDefaultHorizonCareer() {
+  return {
+    highScore: 0,
+    bestLorentzGamma: 1,
+    runsPlayed: 0,
+    odysseyVictories: 0,
+    dojoCompletions: 0,
+    totalPolygonsEnclosed: 0,
+    totalEnemiesVaporized: 0,
+    relicsUnlocked: [],
+    verdictsUnlocked: [],
+    completedRunKeys: []
+  };
+}
+function loadHorizonSave(storage = typeof localStorage !== "undefined" ? localStorage : null) {
+  const defaultEnvelope = {
+    version: HORIZON_CONFIG.SAVE_VERSION,
+    career: createDefaultHorizonCareer(),
+    activeRun: null
+  };
+  if (!storage) return defaultEnvelope;
+  try {
+    const raw = storage.getItem(HORIZON_CONFIG.SAVE_KEY);
+    if (!raw) return defaultEnvelope;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== HORIZON_CONFIG.SAVE_VERSION || !parsed.career) {
+      return defaultEnvelope;
+    }
+    const c = parsed.career;
+    return {
+      version: HORIZON_CONFIG.SAVE_VERSION,
+      career: {
+        highScore: Number.isFinite(c.highScore) ? c.highScore : 0,
+        bestLorentzGamma: Number.isFinite(c.bestLorentzGamma) ? c.bestLorentzGamma : 1,
+        runsPlayed: Number.isFinite(c.runsPlayed) ? c.runsPlayed : 0,
+        odysseyVictories: Number.isFinite(c.odysseyVictories) ? c.odysseyVictories : 0,
+        dojoCompletions: Number.isFinite(c.dojoCompletions) ? c.dojoCompletions : 0,
+        totalPolygonsEnclosed: Number.isFinite(c.totalPolygonsEnclosed) ? c.totalPolygonsEnclosed : 0,
+        totalEnemiesVaporized: Number.isFinite(c.totalEnemiesVaporized) ? c.totalEnemiesVaporized : 0,
+        relicsUnlocked: Array.isArray(c.relicsUnlocked) ? [...c.relicsUnlocked] : [],
+        verdictsUnlocked: Array.isArray(c.verdictsUnlocked) ? [...c.verdictsUnlocked] : [],
+        completedRunKeys: Array.isArray(c.completedRunKeys) ? [...c.completedRunKeys] : []
+      },
+      activeRun: parsed.activeRun && typeof parsed.activeRun.seed === "number" && parsed.activeRun.ship && Array.isArray(parsed.activeRun.wells) ? cloneHorizonState(parsed.activeRun) : null
+    };
+  } catch {
+    return defaultEnvelope;
+  }
+}
+function saveHorizonState(career, state, storage = typeof localStorage !== "undefined" ? localStorage : null) {
+  const updatedCareer = {
+    ...career,
+    relicsUnlocked: [...career.relicsUnlocked],
+    verdictsUnlocked: [...career.verdictsUnlocked],
+    completedRunKeys: [...career.completedRunKeys]
+  };
+  if (state) {
+    updatedCareer.highScore = Math.max(updatedCareer.highScore, state.score);
+    updatedCareer.bestLorentzGamma = Math.max(
+      updatedCareer.bestLorentzGamma,
+      state.ship.peakLorentzGamma
+    );
+    for (const relicId of state.relics) {
+      if (!updatedCareer.relicsUnlocked.includes(relicId)) {
+        updatedCareer.relicsUnlocked.push(relicId);
+      }
+    }
+    if (state.status === "VICTORY" || state.status === "GAME_OVER") {
+      const runKey = `${state.seed}:${state.mode}:${state.tick}:${state.status}`;
+      if (!updatedCareer.completedRunKeys.includes(runKey)) {
+        updatedCareer.completedRunKeys.push(runKey);
+        if (updatedCareer.completedRunKeys.length > 60) {
+          updatedCareer.completedRunKeys.shift();
+        }
+        updatedCareer.runsPlayed += 1;
+        updatedCareer.totalPolygonsEnclosed += state.stats.polygonsEnclosed;
+        updatedCareer.totalEnemiesVaporized += state.stats.enemiesVaporized;
+        if (state.status === "VICTORY") {
+          if (state.mode === "ODYSSEY") updatedCareer.odysseyVictories += 1;
+          if (state.mode === "TRICKSHOT_DOJO") updatedCareer.dojoCompletions += 1;
+        }
+        if (state.verdictId && !updatedCareer.verdictsUnlocked.includes(state.verdictId)) {
+          updatedCareer.verdictsUnlocked.push(state.verdictId);
+        }
+      }
+    }
+  }
+  const envelope = {
+    version: HORIZON_CONFIG.SAVE_VERSION,
+    career: updatedCareer,
+    activeRun: state && state.status !== "VICTORY" && state.status !== "GAME_OVER" ? cloneHorizonState(state) : null
+  };
+  if (storage) {
+    try {
+      storage.setItem(HORIZON_CONFIG.SAVE_KEY, JSON.stringify(envelope));
+    } catch {
+    }
+  }
+  return envelope;
+}
+
+// games/12-event-horizon/src/ui.ts
+var HorizonUIController = class {
+  container;
+  audio;
+  callbacks;
+  debugVisible;
+  canvas;
+  ctx;
+  announcerEl;
+  // HUD DOM elements
+  scoreEl;
+  highScoreEl;
+  sectorEl;
+  gammaEl;
+  hullEl;
+  energyBarEl;
+  energyTextEl;
+  chronoEl;
+  polygonsEl;
+  subtitleEl;
+  hintEl;
+  relicStripEl;
+  logListEl;
+  overlayHostEl;
+  debugPanelEl;
+  labBodyEl;
+  // Visual Juice state
+  popups = [];
+  shockwaves = [];
+  stars = [];
+  pointerDown = false;
+  lastModalKey = "";
+  keydownHandler;
+  constructor(container, audio, callbacks, initialDebug = false) {
+    this.container = container;
+    this.audio = audio;
+    this.callbacks = callbacks;
+    this.debugVisible = initialDebug;
+    for (let i = 0; i < 70; i++) {
+      this.stars.push({
+        x: i * 137.5 % 1 * HORIZON_CONFIG.ARENA_WIDTH,
+        y: i * 293.7 % 1 * HORIZON_CONFIG.ARENA_HEIGHT,
+        size: 1 + i % 3 * 0.75,
+        alpha: 0.25 + i % 5 * 0.14,
+        speed: 4 + i % 4 * 3
+      });
+    }
+    this.keydownHandler = (e) => this.handleKeyDown(e);
+    this.mountDOM();
+    if (typeof window !== "undefined") {
+      window.addEventListener("keydown", this.keydownHandler);
+    }
+  }
+  isDebugVisible() {
+    return this.debugVisible;
+  }
+  setDebugVisible(visible) {
+    this.debugVisible = visible;
+    if (this.debugPanelEl) {
+      this.debugPanelEl.hidden = !visible;
+    }
+  }
+  resetVisuals() {
+    this.popups = [];
+    this.shockwaves = [];
+    this.lastModalKey = "";
+    if (this.overlayHostEl) {
+      this.overlayHostEl.innerHTML = "";
+      this.overlayHostEl.hidden = true;
+    }
+  }
+  announce(msg) {
+    if (this.announcerEl) {
+      this.announcerEl.textContent = msg;
+    }
+  }
+  mountDOM() {
+    this.container.innerHTML = `
+      <style>
+        .eh-root {
+          --eh-bg-light: #060913;
+          --eh-bg-dark: #050711;
+          --eh-bg: var(--eh-bg-dark);
+          --eh-surface-light: #0f172a;
+          --eh-surface-dark: #0b1120;
+          --eh-surface: var(--eh-surface-dark);
+          --eh-border: #1e293b;
+          --eh-accent: #38bdf8;
+          --eh-gold: #fbbf24;
+          --eh-violet: #a855f7;
+          --eh-emerald: #10b981;
+          --eh-rose: #f43f5e;
+          --eh-text: #f8fafc;
+          --eh-muted: #94a3b8;
+          color-scheme: light dark;
+          container-type: inline-size;
+          container-name: ehstage;
+          background: radial-gradient(circle at 50% 15%, #0c1938 0%, var(--eh-bg) 72%);
+          color: var(--eh-text);
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+          padding: 0.85rem;
+          border-radius: 0.85rem;
+          border: 1px solid #1e3a5f;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+        }
+
+        @supports (color: light-dark(white, black)) {
+          .eh-root {
+            --eh-bg: light-dark(var(--eh-bg-light), var(--eh-bg-dark));
+            --eh-surface: light-dark(var(--eh-surface-light), var(--eh-surface-dark));
+          }
+        }
+
+        .eh-root :where(button, select, input):focus-visible {
+          outline: 3px solid var(--eh-accent);
+          outline-offset: 2px;
+        }
+
+        .eh-header {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.65rem;
+          margin-block-end: 0.7rem;
+          padding-block-end: 0.6rem;
+          border-block-end: 1px solid var(--eh-border);
+        }
+
+        .eh-title-block h2 {
+          margin: 0;
+          font-size: clamp(1.1rem, 0.9rem + 1vw, 1.55rem);
+          font-weight: 900;
+          letter-spacing: -0.02em;
+          background: linear-gradient(90deg, #38bdf8, #fbbf24, #f472b6);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .eh-title-block p {
+          margin: 0.15rem 0 0;
+          font-size: 0.8rem;
+          color: var(--eh-muted);
+        }
+
+        .eh-mode-bar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 0.4rem;
+        }
+
+        .eh-btn {
+          min-block-size: 28px;
+          min-inline-size: 28px;
+          padding: 0.35rem 0.7rem;
+          border-radius: 0.45rem;
+          border: 1px solid #334155;
+          background: #111c33;
+          color: var(--eh-text);
+          font-size: 0.78rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.14s ease;
+        }
+
+        @media (pointer: coarse) {
+          .eh-btn {
+            min-block-size: 44px;
+            min-inline-size: 44px;
+          }
+        }
+
+        .eh-btn:hover {
+          border-color: var(--eh-accent);
+          background: #1e293b;
+        }
+
+        .eh-btn-accent {
+          background: linear-gradient(135deg, #0284c7, #2563eb);
+          border-color: #38bdf8;
+          color: #ffffff;
+        }
+
+        .eh-btn-gold {
+          background: linear-gradient(135deg, #d97706, #b45309);
+          border-color: #fbbf24;
+          color: #ffffff;
+        }
+
+        .eh-hud-strip {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 0.45rem;
+          margin-block-end: 0.65rem;
+        }
+
+        @media (min-width: 720px) {
+          .eh-hud-strip {
+            grid-template-columns: repeat(6, 1fr);
+          }
+        }
+
+        @supports (container-type: inline-size) {
+          @container ehstage (min-width: 680px) {
+            .eh-hud-strip {
+              grid-template-columns: repeat(6, 1fr);
+            }
+          }
+        }
+
+        .eh-metric {
+          background: rgba(15, 23, 42, 0.85);
+          border: 1px solid #1e293b;
+          border-radius: 0.5rem;
+          padding: 0.4rem 0.6rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.15rem;
+        }
+
+        .eh-metric-label {
+          font-size: 0.68rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: var(--eh-muted);
+          font-weight: 700;
+        }
+
+        .eh-metric-val {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.96rem;
+          font-weight: 800;
+        }
+
+        .eh-energy-track {
+          inline-size: 100%;
+          block-size: 6px;
+          background: #090d16;
+          border-radius: 999px;
+          overflow: hidden;
+          margin-block-start: 2px;
+        }
+
+        .eh-energy-fill {
+          block-size: 100%;
+          background: linear-gradient(90deg, #38bdf8, #a855f7);
+          transition: inline-size 0.08s linear;
+        }
+
+        /* Main Layout Grid */
+        .eh-layout {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+        }
+
+        @media (min-width: 980px) {
+          .eh-layout {
+            flex-direction: row;
+            align-items: flex-start;
+          }
+        }
+
+        @supports (container-type: inline-size) {
+          @container ehstage (min-width: 920px) {
+            .eh-layout {
+              flex-direction: row;
+              align-items: flex-start;
+            }
+          }
+        }
+
+        .eh-canvas-col {
+          flex: 1 1 auto;
+          min-inline-size: 0;
+        }
+
+        .eh-canvas-wrap {
+          position: relative;
+          inline-size: 100%;
+          aspect-ratio: 960 / 600;
+          background: #03060c;
+          border-radius: 0.65rem;
+          border: 1px solid #334155;
+          overflow: hidden;
+          box-shadow: inset 0 0 40px rgba(14, 165, 233, 0.12);
+        }
+
+        .eh-canvas {
+          display: block;
+          inline-size: 100%;
+          block-size: 100%;
+          touch-action: none;
+          cursor: crosshair;
+        }
+
+        .eh-overlay-host {
+          position: absolute;
+          inset: 0;
+          background: rgba(3, 7, 18, 0.86);
+          backdrop-filter: blur(5px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+          z-index: 20;
+        }
+
+        .eh-overlay-host[hidden] {
+          display: none !important;
+        }
+
+        .eh-modal-card {
+          max-inline-size: 680px;
+          inline-size: 100%;
+          background: #0f172a;
+          border: 1px solid #38bdf8;
+          border-radius: 0.75rem;
+          padding: 1.15rem;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+        }
+
+        .eh-relic-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 0.65rem;
+          margin-block-start: 0.75rem;
+        }
+
+        .eh-relic-choice {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          text-align: left;
+          gap: 0.35rem;
+          padding: 0.75rem;
+          border-radius: 0.6rem;
+          border: 1px solid #334155;
+          background: #131c31;
+          color: var(--eh-text);
+          cursor: pointer;
+          transition: transform 0.12s ease, border-color 0.12s ease;
+        }
+
+        .eh-relic-choice:hover {
+          transform: translateY(-2px);
+          border-color: #38bdf8;
+          background: #1e293b;
+        }
+
+        .eh-action-bar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.45rem;
+          margin-block-start: 0.55rem;
+          padding: 0.5rem 0.65rem;
+          background: rgba(15, 23, 42, 0.9);
+          border: 1px solid #1e293b;
+          border-radius: 0.55rem;
+        }
+
+        .eh-side-col {
+          inline-size: 100%;
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+        }
+
+        @supports (container-type: inline-size) {
+          @container ehstage (min-width: 920px) {
+            .eh-side-col {
+              inline-size: 310px;
+              flex: 0 0 310px;
+            }
+          }
+        }
+
+        .eh-panel {
+          background: rgba(15, 23, 42, 0.88);
+          border: 1px solid #1e293b;
+          border-radius: 0.6rem;
+          padding: 0.7rem;
+        }
+
+        .eh-panel h3 {
+          margin: 0 0 0.45rem;
+          font-size: 0.82rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: #38bdf8;
+        }
+
+        .eh-relic-pills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.35rem;
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+
+        .eh-relic-pill {
+          font-size: 0.74rem;
+          padding: 0.2rem 0.5rem;
+          border-radius: 999px;
+          background: #1e293b;
+          border: 1px solid #38bdf8;
+          font-weight: 700;
+        }
+
+        .eh-log-list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          max-block-size: 135px;
+          overflow-y: auto;
+          font-size: 0.74rem;
+          color: var(--eh-muted);
+          display: grid;
+          gap: 0.25rem;
+          scrollbar-width: thin;
+          scrollbar-color: #334155 #090d16;
+        }
+      </style>
+
+      <div class="eh-root">
+        <div id="eh-announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+
+        <header class="eh-header">
+          <div class="eh-title-block">
+            <h2>\u{1FA90}\u26A1 EVENT HORIZON: SINGULARITY SLINGSHOT</h2>
+            <p id="eh-sector-subtitle">Relativistic Orbital Billiards, Bullet-Time Gravity Tether &amp; Constellation Relic Deckbuilder</p>
+          </div>
+
+          <div class="eh-mode-bar" role="group" aria-label="Game Mode & Hull Selection">
+            <button type="button" class="eh-btn eh-btn-accent" data-eh-mode="ODYSSEY">
+              \u{1F30C} Odyssey (5 Sectors)
+            </button>
+            <button type="button" class="eh-btn" data-eh-mode="TRICKSHOT_DOJO">
+              \u{1F4D0} Trickshot Dojo (5 Puzzles)
+            </button>
+            <button type="button" class="eh-btn" data-eh-mode="ENDLESS_SINGULARITY">
+              \u267E\uFE0F Endless Singularity
+            </button>
+
+            <label for="eh-chassis-select" class="visually-hidden">Ship Chassis</label>
+            <select id="eh-chassis-select" class="eh-btn" aria-label="Select Ship Chassis">
+              <option value="VANGUARD">\u{1F680} Vanguard Lance (Balanced)</option>
+              <option value="PHOTON_WISP">\u2728 Photon Wisp (High Bounce + Echo)</option>
+              <option value="STAR_HAMMER">\u{1F528} Star-Hammer (Heavy Ram + Nova)</option>
+            </select>
+
+            <button type="button" class="eh-btn" id="eh-btn-mute">\u{1F50A} Audio</button>
+            <button type="button" class="eh-btn" id="eh-btn-restart">\u21BB New Run</button>
+          </div>
+        </header>
+
+        <div class="eh-hud-strip" role="region" aria-label="Relativistic Flight Telemetry">
+          <div class="eh-metric">
+            <span class="eh-metric-label">Score / High</span>
+            <span class="eh-metric-val"><span id="eh-score">0</span> <small style="color:#64748b">/ <span id="eh-high">0</span></small></span>
+          </div>
+          <div class="eh-metric">
+            <span class="eh-metric-label">Sector / Wave</span>
+            <span class="eh-metric-val" id="eh-sector" style="color:#38bdf8">Sector 1 / 5</span>
+          </div>
+          <div class="eh-metric">
+            <span class="eh-metric-label">Lorentz Factor (\u03B3)</span>
+            <span class="eh-metric-val" id="eh-gamma" style="color:#fbbf24">1.05x \u03B3</span>
+          </div>
+          <div class="eh-metric">
+            <span class="eh-metric-label">Ship Hull Integrity</span>
+            <span class="eh-metric-val" id="eh-hull" style="color:#10b981">\u2665\u2665\u2665\u2665\u2665 (5/5)</span>
+          </div>
+          <div class="eh-metric">
+            <span class="eh-metric-label">Hawking Energy <span id="eh-energy-text">75/100</span></span>
+            <div class="eh-energy-track"><div id="eh-energy-bar" class="eh-energy-fill" style="inline-size:75%"></div></div>
+          </div>
+          <div class="eh-metric">
+            <span class="eh-metric-label">Chrono / Polygons</span>
+            <span class="eh-metric-val"><span id="eh-chrono" style="color:#a855f7">\u23F3\xD72</span> \xB7 <span id="eh-polygons" style="color:#38bdf8">\u{1F4D0} 0</span></span>
+          </div>
+        </div>
+
+        <div class="eh-layout">
+          <div class="eh-canvas-col">
+            <div class="eh-canvas-wrap">
+              <canvas
+                id="eh-canvas"
+                class="eh-canvas"
+                width="${HORIZON_CONFIG.ARENA_WIDTH}"
+                height="${HORIZON_CONFIG.ARENA_HEIGHT}"
+                aria-label="Event Horizon Orbital Slingshot Arena"
+              ></canvas>
+              <div id="eh-overlay-host" class="eh-overlay-host" hidden></div>
+            </div>
+
+            <div class="eh-action-bar" role="toolbar" aria-label="Relativistic Ship Abilities">
+              <div style="display:flex; flex-wrap:wrap; gap:0.4rem;">
+                <button type="button" class="eh-btn eh-btn-gold" id="eh-act-coach">
+                  \u{1F3AF} [C] AI Trickshot Launch
+                </button>
+                <button type="button" class="eh-btn eh-btn-accent" id="eh-act-launch">
+                  \u{1F680} [Space] Slingshot Fire
+                </button>
+                <button type="button" class="eh-btn" id="eh-act-tether">
+                  \u{1F517} [Q] Quantum Tether Whip
+                </button>
+                <button type="button" class="eh-btn" id="eh-act-nova">
+                  \u{1F4A5} [E] Supernova (35W)
+                </button>
+                <button type="button" class="eh-btn" id="eh-act-rewind">
+                  \u23F3 [R] Chrono-Rewind + Echo
+                </button>
+              </div>
+              <div style="font-size:0.75rem; color:#94a3b8;">
+                <strong>Controls:</strong> Click-Drag on Arena to Bullet-Time Aim &amp; Slingshot \xB7 WASD/Arrows Thrust
+              </div>
+            </div>
+          </div>
+
+          <aside class="eh-side-col" aria-label="Mission Briefing, Relics, and Trajectory Lab">
+            <div class="eh-panel">
+              <h3>\u{1F6F0}\uFE0F Tactical Briefing</h3>
+              <p id="eh-hint-text" style="margin:0; font-size:0.78rem; color:#cbd5e1; line-height:1.45;"></p>
+            </div>
+
+            <div class="eh-panel">
+              <h3>\u{1F451} Active Astro-Relics</h3>
+              <ul id="eh-relic-strip" class="eh-relic-pills" role="list">
+                <li style="font-size:0.75rem; color:#64748b;">Clear a sector to draft multiplicative Astro-Relics!</li>
+              </ul>
+            </div>
+
+            <div class="eh-panel">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-block-end:0.35rem;">
+                <h3 style="margin:0;">\u{1F52C} Counterfactual Lab</h3>
+                <button type="button" class="eh-btn" id="eh-btn-run-lab" style="padding:0.2rem 0.5rem; font-size:0.72rem;">
+                  Simulate 3 AI Builds
+                </button>
+              </div>
+              <div id="eh-lab-body" style="font-size:0.74rem; color:#94a3b8;">
+                Compare Euclidean Geometer, Tether Daredevil, and Worldline Weaver on this exact seed.
+              </div>
+            </div>
+
+            <div class="eh-panel">
+              <h3>\u{1F4E1} Telemetry Log</h3>
+              <ul id="eh-log-list" class="eh-log-list" role="list"></ul>
+            </div>
+
+            <div id="eh-debug-panel" class="eh-panel" hidden></div>
+          </aside>
+        </div>
+      </div>
+    `;
+    this.canvas = this.container.querySelector("#eh-canvas");
+    this.ctx = this.canvas.getContext("2d");
+    this.announcerEl = this.container.querySelector("#eh-announcer");
+    this.scoreEl = this.container.querySelector("#eh-score");
+    this.highScoreEl = this.container.querySelector("#eh-high");
+    this.sectorEl = this.container.querySelector("#eh-sector");
+    this.gammaEl = this.container.querySelector("#eh-gamma");
+    this.hullEl = this.container.querySelector("#eh-hull");
+    this.energyBarEl = this.container.querySelector("#eh-energy-bar");
+    this.energyTextEl = this.container.querySelector("#eh-energy-text");
+    this.chronoEl = this.container.querySelector("#eh-chrono");
+    this.polygonsEl = this.container.querySelector("#eh-polygons");
+    this.subtitleEl = this.container.querySelector("#eh-sector-subtitle");
+    this.hintEl = this.container.querySelector("#eh-hint-text");
+    this.relicStripEl = this.container.querySelector("#eh-relic-strip");
+    this.logListEl = this.container.querySelector("#eh-log-list");
+    this.overlayHostEl = this.container.querySelector("#eh-overlay-host");
+    this.debugPanelEl = this.container.querySelector("#eh-debug-panel");
+    this.labBodyEl = this.container.querySelector("#eh-lab-body");
+    this.debugPanelEl.hidden = !this.debugVisible;
+    this.bindEvents();
+  }
+  bindEvents() {
+    const toArenaCoords = (clientX, clientY) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = HORIZON_CONFIG.ARENA_WIDTH / Math.max(1, rect.width);
+      const scaleY = HORIZON_CONFIG.ARENA_HEIGHT / Math.max(1, rect.height);
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+      };
+    };
+    this.canvas.addEventListener("pointerdown", (e) => {
+      if (e.button === 2) {
+        e.preventDefault();
+        this.callbacks.onAction({ type: "TOGGLE_TETHER" });
+        return;
+      }
+      this.pointerDown = true;
+      const pt = toArenaCoords(e.clientX, e.clientY);
+      this.updateAimFromPoint(pt.x, pt.y, true);
+    });
+    this.canvas.addEventListener("pointermove", (e) => {
+      if (!this.pointerDown) return;
+      const pt = toArenaCoords(e.clientX, e.clientY);
+      this.updateAimFromPoint(pt.x, pt.y, false);
+    });
+    const releasePointer = (e) => {
+      if (!this.pointerDown) return;
+      this.pointerDown = false;
+      const pt = toArenaCoords(e.clientX, e.clientY);
+      const { angleRad, powerPct } = this.computeAimVector(pt.x, pt.y);
+      this.callbacks.onAction({ type: "LAUNCH_SLINGSHOT", angleRad, powerPct });
+    };
+    this.canvas.addEventListener("pointerup", releasePointer);
+    this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    for (const btn of this.container.querySelectorAll("button[data-eh-mode]")) {
+      btn.addEventListener("click", () => {
+        const mode = btn.getAttribute("data-eh-mode");
+        this.resetVisuals();
+        this.callbacks.onAction({ type: "SELECT_MODE", mode, sectorOrPuzzle: 1 });
+        this.announce(`Switched to ${mode} mode`);
+      });
+    }
+    const chassisSelect = this.container.querySelector("#eh-chassis-select");
+    chassisSelect?.addEventListener("change", () => {
+      const val = chassisSelect.value;
+      this.callbacks.onAction({ type: "SELECT_CHASSIS", chassis: val });
+      this.announce(`Selected ${val} ship chassis`);
+    });
+    this.container.querySelector("#eh-act-coach")?.addEventListener("click", () => this.callbacks.onAction({ type: "TRIGGER_AI_COACH" }));
+    this.container.querySelector("#eh-act-launch")?.addEventListener("click", () => this.callbacks.onAction({ type: "LAUNCH_SLINGSHOT" }));
+    this.container.querySelector("#eh-act-tether")?.addEventListener("click", () => this.callbacks.onAction({ type: "TOGGLE_TETHER" }));
+    this.container.querySelector("#eh-act-nova")?.addEventListener("click", () => this.callbacks.onAction({ type: "TRIGGER_SUPERNOVA" }));
+    this.container.querySelector("#eh-act-rewind")?.addEventListener("click", () => this.callbacks.onAction({ type: "TRIGGER_REWIND" }));
+    const muteBtn = this.container.querySelector("#eh-btn-mute");
+    muteBtn?.addEventListener("click", () => {
+      const muted = this.audio.toggleMute();
+      muteBtn.textContent = muted ? "\u{1F507} Muted" : "\u{1F50A} Audio";
+    });
+    this.container.querySelector("#eh-btn-restart")?.addEventListener("click", () => {
+      this.resetVisuals();
+      this.callbacks.onRestart();
+    });
+    this.container.querySelector("#eh-btn-run-lab")?.addEventListener("click", () => {
+      this.renderCounterfactualLab();
+    });
+  }
+  lastRenderedShipX = 190;
+  lastRenderedShipY = 300;
+  lastRenderedSeed = HORIZON_CONFIG.DEFAULT_SEED;
+  computeAimVector(targetX, targetY) {
+    const dx = targetX - this.lastRenderedShipX;
+    const dy = targetY - this.lastRenderedShipY;
+    const dist = Math.hypot(dx, dy);
+    const angleRad = Math.atan2(dy, dx);
+    const powerPct = Math.max(0.25, Math.min(1, dist / 240));
+    return { angleRad, powerPct };
+  }
+  updateAimFromPoint(targetX, targetY, isStart) {
+    const { angleRad, powerPct } = this.computeAimVector(targetX, targetY);
+    if (isStart) {
+      this.callbacks.onAction({ type: "BEGIN_AIM", angleRad, powerPct });
+    } else {
+      this.callbacks.onAction({ type: "UPDATE_AIM", angleRad, powerPct });
+    }
+  }
+  renderCounterfactualLab() {
+    if (!this.labBodyEl) return;
+    const results = runHorizonCounterfactuals(this.lastRenderedSeed);
+    this.labBodyEl.innerHTML = results.map(
+      (r) => `
+        <div style="padding:0.35rem 0; border-bottom:1px solid #1e293b;">
+          <div style="display:flex; justify-content:space-between; font-weight:700; color:#f8fafc;">
+            <span>${r.archetypeName}</span>
+            <span style="color:#fbbf24;">${r.finalScore.toLocaleString()} pts</span>
+          </div>
+          <div style="font-size:0.7rem; color:#94a3b8;">
+            \u{1F4D0} ${r.polygonsEnclosed} Polygons \xB7 Peak \u03B3=${r.peakLorentzGamma.toFixed(2)}x \xB7 ${r.verdictTitle}
+          </div>
+        </div>
+      `
+    ).join("");
+  }
+  handleKeyDown(e) {
+    const tag = e.target?.tagName;
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    const key = e.key.toLowerCase();
+    if (key === "q") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "TOGGLE_TETHER" });
+    } else if (key === "e") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "TRIGGER_SUPERNOVA" });
+    } else if (key === "r") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "TRIGGER_REWIND" });
+    } else if (key === "c") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "TRIGGER_AI_COACH" });
+    } else if (key === " ") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "LAUNCH_SLINGSHOT" });
+    } else if (key === "w" || e.key === "ArrowUp") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "NUDGE_THRUST", dx: 0, dy: -1 });
+    } else if (key === "s" || e.key === "ArrowDown") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "NUDGE_THRUST", dx: 0, dy: 1 });
+    } else if (key === "a" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "NUDGE_THRUST", dx: -1, dy: 0 });
+    } else if (key === "d" || e.key === "ArrowRight") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "NUDGE_THRUST", dx: 1, dy: 0 });
+    } else if (key === "p") {
+      e.preventDefault();
+      this.callbacks.onAction({ type: "TOGGLE_PAUSE" });
+    }
+  }
+  consumeEvents(state, events) {
+    for (const ev of events) {
+      this.audio.playEvent(ev);
+      this.popups.push({
+        x: ev.x,
+        y: ev.y,
+        vy: -36,
+        text: ev.text,
+        color: ev.color,
+        alpha: 1
+      });
+      if (ev.type === "SUPERNOVA_PULSE" || ev.type === "CONSTELLATION_ENCLOSED" || ev.type === "WORMHOLE_TRANSIT" || ev.type === "ROCHE_CRUSH") {
+        this.shockwaves.push({
+          x: ev.x,
+          y: ev.y,
+          radius: 18,
+          maxRadius: ev.type === "SUPERNOVA_PULSE" ? ev.magnitude ?? 190 : 145,
+          color: ev.color,
+          alpha: 0.9
+        });
+      }
+      if (ev.type === "CONSTELLATION_ENCLOSED" || ev.type === "SECTOR_CLEARED" || ev.type === "VICTORY" || ev.type === "GAME_OVER") {
+        this.announce(ev.text);
+      }
+    }
+  }
+  render(state, career, dtMs) {
+    this.lastRenderedShipX = state.ship.x;
+    this.lastRenderedShipY = state.ship.y;
+    this.lastRenderedSeed = state.seed;
+    this.scoreEl.textContent = state.score.toLocaleString();
+    this.highScoreEl.textContent = Math.max(career.highScore, state.score).toLocaleString();
+    if (state.mode === "TRICKSHOT_DOJO") {
+      this.sectorEl.textContent = `Dojo ${state.sector}/${TRICKSHOT_PUZZLES.length} (Shots: ${state.sectorLaunchesUsed}/${state.parLaunches ?? 1})`;
+    } else if (state.mode === "ODYSSEY") {
+      this.sectorEl.textContent = `Sector ${state.sector} / ${HORIZON_CONFIG.TOTAL_CAMPAIGN_SECTORS}`;
+    } else {
+      this.sectorEl.textContent = `Wave ${state.sector} (Endless)`;
+    }
+    this.gammaEl.textContent = `${state.ship.lorentzGamma.toFixed(2)}x \u03B3`;
+    const hearts = "\u2665".repeat(Math.max(0, state.ship.hull)) + "\u2661".repeat(Math.max(0, state.ship.maxHull - state.ship.hull));
+    this.hullEl.textContent = `${hearts} (${state.ship.hull}/${state.ship.maxHull})`;
+    const energyPct = Math.round(state.ship.hawkingEnergy / state.ship.maxHawkingEnergy * 100);
+    this.energyBarEl.style.inlineSize = `${energyPct}%`;
+    this.energyTextEl.textContent = `${Math.round(state.ship.hawkingEnergy)}/${state.ship.maxHawkingEnergy}`;
+    this.chronoEl.textContent = `\u23F3\xD7${state.ship.chronoCharges}`;
+    this.polygonsEl.textContent = `\u{1F4D0} ${state.stats.polygonsEnclosed}`;
+    this.subtitleEl.textContent = `${state.sectorTitle} \u2014 ${state.sectorSubtitle}`;
+    this.hintEl.textContent = state.sectorHint;
+    if (state.relics.length === 0) {
+      this.relicStripEl.innerHTML = `<li style="font-size:0.74rem; color:#64748b;">Clear a sector to draft multiplicative Astro-Relics!</li>`;
+    } else {
+      this.relicStripEl.innerHTML = state.relics.map((id) => {
+        const spec = ASTRO_RELIC_CATALOG.find((r) => r.id === id);
+        return `<li class="eh-relic-pill" style="border-color:${spec?.color ?? "#38bdf8"}" title="${spec?.description ?? ""}">${spec?.symbol ?? "\u2605"} ${spec?.name ?? id}</li>`;
+      }).join("");
+    }
+    this.logListEl.innerHTML = state.log.slice(0, 8).map((entry) => `<li>\u2022 ${entry}</li>`).join("");
+    if (this.debugVisible) {
+      this.debugPanelEl.hidden = false;
+      this.debugPanelEl.innerHTML = `
+        <h3>\u{1F527} Deterministic Debug</h3>
+        <div style="font-family:monospace; font-size:0.72rem; display:grid; gap:0.2rem;">
+          <div>Seed: ${state.seed} \xB7 RNG: 0x${state.rngState.toString(16)}</div>
+          <div>Tick: ${state.tick} \xB7 Status: ${state.status}</div>
+          <div>Ship Pos: (${state.ship.x.toFixed(1)}, ${state.ship.y.toFixed(1)})</div>
+          <div>Ship Vel: (${state.ship.vx.toFixed(1)}, ${state.ship.vy.toFixed(1)})</div>
+          <div>Bounce Chain: ${state.ship.bounceChain} \xB7 Vertices: ${state.ship.constellationVertices.length}</div>
+        </div>
+      `;
+    } else {
+      this.debugPanelEl.hidden = true;
+    }
+    this.renderOverlayModal(state, career);
+    this.renderCanvas(state, dtMs);
+  }
+  renderOverlayModal(state, career) {
+    const modalKey = `${state.status}:${state.sector}:${state.relicDraftChoices.join(",")}`;
+    if (state.status === "PLAYING") {
+      this.overlayHostEl.hidden = true;
+      this.lastModalKey = "";
+      return;
+    }
+    if (this.lastModalKey === modalKey) return;
+    this.lastModalKey = modalKey;
+    this.overlayHostEl.hidden = false;
+    if (state.status === "RELIC_DRAFT") {
+      const cardsHtml = state.relicDraftChoices.map((id) => {
+        const spec = ASTRO_RELIC_CATALOG.find((r) => r.id === id);
+        return `
+            <button type="button" class="eh-relic-choice" data-draft-relic="${spec.id}">
+              <span style="font-size:1.4rem;">${spec.symbol} <strong style="font-size:0.95rem; color:${spec.color};">${spec.name}</strong></span>
+              <span style="font-size:0.76rem; font-weight:700; color:#e2e8f0;">${spec.shortHook}</span>
+              <span style="font-size:0.72rem; color:#94a3b8;">${spec.description}</span>
+            </button>
+          `;
+      }).join("");
+      this.overlayHostEl.innerHTML = `
+        <div class="eh-modal-card" role="dialog" aria-label="Draft an Astro-Relic">
+          <h3 style="margin:0 0 0.25rem; font-size:1.25rem; color:#38bdf8;">
+            \u{1F31F} SECTOR ${state.sector} CLEARED \u2014 DRAFT AN ASTRO-RELIC
+          </h3>
+          <p style="margin:0; font-size:0.84rem; color:#cbd5e1;">
+            Choose 1 synergistic Constellation Relic before warping to Sector ${state.sector + 1}:
+          </p>
+          <div class="eh-relic-grid">${cardsHtml}</div>
+        </div>
+      `;
+      for (const btn of this.overlayHostEl.querySelectorAll("button[data-draft-relic]")) {
+        btn.addEventListener("click", () => {
+          const relicId = btn.getAttribute("data-draft-relic");
+          this.callbacks.onAction({ type: "SELECT_RELIC", relicId });
+        });
+      }
+      return;
+    }
+    if (state.status === "VICTORY" || state.status === "GAME_OVER") {
+      const verdict = HORIZON_VERDICTS[state.verdictId ?? "KARDASHEV_SOVEREIGN"] ?? HORIZON_VERDICTS.KARDASHEV_SOVEREIGN;
+      const counterfactuals = runHorizonCounterfactuals(state.seed);
+      this.overlayHostEl.innerHTML = `
+        <div class="eh-modal-card" role="dialog" aria-label="Run Summary and Verdict">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+            <span style="font-size:0.76rem; font-weight:800; padding:0.2rem 0.55rem; border-radius:999px; background:#1e293b; color:#fbbf24;">
+              ${verdict.badge}
+            </span>
+            <span style="font-family:monospace; font-size:0.78rem; color:#94a3b8;">SEED: ${state.seed}</span>
+          </div>
+          <h3 style="margin:0.4rem 0 0.2rem; font-size:1.35rem; color:${state.status === "VICTORY" ? "#10b981" : "#f43f5e"};">
+            ${state.status === "VICTORY" ? "\u{1F3C6} COSMIC ODYSSEY CONQUERED:" : "\u{1F311} EVENT HORIZON COLLAPSE:"} ${verdict.title}
+          </h3>
+          <p style="margin:0 0 0.75rem; font-size:0.84rem; color:#cbd5e1;">${verdict.summary}</p>
+
+          <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:0.45rem; margin-block-end:0.85rem; background:#090d16; padding:0.6rem; border-radius:0.5rem;">
+            <div><div class="eh-metric-label">Final Score</div><div class="eh-metric-val" style="color:#fbbf24;">${state.score.toLocaleString()}</div></div>
+            <div><div class="eh-metric-label">Peak Lorentz \u03B3</div><div class="eh-metric-val" style="color:#38bdf8;">${state.ship.peakLorentzGamma.toFixed(2)}x</div></div>
+            <div><div class="eh-metric-label">Polygons Enclosed</div><div class="eh-metric-val" style="color:#10b981;">\u{1F4D0} ${state.stats.polygonsEnclosed}</div></div>
+            <div><div class="eh-metric-label">Career Victories</div><div class="eh-metric-val" style="color:#a855f7;">${career.odysseyVictories + career.dojoCompletions}</div></div>
+          </div>
+
+          <div style="margin-block-end:0.85rem;">
+            <div style="font-size:0.75rem; font-weight:700; color:#38bdf8; margin-block-end:0.35rem;">
+              \u{1F52C} SAME-SEED COUNTERFACTUAL ARCHETYPE COMPARISON:
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:0.45rem;">
+              ${counterfactuals.map(
+        (c) => `
+                  <div style="background:#131c31; border:1px solid #334155; border-radius:0.45rem; padding:0.5rem; font-size:0.72rem;">
+                    <div style="font-weight:800; color:#f8fafc;">${c.archetypeName}</div>
+                    <div style="color:#fbbf24; font-weight:700;">${c.finalScore.toLocaleString()} pts</div>
+                    <div style="color:#94a3b8;">\u{1F4D0} ${c.polygonsEnclosed} \xB7 \u03B3=${c.peakLorentzGamma.toFixed(1)}x</div>
+                  </div>
+                `
+      ).join("")}
+            </div>
+          </div>
+
+          <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
+            <button type="button" class="eh-btn eh-btn-accent" id="eh-modal-restart">
+              \u25B6 Launch New Seed Run
+            </button>
+            <button type="button" class="eh-btn" id="eh-modal-replay-seed">
+              \u21BB Replay Exact Same Seed (${state.seed})
+            </button>
+          </div>
+        </div>
+      `;
+      this.overlayHostEl.querySelector("#eh-modal-restart")?.addEventListener("click", () => {
+        this.resetVisuals();
+        this.callbacks.onRestart();
+      });
+      this.overlayHostEl.querySelector("#eh-modal-replay-seed")?.addEventListener("click", () => {
+        this.resetVisuals();
+        this.callbacks.onRestart(state.seed);
+      });
+    }
+  }
+  renderCanvas(state, dtMs) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const W = HORIZON_CONFIG.ARENA_WIDTH;
+    const H = HORIZON_CONFIG.ARENA_HEIGHT;
+    const dtSec = dtMs / 1e3;
+    ctx.fillStyle = state.ship.isAiming ? "#040b1d" : "#03060f";
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.strokeStyle = state.ship.isAiming ? "rgba(56, 189, 248, 0.16)" : "rgba(51, 65, 85, 0.22)";
+    ctx.lineWidth = 1;
+    const gridSpacing = 48;
+    for (let gx = gridSpacing; gx < W; gx += gridSpacing) {
+      ctx.beginPath();
+      for (let gy = 0; gy <= H; gy += 24) {
+        let wx = gx;
+        let wy = gy;
+        for (const well of state.wells) {
+          const dx = well.x - gx;
+          const dy = well.y - gy;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 220 && dist > 8) {
+            const pull = (well.mass > 0 ? 1 : -1) * 18 * (1 - dist / 220);
+            wx += dx / dist * pull;
+            wy += dy / dist * pull;
+          }
+        }
+        if (gy === 0) ctx.moveTo(wx, wy);
+        else ctx.lineTo(wx, wy);
+      }
+      ctx.stroke();
+    }
+    for (let gy = gridSpacing; gy < H; gy += gridSpacing) {
+      ctx.beginPath();
+      for (let gx = 0; gx <= W; gx += 24) {
+        let wx = gx;
+        let wy = gy;
+        for (const well of state.wells) {
+          const dx = well.x - gx;
+          const dy = well.y - gy;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 220 && dist > 8) {
+            const pull = (well.mass > 0 ? 1 : -1) * 18 * (1 - dist / 220);
+            wx += dx / dist * pull;
+            wy += dy / dist * pull;
+          }
+        }
+        if (gx === 0) ctx.moveTo(wx, wy);
+        else ctx.lineTo(wx, wy);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+    for (const star of this.stars) {
+      star.x = (star.x - star.speed * dtSec + W) % W;
+      ctx.fillStyle = `rgba(226, 232, 240, ${star.alpha})`;
+      ctx.beginPath();
+      ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.save();
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(
+      HORIZON_CONFIG.WALL_MARGIN,
+      HORIZON_CONFIG.WALL_MARGIN,
+      W - HORIZON_CONFIG.WALL_MARGIN * 2,
+      H - HORIZON_CONFIG.WALL_MARGIN * 2
+    );
+    ctx.restore();
+    for (const well of state.wells) {
+      if (well.pairedWellId && well.kind === "BLACK_HOLE") {
+        const partner = state.wells.find((w) => w.id === well.pairedWellId);
+        if (partner) {
+          ctx.save();
+          ctx.strokeStyle = "rgba(236, 72, 153, 0.38)";
+          ctx.lineWidth = 3;
+          ctx.setLineDash([8, 8]);
+          ctx.beginPath();
+          ctx.moveTo(well.x, well.y);
+          ctx.lineTo(partner.x, partner.y);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+    for (const well of state.wells) {
+      ctx.save();
+      const grad = ctx.createRadialGradient(
+        well.x,
+        well.y,
+        well.coreRadius,
+        well.x,
+        well.y,
+        well.skimRadius
+      );
+      if (well.kind === "WHITE_HOLE") {
+        grad.addColorStop(0, "rgba(244, 114, 182, 0.55)");
+        grad.addColorStop(0.6, "rgba(56, 189, 248, 0.18)");
+        grad.addColorStop(1, "rgba(56, 189, 248, 0)");
+      } else if (well.kind === "NEUTRON_STAR") {
+        grad.addColorStop(0, "rgba(168, 85, 247, 0.55)");
+        grad.addColorStop(0.6, "rgba(56, 189, 248, 0.18)");
+        grad.addColorStop(1, "rgba(56, 189, 248, 0)");
+      } else {
+        grad.addColorStop(0, "rgba(251, 191, 36, 0.5)");
+        grad.addColorStop(0.65, "rgba(249, 115, 22, 0.16)");
+        grad.addColorStop(1, "rgba(249, 115, 22, 0)");
+      }
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(well.x, well.y, well.skimRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = well.kind === "WHITE_HOLE" ? "rgba(244, 114, 182, 0.55)" : "rgba(251, 191, 36, 0.48)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.arc(well.x, well.y, well.skimRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = well.kind === "WHITE_HOLE" ? "#fdf4ff" : "#020617";
+      ctx.strokeStyle = well.kind === "WHITE_HOLE" ? "#f472b6" : well.kind === "NEUTRON_STAR" ? "#a855f7" : "#fbbf24";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(well.x, well.y, well.coreRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#e2e8f0";
+      ctx.font = "bold 10px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(well.name, well.x, well.y + well.skimRadius + 13);
+      ctx.restore();
+    }
+    for (const poly of state.activePolygons) {
+      const alpha = Math.max(0, poly.ttlMs / poly.maxTtlMs);
+      ctx.save();
+      ctx.fillStyle = `rgba(56, 189, 248, ${0.28 * alpha})`;
+      ctx.strokeStyle = `rgba(186, 230, 253, ${0.95 * alpha})`;
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      poly.vertices.forEach((v, idx) => {
+        if (idx === 0) ctx.moveTo(v.x, v.y);
+        else ctx.lineTo(v.x, v.y);
+      });
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (state.ship.constellationVertices.length > 0) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      state.ship.constellationVertices.forEach((v, i) => {
+        if (i === 0) ctx.moveTo(v.x, v.y);
+        else ctx.lineTo(v.x, v.y);
+      });
+      ctx.lineTo(state.ship.x, state.ship.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+    const showPrediction = state.ship.isAiming || state.mode === "TRICKSHOT_DOJO" && state.sectorLaunchesUsed === 0;
+    if (showPrediction) {
+      const points = predictShipTrajectory(
+        state,
+        state.ship.aimAngleRad,
+        state.ship.aimPowerPct
+      );
+      ctx.save();
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.78)";
+      ctx.lineWidth = 2.2;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      points.forEach((pt, idx) => {
+        if (idx === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (const pt of points) {
+        if (pt.hitBumperId) {
+          ctx.fillStyle = "#fbbf24";
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+    for (const bmp of state.bumpers) {
+      ctx.save();
+      const color = bmp.kind === "OVERCHARGE_ANVIL" ? "#f59e0b" : bmp.kind === "CHRONO_CRYSTAL" ? "#a855f7" : bmp.kind === "REPULSOR_COIL" ? "#ec4899" : "#38bdf8";
+      const r = bmp.hitFlashMs > 0 ? bmp.radius + 4 : bmp.radius;
+      ctx.fillStyle = bmp.activatedInChain ? color : "#0f172a";
+      ctx.strokeStyle = bmp.hitFlashMs > 0 ? "#ffffff" : color;
+      ctx.lineWidth = bmp.activatedInChain ? 3.5 : 2.5;
+      ctx.beginPath();
+      ctx.arc(bmp.x, bmp.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = bmp.activatedInChain ? "#020617" : "#e2e8f0";
+      ctx.font = "bold 11px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const sym = bmp.kind === "OVERCHARGE_ANVIL" ? "\u26A1" : bmp.kind === "CHRONO_CRYSTAL" ? "\u23F3" : bmp.kind === "REPULSOR_COIL" ? "\u25CE" : "\u25C7";
+      ctx.fillText(sym, bmp.x, bmp.y);
+      ctx.restore();
+    }
+    for (const mote of state.starMotes) {
+      ctx.save();
+      ctx.fillStyle = mote.kind === "CHRONO_SHARD" ? "#a855f7" : "#fbbf24";
+      ctx.beginPath();
+      ctx.arc(mote.x, mote.y, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    for (const enemy of state.enemies) {
+      ctx.save();
+      const isBoss = enemy.kind === "KARDASHEV_BOSS";
+      const baseColor = isBoss ? "#f43f5e" : enemy.kind === "TESSERA_WARDEN" ? "#a855f7" : enemy.kind === "PHASE_FRIGATE" ? "#f97316" : "#ef4444";
+      if (enemy.shielded) {
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.8)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, enemy.radius + 5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = enemy.hitFlashMs > 0 ? "#ffffff" : baseColor;
+      ctx.strokeStyle = "#fecdd3";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      if (enemy.maxHp > 50) {
+        const bw = enemy.radius * 1.8;
+        const pct = Math.max(0, enemy.hp / enemy.maxHp);
+        ctx.fillStyle = "#090d16";
+        ctx.fillRect(enemy.x - bw / 2, enemy.y - enemy.radius - 10, bw, 5);
+        ctx.fillStyle = isBoss ? "#fbbf24" : "#ef4444";
+        ctx.fillRect(enemy.x - bw / 2, enemy.y - enemy.radius - 10, bw * pct, 5);
+      }
+      ctx.restore();
+    }
+    for (const proj of state.projectiles) {
+      ctx.save();
+      ctx.fillStyle = proj.color;
+      ctx.beginPath();
+      ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    if (state.worldlineHistory.length > 2) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.28)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      state.worldlineHistory.forEach((pt, i) => {
+        if (i === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (state.activeEcho && state.activeEcho.active) {
+      ctx.save();
+      ctx.strokeStyle = "#a855f7";
+      ctx.fillStyle = "rgba(168, 85, 247, 0.45)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(
+        state.activeEcho.x,
+        state.activeEcho.y,
+        state.activeEcho.radius,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (state.ship.tetherTargetId) {
+      const anchor = state.wells.find((w) => w.id === state.ship.tetherTargetId) ?? state.bumpers.find((b) => b.id === state.ship.tetherTargetId);
+      if (anchor) {
+        ctx.save();
+        ctx.strokeStyle = "#fbbf24";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(state.ship.x, state.ship.y);
+        ctx.lineTo(anchor.x, anchor.y);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    const chassis = SHIP_CHASSIS_CATALOG[state.ship.chassis];
+    const shipAngle = state.ship.isAiming ? state.ship.aimAngleRad : Math.atan2(state.ship.vy, state.ship.vx);
+    ctx.save();
+    ctx.translate(state.ship.x, state.ship.y);
+    ctx.rotate(shipAngle);
+    if (state.ship.lorentzGamma >= 1.8) {
+      ctx.strokeStyle = state.ship.lorentzGamma >= 2.5 ? "#fbbf24" : "#38bdf8";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, state.ship.radius + 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = chassis.color;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(state.ship.radius + 4, 0);
+    ctx.lineTo(-state.ship.radius, -state.ship.radius * 0.82);
+    ctx.lineTo(-state.ship.radius * 0.55, 0);
+    ctx.lineTo(-state.ship.radius, state.ship.radius * 0.82);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    const nextRings = [];
+    for (const ring of this.shockwaves) {
+      ring.radius += 340 * dtSec;
+      ring.alpha -= 1.45 * dtSec;
+      if (ring.alpha > 0 && ring.radius <= ring.maxRadius) {
+        ctx.save();
+        ctx.strokeStyle = ring.color;
+        ctx.globalAlpha = Math.max(0, ring.alpha);
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        nextRings.push(ring);
+      }
+    }
+    this.shockwaves = nextRings;
+    const nextPopups = [];
+    for (const pop of this.popups) {
+      pop.y += pop.vy * dtSec;
+      pop.alpha -= 0.85 * dtSec;
+      if (pop.alpha > 0) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, pop.alpha);
+        ctx.font = "bold 12px Inter, sans-serif";
+        ctx.fillStyle = pop.color;
+        ctx.textAlign = "center";
+        ctx.fillText(pop.text, pop.x, pop.y);
+        ctx.restore();
+        nextPopups.push(pop);
+      }
+    }
+    this.popups = nextPopups;
+  }
+  destroy() {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("keydown", this.keydownHandler);
+    }
+    this.container.innerHTML = "";
+  }
+};
+
+// games/12-event-horizon/src/index.ts
+var metadata = {
+  id: HORIZON_CONFIG.GAME_ID,
+  number: HORIZON_CONFIG.GAME_NUMBER,
+  title: HORIZON_CONFIG.TITLE,
+  subtitle: HORIZON_CONFIG.SUBTITLE,
+  genre: "Kinetic Gravity-Pinball Action Roguelite & Trickshot Puzzle Sandbox",
+  primaryReference: "Outer Wilds (Orbital Gravity) \xB7 Peggle / Pinball \xB7 Balatro",
+  supportingReference: "Superhot (Bullet-Time Aim) \xB7 Geometry Wars \xB7 Katana ZERO",
+  oneSentenceLoop: "Dilate time to aim a relativistic orbital trajectory around a live Singularity, slingshot your Star-Breaker ship across musical Prism Bumpers to enclose laser Constellation Polygons that vaporize Void Armadas, rewind your own spacetime worldline to spawn a twin Phantom Echo, and draft multiplicative Astro-Relics across 5 cosmic sectors!",
+  shortGoal: "Conquer all 5 Cosmic Sectors and shatter KARDASHEV-IX in Odyssey Mode, or solve all 5 Constellation Trickshot Dojo puzzles within the 1-Launch Par.",
+  longGoal: "Unlock all 12 Synergistic Astro-Relics, master all 3 Ship Hulls, sustain Lorentz \u03B3 \u2265 6.0x, and compare your trajectory against the 3 Counterfactual AI Archetypes.",
+  controlsSummary: "Click-Drag: Bullet-Time Aim & Slingshot \xB7 [Space]: Launch \xB7 [C]: AI Trickshot Coach \xB7 [Q]: Quantum Tether \xB7 [E]: Supernova \xB7 [R]: Chrono-Rewind + Echo \xB7 WASD/Arrows: Thrust",
+  accentColor: HORIZON_CONFIG.ACCENT_COLOR
+};
+function mountGame(container, options) {
+  const savedEnvelope = loadHorizonSave();
+  let career = {
+    ...savedEnvelope.career,
+    relicsUnlocked: [...savedEnvelope.career.relicsUnlocked],
+    verdictsUnlocked: [...savedEnvelope.career.verdictsUnlocked],
+    completedRunKeys: [...savedEnvelope.career.completedRunKeys]
+  };
+  const initialSeed = options?.initialSeed ?? HORIZON_CONFIG.DEFAULT_SEED;
+  let state = options?.initialSeed === void 0 && savedEnvelope.activeRun && savedEnvelope.activeRun.status !== "VICTORY" && savedEnvelope.activeRun.status !== "GAME_OVER" ? cloneHorizonState(savedEnvelope.activeRun) : createInitialHorizonState(initialSeed);
+  const audio = new HorizonAudioEngine();
+  const handleAction = (action) => {
+    applyHorizonInput(state, action);
+    if (state.events.length > 0) {
+      ui.consumeEvents(state, state.events);
+      state.events = [];
+    }
+    const env = saveHorizonState(career, state);
+    career = env.career;
+    ui.render(state, career, HORIZON_CONFIG.FIXED_STEP_MS);
+  };
+  const handleRestart = (newSeed) => {
+    const seedToUse = typeof newSeed === "number" ? newSeed : state.seed + 104729 >>> 0;
+    state = createInitialHorizonState(seedToUse, {
+      mode: state.mode,
+      chassis: state.ship.chassis,
+      startSector: 1
+    });
+    ui.resetVisuals();
+    const env = saveHorizonState(career, state);
+    career = env.career;
+    ui.render(state, career, HORIZON_CONFIG.FIXED_STEP_MS);
+  };
+  const handleToggleDebug = (force) => {
+    const next = typeof force === "boolean" ? force : !ui.isDebugVisible();
+    ui.setDebugVisible(next);
+  };
+  const ui = new HorizonUIController(
+    container,
+    audio,
+    {
+      onAction: handleAction,
+      onRestart: handleRestart,
+      onToggleDebug: () => handleToggleDebug()
+    },
+    Boolean(options?.debug)
+  );
+  let rafId = 0;
+  let lastTimeMs = performance.now();
+  let accumulatorMs = 0;
+  let destroyed = false;
+  const loop = (nowMs) => {
+    if (destroyed) return;
+    const rawDt = Math.min(100, Math.max(0, nowMs - lastTimeMs));
+    lastTimeMs = nowMs;
+    accumulatorMs += rawDt;
+    const prevStatus = state.status;
+    const prevSector = state.sector;
+    while (accumulatorMs >= HORIZON_CONFIG.FIXED_STEP_MS) {
+      stepHorizonState(state, HORIZON_CONFIG.FIXED_STEP_MS);
+      if (state.events.length > 0) {
+        ui.consumeEvents(state, state.events);
+        state.events = [];
+      }
+      accumulatorMs -= HORIZON_CONFIG.FIXED_STEP_MS;
+    }
+    if (state.status !== prevStatus || state.sector !== prevSector || state.score > career.highScore) {
+      const env = saveHorizonState(career, state);
+      career = env.career;
+    }
+    ui.render(state, career, rawDt || HORIZON_CONFIG.FIXED_STEP_MS);
+    rafId = window.requestAnimationFrame(loop);
+  };
+  ui.render(state, career, HORIZON_CONFIG.FIXED_STEP_MS);
+  rafId = window.requestAnimationFrame(loop);
+  return {
+    destroy() {
+      destroyed = true;
+      window.cancelAnimationFrame(rafId);
+      saveHorizonState(career, state);
+      audio.destroy();
+      ui.destroy();
+    },
+    getStateSnapshot() {
+      return cloneHorizonState(state);
+    },
+    restartWithSeed(seed) {
+      handleRestart(seed);
+    },
+    toggleDebug(force) {
+      handleToggleDebug(force);
+      ui.render(state, career, HORIZON_CONFIG.FIXED_STEP_MS);
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_12-event-horizon.ts
+var root = document.getElementById("game-root");
+if (root) {
+  mountGame(root);
+}
+
+</script>
+  </body>
+</html>

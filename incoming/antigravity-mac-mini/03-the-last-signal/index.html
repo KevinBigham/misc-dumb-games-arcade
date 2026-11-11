@@ -1,0 +1,2512 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game 03 — The Last Signal: Ember Relay</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #090c10;
+        color: #e2e8f0;
+        min-height: 100dvh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-root"></div>
+    <script type="module">
+// games/03-the-last-signal/src/config.ts
+var STORAGE_KEY = "argon_game03_the_last_signal_save_v1";
+var SAVE_VERSION = 1;
+var DEFAULT_SEED = 30307;
+var GAME_CONFIG = {
+  initialWatts: 0,
+  initialMaxWatts: 60,
+  rectifierBonusMaxWatts: 40,
+  chapter2BonusMaxWatts: 20,
+  initialAlloy: 0,
+  initialMaxAlloy: 60,
+  winchBonusMaxAlloy: 30,
+  initialCipher: 0,
+  initialMaxCipher: 30,
+  receiverWarmupWatts: 8,
+  initialScrapDiscoveryAlloy: 6,
+  baseDynamoWatts: 5,
+  rectifierDynamoWatts: 9,
+  baseSalvageAlloy: 4,
+  winchSalvageAlloy: 7,
+  salvageWinchWattCost: 2,
+  tuneSignalLockGain: 35,
+  tuneCipherWattCost: 3,
+  chapter2RequiredEvents: 2,
+  chapter3RequiredEvents: 7,
+  chapter3RequiredPoweredStations: 2,
+  endingARequiredPoweredStations: 4,
+  endingARequiredNetworkScore: 3,
+  endingAWattCost: 25,
+  endingACipherCost: 4,
+  endingBRequiredConvoyScore: 3,
+  endingBWattCost: 25,
+  endingBAlloyCost: 12,
+  endingBCipherCost: 3
+};
+
+// games/03-the-last-signal/src/content.ts
+var RESOURCES = {
+  watts: {
+    id: "watts",
+    name: "Power (Watts)",
+    shortName: "Watts",
+    unit: "W",
+    description: "Electrical charge stored in the vacuum-tube capacitor bank. Powers receiver tubes, signal decoding, and remote lighthouse beacons.",
+    unlockReason: "Available from the start via the hand-cranked dynamo."
+  },
+  alloy: {
+    id: "alloy",
+    name: "Salvage Alloy",
+    shortName: "Salvage Alloy",
+    unit: "AL",
+    description: "Weather-stripped naval brass and hull plating hauled up from the cliffside wreckage.",
+    unlockReason: "Unlocked in Chapter 1 once the receiver lamp warms up and reveals structural damage to the rectifier & winch."
+  },
+  cipher: {
+    id: "cipher",
+    name: "Cipher Keys (Bandwidth)",
+    shortName: "Cipher Keys",
+    unit: "KEY",
+    description: "Phase-locked harmonic key blocks synthesized from clean carrier waves to decrypt archipelago transmissions.",
+    unlockReason: "Unlocked in Chapter 2 when encrypted archipelago relay traffic arrives."
+  }
+};
+var CHAPTERS = {
+  1: {
+    id: 1,
+    title: "Chapter 1: Cold Receiver",
+    subtitle: "A single match, a frozen hand-dynamo, and a scratching SOS.",
+    openingLog: "Ice coats the inside of the lantern glass. The mainland cable is dead. Only the hand-dynamo beside the radio desk still turns.",
+    transformationNote: "Completing your first structural repair brings the Frequency Oscilloscope online and illuminates the relay console."
+  },
+  2: {
+    id: 2,
+    title: "Chapter 2: The Archipelago Grid",
+    subtitle: "Four dark stations across the storm-cut sea and four circuit rules.",
+    openingLog: "The backplane relays clack into alignment. Across the black water, four coastal transponders answer your carrier wave.",
+    transformationNote: "Unlocks the Archipelago Radar Map (4 Remote Stations), Safe Automation Rule Rack (4 Rules), and Cipher Keys."
+  },
+  3: {
+    id: 3,
+    title: "Chapter 3: The Solstice Transmission",
+    subtitle: "The eye of the gale arrives. Every watt commits the archipelago\u2019s fate.",
+    openingLog: "Barometric pressure plunges. You can either lock all four relays into a permanent autonomous mesh or burn the coastal grid to guide Convoy Meridian past the reef.",
+    transformationNote: "Unlocks Final Convergence protocols for Ending A (The Archival Beacon) and Ending B (The Exodus Convoy)."
+  }
+};
+var INITIAL_REPAIRS = {
+  repair_rectifier: {
+    id: "repair_rectifier",
+    name: "Overhaul Rectifier Tube Bank",
+    cost: { watts: 6, alloy: 5 },
+    summary: "Boosts Hand-Dynamo output (5W -> 9W) and expands Capacitor Bank (+40 Max Watts).",
+    effectDescription: "Replaces cracked mercury-vapor rectifiers, stabilizing high-voltage storage and bringing the Frequency Oscilloscope online."
+  },
+  repair_winch: {
+    id: "repair_winch",
+    name: "Unjam Cliffside Salvage Winch",
+    cost: { watts: 6, alloy: 5 },
+    summary: "Boosts Salvage Winch haul (4 -> 7 Alloy) and expands Alloy Locker (+30 Max Alloy).",
+    effectDescription: "Clears frozen cable drums on the sea cliff, accelerating hull salvage recovery and bringing the Frequency Oscilloscope online."
+  }
+};
+var REMOTE_STATIONS = {
+  north_reef: {
+    id: "north_reef",
+    name: "North Reef Lighthouse",
+    sector: "Sector N-01 (Shoal Point)",
+    coordinates: { x: 28, y: 24 },
+    activationCost: { watts: 10, alloy: 6 },
+    wattUpkeepPerCycle: 2,
+    passiveYieldPerCycle: { alloy: 1 },
+    description: "Automated basalt tower guarding the northern razor-shoals. Guides salvage drones along the tide line.",
+    tradeoffNote: "Drains 2W/cycle, but generates +1 Alloy/cycle and enables the Hull Salvage Drone automation rule."
+  },
+  sunken_dredge: {
+    id: "sunken_dredge",
+    name: "Sunken Dredge Platform",
+    sector: "Sector W-04 (Silt Trench)",
+    coordinates: { x: 20, y: 68 },
+    activationCost: { watts: 12, alloy: 8 },
+    wattUpkeepPerCycle: 3,
+    passiveYieldPerCycle: { alloy: 3 },
+    description: "Half-submerged industrial sea-floor excavator still hooked into the relay power cable.",
+    tradeoffNote: "Heavy 3W/cycle draw, but supplies +3 Salvage Alloy/cycle for major structural fabrication."
+  },
+  weather_buoy: {
+    id: "weather_buoy",
+    name: "Weather Buoy K-9",
+    sector: "Sector E-07 (Deep Gale)",
+    coordinates: { x: 76, y: 30 },
+    activationCost: { watts: 12, alloy: 6, cipher: 1 },
+    wattUpkeepPerCycle: 2,
+    passiveYieldPerCycle: { cipher: 1 },
+    description: "High-frequency barometric and ionospheric reference transponder anchored beyond the shelf.",
+    tradeoffNote: "Drains 2W/cycle, but synthesizes +1 Cipher Key/cycle from clean atmospheric telemetry."
+  },
+  convoy_meridian: {
+    id: "convoy_meridian",
+    name: "Offshore Convoy Meridian",
+    sector: "Sector S-12 (Razorback Channel)",
+    coordinates: { x: 78, y: 74 },
+    activationCost: { watts: 14, alloy: 8, cipher: 1 },
+    wattUpkeepPerCycle: 3,
+    passiveYieldPerCycle: { watts: 5 },
+    description: "Six ice-coated civilian transport vessels holding position outside the lethal southern reef.",
+    tradeoffNote: "Requires 3W/cycle carrier lock, but backfeeds +5W/cycle from shipboard diesel generators (net +2W/cycle)."
+  }
+};
+var AUTOMATION_RULES = {
+  auto_crank: {
+    id: "auto_crank",
+    name: "Auto-Crank Regulator",
+    unlockChapter: 2,
+    unlockCost: { watts: 8, alloy: 6 },
+    conditionType: "watts_pct_below",
+    thresholdPct: 40,
+    inputs: { alloy: 1 },
+    outputs: { watts: 6 },
+    conditionSummary: "WHEN Power < 40%",
+    inputSummary: "CONSUME 1 Salvage Alloy",
+    outputSummary: "PRODUCE +6 Watts/cycle",
+    description: "Converts 1 Salvage Alloy -> +6 Watts/cycle when Power < 40%. Prevents low-power stalls at the cost of steady alloy burn."
+  },
+  signal_scrubber: {
+    id: "signal_scrubber",
+    name: "Signal Scrubber",
+    unlockChapter: 2,
+    unlockCost: { watts: 10, alloy: 6 },
+    conditionType: "watts_pct_at_least",
+    thresholdPct: 50,
+    inputs: { watts: 4 },
+    outputs: { cipher: 1 },
+    conditionSummary: "WHEN Power >= 50%",
+    inputSummary: "CONSUME 4 Watts",
+    outputSummary: "PRODUCE +1 Cipher Key/cycle",
+    description: "Automatically decodes Tier-1 telemetry into +1 Cipher Key (consumes 4W) when Power >= 50%."
+  },
+  hull_salvage_drone: {
+    id: "hull_salvage_drone",
+    name: "Hull Salvage Drone",
+    unlockChapter: 2,
+    unlockCost: { watts: 10, alloy: 8 },
+    conditionType: "station_powered",
+    requiredStationId: "north_reef",
+    inputs: { watts: 2 },
+    outputs: { alloy: 2 },
+    conditionSummary: "WHEN North Reef Lighthouse is Powered",
+    inputSummary: "CONSUME 2 Watts",
+    outputSummary: "PRODUCE +2 Salvage Alloy/cycle",
+    description: "Gathers +2 Salvage Alloy/cycle (consumes 2W) when North Reef Lighthouse is powered."
+  },
+  emergency_load_shedder: {
+    id: "emergency_load_shedder",
+    name: "Emergency Load Shedder",
+    unlockChapter: 2,
+    unlockCost: { watts: 8, alloy: 5, cipher: 1 },
+    conditionType: "watts_pct_below",
+    thresholdPct: 20,
+    inputs: {},
+    outputs: { watts: 5, throttleNonCriticalStations: true },
+    conditionSummary: "WHEN Power < 20%",
+    inputSummary: "THROTTLE non-critical station beacons",
+    outputSummary: "RECOVER +5 Watts & prevent receiver brownout",
+    description: "Automatically throttles non-critical station beacons if Power drops below 20% to prevent receiver brownout."
+  }
+};
+var MESSAGE_EVENTS = [
+  {
+    id: "sig_01_reef_sos",
+    oneTimeFlag: "evt_flag_01_reef_sos",
+    chapter: 1,
+    sequenceNumber: 1,
+    title: "Distress Fragment: North Reef Watch",
+    sender: "Keeper Vance (North Reef)",
+    frequencyMHz: "118.4 MHz",
+    morsePreview: "... --- ... / .-. . . ..-.",
+    corruptedBody: "[STATIC] ...Ember Point, do you read? Sea wall breached... auxiliary battery at 4%... need carrier lock or we lose the northern shoal...",
+    decodedBody: '"Ember Point Relay, this is Keeper Vance at North Reef! Waves took our lower generator room. Either feed us a stabilizing carrier pulse so our shoal beacon holds, or tell us to abandon the tower and float our spare copper coils down-current to your cove."',
+    prerequisites: {
+      receiverWarmed: true
+    },
+    decodeCost: { watts: 4 },
+    choices: [
+      {
+        id: "stabilize_reef_carrier",
+        label: "Feed Stabilizing Carrier Pulse (-4W)",
+        description: "Hold North Reef\u2019s transponder lock and recover +4 Salvage Alloy washed into the lit cove (+1 Network Integrity).",
+        costs: { watts: 4 },
+        rewards: { alloy: 4 },
+        networkIntegrityDelta: 1,
+        convoyReadinessDelta: 0,
+        outcomeLog: "North Reef locks onto your carrier wave. Vance guides a crate of naval brass (+4 Alloy) into your cove."
+      },
+      {
+        id: "strip_reef_coils",
+        label: "Order Tower Strip & Float Coils (-2W)",
+        description: "Have Vance jettison heavy salvage coils down-current (+7 Salvage Alloy, +1 Convoy Readiness).",
+        costs: { watts: 2 },
+        rewards: { alloy: 7 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 1,
+        outcomeLog: "Vance strips the secondary coils before evacuating to the cliff shelter. +7 Salvage Alloy hauled ashore."
+      }
+    ]
+  },
+  {
+    id: "sig_02_dredge_beacon",
+    oneTimeFlag: "evt_flag_02_dredge_beacon",
+    chapter: 1,
+    sequenceNumber: 2,
+    title: "Sub-Surface Ping: Dredge Platform 04",
+    sender: "Auto-Telemetry DREDGE-04",
+    frequencyMHz: "121.0 MHz",
+    morsePreview: "-.. .-. . -.. --. . / ----- ....-",
+    corruptedBody: "[HUM] ...automated hopper full... pressure valve 04 stuck... awaiting relay command pulse...",
+    decodedBody: '"DREDGE-04 STATUS: Bilge hoppers loaded with 14 tons of hull plate. Subsea cable continuity at 62%. Send calibration pulse to preserve long-term extraction, or blow ballast tanks for an immediate surface dump."',
+    prerequisites: {
+      receiverWarmed: true,
+      minCompletedRepairs: 1,
+      requiredEventIds: ["sig_01_reef_sos"]
+    },
+    decodeCost: { watts: 5 },
+    choices: [
+      {
+        id: "calibrate_dredge_cable",
+        label: "Calibrate Subsea Relay Cable (-5W)",
+        description: "Preserve Dredge-04 telemetry and winch +6 Salvage Alloy (+1 Network Integrity).",
+        costs: { watts: 5 },
+        rewards: { alloy: 6 },
+        networkIntegrityDelta: 1,
+        convoyReadinessDelta: 0,
+        outcomeLog: "Subsea telemetry stabilized. Dredge-04 transfers +6 Salvage Alloy along the trench line."
+      },
+      {
+        id: "blow_dredge_ballast",
+        label: "Trigger Emergency Ballast Blow (-3 Alloy)",
+        description: "Sacrifice 3 Alloy in rigging to recover high-charge thermal cells (+12 Watts, +1 Convoy Readiness).",
+        costs: { alloy: 3 },
+        rewards: { watts: 12 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 1,
+        outcomeLog: "Thermal battery canisters breach the surf. Capacitor bank surges by +12 Watts."
+      }
+    ]
+  },
+  {
+    id: "sig_03_harbor_charter",
+    oneTimeFlag: "evt_flag_03_harbor_charter",
+    chapter: 1,
+    sequenceNumber: 3,
+    title: "Harbor Master\u2019s Solstice Directive",
+    sender: "Port Authority Archive",
+    frequencyMHz: "124.6 MHz",
+    morsePreview: "--. .-. .. -.. / --- .-. / ..-. .-.. . . -",
+    corruptedBody: "[CARRIER LOCK] ...all island relays must choose protocol before midnight tide... grid backplane ready...",
+    decodedBody: '"SOLSTICE DIRECTIVE: Mainland Ice Blockade confirmed. Ember Point Relay is now the sole master node. Re-seat the Archipelago Backplane to wake the four remote stations."',
+    prerequisites: {
+      receiverWarmed: true,
+      minCompletedRepairs: 1,
+      requiredEventIds: ["sig_02_dredge_beacon"]
+    },
+    decodeCost: { watts: 6 },
+    choices: [
+      {
+        id: "energize_grid_backplane",
+        label: "Reinforce Archipelago Backplane (-4 Alloy)",
+        description: "Install heavy busbars (+8 Watts, +2 Cipher Keys, +1 Network Integrity).",
+        costs: { alloy: 4 },
+        rewards: { watts: 8, cipher: 2 },
+        networkIntegrityDelta: 1,
+        convoyReadinessDelta: 0,
+        outcomeLog: "Backplane busbars locked! Four coastal station transponders appear on the Archipelago Radar."
+      },
+      {
+        id: "prime_coastal_searchlight",
+        label: "Prime Coastal Searchlight Bus (-6W)",
+        description: "Wire the high-output sea-lane bus (+6 Salvage Alloy, +2 Cipher Keys, +1 Convoy Readiness).",
+        costs: { watts: 6 },
+        rewards: { alloy: 6, cipher: 2 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 1,
+        outcomeLog: "Searchlight bus primed! The radar scope sweeps across four remote archipelago stations."
+      }
+    ]
+  },
+  {
+    id: "sig_04_north_reef_keeper",
+    oneTimeFlag: "evt_flag_04_north_reef_keeper",
+    chapter: 2,
+    sequenceNumber: 4,
+    title: "North Reef: Rime Ice on the Fresnel Drum",
+    sender: "Keeper Vance",
+    frequencyMHz: "128.2 MHz",
+    morsePreview: ".. -.-. . / --- -. / .-.. . -. ...",
+    corruptedBody: "[ENCRYPTED TIER-1] ...salt ice freezing rotation gears... need de-icing load or prism removal...",
+    decodedBody: '"Ember Point, three inches of black rime ice are seizing North Reef\u2019s rotary lens! Route de-icing power and replacement brackets to keep the northern node alive, or let me dismantle the copper prism frame for fleet repairs."',
+    prerequisites: {
+      minChapter: 2
+    },
+    decodeCost: { watts: 6 },
+    choices: [
+      {
+        id: "deice_north_reef",
+        label: "Route De-Icing Load (-6W, -3 Alloy)",
+        description: "Melts the lens ice, grants +2 Cipher Keys, and brings North Reef Lighthouse online (+1 Network Integrity).",
+        costs: { watts: 6, alloy: 3 },
+        rewards: { cipher: 2 },
+        networkIntegrityDelta: 1,
+        convoyReadinessDelta: 0,
+        powerStationId: "north_reef",
+        outcomeLog: "Heating coils glow cherry-red at North Reef. The northern lighthouse beam slices through the snow!"
+      },
+      {
+        id: "salvage_reef_prism",
+        label: "Dismantle Prism Frame (-4W)",
+        description: "Strip the brass lens housing for immediate +8 Salvage Alloy and +1 Cipher Key (+1 Convoy Readiness).",
+        costs: { watts: 4 },
+        rewards: { alloy: 8, cipher: 1 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 1,
+        outcomeLog: "North Reef\u2019s secondary prism frame is Barged to Ember Point (+8 Salvage Alloy, +1 Cipher Key)."
+      }
+    ]
+  },
+  {
+    id: "sig_05_dredge_overload",
+    oneTimeFlag: "evt_flag_05_dredge_overload",
+    chapter: 2,
+    sequenceNumber: 5,
+    title: "Sunken Dredge: Trench Turbine Surge",
+    sender: "DREDGE-04 Control",
+    frequencyMHz: "131.5 MHz",
+    morsePreview: "- ..- .-. -... .. -. . / ... ..- .-. --. .",
+    corruptedBody: "[CIPHER BLOCK] ...tidal current driving trench turbine past 140% RPM... governor clamp failing...",
+    decodedBody: '"WARNING: Undertow in the Silt Trench is spinning Dredge-04\u2019s hydro-turbine past redline. Spend Salvage Alloy to brace the governor for clean power + cipher sync, or let it run hot to rip a massive alloy cache from the seabed."',
+    prerequisites: {
+      minChapter: 2,
+      requiredEventIds: ["sig_04_north_reef_keeper"]
+    },
+    decodeCost: { watts: 6, cipher: 1 },
+    choices: [
+      {
+        id: "brace_dredge_governor",
+        label: "Brace Hydro-Governor (-5 Alloy)",
+        description: "Captures +12 Watts and +2 Cipher Keys while reinforcing the subsea grid (+1 Network Integrity).",
+        costs: { alloy: 5 },
+        rewards: { watts: 12, cipher: 2 },
+        networkIntegrityDelta: 1,
+        convoyReadinessDelta: 0,
+        outcomeLog: "Hydro-governor clamped! Clean tidal current surges into Ember Point (+12 Watts, +2 Cipher Keys)."
+      },
+      {
+        id: "overdrive_dredge_claw",
+        label: "Overdrive Excavator Claw (-6W)",
+        description: "Extracts +10 Salvage Alloy and +1 Cipher Key before the clutch slips (+1 Convoy Readiness).",
+        costs: { watts: 6 },
+        rewards: { alloy: 10, cipher: 1 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 1,
+        outcomeLog: "Excavator claw hauls up a massive naval bulkhead (+10 Salvage Alloy, +1 Cipher Key)."
+      }
+    ]
+  },
+  {
+    id: "sig_06_buoy_k9_drift",
+    oneTimeFlag: "evt_flag_06_buoy_k9_drift",
+    chapter: 2,
+    sequenceNumber: 6,
+    title: "Weather Buoy K-9: Mooring Chain Parted",
+    sender: "Telemetry Buoy K-9",
+    frequencyMHz: "134.8 MHz",
+    morsePreview: "-.- ----. / -.. .-. .. ..-. -",
+    corruptedBody: "[CIPHER BLOCK] ...sea anchor dragging toward eastern shelf... harmonic reference drifting...",
+    decodedBody: '"BUOY K-9 ALERT: Primary sea-anchor parted in 40-foot swells. Dispatch a grapple-drone with Salvage Alloy to re-anchor K-9 at its triangulation coordinate, or tow it south to mark the reef passage for Convoy Meridian."',
+    prerequisites: {
+      minChapter: 2,
+      requiredEventIds: ["sig_05_dredge_overload"]
+    },
+    decodeCost: { watts: 7, cipher: 1 },
+    choices: [
+      {
+        id: "reanchor_buoy_k9",
+        label: "Re-Anchor Triangulation Coordinate (-5 Alloy)",
+        description: "Locks K-9 in Sector E-07, yielding +3 Cipher Keys and +6 Watts (+1 Network Integrity).",
+        costs: { alloy: 5 },
+        rewards: { watts: 6, cipher: 3 },
+        networkIntegrityDelta: 1,
+        convoyReadinessDelta: 0,
+        outcomeLog: "Grapple-chain locked into the eastern basalt shelf. K-9 delivers +3 Cipher Keys."
+      },
+      {
+        id: "drift_buoy_to_channel",
+        label: "Drift K-9 into Razorback Channel (-5W)",
+        description: "Marks the convoy lane and yields +6 Salvage Alloy & +2 Cipher Keys (+1 Convoy Readiness).",
+        costs: { watts: 5 },
+        rewards: { alloy: 6, cipher: 2 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 1,
+        outcomeLog: "Buoy K-9 Rides the rip current into Razorback Channel, illuminating the shoal markers."
+      }
+    ]
+  },
+  {
+    id: "sig_07_meridian_hail",
+    oneTimeFlag: "evt_flag_07_meridian_hail",
+    chapter: 2,
+    sequenceNumber: 7,
+    title: "Convoy Meridian: Hull Breach on Transport Three",
+    sender: "Captain Solis (MV Meridian)",
+    frequencyMHz: "137.4 MHz",
+    morsePreview: "-- . .-. .. -.. .. .- -.",
+    corruptedBody: "[URGENT CIPHER] ...six ships holding off Razorback Reef... ice pack crushing Transport Three...",
+    decodedBody: '"Ember Point, this is Captain Solis aboard flagship Meridian! We have 410 civilians across six ice-crusted hulls. Transport Three\u2019s bilge pumps are failing\u2014either ration balanced relay support or dump your main capacitor bank to run our arc-welders!"',
+    prerequisites: {
+      minChapter: 2,
+      requiredEventIds: ["sig_06_buoy_k9_drift"]
+    },
+    decodeCost: { watts: 8, cipher: 1 },
+    choices: [
+      {
+        id: "ration_balanced_aid",
+        label: "Ration Balanced Relay Aid (-4 Alloy)",
+        description: "Preserves grid reserves while sending patch plates (+8 Watts, +2 Cipher Keys, +1 Network Integrity).",
+        costs: { alloy: 4 },
+        rewards: { watts: 8, cipher: 2 },
+        networkIntegrityDelta: 1,
+        convoyReadinessDelta: 0,
+        outcomeLog: "Meridian patches Transport Three and links its radio array into the archipelago repeater."
+      },
+      {
+        id: "dump_capacitor_for_welders",
+        label: "Dump Capacitor for Arc-Welders (-8W, -5 Alloy)",
+        description: "Full emergency weld package (+3 Cipher Keys, +12 Watts backfeed, +2 Convoy Readiness).",
+        costs: { watts: 8, alloy: 5 },
+        rewards: { watts: 12, cipher: 3 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 2,
+        outcomeLog: "Arc-welders seal Transport Three\u2019s hull! Captain Solis aligns Meridian\u2019s engines for the channel run."
+      }
+    ]
+  },
+  {
+    id: "sig_08_mainland_silence",
+    oneTimeFlag: "evt_flag_08_mainland_silence",
+    chapter: 2,
+    sequenceNumber: 8,
+    title: "Mainland Admiralty: Scuttle & Blackout Order",
+    sender: "Admiralty High Command",
+    frequencyMHz: "139.9 MHz",
+    morsePreview: "-... .-.. .- -.-. -.- --- ..- -",
+    corruptedBody: "[HIGH CIPHER] ...weather front permanent... wipe regional cipher tables and shut down coastal beacons...",
+    decodedBody: '"DIRECTIVE 99-OMEGA: All outer island stations are declared unrecoverable until spring thaw. Erase local encryption keys immediately. \u2014 Keeper, if we obey, the islands go deaf; if we override the directive, we seize full control of the Solstice spectrum."',
+    prerequisites: {
+      minChapter: 2,
+      requiredEventIds: ["sig_07_meridian_hail"]
+    },
+    decodeCost: { watts: 8, cipher: 2 },
+    choices: [
+      {
+        id: "assert_island_sovereignty",
+        label: "Assert Archipelago Mesh Sovereignty (-6W)",
+        description: "Fork the Admiralty cipher root (+4 Cipher Keys, +6 Salvage Alloy, +2 Network Integrity).",
+        costs: { watts: 6 },
+        rewards: { alloy: 6, cipher: 4 },
+        networkIntegrityDelta: 2,
+        convoyReadinessDelta: 0,
+        outcomeLog: "You lock out the mainland kill-switch. The Archipelago Mesh now answers only to Ember Point!"
+      },
+      {
+        id: "crack_admiralty_depot",
+        label: "Crack Admiralty Naval Depot Locks (-1 Cipher)",
+        description: "Seize emergency fleet stores (+10 Salvage Alloy, +10 Watts, +2 Convoy Readiness).",
+        costs: { cipher: 1 },
+        rewards: { watts: 10, alloy: 10 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 2,
+        outcomeLog: "Depot bunkers Pop open along the breakwater! +10 Alloy and +10 Watts routed to evacuation reserves."
+      }
+    ]
+  },
+  {
+    id: "sig_09_solstice_squall",
+    oneTimeFlag: "evt_flag_09_solstice_squall",
+    chapter: 3,
+    sequenceNumber: 9,
+    title: "Eye of the Solstice: 110-Knot Hurricane Wall",
+    sender: "Ember Point Barograph",
+    frequencyMHz: "141.2 MHz",
+    morsePreview: "... --- .-.. ... - .. -.-. .",
+    corruptedBody: "[EXTREME INTERFERENCE] ...barometer 942 mbar... tower guy-wires screaming... sea wall overtopped...",
+    decodedBody: '"SOLSTICE WALL IMPACT: 110-knot gusts are hammering all four sectors. Reinforce every coastal relay mast with Salvage Alloy so the four-station grid survives the night, or focus all power into the southern breakwater radar corridor."',
+    prerequisites: {
+      minChapter: 3
+    },
+    decodeCost: { watts: 8, cipher: 1 },
+    choices: [
+      {
+        id: "guywire_all_towers",
+        label: "Guy-Wire All Four Relay Masts (-6 Alloy)",
+        description: "Protects the entire network (+12 Watts, +2 Cipher Keys, +2 Network Integrity).",
+        costs: { alloy: 6 },
+        rewards: { watts: 12, cipher: 2 },
+        networkIntegrityDelta: 2,
+        convoyReadinessDelta: 0,
+        outcomeLog: "Steel guy-wires hold fast across all four sectors! Harmonic resonance generates +12W and +2 Cipher Keys."
+      },
+      {
+        id: "focus_southern_radar",
+        label: "Overcharge Southern Radar Corridor (-8W)",
+        description: "Maps every submerged rock in Razorback Channel (+8 Salvage Alloy, +2 Cipher Keys, +2 Convoy Readiness).",
+        costs: { watts: 8 },
+        rewards: { alloy: 8, cipher: 2 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 2,
+        outcomeLog: "High-power radar cuts through the blinding spray, charting a clean evacuation lane."
+      }
+    ]
+  },
+  {
+    id: "sig_10_reef_harmonic",
+    oneTimeFlag: "evt_flag_10_reef_harmonic",
+    chapter: 3,
+    sequenceNumber: 10,
+    title: "Ionospheric Mirror: 142.8 MHz Standing Wave",
+    sender: "Weather Buoy K-9 / Ionosonde",
+    frequencyMHz: "142.8 MHz",
+    morsePreview: ".--. .... .- ... . / .-.. --- -.-.",
+    corruptedBody: "[AURORAL BOUNCE] ...rare solstice ionospheric ducting detected... 400-mile range window open...",
+    decodedBody: '"IONOSPHERIC WINDOW: Auroral compression has created a standing wave duct over the archipelago. Phase-lock the duct to permanently synchronize the four-island autonomous grid, or bounce a high-power sonar-radio guide beam ahead of Convoy Meridian."',
+    prerequisites: {
+      minChapter: 3,
+      requiredEventIds: ["sig_09_solstice_squall"]
+    },
+    decodeCost: { watts: 8, cipher: 2 },
+    choices: [
+      {
+        id: "lock_ionospheric_mesh",
+        label: "Phase-Lock Autonomous Mesh (-6W)",
+        description: "Synthesizes +4 Cipher Keys and +6 Salvage Alloy (+2 Network Integrity).",
+        costs: { watts: 6 },
+        rewards: { alloy: 6, cipher: 4 },
+        networkIntegrityDelta: 2,
+        convoyReadinessDelta: 0,
+        outcomeLog: "Standing wave locked! All island repeaters hum in a single self-healing harmonic chord."
+      },
+      {
+        id: "project_convoy_guide_beam",
+        label: "Project Convoy Guide Beam (-4 Alloy)",
+        description: "Generates +12 Watts and +3 Cipher Keys for fleet navigation (+2 Convoy Readiness).",
+        costs: { alloy: 4 },
+        rewards: { watts: 12, cipher: 3 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 2,
+        outcomeLog: "Auroral guide beam illuminates the open ocean beyond the reef (+12 Watts, +3 Cipher Keys)."
+      }
+    ]
+  },
+  {
+    id: "sig_11_mutiny_on_meridian",
+    oneTimeFlag: "evt_flag_11_mutiny_on_meridian",
+    chapter: 3,
+    sequenceNumber: 11,
+    title: "Convoy Meridian: The Pilots\u2019 Ultimatum",
+    sender: "Captain Solis & Harbor Pilots",
+    frequencyMHz: "144.0 MHz",
+    morsePreview: "-.. . -.-. .. -.. . / -. --- .--",
+    corruptedBody: "[CRITICAL TRAFFIC] ...tide crests in twenty minutes... either hold station as Node 4 or run the reef now...",
+    decodedBody: '"Ember Point, the slack-water window is here! Half my captains want to anchor inside the leeward bay as the fourth permanent generator node for your Archipelago Mesh. The rest want you to burn your inland relays into a blinding searchlight corridor so we can break out to the southern mainland tonight. Give the order!"',
+    prerequisites: {
+      minChapter: 3,
+      requiredEventIds: ["sig_10_reef_harmonic"]
+    },
+    decodeCost: { watts: 10, cipher: 2 },
+    choices: [
+      {
+        id: "anchor_meridian_as_node_4",
+        label: "Order Meridian to Anchor in Leeward Grid (-6W)",
+        description: "Integrates Meridian into the 4-station mesh (+8 Salvage Alloy, +3 Cipher Keys, +2 Network Integrity).",
+        costs: { watts: 6 },
+        rewards: { alloy: 8, cipher: 3 },
+        networkIntegrityDelta: 2,
+        convoyReadinessDelta: 0,
+        powerStationId: "convoy_meridian",
+        outcomeLog: "Meridian drops anchor in the sheltered cove and couples its diesel turbines to the Archipelago Grid!"
+      },
+      {
+        id: "clear_meridian_for_breakout",
+        label: "Order Full Fleet Breakout Run (-6 Alloy)",
+        description: "Diverts all coastal reserves to the sea lane (+16 Watts, +3 Cipher Keys, +2 Convoy Readiness).",
+        costs: { alloy: 6 },
+        rewards: { watts: 16, cipher: 3 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 2,
+        outcomeLog: "Six ship horns thunder across the surf as Convoy Meridian forms line-astern for the breakout run!"
+      }
+    ]
+  },
+  {
+    id: "sig_12_final_convergence",
+    oneTimeFlag: "evt_flag_12_final_convergence",
+    chapter: 3,
+    sequenceNumber: 12,
+    title: "Solstice Apex: The Ember Point Convergence",
+    sender: "Ember Point Master Console",
+    frequencyMHz: "146.5 MHz",
+    morsePreview: "... --- .-.. ... - .. -.-. . / .- .--. . -..-",
+    corruptedBody: "[FINAL PROTOCOL READY] ...capacitor bank at peak resonance... select terminal transmission mode...",
+    decodedBody: '"MASTER CONSOLE READY: All 12 Solstice transmissions processed. You now have the bandwidth and charge to execute either final convergence protocol: lock the four-station Archival Beacon for permanent island sovereignty, or fire the Exodus Convoy Overdrive to shepherd the fleet to open sea."',
+    prerequisites: {
+      minChapter: 3,
+      requiredEventIds: ["sig_11_mutiny_on_meridian"]
+    },
+    decodeCost: { watts: 8, cipher: 1 },
+    choices: [
+      {
+        id: "charge_archival_protocol",
+        label: "Charge Archival Mesh Bus (+14W, +4 Cipher)",
+        description: "Prepares the 4-station Archival Beacon for Ending A (+2 Network Integrity).",
+        costs: {},
+        rewards: { watts: 14, alloy: 6, cipher: 4 },
+        networkIntegrityDelta: 2,
+        convoyReadinessDelta: 0,
+        outcomeLog: "Archival Mesh Bus charged to 100%. Ready to lock Ending A: The Archival Beacon."
+      },
+      {
+        id: "charge_exodus_protocol",
+        label: "Charge Exodus Searchlight Bus (+14W, +10 Alloy)",
+        description: "Prepares the Fresnel Overdrive for Ending B (+2 Convoy Readiness).",
+        costs: {},
+        rewards: { watts: 14, alloy: 10, cipher: 3 },
+        networkIntegrityDelta: 0,
+        convoyReadinessDelta: 2,
+        outcomeLog: "Exodus Searchlight Bus charged to 100%. Ready to fire Ending B: The Exodus Convoy."
+      }
+    ]
+  }
+];
+var ENDINGS = {
+  ending_a_archival_beacon: {
+    id: "ending_a_archival_beacon",
+    title: "Ending A: The Archival Beacon (Network Sovereignty)",
+    subtitle: "All four archipelago relays lock into a self-sustaining harmonic grid.",
+    summary: "By synchronizing North Reef, Sunken Dredge, Weather Buoy K-9, and Leeward Meridian, Ember Point becomes the heart of an unbreakable island commonwealth.",
+    epilogue: "Through the deepest freeze of the Solstice blockade, the four beacons pulse in unison across the dark water. Weather telemetry, dredge salvage, and harbor traffic flow without mainland oversight. When spring finally thaws the strait, the archipelago answers on its own frequency.",
+    requirementDescription: "Requires Chapter 3, all 4 Remote Stations powered, Network Integrity >= 3, 25 Watts, and 4 Cipher Keys."
+  },
+  ending_b_exodus_convoy: {
+    id: "ending_b_exodus_convoy",
+    title: "Ending B: The Exodus Convoy (Fleet Evacuation)",
+    subtitle: "The lighthouse arc burns white-hot, guiding all six ships safely past Razorback Reef.",
+    summary: "You sacrifice the inland repeater coils and channel every last watt and alloy plate into a blinding sea-lane corridor for Convoy Meridian.",
+    epilogue: 'One by one, the inland relay tubes shatter as you push the Fresnel arc to 300% capacity. Through the boiling surf of Razorback Channel, Captain Solis steers all six vessels along your razor-thin beam of light. At dawn, the last radio message reaches your cooling receiver from open water: "All hands clear of the shoals. Thank you, Ember Point."',
+    requirementDescription: "Requires Chapter 3, Convoy Readiness >= 3, 25 Watts, 12 Salvage Alloy, and 3 Cipher Keys."
+  }
+};
+
+// games/03-the-last-signal/src/rng.ts
+var SeededRng = class {
+  state;
+  constructor(seed) {
+    this.state = seed >>> 0 || 1;
+  }
+  next() {
+    let t = this.state += 1831565813;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+  nextInt(minInclusive, maxInclusive) {
+    const span = maxInclusive - minInclusive + 1;
+    return minInclusive + Math.floor(this.next() * span);
+  }
+  getState() {
+    return this.state >>> 0;
+  }
+  setState(state) {
+    this.state = state >>> 0 || 1;
+  }
+};
+
+// games/03-the-last-signal/src/simulation.ts
+function createInitialState(seed = DEFAULT_SEED) {
+  const rng = new SeededRng(seed);
+  const initialPhase = rng.nextInt(15, 85);
+  const state = {
+    seed,
+    rngState: rng.getState(),
+    cycle: 0,
+    chapter: 1,
+    resources: {
+      watts: GAME_CONFIG.initialWatts,
+      alloy: GAME_CONFIG.initialAlloy,
+      cipher: GAME_CONFIG.initialCipher
+    },
+    maxResources: {
+      watts: GAME_CONFIG.initialMaxWatts,
+      alloy: GAME_CONFIG.initialMaxAlloy,
+      cipher: GAME_CONFIG.initialMaxCipher
+    },
+    unlockedResources: {
+      watts: true,
+      alloy: false,
+      cipher: false
+    },
+    capabilities: {
+      receiverWarmed: false,
+      oscilloscopeUnlocked: false,
+      radarUnlocked: false,
+      automationUnlocked: false,
+      convergenceUnlocked: false
+    },
+    repairs: {
+      repair_rectifier: false,
+      repair_winch: false
+    },
+    stations: {
+      north_reef: {
+        id: "north_reef",
+        unlocked: false,
+        activated: false,
+        powered: false,
+        throttledByShedder: false
+      },
+      sunken_dredge: {
+        id: "sunken_dredge",
+        unlocked: false,
+        activated: false,
+        powered: false,
+        throttledByShedder: false
+      },
+      weather_buoy: {
+        id: "weather_buoy",
+        unlocked: false,
+        activated: false,
+        powered: false,
+        throttledByShedder: false
+      },
+      convoy_meridian: {
+        id: "convoy_meridian",
+        unlocked: false,
+        activated: false,
+        powered: false,
+        throttledByShedder: false
+      }
+    },
+    automationRules: {
+      auto_crank: {
+        id: "auto_crank",
+        unlocked: false,
+        enabled: false,
+        lastTriggeredCycle: null,
+        lastStatus: "Locked (Unlocks in Chapter 2)"
+      },
+      signal_scrubber: {
+        id: "signal_scrubber",
+        unlocked: false,
+        enabled: false,
+        lastTriggeredCycle: null,
+        lastStatus: "Locked (Unlocks in Chapter 2)"
+      },
+      hull_salvage_drone: {
+        id: "hull_salvage_drone",
+        unlocked: false,
+        enabled: false,
+        lastTriggeredCycle: null,
+        lastStatus: "Locked (Unlocks in Chapter 2)"
+      },
+      emergency_load_shedder: {
+        id: "emergency_load_shedder",
+        unlocked: false,
+        enabled: false,
+        lastTriggeredCycle: null,
+        lastStatus: "Locked (Unlocks in Chapter 2)"
+      }
+    },
+    lastCycleRuleResults: [],
+    signalLock: 25,
+    harmonicPhase: initialPhase,
+    decodedEvents: [],
+    completedEvents: [],
+    eventLog: [],
+    networkIntegrity: 0,
+    convoyReadiness: 0,
+    brownoutCount: 0,
+    endingReached: null,
+    logs: [],
+    nextLogId: 1
+  };
+  appendLog(
+    state,
+    "chapter",
+    `${CHAPTERS[1].title} \u2014 ${CHAPTERS[1].openingLog}`
+  );
+  return state;
+}
+function appendLog(state, category, text) {
+  state.logs.unshift({
+    id: state.nextLogId++,
+    cycle: state.cycle,
+    category,
+    text
+  });
+  if (state.logs.length > 60) {
+    state.logs.length = 60;
+  }
+}
+function clampResources(state) {
+  ["watts", "alloy", "cipher"].forEach((resId) => {
+    const max = state.maxResources[resId];
+    const current = state.resources[resId];
+    state.resources[resId] = Math.max(0, Math.min(max, Math.round(current)));
+  });
+}
+function canAfford(state, cost) {
+  if (cost.watts && state.resources.watts < cost.watts) return false;
+  if (cost.alloy && state.resources.alloy < cost.alloy) return false;
+  if (cost.cipher && state.resources.cipher < cost.cipher) return false;
+  return true;
+}
+function spendResources(state, cost) {
+  if (cost.watts) state.resources.watts -= cost.watts;
+  if (cost.alloy) state.resources.alloy -= cost.alloy;
+  if (cost.cipher) state.resources.cipher -= cost.cipher;
+  clampResources(state);
+}
+function addResources(state, gain) {
+  if (gain.watts) state.resources.watts += gain.watts;
+  if (gain.alloy) {
+    state.unlockedResources.alloy = true;
+    state.resources.alloy += gain.alloy;
+  }
+  if (gain.cipher) {
+    state.unlockedResources.cipher = true;
+    state.resources.cipher += gain.cipher;
+  }
+  clampResources(state);
+}
+function getCompletedRepairCount(state) {
+  return Object.values(state.repairs).filter(Boolean).length;
+}
+function getPoweredStationCount(state) {
+  return Object.values(state.stations).filter((s) => s.powered).length;
+}
+function isEventAvailable(state, eventDef) {
+  if (state.completedEvents.includes(eventDef.id)) return false;
+  if (state.eventLog.some(
+    (entry) => entry.eventId === eventDef.id || entry.oneTimeFlag === eventDef.oneTimeFlag
+  )) {
+    return false;
+  }
+  const prereq = eventDef.prerequisites;
+  if (prereq.receiverWarmed && !state.capabilities.receiverWarmed) {
+    return false;
+  }
+  if (prereq.minCompletedRepairs !== void 0 && getCompletedRepairCount(state) < prereq.minCompletedRepairs) {
+    return false;
+  }
+  if (prereq.minChapter !== void 0 && state.chapter < prereq.minChapter) {
+    return false;
+  }
+  if (prereq.requiredEventIds) {
+    for (const reqId of prereq.requiredEventIds) {
+      if (!state.completedEvents.includes(reqId)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+function getAvailableMessageEvents(state) {
+  return MESSAGE_EVENTS.filter((evt) => isEventAvailable(state, evt));
+}
+function evaluateChapterProgression(state) {
+  if (state.chapter === 1) {
+    const repairsDone = getCompletedRepairCount(state);
+    const ch1EventsDone = state.completedEvents.includes("sig_03_harbor_charter") || repairsDone >= 1 && state.completedEvents.length >= GAME_CONFIG.chapter2RequiredEvents && state.capabilities.oscilloscopeUnlocked;
+    if (repairsDone >= 1 && ch1EventsDone) {
+      state.chapter = 2;
+      state.unlockedResources.alloy = true;
+      state.unlockedResources.cipher = true;
+      state.capabilities.radarUnlocked = true;
+      state.capabilities.automationUnlocked = true;
+      state.maxResources.watts += GAME_CONFIG.chapter2BonusMaxWatts;
+      Object.keys(state.stations).forEach((stId) => {
+        state.stations[stId].unlocked = true;
+      });
+      Object.keys(state.automationRules).forEach(
+        (ruleId) => {
+          if (!state.automationRules[ruleId].unlocked) {
+            state.automationRules[ruleId].lastStatus = "Ready to fabricate in Rule Rack";
+          }
+        }
+      );
+      appendLog(
+        state,
+        "chapter",
+        `${CHAPTERS[2].title} \u2014 ${CHAPTERS[2].openingLog}`
+      );
+    }
+  }
+  if (state.chapter === 2) {
+    const poweredCount = getPoweredStationCount(state);
+    const readyForCh3 = state.completedEvents.includes("sig_08_mainland_silence") || state.completedEvents.length >= GAME_CONFIG.chapter3RequiredEvents && poweredCount >= GAME_CONFIG.chapter3RequiredPoweredStations;
+    if (readyForCh3) {
+      state.chapter = 3;
+      state.capabilities.convergenceUnlocked = true;
+      appendLog(
+        state,
+        "chapter",
+        `${CHAPTERS[3].title} \u2014 ${CHAPTERS[3].openingLog}`
+      );
+    }
+  }
+}
+function crankDynamo(state) {
+  if (state.endingReached) {
+    return { ok: false, reason: "Transmission convergence already completed." };
+  }
+  const gain = state.repairs.repair_rectifier ? GAME_CONFIG.rectifierDynamoWatts : GAME_CONFIG.baseDynamoWatts;
+  state.resources.watts += gain;
+  clampResources(state);
+  if (!state.capabilities.receiverWarmed && state.resources.watts >= GAME_CONFIG.receiverWarmupWatts) {
+    state.capabilities.receiverWarmed = true;
+    state.unlockedResources.alloy = true;
+    state.resources.alloy += GAME_CONFIG.initialScrapDiscoveryAlloy;
+    clampResources(state);
+    appendLog(
+      state,
+      "signal",
+      `Pilot lamp ignited! The vacuum tubes warm up, revealing a distress carrier on 118.4 MHz and +${GAME_CONFIG.initialScrapDiscoveryAlloy} Salvage Alloy beside the cracked rectifier housing.`
+    );
+    return {
+      ok: true,
+      reason: `Cranked Dynamo (+${gain}W). Receiver warmed up & Salvage Alloy unlocked!`
+    };
+  }
+  appendLog(
+    state,
+    "system",
+    `Hand-Dynamo cranked: +${gain} Watts (${state.resources.watts}/${state.maxResources.watts}W).`
+  );
+  return { ok: true, reason: `Generated +${gain} Watts.` };
+}
+function gatherSalvage(state) {
+  if (state.endingReached) {
+    return { ok: false, reason: "Transmission convergence already completed." };
+  }
+  if (!state.unlockedResources.alloy) {
+    return {
+      ok: false,
+      reason: "Warm up the receiver lamp first to inspect cliffside salvage."
+    };
+  }
+  const baseYield = state.repairs.repair_winch ? GAME_CONFIG.winchSalvageAlloy : GAME_CONFIG.baseSalvageAlloy;
+  if (state.resources.watts >= GAME_CONFIG.salvageWinchWattCost) {
+    state.resources.watts -= GAME_CONFIG.salvageWinchWattCost;
+    state.resources.alloy += baseYield;
+    clampResources(state);
+    appendLog(
+      state,
+      "system",
+      `Powered winch haul (-${GAME_CONFIG.salvageWinchWattCost}W): recovered +${baseYield} Salvage Alloy.`
+    );
+    return {
+      ok: true,
+      reason: `Winch hauled +${baseYield} Salvage Alloy (-${GAME_CONFIG.salvageWinchWattCost}W).`
+    };
+  } else {
+    const manualYield = Math.max(2, Math.floor(baseYield / 2));
+    state.resources.alloy += manualYield;
+    clampResources(state);
+    appendLog(
+      state,
+      "system",
+      `Manual cliffside salvage haul: recovered +${manualYield} Salvage Alloy.`
+    );
+    return {
+      ok: true,
+      reason: `Manually hauled +${manualYield} Salvage Alloy.`
+    };
+  }
+}
+function alignFrequency(state) {
+  if (state.endingReached) {
+    return { ok: false, reason: "Transmission convergence already completed." };
+  }
+  if (!state.capabilities.receiverWarmed) {
+    return { ok: false, reason: "Warm up the receiver first." };
+  }
+  const rng = new SeededRng(state.rngState);
+  state.harmonicPhase = (state.harmonicPhase + rng.nextInt(17, 33)) % 100;
+  state.rngState = rng.getState();
+  state.signalLock = Math.min(
+    100,
+    state.signalLock + GAME_CONFIG.tuneSignalLockGain
+  );
+  if (state.unlockedResources.cipher && state.resources.watts >= GAME_CONFIG.tuneCipherWattCost && state.resources.cipher < state.maxResources.cipher) {
+    state.resources.watts -= GAME_CONFIG.tuneCipherWattCost;
+    state.resources.cipher += 1;
+    clampResources(state);
+    appendLog(
+      state,
+      "signal",
+      `Harmonic carrier phase-locked (${state.signalLock}%): synthesized +1 Cipher Key (-${GAME_CONFIG.tuneCipherWattCost}W).`
+    );
+    return {
+      ok: true,
+      reason: `Signal lock ${state.signalLock}% & synthesized +1 Cipher Key.`
+    };
+  }
+  appendLog(
+    state,
+    "signal",
+    `Frequency dial aligned: Signal Lock at ${state.signalLock}%.`
+  );
+  return { ok: true, reason: `Signal Lock increased to ${state.signalLock}%.` };
+}
+function performInitialRepair(state, repairId) {
+  const def = INITIAL_REPAIRS[repairId];
+  if (!def) {
+    return { ok: false, reason: "Unknown repair ID." };
+  }
+  if (!state.capabilities.receiverWarmed) {
+    return { ok: false, reason: "Receiver must be warmed up first." };
+  }
+  if (state.repairs[repairId]) {
+    return { ok: false, reason: `${def.name} is already completed.` };
+  }
+  if (!canAfford(state, def.cost)) {
+    return {
+      ok: false,
+      reason: `Insufficient resources for ${def.name}.`
+    };
+  }
+  const wasFirstRepair = getCompletedRepairCount(state) === 0;
+  spendResources(state, def.cost);
+  state.repairs[repairId] = true;
+  if (repairId === "repair_rectifier") {
+    state.maxResources.watts += GAME_CONFIG.rectifierBonusMaxWatts;
+  } else if (repairId === "repair_winch") {
+    state.maxResources.alloy += GAME_CONFIG.winchBonusMaxAlloy;
+  }
+  if (wasFirstRepair) {
+    state.capabilities.oscilloscopeUnlocked = true;
+    appendLog(
+      state,
+      "chapter",
+      `STATION TRANSFORMATION: ${def.name} complete! The Frequency Oscilloscope & Harmonic Decoder console comes online.`
+    );
+  } else {
+    appendLog(state, "system", `Completed structural upgrade: ${def.name}.`);
+  }
+  evaluateChapterProgression(state);
+  return { ok: true, reason: `Completed ${def.name}.` };
+}
+function toggleRemoteStation(state, stationId, forcePowered) {
+  const def = REMOTE_STATIONS[stationId];
+  const st = state.stations[stationId];
+  if (!def || !st) {
+    return { ok: false, reason: "Unknown station." };
+  }
+  if (!st.unlocked) {
+    return { ok: false, reason: `${def.name} is not yet on the radar grid.` };
+  }
+  if (!st.activated) {
+    if (forcePowered === false) {
+      return { ok: false, reason: `${def.name} is already offline.` };
+    }
+    if (!canAfford(state, def.activationCost)) {
+      return {
+        ok: false,
+        reason: `Insufficient resources to activate ${def.name}.`
+      };
+    }
+    spendResources(state, def.activationCost);
+    st.activated = true;
+    st.powered = true;
+    st.throttledByShedder = false;
+    appendLog(
+      state,
+      "signal",
+      `Remote Beacon Activated: ${def.name} is now online and linked to Ember Point!`
+    );
+    evaluateChapterProgression(state);
+    return { ok: true, reason: `Activated and powered ${def.name}.` };
+  }
+  const targetPower = forcePowered !== void 0 ? forcePowered : !st.powered;
+  st.powered = targetPower;
+  if (targetPower) {
+    st.throttledByShedder = false;
+  }
+  appendLog(
+    state,
+    "system",
+    `${def.name} beacon ${st.powered ? "POWERED ON" : "THROTTLED OFFLINE"}.`
+  );
+  evaluateChapterProgression(state);
+  return {
+    ok: true,
+    reason: `${def.name} is now ${st.powered ? "powered" : "offline"}.`
+  };
+}
+function unlockAutomationRule(state, ruleId) {
+  const def = AUTOMATION_RULES[ruleId];
+  const ruleState = state.automationRules[ruleId];
+  if (!def || !ruleState) {
+    return { ok: false, reason: "Unknown automation rule." };
+  }
+  if (state.chapter < def.unlockChapter) {
+    return {
+      ok: false,
+      reason: `${def.name} unlocks in Chapter ${def.unlockChapter}.`
+    };
+  }
+  if (ruleState.unlocked) {
+    return { ok: false, reason: `${def.name} is already unlocked.` };
+  }
+  if (!canAfford(state, def.unlockCost)) {
+    return {
+      ok: false,
+      reason: `Insufficient resources to fabricate ${def.name}.`
+    };
+  }
+  spendResources(state, def.unlockCost);
+  ruleState.unlocked = true;
+  ruleState.enabled = true;
+  ruleState.lastStatus = "Armed (Awaiting next cycle check)";
+  appendLog(
+    state,
+    "automation",
+    `Automation Rule Fabricated & Armed: ${def.name} (${def.conditionSummary} -> ${def.outputSummary}).`
+  );
+  return { ok: true, reason: `Unlocked and enabled ${def.name}.` };
+}
+function toggleAutomationRule(state, ruleId, forceEnabled) {
+  const def = AUTOMATION_RULES[ruleId];
+  const ruleState = state.automationRules[ruleId];
+  if (!def || !ruleState) {
+    return { ok: false, reason: "Unknown automation rule." };
+  }
+  if (!ruleState.unlocked) {
+    return { ok: false, reason: `Unlock ${def.name} first.` };
+  }
+  ruleState.enabled = forceEnabled !== void 0 ? forceEnabled : !ruleState.enabled;
+  ruleState.lastStatus = ruleState.enabled ? "Armed (Awaiting cycle)" : "Disabled by operator";
+  appendLog(
+    state,
+    "automation",
+    `${def.name} ${ruleState.enabled ? "ENABLED" : "DISABLED"}.`
+  );
+  return {
+    ok: true,
+    reason: `${def.name} ${ruleState.enabled ? "enabled" : "disabled"}.`
+  };
+}
+function executeAutomationRulesForCycle(state) {
+  const results = [];
+  const orderedIds = [
+    "auto_crank",
+    "signal_scrubber",
+    "hull_salvage_drone",
+    "emergency_load_shedder"
+  ];
+  for (const ruleId of orderedIds) {
+    const def = AUTOMATION_RULES[ruleId];
+    const ruleState = state.automationRules[ruleId];
+    if (!ruleState.unlocked || !ruleState.enabled) {
+      results.push({
+        ruleId,
+        triggered: false,
+        reason: !ruleState.unlocked ? "Rule locked" : "Rule disabled",
+        conditionSummary: def.conditionSummary,
+        inputSummary: def.inputSummary,
+        outputSummary: def.outputSummary
+      });
+      continue;
+    }
+    const wattsPct = state.maxResources.watts > 0 ? state.resources.watts / state.maxResources.watts * 100 : 0;
+    let conditionMet = false;
+    if (def.conditionType === "watts_pct_below") {
+      conditionMet = wattsPct < (def.thresholdPct ?? 0);
+    } else if (def.conditionType === "watts_pct_at_least") {
+      conditionMet = wattsPct >= (def.thresholdPct ?? 100);
+    } else if (def.conditionType === "station_powered") {
+      const reqStation = def.requiredStationId;
+      conditionMet = reqStation ? state.stations[reqStation].powered : false;
+    }
+    if (!conditionMet) {
+      const reason2 = `Standby: Condition (${def.conditionSummary}) not met.`;
+      ruleState.lastStatus = reason2;
+      results.push({
+        ruleId,
+        triggered: false,
+        reason: reason2,
+        conditionSummary: def.conditionSummary,
+        inputSummary: def.inputSummary,
+        outputSummary: def.outputSummary
+      });
+      continue;
+    }
+    if (!canAfford(state, def.inputs)) {
+      const reason2 = `Blocked: Insufficient input (${def.inputSummary}).`;
+      ruleState.lastStatus = reason2;
+      results.push({
+        ruleId,
+        triggered: false,
+        reason: reason2,
+        conditionSummary: def.conditionSummary,
+        inputSummary: def.inputSummary,
+        outputSummary: def.outputSummary
+      });
+      continue;
+    }
+    spendResources(state, def.inputs);
+    addResources(state, def.outputs);
+    if (def.outputs.throttleNonCriticalStations) {
+      ["sunken_dredge", "weather_buoy", "convoy_meridian"].forEach(
+        (stId) => {
+          if (state.stations[stId].powered) {
+            state.stations[stId].powered = false;
+            state.stations[stId].throttledByShedder = true;
+          }
+        }
+      );
+    }
+    ruleState.lastTriggeredCycle = state.cycle;
+    const reason = `Fired on Cycle ${state.cycle}: ${def.conditionSummary} -> ${def.outputSummary}.`;
+    ruleState.lastStatus = reason;
+    appendLog(state, "automation", `[${def.name}] ${reason}`);
+    results.push({
+      ruleId,
+      triggered: true,
+      reason,
+      conditionSummary: def.conditionSummary,
+      inputSummary: def.inputSummary,
+      outputSummary: def.outputSummary
+    });
+  }
+  state.lastCycleRuleResults = results;
+  return results;
+}
+function stepCycle(state) {
+  if (state.endingReached) {
+    return { ok: false, reason: "Transmission convergence already completed." };
+  }
+  state.cycle += 1;
+  if (getCompletedRepairCount(state) >= 1) {
+    state.resources.watts += 2;
+    clampResources(state);
+  }
+  executeAutomationRulesForCycle(state);
+  let totalUpkeep = 0;
+  const activeStations = Object.keys(state.stations).filter(
+    (id) => state.stations[id].powered
+  );
+  for (const stId of activeStations) {
+    totalUpkeep += REMOTE_STATIONS[stId].wattUpkeepPerCycle;
+  }
+  if (totalUpkeep > 0) {
+    if (state.resources.watts >= totalUpkeep) {
+      state.resources.watts -= totalUpkeep;
+      for (const stId of activeStations) {
+        addResources(state, REMOTE_STATIONS[stId].passiveYieldPerCycle);
+      }
+      clampResources(state);
+    } else {
+      const shedder = state.automationRules.emergency_load_shedder;
+      if (shedder.unlocked && shedder.enabled) {
+        ["sunken_dredge", "weather_buoy", "convoy_meridian"].forEach(
+          (stId) => {
+            if (state.stations[stId].powered) {
+              state.stations[stId].powered = false;
+              state.stations[stId].throttledByShedder = true;
+            }
+          }
+        );
+        state.resources.watts = Math.min(
+          state.maxResources.watts,
+          state.resources.watts + 5
+        );
+        shedder.lastTriggeredCycle = state.cycle;
+        shedder.lastStatus = `Prevented brownout on Cycle ${state.cycle}`;
+        appendLog(
+          state,
+          "automation",
+          `[Emergency Load Shedder] Throttled non-critical beacons to prevent Receiver Brownout (+5W reserve).`
+        );
+      } else {
+        state.resources.watts = 0;
+        state.brownoutCount += 1;
+        state.signalLock = Math.max(10, state.signalLock - 30);
+        for (const stId of activeStations) {
+          state.stations[stId].powered = false;
+        }
+        appendLog(
+          state,
+          "warning",
+          `RECEIVER BROWNOUT! Beacon load exceeded capacitor reserves. Remote stations tripped offline.`
+        );
+      }
+    }
+  }
+  evaluateChapterProgression(state);
+  return { ok: true, reason: `Advanced to Cycle ${state.cycle}.` };
+}
+function decodeMessageEvent(state, eventId) {
+  const eventDef = MESSAGE_EVENTS.find((e) => e.id === eventId);
+  if (!eventDef) {
+    return { ok: false, reason: "Unknown signal event ID." };
+  }
+  if (state.completedEvents.includes(eventId) || state.eventLog.some(
+    (entry) => entry.eventId === eventId || entry.oneTimeFlag === eventDef.oneTimeFlag
+  )) {
+    return {
+      ok: false,
+      reason: "Signal already resolved (recorded in persistent eventLog)."
+    };
+  }
+  if (state.decodedEvents.includes(eventId)) {
+    return { ok: false, reason: "Signal is already decoded." };
+  }
+  if (!isEventAvailable(state, eventDef)) {
+    return {
+      ok: false,
+      reason: "Signal prerequisites are not yet met."
+    };
+  }
+  if (!canAfford(state, eventDef.decodeCost)) {
+    return {
+      ok: false,
+      reason: "Insufficient resources to decode this transmission."
+    };
+  }
+  spendResources(state, eventDef.decodeCost);
+  state.decodedEvents.push(eventId);
+  appendLog(
+    state,
+    "signal",
+    `Decoded transmission [${eventDef.frequencyMHz}]: "${eventDef.title}"`
+  );
+  return { ok: true, reason: `Decoded ${eventDef.title}.` };
+}
+function resolveMessageEventChoice(state, eventId, choiceId) {
+  const eventDef = MESSAGE_EVENTS.find((e) => e.id === eventId);
+  if (!eventDef) {
+    return { ok: false, reason: "Unknown signal event ID." };
+  }
+  if (state.completedEvents.includes(eventId) || state.eventLog.some(
+    (entry) => entry.eventId === eventId || entry.oneTimeFlag === eventDef.oneTimeFlag
+  )) {
+    return {
+      ok: false,
+      reason: "Duplicate reward blocked: Event one-time flag already recorded in eventLog."
+    };
+  }
+  if (!state.decodedEvents.includes(eventId)) {
+    return {
+      ok: false,
+      reason: "Decode the transmission before transmitting a response."
+    };
+  }
+  const choice = eventDef.choices.find((c) => c.id === choiceId);
+  if (!choice) {
+    return { ok: false, reason: "Invalid choice ID for this signal." };
+  }
+  if (!canAfford(state, choice.costs)) {
+    return {
+      ok: false,
+      reason: "Insufficient resources to execute this transmission choice."
+    };
+  }
+  spendResources(state, choice.costs);
+  addResources(state, choice.rewards);
+  state.networkIntegrity += choice.networkIntegrityDelta;
+  state.convoyReadiness += choice.convoyReadinessDelta;
+  if (choice.powerStationId) {
+    const st = state.stations[choice.powerStationId];
+    if (st) {
+      st.unlocked = true;
+      st.activated = true;
+      st.powered = true;
+      st.throttledByShedder = false;
+    }
+  }
+  state.completedEvents.push(eventId);
+  state.eventLog.push({
+    eventId: eventDef.id,
+    oneTimeFlag: eventDef.oneTimeFlag,
+    choiceId: choice.id,
+    cycle: state.cycle,
+    outcomeLog: choice.outcomeLog
+  });
+  appendLog(state, "signal", choice.outcomeLog);
+  evaluateChapterProgression(state);
+  return { ok: true, reason: choice.outcomeLog };
+}
+function canTriggerEnding(state, endingId) {
+  if (state.endingReached) {
+    return { ok: false, reason: "An ending has already been reached." };
+  }
+  if (state.chapter < 3) {
+    return { ok: false, reason: "Reach Chapter 3 first." };
+  }
+  if (endingId === "ending_a_archival_beacon") {
+    const poweredStations = getPoweredStationCount(state);
+    if (poweredStations < GAME_CONFIG.endingARequiredPoweredStations) {
+      return {
+        ok: false,
+        reason: `Requires all 4 remote stations powered (${poweredStations}/4 active).`
+      };
+    }
+    if (state.networkIntegrity < GAME_CONFIG.endingARequiredNetworkScore) {
+      return {
+        ok: false,
+        reason: `Requires Network Integrity >= ${GAME_CONFIG.endingARequiredNetworkScore} (currently ${state.networkIntegrity}).`
+      };
+    }
+    if (!canAfford(state, {
+      watts: GAME_CONFIG.endingAWattCost,
+      cipher: GAME_CONFIG.endingACipherCost
+    })) {
+      return {
+        ok: false,
+        reason: `Requires ${GAME_CONFIG.endingAWattCost}W and ${GAME_CONFIG.endingACipherCost} Cipher Keys.`
+      };
+    }
+    return { ok: true, reason: "Ready to lock The Archival Beacon." };
+  }
+  if (endingId === "ending_b_exodus_convoy") {
+    if (state.convoyReadiness < GAME_CONFIG.endingBRequiredConvoyScore) {
+      return {
+        ok: false,
+        reason: `Requires Convoy Readiness >= ${GAME_CONFIG.endingBRequiredConvoyScore} (currently ${state.convoyReadiness}).`
+      };
+    }
+    if (!canAfford(state, {
+      watts: GAME_CONFIG.endingBWattCost,
+      alloy: GAME_CONFIG.endingBAlloyCost,
+      cipher: GAME_CONFIG.endingBCipherCost
+    })) {
+      return {
+        ok: false,
+        reason: `Requires ${GAME_CONFIG.endingBWattCost}W, ${GAME_CONFIG.endingBAlloyCost} Salvage Alloy, and ${GAME_CONFIG.endingBCipherCost} Cipher Keys.`
+      };
+    }
+    return { ok: true, reason: "Ready to fire The Exodus Convoy beam." };
+  }
+  return { ok: false, reason: "Unknown ending ID." };
+}
+function triggerEnding(state, endingId) {
+  const check = canTriggerEnding(state, endingId);
+  if (!check.ok) {
+    return check;
+  }
+  if (endingId === "ending_a_archival_beacon") {
+    spendResources(state, {
+      watts: GAME_CONFIG.endingAWattCost,
+      cipher: GAME_CONFIG.endingACipherCost
+    });
+  } else {
+    spendResources(state, {
+      watts: GAME_CONFIG.endingBWattCost,
+      alloy: GAME_CONFIG.endingBAlloyCost,
+      cipher: GAME_CONFIG.endingBCipherCost
+    });
+    ["north_reef", "sunken_dredge", "weather_buoy"].forEach(
+      (stId) => {
+        state.stations[stId].powered = false;
+      }
+    );
+  }
+  state.endingReached = endingId;
+  const endingDef = ENDINGS[endingId];
+  appendLog(
+    state,
+    "chapter",
+    `CONVERGENCE COMPLETE \u2014 ${endingDef.title}: ${endingDef.epilogue}`
+  );
+  return { ok: true, reason: endingDef.title };
+}
+
+// games/03-the-last-signal/src/persistence.ts
+function isValidGameState(candidate) {
+  if (!candidate || typeof candidate !== "object") return false;
+  const s = candidate;
+  if (typeof s.seed !== "number" || typeof s.cycle !== "number") return false;
+  if (s.chapter !== 1 && s.chapter !== 2 && s.chapter !== 3) return false;
+  if (!s.resources || typeof s.resources.watts !== "number") return false;
+  if (!s.unlockedResources || typeof s.unlockedResources.watts !== "boolean") {
+    return false;
+  }
+  if (!s.capabilities || typeof s.capabilities.receiverWarmed !== "boolean") {
+    return false;
+  }
+  if (!Array.isArray(s.completedEvents) || !Array.isArray(s.eventLog)) {
+    return false;
+  }
+  return true;
+}
+function serializeState(state) {
+  const envelope = {
+    version: SAVE_VERSION,
+    savedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    state: structuredClone(state)
+  };
+  return JSON.stringify(envelope);
+}
+function deserializeState(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== SAVE_VERSION || !parsed.state) {
+      return null;
+    }
+    if (!isValidGameState(parsed.state)) {
+      return null;
+    }
+    const restored = structuredClone(parsed.state);
+    for (const logEntry of restored.eventLog) {
+      if (!restored.completedEvents.includes(logEntry.eventId)) {
+        restored.completedEvents.push(logEntry.eventId);
+      }
+    }
+    clampResources(restored);
+    return restored;
+  } catch {
+    return null;
+  }
+}
+function saveToLocalStorage(state, storageKey = STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    window.localStorage.setItem(storageKey, serializeState(state));
+    return true;
+  } catch {
+    return false;
+  }
+}
+function loadFromLocalStorage(storageKey = STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return null;
+    return deserializeState(raw);
+  } catch {
+    return null;
+  }
+}
+function clearLocalStorageSave(storageKey = STORAGE_KEY) {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    window.localStorage.removeItem(storageKey);
+  } catch {
+  }
+}
+function loadOrInitializeState(initialSeed = DEFAULT_SEED, storageKey = STORAGE_KEY) {
+  const existing = loadFromLocalStorage(storageKey);
+  if (existing) {
+    return existing;
+  }
+  return createInitialState(initialSeed);
+}
+
+// games/03-the-last-signal/src/audio.ts
+var EmberAudioSynthesizer = class {
+  ctx = null;
+  muted = false;
+  ensureContext() {
+    if (this.muted) return null;
+    if (typeof window === "undefined") return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!this.ctx) {
+      try {
+        this.ctx = new AudioCtx();
+      } catch {
+        return null;
+      }
+    }
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  setMuted(muted) {
+    this.muted = muted;
+  }
+  isMuted() {
+    return this.muted;
+  }
+  playDynamoCrank(warmed) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = warmed ? "sawtooth" : "triangle";
+    osc.frequency.setValueAtTime(warmed ? 110 : 75, now);
+    osc.frequency.exponentialRampToValueAtTime(warmed ? 220 : 145, now + 0.14);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.16);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.17);
+  }
+  playMorsePulse() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const pulses = [0, 0.08, 0.16, 0.28];
+    pulses.forEach((offset, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(idx === 3 ? 660 : 780, now + offset);
+      gain.gain.setValueAtTime(0.06, now + offset);
+      gain.gain.exponentialRampToValueAtTime(1e-3, now + offset + 0.055);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.06);
+    });
+  }
+  playRelayClunk() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(160, now);
+    osc.frequency.exponentialRampToValueAtTime(58, now + 0.09);
+    gain.gain.setValueAtTime(0.09, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.095);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  }
+  playChapterChord() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const freqs = [220, 277.18, 329.63, 440];
+    freqs.forEach((freq) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(0.045, now);
+      gain.gain.exponentialRampToValueAtTime(8e-4, now + 0.65);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.66);
+    });
+  }
+  destroy() {
+    if (this.ctx) {
+      this.ctx.close().catch(() => {
+      });
+      this.ctx = null;
+    }
+  }
+};
+
+// games/03-the-last-signal/src/ui.ts
+function formatCost(cost) {
+  const parts = [];
+  if (cost.watts) parts.push(`${cost.watts}W`);
+  if (cost.alloy) parts.push(`${cost.alloy} Alloy`);
+  if (cost.cipher) parts.push(`${cost.cipher} Cipher`);
+  return parts.length > 0 ? parts.join(" + ") : "Free";
+}
+var EmberRelayUI = class {
+  container;
+  state;
+  audio;
+  debugOpen;
+  statusBannerText = "";
+  rafId = null;
+  wavePhase = 0;
+  boundKeyDown;
+  constructor(container, initialState, options) {
+    this.container = container;
+    this.state = initialState;
+    this.audio = new EmberAudioSynthesizer();
+    this.debugOpen = Boolean(options?.debug);
+    this.boundKeyDown = (e) => this.handleKeyDown(e);
+    window.addEventListener("keydown", this.boundKeyDown);
+    this.injectStyles();
+    this.render();
+    this.startOscilloscopeLoop();
+  }
+  getState() {
+    return this.state;
+  }
+  setState(nextState) {
+    this.state = nextState;
+    saveToLocalStorage(this.state);
+    this.render();
+  }
+  restartWithSeed(seed) {
+    clearLocalStorageSave();
+    this.state = createInitialState(seed);
+    saveToLocalStorage(this.state);
+    this.statusBannerText = `Restarted Ember Point Relay with seed ${seed}.`;
+    this.render();
+  }
+  toggleDebug(force) {
+    this.debugOpen = force !== void 0 ? force : !this.debugOpen;
+    this.render();
+  }
+  destroy() {
+    window.removeEventListener("keydown", this.boundKeyDown);
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+    this.audio.destroy();
+    this.container.innerHTML = "";
+  }
+  handleKeyDown(e) {
+    const tag = e.target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.key === "d" || e.key === "D") {
+      e.preventDefault();
+      this.toggleDebug();
+    } else if (e.key === "c" || e.key === "C") {
+      e.preventDefault();
+      this.handleAction(() => crankDynamo(this.state), "crank");
+    } else if ((e.key === "s" || e.key === "S") && this.state.unlockedResources.alloy) {
+      e.preventDefault();
+      this.handleAction(() => gatherSalvage(this.state), "relay");
+    } else if ((e.key === "t" || e.key === "T") && this.state.capabilities.oscilloscopeUnlocked) {
+      e.preventDefault();
+      this.handleAction(() => alignFrequency(this.state), "morse");
+    } else if ((e.key === "n" || e.key === "N") && this.state.capabilities.receiverWarmed) {
+      e.preventDefault();
+      this.handleAction(() => stepCycle(this.state), "relay");
+    }
+  }
+  handleAction(fn, soundType) {
+    const prevChapter = this.state.chapter;
+    const prevOsc = this.state.capabilities.oscilloscopeUnlocked;
+    const result = fn();
+    this.statusBannerText = result.reason;
+    if (result.ok) {
+      if (this.state.chapter > prevChapter || !prevOsc && this.state.capabilities.oscilloscopeUnlocked || this.state.endingReached) {
+        this.audio.playChapterChord();
+      } else if (soundType === "crank") {
+        this.audio.playDynamoCrank(this.state.capabilities.receiverWarmed);
+      } else if (soundType === "morse") {
+        this.audio.playMorsePulse();
+      } else if (soundType === "relay") {
+        this.audio.playRelayClunk();
+      }
+      saveToLocalStorage(this.state);
+    }
+    this.render();
+  }
+  startOscilloscopeLoop() {
+    if (typeof window === "undefined") return;
+    const tick = () => {
+      this.wavePhase += 0.07;
+      this.drawOscilloscope();
+      this.rafId = requestAnimationFrame(tick);
+    };
+    this.rafId = requestAnimationFrame(tick);
+  }
+  drawOscilloscope() {
+    const canvas = this.container.querySelector(
+      "#ember-oscilloscope-canvas"
+    );
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.fillStyle = "#090d12";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(245, 158, 11, 0.12)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += 32) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = 0; y < h; y += 24) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+    const lockRatio = this.state.signalLock / 100;
+    const jitter = (1 - lockRatio) * 14;
+    ctx.strokeStyle = this.state.endingReached ? "#38bdf8" : "#f59e0b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const t = x * 0.045 + this.wavePhase;
+      const harmonic = Math.sin(t) * 20 + Math.sin(t * 2.3 + this.state.harmonicPhase * 0.1) * (8 * (1 - lockRatio * 0.6));
+      const noise = Math.sin(x * 0.7 + this.wavePhase * 3.1) * jitter * 0.6;
+      const y = h / 2 + harmonic + noise;
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  injectStyles() {
+    if (document.getElementById("ember-relay-styles")) return;
+    const style = document.createElement("style");
+    style.id = "ember-relay-styles";
+    style.textContent = `
+      .ember-root {
+        container-type: inline-size;
+        container-name: emberrelay;
+        background: radial-gradient(circle at 50% 0%, #17202a 0%, #090c10 75%);
+        color: #e2e8f0;
+        font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        min-height: 100dvh;
+        padding: clamp(0.75rem, 2vw, 1.5rem);
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      .ember-header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+        padding-bottom: 0.75rem;
+      }
+      .ember-title {
+        font-size: clamp(1.15rem, 1rem + 1.2vw, 1.65rem);
+        font-weight: 700;
+        color: #f59e0b;
+        margin: 0;
+        letter-spacing: 0.04em;
+      }
+      .ember-subtitle {
+        font-size: 0.82rem;
+        color: #94a3b8;
+        margin: 0.2rem 0 0 0;
+      }
+      .ember-badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      .ember-badge {
+        background: rgba(245, 158, 11, 0.14);
+        border: 1px solid rgba(245, 158, 11, 0.4);
+        color: #fcd34d;
+        padding: 0.25rem 0.6rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+      }
+      .ember-resources {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 0.75rem;
+      }
+      .ember-res-card {
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-left: 3px solid #f59e0b;
+        border-radius: 6px;
+        padding: 0.65rem 0.85rem;
+      }
+      .ember-res-label {
+        font-size: 0.75rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+      }
+      .ember-res-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #f8fafc;
+        margin-top: 0.2rem;
+      }
+      .ember-meter {
+        height: 6px;
+        background: #1e293b;
+        border-radius: 3px;
+        overflow: hidden;
+        margin-top: 0.4rem;
+      }
+      .ember-meter-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #d97706, #fbbf24);
+        transition: width 0.2s ease;
+      }
+      .ember-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+      @container emberrelay (min-width: 760px) {
+        .ember-grid {
+          grid-template-columns: 1.05fr 1fr;
+        }
+      }
+      .ember-panel {
+        background: rgba(15, 23, 42, 0.78);
+        border: 1px solid rgba(245, 158, 11, 0.24);
+        border-radius: 8px;
+        padding: 0.9rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      .ember-panel-title {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #fbbf24;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .ember-btn {
+        background: rgba(245, 158, 11, 0.16);
+        border: 1px solid #f59e0b;
+        color: #fef3c7;
+        padding: 0.6rem 0.9rem;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 0.84rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: left;
+        transition: background 0.15s ease, transform 0.08s ease;
+      }
+      .ember-btn:hover:not(:disabled) {
+        background: rgba(245, 158, 11, 0.3);
+      }
+      .ember-btn:active:not(:disabled) {
+        transform: translateY(1px);
+      }
+      .ember-btn:disabled {
+        opacity: 0.42;
+        cursor: not-allowed;
+        border-color: #475569;
+        color: #94a3b8;
+      }
+      .ember-btn-primary {
+        background: linear-gradient(135deg, rgba(217, 119, 6, 0.38), rgba(245, 158, 11, 0.2));
+        border-width: 1.5px;
+      }
+      .ember-card {
+        background: rgba(9, 13, 20, 0.75);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 6px;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+      }
+      .ember-log-list {
+        max-height: 210px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        font-size: 0.78rem;
+      }
+      .ember-log-item {
+        padding: 0.35rem 0.5rem;
+        border-left: 2px solid #64748b;
+        background: rgba(2, 6, 23, 0.55);
+      }
+      .ember-log-item.cat-chapter { border-left-color: #f59e0b; color: #fde68a; }
+      .ember-log-item.cat-signal { border-left-color: #38bdf8; color: #bae6fd; }
+      .ember-log-item.cat-automation { border-left-color: #34d399; color: #a7f3d0; }
+      .ember-log-item.cat-warning { border-left-color: #f87171; color: #fecaca; }
+      .ember-banner {
+        background: rgba(245, 158, 11, 0.12);
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        padding: 0.5rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        color: #fde68a;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  render() {
+    const s = this.state;
+    const chapterDef = CHAPTERS[s.chapter];
+    const availableEvents = getAvailableMessageEvents(s);
+    const poweredCount = getPoweredStationCount(s);
+    const unlockedResIds = ["watts", "alloy", "cipher"].filter(
+      (id) => s.unlockedResources[id]
+    );
+    const resourceCardsHtml = unlockedResIds.map((resId) => {
+      const def = RESOURCES[resId];
+      const val = s.resources[resId];
+      const max = s.maxResources[resId];
+      const pct = max > 0 ? Math.min(100, Math.round(val / max * 100)) : 0;
+      return `
+          <div class="ember-res-card" data-resource="${resId}">
+            <div class="ember-res-label">${def.name}</div>
+            <div class="ember-res-value">${val} / ${max} <span style="font-size:0.8rem;color:#fbbf24;">${def.unit}</span></div>
+            <div class="ember-meter"><div class="ember-meter-fill" style="width:${pct}%"></div></div>
+          </div>
+        `;
+    }).join("");
+    const dynamoGain = s.repairs.repair_rectifier ? GAME_CONFIG.rectifierDynamoWatts : GAME_CONFIG.baseDynamoWatts;
+    const salvageYield = s.repairs.repair_winch ? GAME_CONFIG.winchSalvageAlloy : GAME_CONFIG.baseSalvageAlloy;
+    const repairsHtml = s.capabilities.receiverWarmed ? `
+      <div class="ember-panel" id="ember-repairs-panel">
+        <h2 class="ember-panel-title">
+          <span>Station Structural Repairs</span>
+          <span style="font-size:0.74rem;color:#94a3b8;">${getCompletedRepairCount(s)}/2 Restored</span>
+        </h2>
+        ${!s.capabilities.oscilloscopeUnlocked ? `<div style="font-size:0.78rem;color:#fcd34d;">Complete either initial repair to bring the Frequency Oscilloscope & Harmonic Decoder online.</div>` : ""}
+        ${["repair_rectifier", "repair_winch"].map((repId) => {
+      const rep = INITIAL_REPAIRS[repId];
+      const done = s.repairs[repId];
+      const affordable = canAfford(s, rep.cost);
+      return `
+              <div class="ember-card" data-repair="${repId}">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <strong style="color:#f8fafc;font-size:0.85rem;">${rep.name}</strong>
+                  <span class="ember-badge">${done ? "ONLINE" : formatCost(rep.cost)}</span>
+                </div>
+                <div style="font-size:0.77rem;color:#cbd5e1;">${rep.summary}</div>
+                ${!done ? `<button class="ember-btn" data-action="repair" data-repair-id="${repId}" ${!affordable ? "disabled" : ""}>
+                        Execute Repair (${formatCost(rep.cost)})
+                      </button>` : ""}
+              </div>
+            `;
+    }).join("")}
+      </div>
+    ` : "";
+    const oscilloscopeHtml = s.capabilities.oscilloscopeUnlocked ? `
+      <div class="ember-card">
+        <div style="display:flex;justify-content:space-between;font-size:0.76rem;color:#fcd34d;">
+          <span>CARRIER HARMONIC OSCILLOSCOPE</span>
+          <span>SIGNAL LOCK: ${s.signalLock}% | PHASE: ${s.harmonicPhase}\xB0</span>
+        </div>
+        <canvas id="ember-oscilloscope-canvas" width="420" height="84" style="width:100%;height:84px;border-radius:4px;border:1px solid rgba(245,158,11,0.3);"></canvas>
+      </div>
+    ` : "";
+    const signalsHtml = s.capabilities.receiverWarmed ? `
+      <div class="ember-panel" id="ember-signals-panel">
+        <h2 class="ember-panel-title">
+          <span>Incoming Distress & Relay Signals</span>
+          <span style="font-size:0.74rem;color:#38bdf8;">${s.completedEvents.length}/${MESSAGE_EVENTS.length} Resolved</span>
+        </h2>
+        ${oscilloscopeHtml}
+        ${availableEvents.length === 0 ? `<div class="ember-card" style="color:#94a3b8;font-size:0.8rem;">
+                ${s.completedEvents.length >= MESSAGE_EVENTS.length ? "All 12 Solstice transmissions have been resolved. Proceed to Final Convergence." : "No active transmissions awaiting decode in this stage. Complete station repairs or advance chapter prerequisites."}
+              </div>` : availableEvents.map((evt) => {
+      const isDecoded = s.decodedEvents.includes(evt.id);
+      const canPayDecode = canAfford(s, evt.decodeCost);
+      return `
+                    <div class="ember-card" data-event-id="${evt.id}">
+                      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+                        <strong style="color:#38bdf8;font-size:0.86rem;">[${evt.frequencyMHz}] ${evt.title}</strong>
+                        <span class="ember-badge">${evt.sender}</span>
+                      </div>
+                      <div style="font-size:0.73rem;color:#f59e0b;letter-spacing:0.08em;">MORSE: ${evt.morsePreview}</div>
+                      <div style="font-size:0.8rem;color:#e2e8f0;line-height:1.4;">
+                        ${isDecoded ? evt.decodedBody : evt.corruptedBody}
+                      </div>
+                      ${!isDecoded ? `<button class="ember-btn ember-btn-primary" data-action="decode-event" data-event-id="${evt.id}" ${!canPayDecode ? "disabled" : ""}>
+                              Decode Carrier Signal (${formatCost(evt.decodeCost)})
+                            </button>` : `<div style="display:flex;flex-direction:column;gap:0.45rem;margin-top:0.25rem;">
+                              ${evt.choices.map((ch) => {
+        const canPayChoice = canAfford(s, ch.costs);
+        return `
+                                    <button class="ember-btn" data-action="resolve-event" data-event-id="${evt.id}" data-choice-id="${ch.id}" ${!canPayChoice ? "disabled" : ""}>
+                                      <div><strong>${ch.label}</strong></div>
+                                      <div style="font-size:0.74rem;color:#cbd5e1;margin-top:0.15rem;">${ch.description}</div>
+                                    </button>
+                                  `;
+      }).join("")}
+                            </div>`}
+                    </div>
+                  `;
+    }).join("")}
+      </div>
+    ` : "";
+    const radarHtml = s.capabilities.radarUnlocked ? `
+      <div class="ember-panel" id="ember-radar-panel">
+        <h2 class="ember-panel-title">
+          <span>Archipelago Radar & Remote Stations</span>
+          <span style="font-size:0.74rem;color:#34d399;">${poweredCount}/4 Beacons Powered</span>
+        </h2>
+        <svg viewBox="0 0 240 110" style="width:100%;max-height:130px;background:#06101a;border:1px solid rgba(56,189,248,0.28);border-radius:6px;" aria-label="Archipelago Radar Map">
+          <circle cx="120" cy="55" r="46" fill="none" stroke="rgba(56,189,248,0.16)" stroke-dasharray="3 3"/>
+          <circle cx="120" cy="55" r="24" fill="none" stroke="rgba(56,189,248,0.22)"/>
+          <circle cx="120" cy="55" r="4" fill="#f59e0b"/>
+          <text x="126" y="58" fill="#fde68a" font-size="6.5">EMBER POINT</text>
+          ${Object.keys(REMOTE_STATIONS).map((stId) => {
+      const def = REMOTE_STATIONS[stId];
+      const st = s.stations[stId];
+      const cx = Math.round(def.coordinates.x / 100 * 220 + 10);
+      const cy = Math.round(def.coordinates.y / 100 * 90 + 10);
+      const color = st.powered ? "#34d399" : st.activated ? "#f59e0b" : "#64748b";
+      return `
+                <line x1="120" y1="55" x2="${cx}" y2="${cy}" stroke="${color}" stroke-width="${st.powered ? "1.5" : "0.7"}" stroke-dasharray="${st.powered ? "none" : "2 2"}"/>
+                <circle cx="${cx}" cy="${cy}" r="${st.powered ? 4.5 : 3}" fill="${color}"/>
+                <text x="${cx + 6}" y="${cy + 2}" fill="${color}" font-size="6">${def.name.split(" ")[0]}</text>
+              `;
+    }).join("")}
+        </svg>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0.6rem;">
+          ${Object.keys(REMOTE_STATIONS).map((stId) => {
+      const def = REMOTE_STATIONS[stId];
+      const st = s.stations[stId];
+      const canActivate = canAfford(s, def.activationCost);
+      return `
+                <div class="ember-card" data-station-id="${stId}">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <strong style="font-size:0.82rem;color:#f8fafc;">${def.name}</strong>
+                    <span class="ember-badge" style="color:${st.powered ? "#34d399" : "#94a3b8"};">
+                      ${st.powered ? "POWERED" : st.activated ? "STANDBY" : "OFFLINE"}
+                    </span>
+                  </div>
+                  <div style="font-size:0.73rem;color:#94a3b8;">${def.sector}</div>
+                  <div style="font-size:0.75rem;color:#cbd5e1;">${def.tradeoffNote}</div>
+                  ${!st.activated ? `<button class="ember-btn" data-action="toggle-station" data-station-id="${stId}" ${!canActivate ? "disabled" : ""}>
+                          Activate Beacon (${formatCost(def.activationCost)})
+                        </button>` : `<button class="ember-btn" data-action="toggle-station" data-station-id="${stId}">
+                          ${st.powered ? "Throttle Beacon Offline (Save Upkeep)" : "Power Beacon On"}
+                        </button>`}
+                </div>
+              `;
+    }).join("")}
+        </div>
+      </div>
+    ` : "";
+    const automationHtml = s.capabilities.automationUnlocked ? `
+      <div class="ember-panel" id="ember-automation-panel">
+        <h2 class="ember-panel-title">
+          <span>Safe Automation Rule Rack</span>
+          <span style="font-size:0.74rem;color:#34d399;">Declarative Circuit Relays</span>
+        </h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.6rem;">
+          ${Object.keys(AUTOMATION_RULES).map((ruleId) => {
+      const def = AUTOMATION_RULES[ruleId];
+      const rState = s.automationRules[ruleId];
+      const canUnlock = canAfford(s, def.unlockCost);
+      return `
+                <div class="ember-card" data-rule-id="${ruleId}">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <strong style="font-size:0.83rem;color:#fde68a;">${def.name}</strong>
+                    <span class="ember-badge">${!rState.unlocked ? "UNFABRICATED" : rState.enabled ? "ARMED" : "DISABLED"}</span>
+                  </div>
+                  <div style="font-size:0.73rem;color:#38bdf8;">${def.conditionSummary}</div>
+                  <div style="font-size:0.73rem;color:#cbd5e1;">${def.inputSummary} &rarr; ${def.outputSummary}</div>
+                  <div style="font-size:0.72rem;color:#94a3b8;">Status: ${rState.lastStatus}</div>
+                  ${!rState.unlocked ? `<button class="ember-btn" data-action="unlock-rule" data-rule-id="${ruleId}" ${!canUnlock ? "disabled" : ""}>
+                          Fabricate Rule (${formatCost(def.unlockCost)})
+                        </button>` : `<button class="ember-btn" data-action="toggle-rule" data-rule-id="${ruleId}">
+                          ${rState.enabled ? "Disable Automation Rule" : "Enable Automation Rule"}
+                        </button>`}
+                </div>
+              `;
+    }).join("")}
+        </div>
+      </div>
+    ` : "";
+    const endingACheck = canTriggerEnding(s, "ending_a_archival_beacon");
+    const endingBCheck = canTriggerEnding(s, "ending_b_exodus_convoy");
+    const convergenceHtml = s.capabilities.convergenceUnlocked || s.chapter === 3 || s.endingReached ? `
+      <div class="ember-panel" id="ember-convergence-panel" style="border-color:#38bdf8;">
+        <h2 class="ember-panel-title" style="color:#38bdf8;">
+          <span>Chapter 3: Solstice Convergence Protocols</span>
+          <span style="font-size:0.74rem;">Network: ${s.networkIntegrity} | Convoy: ${s.convoyReadiness}</span>
+        </h2>
+        ${s.endingReached ? `<div class="ember-card" style="border-color:#fbbf24;background:rgba(245,158,11,0.12);">
+                <h3 style="margin:0;color:#fbbf24;font-size:1.05rem;">${ENDINGS[s.endingReached].title}</h3>
+                <div style="font-size:0.84rem;color:#fde68a;">${ENDINGS[s.endingReached].subtitle}</div>
+                <p style="font-size:0.82rem;color:#f8fafc;line-height:1.5;margin:0.4rem 0 0 0;">${ENDINGS[s.endingReached].epilogue}</p>
+              </div>` : `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0.75rem;">
+                <div class="ember-card" data-ending-id="ending_a_archival_beacon">
+                  <strong style="color:#34d399;font-size:0.86rem;">${ENDINGS.ending_a_archival_beacon.title}</strong>
+                  <div style="font-size:0.76rem;color:#cbd5e1;">${ENDINGS.ending_a_archival_beacon.summary}</div>
+                  <div style="font-size:0.73rem;color:#94a3b8;">${ENDINGS.ending_a_archival_beacon.requirementDescription}</div>
+                  <div style="font-size:0.73rem;color:#fcd34d;">Status: ${endingACheck.reason}</div>
+                  <button class="ember-btn ember-btn-primary" data-action="trigger-ending" data-ending-id="ending_a_archival_beacon" ${!endingACheck.ok ? "disabled" : ""}>
+                    Lock Archival Beacon (25W + 4 Cipher)
+                  </button>
+                </div>
+                <div class="ember-card" data-ending-id="ending_b_exodus_convoy">
+                  <strong style="color:#38bdf8;font-size:0.86rem;">${ENDINGS.ending_b_exodus_convoy.title}</strong>
+                  <div style="font-size:0.76rem;color:#cbd5e1;">${ENDINGS.ending_b_exodus_convoy.summary}</div>
+                  <div style="font-size:0.73rem;color:#94a3b8;">${ENDINGS.ending_b_exodus_convoy.requirementDescription}</div>
+                  <div style="font-size:0.73rem;color:#fcd34d;">Status: ${endingBCheck.reason}</div>
+                  <button class="ember-btn ember-btn-primary" data-action="trigger-ending" data-ending-id="ending_b_exodus_convoy" ${!endingBCheck.ok ? "disabled" : ""}>
+                    Fire Exodus Convoy Beam (25W + 12 Alloy + 3 Cipher)
+                  </button>
+                </div>
+              </div>`}
+      </div>
+    ` : "";
+    const debugHtml = this.debugOpen ? `
+      <div class="ember-panel" id="ember-debug-panel" style="border-color:#f43f5e;">
+        <h2 class="ember-panel-title" style="color:#fb7185;">
+          <span>Debug & Playtest Inspector [D]</span>
+          <span>Seed: ${s.seed} | Brownouts: ${s.brownoutCount}</span>
+        </h2>
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+          <button class="ember-btn" data-action="debug-grant">+25 All Resources</button>
+          <button class="ember-btn" data-action="debug-ch2">Unlock Chapter 2</button>
+          <button class="ember-btn" data-action="debug-ch3">Unlock Chapter 3</button>
+          <button class="ember-btn" data-action="debug-reset">Reset Clean Save</button>
+        </div>
+        <div style="font-size:0.74rem;color:#cbd5e1;">
+          Completed Events (${s.completedEvents.length}): ${s.completedEvents.join(", ") || "None"}
+        </div>
+      </div>
+    ` : "";
+    this.container.innerHTML = `
+      <div class="ember-root">
+        <header class="ember-header">
+          <div>
+            <h1 class="ember-title">THE LAST SIGNAL: EMBER RELAY</h1>
+            <p class="ember-subtitle">${chapterDef.title} \u2014 ${chapterDef.subtitle}</p>
+          </div>
+          <div class="ember-badge-row">
+            <span class="ember-badge">CYCLE ${s.cycle}</span>
+            <span class="ember-badge">CHAPTER ${s.chapter} / 3</span>
+            ${s.capabilities.radarUnlocked ? `<span class="ember-badge">GRID: ${s.networkIntegrity} | FLEET: ${s.convoyReadiness}</span>` : ""}
+            <button class="ember-btn" style="padding:0.25rem 0.55rem;font-size:0.73rem;" data-action="toggle-mute">
+              ${this.audio.isMuted() ? "Audio: Muted" : "Audio: On"}
+            </button>
+            <button class="ember-btn" style="padding:0.25rem 0.55rem;font-size:0.73rem;" data-action="toggle-debug">
+              Debug [D]
+            </button>
+          </div>
+        </header>
+
+        ${this.statusBannerText ? `<div class="ember-banner" role="status" aria-live="polite">${this.statusBannerText}</div>` : ""}
+
+        <section class="ember-resources" aria-label="Station Resource Telemetry">
+          ${resourceCardsHtml}
+        </section>
+
+        <div class="ember-grid">
+          <div style="display:flex;flex-direction:column;gap:1rem;">
+            <section class="ember-panel" id="ember-controls-panel">
+              <h2 class="ember-panel-title">
+                <span>Ember Point Manual Operations</span>
+                <span style="font-size:0.73rem;color:#94a3b8;">Zero-Idle Active Controls</span>
+              </h2>
+              <button class="ember-btn ember-btn-primary" id="btn-crank-dynamo" data-action="crank-dynamo" ${s.endingReached ? "disabled" : ""}>
+                <div><strong>Strike Match / Crank Dynamo (+${dynamoGain} Watts)</strong></div>
+                <div style="font-size:0.74rem;color:#cbd5e1;margin-top:0.15rem;">
+                  ${!s.capabilities.receiverWarmed ? `Turn the frozen hand-dynamo to reach ${GAME_CONFIG.receiverWarmupWatts}W and ignite the vacuum receiver lamp.` : "Manually charge the station capacitor bank. Shortcut: [C]"}
+                </div>
+              </button>
+
+              ${s.unlockedResources.alloy ? `<button class="ember-btn" id="btn-gather-salvage" data-action="gather-salvage" ${s.endingReached ? "disabled" : ""}>
+                      <div><strong>Haul Cliffside Salvage Winch (+${salvageYield} Alloy)</strong></div>
+                      <div style="font-size:0.74rem;color:#cbd5e1;margin-top:0.15rem;">
+                        Uses ${GAME_CONFIG.salvageWinchWattCost}W winch motor (or manual haul if <2W) to recover hull brass. Shortcut: [S]
+                      </div>
+                    </button>` : ""}
+
+              ${s.capabilities.oscilloscopeUnlocked ? `<button class="ember-btn" id="btn-align-frequency" data-action="align-frequency" ${s.endingReached ? "disabled" : ""}>
+                      <div><strong>Align Frequency Harmonic (+${GAME_CONFIG.tuneSignalLockGain}% Lock${s.unlockedResources.cipher ? " / +1 Cipher Key" : ""})</strong></div>
+                      <div style="font-size:0.74rem;color:#cbd5e1;margin-top:0.15rem;">
+                        ${s.unlockedResources.cipher ? `Phase-locks carrier wave and synthesizes +1 Cipher Key (-${GAME_CONFIG.tuneCipherWattCost}W). Shortcut: [T]` : "Stabilizes oscilloscope waveform lock. Shortcut: [T]"}
+                      </div>
+                    </button>` : ""}
+
+              ${s.capabilities.receiverWarmed ? `<button class="ember-btn" id="btn-step-cycle" data-action="step-cycle" ${s.endingReached ? "disabled" : ""}>
+                      <div><strong>Advance Relay Cycle (Run Beacons & Automation)</strong></div>
+                      <div style="font-size:0.74rem;color:#cbd5e1;margin-top:0.15rem;">
+                        Executes armed automation rules, station beacon yields, and generator trickle. Shortcut: [N]
+                      </div>
+                    </button>` : ""}
+            </section>
+
+            ${repairsHtml}
+            ${automationHtml}
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:1rem;">
+            ${convergenceHtml}
+            ${signalsHtml}
+            ${radarHtml}
+
+            <section class="ember-panel" id="ember-log-panel">
+              <h2 class="ember-panel-title">
+                <span>Relay Watch Log</span>
+                <span style="font-size:0.72rem;color:#94a3b8;">Persistent Event Audit</span>
+              </h2>
+              <div class="ember-log-list">
+                ${s.logs.slice(0, 14).map(
+      (entry) => `
+                  <div class="ember-log-item cat-${entry.category}">
+                    <span style="color:#64748b;">[C${entry.cycle}]</span> ${entry.text}
+                  </div>
+                `
+    ).join("")}
+              </div>
+            </section>
+          </div>
+        </div>
+
+        ${debugHtml}
+      </div>
+    `;
+    this.bindEvents();
+    this.drawOscilloscope();
+  }
+  bindEvents() {
+    this.container.querySelectorAll("button[data-action]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const action = btn.dataset.action;
+        if (!action) return;
+        if (action === "crank-dynamo") {
+          this.handleAction(() => crankDynamo(this.state), "crank");
+        } else if (action === "gather-salvage") {
+          this.handleAction(() => gatherSalvage(this.state), "relay");
+        } else if (action === "align-frequency") {
+          this.handleAction(() => alignFrequency(this.state), "morse");
+        } else if (action === "step-cycle") {
+          this.handleAction(() => stepCycle(this.state), "relay");
+        } else if (action === "repair") {
+          const repairId = btn.dataset.repairId;
+          this.handleAction(
+            () => performInitialRepair(this.state, repairId),
+            "chord"
+          );
+        } else if (action === "decode-event") {
+          const eventId = btn.dataset.eventId ?? "";
+          this.handleAction(
+            () => decodeMessageEvent(this.state, eventId),
+            "morse"
+          );
+        } else if (action === "resolve-event") {
+          const eventId = btn.dataset.eventId ?? "";
+          const choiceId = btn.dataset.choiceId ?? "";
+          this.handleAction(
+            () => resolveMessageEventChoice(this.state, eventId, choiceId),
+            "morse"
+          );
+        } else if (action === "toggle-station") {
+          const stationId = btn.dataset.stationId;
+          this.handleAction(
+            () => toggleRemoteStation(this.state, stationId),
+            "relay"
+          );
+        } else if (action === "unlock-rule") {
+          const ruleId = btn.dataset.ruleId;
+          this.handleAction(
+            () => unlockAutomationRule(this.state, ruleId),
+            "relay"
+          );
+        } else if (action === "toggle-rule") {
+          const ruleId = btn.dataset.ruleId;
+          this.handleAction(
+            () => toggleAutomationRule(this.state, ruleId),
+            "relay"
+          );
+        } else if (action === "trigger-ending") {
+          const endingId = btn.dataset.endingId;
+          this.handleAction(
+            () => triggerEnding(this.state, endingId),
+            "chord"
+          );
+        } else if (action === "toggle-mute") {
+          this.audio.setMuted(!this.audio.isMuted());
+          this.render();
+        } else if (action === "toggle-debug") {
+          this.toggleDebug();
+        } else if (action === "debug-grant") {
+          this.state.capabilities.receiverWarmed = true;
+          this.state.unlockedResources.alloy = true;
+          this.state.unlockedResources.cipher = true;
+          addResources(this.state, { watts: 25, alloy: 25, cipher: 10 });
+          saveToLocalStorage(this.state);
+          this.render();
+        } else if (action === "debug-ch2") {
+          this.state.capabilities.receiverWarmed = true;
+          this.state.capabilities.oscilloscopeUnlocked = true;
+          this.state.repairs.repair_rectifier = true;
+          this.state.completedEvents.push(
+            "sig_01_reef_sos",
+            "sig_02_dredge_beacon",
+            "sig_03_harbor_charter"
+          );
+          evaluateChapterProgression(this.state);
+          saveToLocalStorage(this.state);
+          this.render();
+        } else if (action === "debug-ch3") {
+          this.state.chapter = 2;
+          this.state.capabilities.receiverWarmed = true;
+          this.state.capabilities.oscilloscopeUnlocked = true;
+          this.state.capabilities.radarUnlocked = true;
+          this.state.capabilities.automationUnlocked = true;
+          this.state.unlockedResources.alloy = true;
+          this.state.unlockedResources.cipher = true;
+          this.state.completedEvents.push("sig_08_mainland_silence");
+          evaluateChapterProgression(this.state);
+          saveToLocalStorage(this.state);
+          this.render();
+        } else if (action === "debug-reset") {
+          this.restartWithSeed(this.state.seed);
+        }
+      });
+    });
+  }
+};
+
+// games/03-the-last-signal/src/index.ts
+function mountGame(container, options) {
+  const initialState = options?.initialSeed !== void 0 ? createInitialState(options.initialSeed) : loadOrInitializeState(DEFAULT_SEED);
+  saveToLocalStorage(initialState);
+  const ui = new EmberRelayUI(container, initialState, {
+    debug: options?.debug
+  });
+  return {
+    destroy() {
+      ui.destroy();
+    },
+    getStateSnapshot() {
+      return structuredClone(ui.getState());
+    },
+    restartWithSeed(seed) {
+      ui.restartWithSeed(seed);
+    },
+    toggleDebug(force) {
+      ui.toggleDebug(force);
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_03-the-last-signal.ts
+var root = document.getElementById("game-root");
+if (root) {
+  mountGame(root);
+}
+
+</script>
+  </body>
+</html>

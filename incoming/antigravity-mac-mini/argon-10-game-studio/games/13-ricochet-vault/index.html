@@ -1,0 +1,2376 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RICOCHET VAULT // GREED BREAKER</title>
+    <style>
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html, body, #app {
+        width: 100%;
+        height: 100dvh;
+        overflow: hidden;
+        background: #050814;
+        color: #f8fafc;
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app" aria-label="Ricochet Vault Playable Arena"></main>
+    <script type="module">
+// games/13-ricochet-vault/src/audio.ts
+var HARMONIC_COMBO_FREQUENCIES = [
+  261.63,
+  // C4
+  293.66,
+  // D4
+  329.63,
+  // E4
+  369.99,
+  // F#4
+  392,
+  // G4
+  440,
+  // A4
+  493.88,
+  // B4
+  523.25,
+  // C5
+  587.33,
+  // D5
+  659.25,
+  // E5
+  739.99,
+  // F#5
+  783.99,
+  // G5
+  880,
+  // A5
+  987.77,
+  // B5
+  1046.5,
+  // C6
+  1174.66,
+  // D6
+  1318.51,
+  // E6
+  1479.98,
+  // F#6
+  1567.98
+  // G6
+];
+var VaultAudioEngine = class {
+  ctx = null;
+  muted = false;
+  lastPlayedNoteHz = 0;
+  totalNotesPlayed = 0;
+  ensureContext() {
+    if (this.muted) return null;
+    if (typeof window === "undefined") return null;
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        try {
+          this.ctx = new AudioCtx();
+        } catch {
+          return null;
+        }
+      }
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      void this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  getComboFrequency(chainCount) {
+    const idx = Math.max(0, Math.min(HARMONIC_COMBO_FREQUENCIES.length - 1, chainCount - 1));
+    const microOctaveBoost = chainCount > HARMONIC_COMBO_FREQUENCIES.length ? Math.min(1.5, 1 + (chainCount - HARMONIC_COMBO_FREQUENCIES.length) * 0.03) : 1;
+    return HARMONIC_COMBO_FREQUENCIES[idx] * microOctaveBoost;
+  }
+  playWindupTick(tension01) {
+    const freq = 220 + Math.max(0, Math.min(1, tension01)) * 520;
+    this.lastPlayedNoteHz = freq;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.18, now + 0.035);
+    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.04);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.042);
+  }
+  playLaunch(power01) {
+    const p = Math.max(0.2, Math.min(1, power01));
+    const baseFreq = 150 + p * 190;
+    this.lastPlayedNoteHz = baseFreq;
+    this.totalNotesPlayed += 1;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(baseFreq * 0.65, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 2.4, now + 0.09);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.9, now + 0.16);
+    gain.gain.setValueAtTime(0.14 * p, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.17);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.18);
+  }
+  playComboHit(chainCount, isJackpot = false, heatRatio = 0) {
+    const freq = this.getComboFrequency(chainCount);
+    this.lastPlayedNoteHz = freq;
+    this.totalNotesPlayed += 1;
+    const ctx = this.ensureContext();
+    if (!ctx) return freq;
+    const now = ctx.currentTime;
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = isJackpot ? "triangle" : "sine";
+    osc1.frequency.setValueAtTime(freq, now);
+    osc1.frequency.exponentialRampToValueAtTime(freq * 1.008, now + 0.04);
+    const peakGain = isJackpot ? 0.22 : 0.16;
+    const duration = isJackpot ? 0.34 : 0.22;
+    gain1.gain.setValueAtTime(1e-3, now);
+    gain1.gain.linearRampToValueAtTime(peakGain, now + 5e-3);
+    gain1.gain.exponentialRampToValueAtTime(8e-4, now + duration);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + duration + 0.01);
+    if (chainCount >= 3 || isJackpot) {
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = "triangle";
+      const overtoneRatio = isJackpot ? 2 : 1.4983;
+      osc2.frequency.setValueAtTime(freq * overtoneRatio, now);
+      gain2.gain.setValueAtTime(0.08, now);
+      gain2.gain.exponentialRampToValueAtTime(8e-4, now + duration * 0.85);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now);
+      osc2.stop(now + duration);
+    }
+    if (isJackpot || heatRatio > 0.65) {
+      const sub = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      sub.type = "sine";
+      sub.frequency.setValueAtTime(115, now);
+      sub.frequency.exponentialRampToValueAtTime(38, now + 0.14);
+      subGain.gain.setValueAtTime(0.2, now);
+      subGain.gain.exponentialRampToValueAtTime(1e-3, now + 0.15);
+      sub.connect(subGain);
+      subGain.connect(ctx.destination);
+      sub.start(now);
+      sub.stop(now + 0.16);
+    }
+    return freq;
+  }
+  playWallBounce(speed01) {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    const f = 110 + Math.min(1, speed01) * 90;
+    osc.frequency.setValueAtTime(f, now);
+    osc.frequency.exponentialRampToValueAtTime(52, now + 0.075);
+    gain.gain.setValueAtTime(0.11, now);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.08);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.085);
+  }
+  playBankCashIn(potAmount, mult) {
+    const chord = [523.25, 659.25, 783.99, 987.77, 1174.66];
+    this.lastPlayedNoteHz = chord[chord.length - 1];
+    this.totalNotesPlayed += chord.length;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notesToPlay = mult >= 6 ? 5 : mult >= 3 ? 4 : 3;
+    for (let i = 0; i < notesToPlay; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      const noteTime = now + i * 0.042;
+      const freq = chord[i] * (potAmount >= 2e3 ? 1.12246 : 1);
+      osc.frequency.setValueAtTime(freq, noteTime);
+      gain.gain.setValueAtTime(1e-3, noteTime);
+      gain.gain.linearRampToValueAtTime(0.16, noteTime + 8e-3);
+      gain.gain.exponentialRampToValueAtTime(8e-4, noteTime + 0.36);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(noteTime);
+      osc.stop(noteTime + 0.38);
+    }
+  }
+  playBust() {
+    this.lastPlayedNoteHz = 65.41;
+    this.totalNotesPlayed += 1;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const freqs = [185, 130.81, 87.31, 55];
+    freqs.forEach((f, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx % 2 === 0 ? "sawtooth" : "square";
+      const t = now + idx * 0.035;
+      osc.frequency.setValueAtTime(f, t);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.45, t + 0.24);
+      gain.gain.setValueAtTime(0.14, t);
+      gain.gain.exponentialRampToValueAtTime(1e-3, t + 0.26);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.27);
+    });
+  }
+  playUpgradePick() {
+    this.playBankCashIn(2500, 8);
+  }
+};
+
+// games/13-ricochet-vault/src/upgrades.ts
+var UPGRADE_CATALOG = [
+  {
+    id: "prism_split",
+    name: "PRISM BIFURCATION",
+    tagline: "SPLITTING PROJECTILES",
+    ruleChange: "Every 3rd bounce splits your Striker into a twin Phantom Ball that builds the same pot.",
+    color: "#38bdf8",
+    accentColor: "#e0f2fe",
+    symbol: "\u2442"
+  },
+  {
+    id: "tesla_chain",
+    name: "TESLA ARC COIL",
+    tagline: "CHAIN-LIGHTNING BOUNCES",
+    ruleChange: "Every peg hit arcs jagged lightning to the 2 nearest pegs for instant chain bounces.",
+    color: "#22d3ee",
+    accentColor: "#cffafe",
+    symbol: "\u26A1"
+  },
+  {
+    id: "gravity_well",
+    name: "SINGULARITY ANCHOR",
+    tagline: "MAGNETIC GRAVITY WELL",
+    ruleChange: "Your 2nd bounce spawns a Black Hole Vortex that curves shots & pulls pegs into orbit.",
+    color: "#c084fc",
+    accentColor: "#f3e8ff",
+    symbol: "\u25CE"
+  },
+  {
+    id: "orbital_blades",
+    name: "SAWBLADE ORBITALS",
+    tagline: "EXPANDING PLASMA RING",
+    ruleChange: "2 spinning plasma blades orbit your ball\u2014their radius grows wider as your Multiplier climbs.",
+    color: "#f472b6",
+    accentColor: "#fce7f3",
+    symbol: "\u2742"
+  },
+  {
+    id: "pinball_flippers",
+    name: "PLASMA FLIPPERS",
+    tagline: "AUTO-PARRY PADDLES",
+    ruleChange: "Twin pinball flippers at the bottom slap balls upward with +3x Mult & vent 25% Heat.",
+    color: "#facc15",
+    accentColor: "#fef9c3",
+    symbol: "\u25E2\u25E3"
+  },
+  {
+    id: "chrono_echo",
+    name: "CHRONO-GHOST ECHO",
+    tagline: "TIME-LOOP AFTERIMAGE",
+    ruleChange: "Every launch replays a translucent Ghost Ball along your previous shot vector.",
+    color: "#fb923c",
+    accentColor: "#ffedd5",
+    symbol: "\u29D7"
+  },
+  {
+    id: "supernova_recall",
+    name: "CLOTHESLINE BANK",
+    tagline: "LETHAL RECALL TETHER",
+    ruleChange: "Banking (Right-Click / Space) turns your recall tether into a laser beam that slices every peg in its path.",
+    color: "#34d399",
+    accentColor: "#d1fae5",
+    symbol: "\u27E0"
+  },
+  {
+    id: "wormhole_walls",
+    name: "WORMHOLE PORTALS",
+    tagline: "WRAP-AROUND ARENA",
+    ruleChange: "Side arena walls become spatial portals\u2014warping your ball across the board at 1.25x speed + 2x Mult.",
+    color: "#818cf8",
+    accentColor: "#e0e7ff",
+    symbol: "\u221E"
+  },
+  {
+    id: "midas_pulse",
+    name: "MIDAS TRANSMUTER",
+    tagline: "HAZARD-TO-GOLD ALCHEMY",
+    ruleChange: "Banking a combo at x6+ Multiplier transmutes the nearest Red Hazard Saw into a Gold Jackpot Bumper.",
+    color: "#fbbf24",
+    accentColor: "#fef3c7",
+    symbol: "\u{1F451}"
+  }
+];
+function getUpgradeSpec(id) {
+  const found = UPGRADE_CATALOG.find((u) => u.id === id);
+  if (!found) {
+    return UPGRADE_CATALOG[0];
+  }
+  return found;
+}
+
+// games/13-ricochet-vault/src/simulation.ts
+var ARENA_RADIUS = 380;
+var VAULT_RADIUS = 52;
+var STRIKER_RADIUS = 14;
+var ROUND_DURATION_SEC = 45;
+function nextRandom(state) {
+  let t = state.rngState += 1831565813;
+  t = Math.imul(t ^ t >>> 15, t | 1);
+  t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+  state.rngState = t >>> 0;
+  return ((t ^ t >>> 14) >>> 0) / 4294967296;
+}
+function computeComboMultiplier(chainHits, bonusMult = 0) {
+  if (chainHits <= 0) return 1 + bonusMult;
+  if (chainHits === 1) return 1 + bonusMult;
+  if (chainHits === 2) return 2 + bonusMult;
+  if (chainHits === 3) return 3 + bonusMult;
+  if (chainHits === 4) return 5 + bonusMult;
+  if (chainHits === 5) return 7 + bonusMult;
+  if (chainHits === 6) return 10 + bonusMult;
+  if (chainHits === 7) return 14 + bonusMult;
+  if (chainHits === 8) return 19 + bonusMult;
+  return Math.min(99, 25 + (chainHits - 9) * 6 + bonusMult);
+}
+function createPrimaryStriker(x = 0, y = 0, vx = 0, vy = 0, isPhantom = false) {
+  return {
+    id: Math.floor(Math.random() * 1e9),
+    isPhantom,
+    x,
+    y,
+    vx,
+    vy,
+    radius: isPhantom ? STRIKER_RADIUS * 0.84 : STRIKER_RADIUS,
+    squashParallel: 1,
+    squashPerp: 1,
+    velParallel: 0,
+    velPerp: 0,
+    squashAngle: Math.atan2(vy || -1, vx || 0),
+    trail: [],
+    bouncesThisShot: 0
+  };
+}
+function buildArenaPegs(state, round) {
+  const pegs = [];
+  let nextId = 1;
+  const innerCount = 8;
+  for (let i = 0; i < innerCount; i++) {
+    const angle = i / innerCount * Math.PI * 2 + 0.2;
+    const r = 136;
+    const x = Math.cos(angle) * r;
+    const y = Math.sin(angle) * r;
+    const kind = i % 2 === 0 ? "crystal" : "prism";
+    pegs.push({
+      id: nextId++,
+      kind,
+      baseX: x,
+      baseY: y,
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      radius: kind === "prism" ? 19 : 17,
+      hp: 2,
+      maxHp: 2,
+      respawnTimer: 0,
+      scale: 1,
+      scaleVel: 0,
+      hitFlash: 0,
+      rotation: angle,
+      lastHitTime: -10
+    });
+  }
+  const midCount = 12;
+  const hazardCount = Math.min(4, 2 + Math.floor((round - 1) / 2));
+  for (let i = 0; i < midCount; i++) {
+    const angle = i / midCount * Math.PI * 2;
+    const r = 230;
+    const x = Math.cos(angle) * r;
+    const y = Math.sin(angle) * r;
+    let kind = "crystal";
+    if (i % 3 === 0) {
+      kind = "jackpot";
+    } else if (i % 4 === 1 && hazardCount > 0 && i < hazardCount * 4) {
+      kind = "hazard";
+    } else if (i % 2 === 1) {
+      kind = "prism";
+    }
+    pegs.push({
+      id: nextId++,
+      kind,
+      baseX: x,
+      baseY: y,
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      radius: kind === "jackpot" ? 25 : kind === "hazard" ? 21 : 18,
+      hp: kind === "jackpot" ? 4 : 2,
+      maxHp: kind === "jackpot" ? 4 : 2,
+      respawnTimer: 0,
+      scale: 1,
+      scaleVel: 0,
+      hitFlash: 0,
+      rotation: angle,
+      lastHitTime: -10
+    });
+  }
+  const outerCount = 14;
+  for (let i = 0; i < outerCount; i++) {
+    const angle = i / outerCount * Math.PI * 2 + 0.12;
+    const r = 312;
+    const x = Math.cos(angle) * r;
+    const y = Math.sin(angle) * r;
+    let kind = "crystal";
+    if (i === 1 || i === 5 || i === 8 || i === 12) {
+      kind = "jackpot";
+    } else if (i === 3 || i === 10) {
+      kind = "hazard";
+    } else if (i % 2 === 0) {
+      kind = "prism";
+    }
+    pegs.push({
+      id: nextId++,
+      kind,
+      baseX: x,
+      baseY: y,
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      radius: kind === "jackpot" ? 26 : kind === "hazard" ? 22 : 17,
+      hp: kind === "jackpot" ? 4 : 2,
+      maxHp: kind === "jackpot" ? 4 : 2,
+      respawnTimer: 0,
+      scale: 1,
+      scaleVel: 0,
+      hitFlash: 0,
+      rotation: angle,
+      lastHitTime: -10
+    });
+  }
+  return pegs;
+}
+function buildReactiveGrid() {
+  const nodes = [];
+  const step = 64;
+  for (let gx = -384; gx <= 384; gx += step) {
+    for (let gy = -384; gy <= 384; gy += step) {
+      if (gx * gx + gy * gy <= (ARENA_RADIUS + 35) * (ARENA_RADIUS + 35)) {
+        nodes.push({
+          baseX: gx,
+          baseY: gy,
+          x: gx,
+          y: gy,
+          vx: 0,
+          vy: 0
+        });
+      }
+    }
+  }
+  return nodes;
+}
+function createInitialState(seed = 20261108) {
+  const state = {
+    seed,
+    rngState: seed >>> 0,
+    phase: "aiming",
+    round: 1,
+    roundTimerSec: ROUND_DURATION_SEC,
+    roundQuota: 1200,
+    bankedScore: 0,
+    totalRunScore: 0,
+    bestRunScore: 0,
+    shields: 3,
+    maxShields: 3,
+    unbankedChips: 0,
+    comboMult: 1,
+    chainHits: 0,
+    heat: 0,
+    flightTime: 0,
+    lastBustAmount: 0,
+    lastBustReason: "",
+    lastBankedAmount: 0,
+    isDraggingAim: false,
+    aimDirX: 0.52,
+    aimDirY: -0.854,
+    aimTension: 0,
+    lastWindupTickTension: 0,
+    lastShotDirX: 0.52,
+    lastShotDirY: -0.854,
+    lastShotPower: 0.85,
+    hasFiredFirstShot: false,
+    onboardingPulseTime: 0,
+    hitStopMs: 0,
+    hitStopTotalTriggered: 0,
+    hitStopLastDurationMs: 0,
+    hitStopVibrationPhase: 0,
+    shakeX: 0,
+    shakeY: 0,
+    shakeVX: 0,
+    shakeVY: 0,
+    wallFlexAngle: 0,
+    wallFlexAmount: 0,
+    wallFlexVel: 0,
+    strikers: [createPrimaryStriker(0, 0, 0, 0, false)],
+    pegs: [],
+    particles: [],
+    shockwaves: [],
+    lightningArcs: [],
+    callouts: [],
+    vortices: [],
+    gridNodes: buildReactiveGrid(),
+    activeUpgrades: [],
+    draftChoices: [],
+    orbitalAngle: 0,
+    flipperFlashLeft: 0,
+    flipperFlashRight: 0
+  };
+  state.pegs = buildArenaPegs(state, 1);
+  return state;
+}
+function triggerHitStop(state, durationMs) {
+  const clamped = Math.max(40, Math.min(60, durationMs));
+  state.hitStopMs = Math.max(state.hitStopMs, clamped);
+  state.hitStopLastDurationMs = clamped;
+  state.hitStopTotalTriggered += 1;
+}
+function addDirectionalShake(state, nx, ny, intensity) {
+  state.shakeVX += nx * intensity * 42;
+  state.shakeVY += ny * intensity * 42;
+}
+function applyGridImpulse(state, cx, cy, radius, force) {
+  const rSq = radius * radius;
+  for (const node of state.gridNodes) {
+    const dx = node.x - cx;
+    const dy = node.y - cy;
+    const dSq = dx * dx + dy * dy;
+    if (dSq > 1 && dSq < rSq) {
+      const dist = Math.sqrt(dSq);
+      const falloff = 1 - dist / radius;
+      node.vx += dx / dist * force * falloff;
+      node.vy += dy / dist * force * falloff;
+    }
+  }
+}
+function spawnImpactParticles(state, x, y, nx, ny, inheritedVX, inheritedVY, color, count = 16) {
+  for (let i = 0; i < count; i++) {
+    const spreadAngle = (nextRandom(state) - 0.5) * 1.35;
+    const baseAngle = Math.atan2(ny, nx) + spreadAngle;
+    const burstSpeed = 95 + nextRandom(state) * 260;
+    const vx = Math.cos(baseAngle) * burstSpeed + inheritedVX * 0.42;
+    const vy = Math.sin(baseAngle) * burstSpeed + inheritedVY * 0.42;
+    const maxLife = 0.28 + nextRandom(state) * 0.36;
+    state.particles.push({
+      x,
+      y,
+      vx,
+      vy,
+      prevX: x,
+      prevY: y,
+      radius: 2.2 + nextRandom(state) * 3.4,
+      color,
+      alpha: 1,
+      life: maxLife,
+      maxLife
+    });
+  }
+}
+function addCallout(state, x, y, text, color, subtext, initialScale = 1.45) {
+  state.callouts.push({
+    x,
+    y,
+    vy: -62,
+    text,
+    subtext,
+    color,
+    scale: initialScale,
+    scaleVel: 0,
+    alpha: 1,
+    life: 0.95
+  });
+}
+function updateAimDrag(state, dirX, dirY, tension01, audio) {
+  if (state.phase !== "aiming") return;
+  const len = Math.hypot(dirX, dirY) || 1;
+  state.aimDirX = dirX / len;
+  state.aimDirY = dirY / len;
+  state.aimTension = Math.max(0.15, Math.min(1, tension01));
+  state.isDraggingAim = true;
+  const primary = state.strikers[0];
+  if (primary) {
+    primary.squashAngle = Math.atan2(state.aimDirY, state.aimDirX);
+    primary.squashParallel = 1 + state.aimTension * 0.42;
+    primary.squashPerp = 1 - state.aimTension * 0.28;
+    primary.x = -state.aimDirX * state.aimTension * 18;
+    primary.y = -state.aimDirY * state.aimTension * 18;
+  }
+  if (Math.abs(state.aimTension - state.lastWindupTickTension) >= 0.09) {
+    state.lastWindupTickTension = state.aimTension;
+    audio?.playWindupTick(state.aimTension);
+  }
+}
+function launchStriker(state, dirX = state.aimDirX, dirY = state.aimDirY, power01 = state.aimTension || 0.9, audio) {
+  if (state.phase !== "aiming") return false;
+  const len = Math.hypot(dirX, dirY) || 1;
+  const nx = dirX / len;
+  const ny = dirY / len;
+  const clampedPower = Math.max(0.35, Math.min(1, power01));
+  const launchSpeed = 480 + clampedPower * 310;
+  state.phase = "in_flight";
+  state.isDraggingAim = false;
+  state.aimTension = 0;
+  state.hasFiredFirstShot = true;
+  state.unbankedChips = 0;
+  state.comboMult = 1;
+  state.chainHits = 0;
+  state.heat = 0;
+  state.flightTime = 0;
+  state.lastBustAmount = 0;
+  state.lastBustReason = "";
+  const primary = createPrimaryStriker(
+    nx * (VAULT_RADIUS + 8),
+    ny * (VAULT_RADIUS + 8),
+    nx * launchSpeed,
+    ny * launchSpeed,
+    false
+  );
+  primary.squashAngle = Math.atan2(ny, nx);
+  primary.squashParallel = 1.52;
+  primary.squashPerp = 0.62;
+  state.strikers = [primary];
+  if (state.activeUpgrades.includes("chrono_echo")) {
+    const echoSpeed = launchSpeed * 0.92;
+    const echoBall = createPrimaryStriker(
+      state.lastShotDirX * (VAULT_RADIUS + 8),
+      state.lastShotDirY * (VAULT_RADIUS + 8),
+      state.lastShotDirX * echoSpeed,
+      state.lastShotDirY * echoSpeed,
+      true
+    );
+    state.strikers.push(echoBall);
+  }
+  state.lastShotDirX = nx;
+  state.lastShotDirY = ny;
+  state.lastShotPower = clampedPower;
+  state.shockwaves.push({
+    x: primary.x,
+    y: primary.y,
+    radius: 12,
+    maxRadius: 95,
+    color: "#38bdf8",
+    alpha: 0.9,
+    lineWidth: 4
+  });
+  addDirectionalShake(state, -nx, -ny, 5.5);
+  applyGridImpulse(state, 0, 0, 180, 220);
+  spawnImpactParticles(state, primary.x, primary.y, nx, ny, primary.vx * 0.5, primary.vy * 0.5, "#38bdf8", 14);
+  audio?.playLaunch(clampedPower);
+  return true;
+}
+function bankUnbankedPot(state, audio) {
+  if (state.phase !== "in_flight") return 0;
+  const primary = state.strikers[0];
+  const bx = primary ? primary.x : 0;
+  const by = primary ? primary.y : 0;
+  if (state.activeUpgrades.includes("supernova_recall") && primary) {
+    for (const peg of state.pegs) {
+      if (peg.respawnTimer > 0 || peg.kind === "hazard") continue;
+      const segLenSq = bx * bx + by * by;
+      if (segLenSq > 1) {
+        const t = Math.max(0, Math.min(1, (peg.x * bx + peg.y * by) / segLenSq));
+        const projX = bx * t;
+        const projY = by * t;
+        const dist = Math.hypot(peg.x - projX, peg.y - projY);
+        if (dist <= peg.radius + 26) {
+          state.unbankedChips += 65;
+          state.chainHits += 1;
+          peg.scale = 1.5;
+          peg.hitFlash = 1;
+          state.lightningArcs.push({
+            x1: bx,
+            y1: by,
+            x2: peg.x,
+            y2: peg.y,
+            color: "#34d399",
+            alpha: 1,
+            life: 0.28
+          });
+        }
+      }
+    }
+    state.comboMult = computeComboMultiplier(state.chainHits);
+  }
+  const totalBanked = Math.round(state.unbankedChips * state.comboMult);
+  state.lastBankedAmount = totalBanked;
+  if (totalBanked > 0) {
+    state.bankedScore += totalBanked;
+    state.totalRunScore += totalBanked;
+    if (state.totalRunScore > state.bestRunScore) {
+      state.bestRunScore = state.totalRunScore;
+    }
+    triggerHitStop(state, 48);
+    const len = Math.hypot(bx, by) || 1;
+    addDirectionalShake(state, -bx / len, -by / len, Math.min(14, 6 + state.comboMult * 0.5));
+    applyGridImpulse(state, 0, 0, 260, 380);
+    state.shockwaves.push({
+      x: 0,
+      y: 0,
+      radius: VAULT_RADIUS,
+      maxRadius: Math.min(ARENA_RADIUS, 160 + state.comboMult * 14),
+      color: "#facc15",
+      alpha: 1,
+      lineWidth: 6
+    });
+    spawnImpactParticles(state, 0, 0, -bx / len, -by / len, -bx * 1.2, -by * 1.2, "#facc15", 24);
+    let sub = `${state.unbankedChips} \xD7 ${state.comboMult}x MULT`;
+    if (state.comboMult >= 6 && state.shields < state.maxShields) {
+      state.shields += 1;
+      sub = `+1 SHIELD HEART RESTORED!`;
+    }
+    if (state.activeUpgrades.includes("midas_pulse") && state.comboMult >= 6) {
+      const hazard = state.pegs.find((p) => p.kind === "hazard" && p.respawnTimer <= 0);
+      if (hazard) {
+        hazard.kind = "jackpot";
+        hazard.radius = 25;
+        hazard.scale = 1.65;
+        hazard.hitFlash = 1;
+        addCallout(state, hazard.x, hazard.y, "MIDAS GOLD!", "#fbbf24");
+      }
+    }
+    addCallout(state, 0, -45, `BANKED +${totalBanked.toLocaleString()}!`, "#facc15", sub, 1.75);
+    audio?.playBankCashIn(totalBanked, state.comboMult);
+  } else {
+    addCallout(state, 0, -35, "RECALLED", "#94a3b8", void 0, 1.15);
+  }
+  state.unbankedChips = 0;
+  state.comboMult = 1;
+  state.chainHits = 0;
+  state.heat = 0;
+  state.flightTime = 0;
+  state.vortices = [];
+  state.strikers = [createPrimaryStriker(0, 0, 0, 0, false)];
+  state.phase = "aiming";
+  if (state.bankedScore >= state.roundQuota) {
+    triggerRoundClearDraft(state);
+  }
+  return totalBanked;
+}
+function triggerGreedBust(state, reason, impactX, impactY, audio) {
+  const lostPot = Math.max(50, Math.round(state.unbankedChips * state.comboMult));
+  state.lastBustAmount = lostPot;
+  state.lastBustReason = reason;
+  triggerHitStop(state, 56);
+  const len = Math.hypot(impactX, impactY) || 1;
+  addDirectionalShake(state, impactX / len, impactY / len, 15);
+  applyGridImpulse(state, impactX, impactY, 260, -420);
+  state.shockwaves.push({
+    x: impactX,
+    y: impactY,
+    radius: 14,
+    maxRadius: 190,
+    color: "#f43f5e",
+    alpha: 1,
+    lineWidth: 6
+  });
+  spawnImpactParticles(
+    state,
+    impactX,
+    impactY,
+    -impactX / len,
+    -impactY / len,
+    0,
+    0,
+    "#f43f5e",
+    30
+  );
+  addCallout(
+    state,
+    impactX * 0.6,
+    impactY * 0.6,
+    `GREED BUST! -${lostPot.toLocaleString()}`,
+    "#fb7185",
+    `${reason} \xB7 TOO GREEDY!`,
+    1.8
+  );
+  state.unbankedChips = 0;
+  state.comboMult = 1;
+  state.chainHits = 0;
+  state.heat = 0;
+  state.flightTime = 0;
+  state.vortices = [];
+  state.shields = Math.max(0, state.shields - 1);
+  audio?.playBust();
+  if (state.shields <= 0) {
+    state.phase = "game_over";
+    state.strikers = [createPrimaryStriker(0, 0, 0, 0, false)];
+  } else {
+    state.phase = "aiming";
+    state.strikers = [createPrimaryStriker(0, 0, 0, 0, false)];
+  }
+}
+function triggerRoundClearDraft(state) {
+  state.phase = "upgrade_draft";
+  state.isDraggingAim = false;
+  state.strikers = [createPrimaryStriker(0, 0, 0, 0, false)];
+  state.vortices = [];
+  const unowned = UPGRADE_CATALOG.filter((u) => !state.activeUpgrades.includes(u.id));
+  const pool = unowned.length >= 3 ? [...unowned] : [...UPGRADE_CATALOG];
+  const choices = [];
+  while (choices.length < 3 && pool.length > 0) {
+    const idx = Math.floor(nextRandom(state) * pool.length);
+    choices.push(pool.splice(idx, 1)[0]);
+  }
+  state.draftChoices = choices;
+}
+function selectUpgradeAndStartNextRound(state, upgradeId, audio) {
+  if (!state.activeUpgrades.includes(upgradeId)) {
+    state.activeUpgrades.push(upgradeId);
+  }
+  const spec = getUpgradeSpec(upgradeId);
+  state.round += 1;
+  state.roundTimerSec = ROUND_DURATION_SEC;
+  state.bankedScore = 0;
+  state.roundQuota = Math.round(1200 * Math.pow(1.48, state.round - 1));
+  state.shields = Math.min(state.maxShields, state.shields + 1);
+  state.phase = "aiming";
+  state.draftChoices = [];
+  state.pegs = buildArenaPegs(state, state.round);
+  state.strikers = [createPrimaryStriker(0, 0, 0, 0, false)];
+  addCallout(
+    state,
+    0,
+    -80,
+    `UNLOCKED: ${spec.name}`,
+    spec.color,
+    `ROUND ${state.round} \xB7 QUOTA ${state.roundQuota.toLocaleString()}`,
+    1.6
+  );
+  audio?.playUpgradePick();
+}
+function nudgeInFlightStrikers(state, nudgeX, nudgeY, dtSec) {
+  if (state.phase !== "in_flight") return;
+  const accel = 420;
+  for (const ball of state.strikers) {
+    ball.vx += nudgeX * accel * dtSec;
+    ball.vy += nudgeY * accel * dtSec;
+  }
+}
+function handlePegCollision(state, ball, peg, nx, ny, audio) {
+  if (peg.kind === "hazard") {
+    if (state.unbankedChips > 0 && state.flightTime > 0.22 && !ball.isPhantom) {
+      triggerGreedBust(state, "HIT HAZARD SAW", peg.x, peg.y, audio);
+      return;
+    } else {
+      peg.scale = 1.42;
+      peg.hitFlash = 1;
+      addDirectionalShake(state, nx, ny, 5);
+      spawnImpactParticles(state, peg.x, peg.y, nx, ny, ball.vx, ball.vy, "#fb7185", 10);
+      return;
+    }
+  }
+  state.chainHits += 1;
+  ball.bouncesThisShot += 1;
+  const isOverdriveGreed = state.heat >= 0.58;
+  const greedBonusFactor = isOverdriveGreed ? 2 : 1;
+  let baseChips = 30;
+  let color = "#38bdf8";
+  let isJackpot = false;
+  if (peg.kind === "prism") {
+    baseChips = 55;
+    color = "#e879f9";
+  } else if (peg.kind === "jackpot") {
+    baseChips = 140;
+    color = "#facc15";
+    isJackpot = true;
+  }
+  const gainedChips = baseChips * greedBonusFactor;
+  state.unbankedChips += gainedChips;
+  const jackpotBonusMult = isJackpot ? 2 : 0;
+  state.comboMult = computeComboMultiplier(state.chainHits) + jackpotBonusMult;
+  const heatStep = isJackpot ? 0.09 : 0.075;
+  state.heat = Math.min(1, state.heat + heatStep);
+  ball.squashAngle = Math.atan2(ny, nx);
+  ball.squashParallel = 0.54;
+  ball.squashPerp = 1.48;
+  peg.scale = isJackpot ? 1.62 : 1.44;
+  peg.scaleVel = 3.5;
+  peg.vx -= nx * 135;
+  peg.vy -= ny * 135;
+  peg.hitFlash = 1;
+  peg.hp -= 1;
+  if (peg.hp <= 0) {
+    peg.respawnTimer = 3.2;
+    state.unbankedChips += Math.round(baseChips * 0.6);
+  }
+  if (isJackpot) {
+    triggerHitStop(state, 52);
+  } else if (state.chainHits % 4 === 0) {
+    triggerHitStop(state, 44);
+  }
+  addDirectionalShake(state, nx, ny, isJackpot ? 11 : 5.5);
+  applyGridImpulse(state, peg.x, peg.y, isJackpot ? 210 : 140, isJackpot ? 310 : 185);
+  spawnImpactParticles(
+    state,
+    peg.x + nx * peg.radius,
+    peg.y + ny * peg.radius,
+    nx,
+    ny,
+    ball.vx,
+    ball.vy,
+    color,
+    isJackpot ? 24 : 14
+  );
+  state.shockwaves.push({
+    x: peg.x,
+    y: peg.y,
+    radius: peg.radius * 0.8,
+    maxRadius: isJackpot ? 110 : 68,
+    color,
+    alpha: 0.9,
+    lineWidth: isJackpot ? 4.5 : 2.5
+  });
+  audio?.playComboHit(state.chainHits, isJackpot, state.heat);
+  const tag = isJackpot ? `JACKPOT +${gainedChips}!` : isOverdriveGreed ? `2x GREED +${gainedChips}!` : `+${gainedChips}`;
+  addCallout(
+    state,
+    peg.x,
+    peg.y - 16,
+    tag,
+    isOverdriveGreed ? "#fbbf24" : color,
+    state.chainHits >= 2 ? `${state.comboMult}x CHAIN` : void 0,
+    isJackpot ? 1.55 : 1.25
+  );
+  if (state.activeUpgrades.includes("prism_split") && ball.bouncesThisShot % 3 === 0 && state.strikers.length < 5) {
+    const speed = Math.hypot(ball.vx, ball.vy);
+    const angle = Math.atan2(ball.vy, ball.vx) + (nextRandom(state) > 0.5 ? 0.48 : -0.48);
+    const twin = createPrimaryStriker(
+      ball.x,
+      ball.y,
+      Math.cos(angle) * speed,
+      Math.sin(angle) * speed,
+      true
+    );
+    state.strikers.push(twin);
+    addCallout(state, ball.x, ball.y - 28, "PRISM SPLIT!", "#38bdf8", void 0, 1.4);
+  }
+  if (state.activeUpgrades.includes("tesla_chain")) {
+    const candidates = state.pegs.filter((p) => p.id !== peg.id && p.respawnTimer <= 0 && p.kind !== "hazard").map((p) => ({ peg: p, dist: Math.hypot(p.x - peg.x, p.y - peg.y) })).filter((item) => item.dist <= 185).sort((a, b) => a.dist - b.dist).slice(0, 2);
+    for (const target of candidates) {
+      state.unbankedChips += 35;
+      state.chainHits += 1;
+      target.peg.scale = 1.38;
+      target.peg.hitFlash = 1;
+      state.lightningArcs.push({
+        x1: peg.x,
+        y1: peg.y,
+        x2: target.peg.x,
+        y2: target.peg.y,
+        color: "#22d3ee",
+        alpha: 1,
+        life: 0.22
+      });
+    }
+    state.comboMult = computeComboMultiplier(state.chainHits);
+  }
+  if (state.activeUpgrades.includes("gravity_well") && ball.bouncesThisShot === 2 && state.vortices.length < 2) {
+    state.vortices.push({
+      x: peg.x,
+      y: peg.y,
+      radius: 155,
+      life: 4,
+      maxLife: 4
+    });
+    addCallout(state, peg.x, peg.y, "SINGULARITY WELL!", "#c084fc", void 0, 1.45);
+  }
+}
+function stepSimulation(state, dtMs, audio) {
+  const clampedMs = Math.max(0, Math.min(50, dtMs));
+  const dtSec = clampedMs / 1e3;
+  state.onboardingPulseTime += dtSec;
+  state.orbitalAngle += dtSec * (3.4 + state.comboMult * 0.18);
+  state.flipperFlashLeft = Math.max(0, state.flipperFlashLeft - dtSec * 3.5);
+  state.flipperFlashRight = Math.max(0, state.flipperFlashRight - dtSec * 3.5);
+  const shakeSpringK = 360;
+  const shakeDamping = 17;
+  state.shakeVX += (-shakeSpringK * state.shakeX - shakeDamping * state.shakeVX) * dtSec;
+  state.shakeVY += (-shakeSpringK * state.shakeY - shakeDamping * state.shakeVY) * dtSec;
+  state.shakeX += state.shakeVX * dtSec;
+  state.shakeY += state.shakeVY * dtSec;
+  state.wallFlexVel += (-320 * state.wallFlexAmount - 14 * state.wallFlexVel) * dtSec;
+  state.wallFlexAmount += state.wallFlexVel * dtSec;
+  if (state.hitStopMs > 0) {
+    state.hitStopMs = Math.max(0, state.hitStopMs - clampedMs);
+    state.hitStopVibrationPhase += clampedMs * 0.85;
+    return;
+  }
+  for (const node of state.gridNodes) {
+    const dx = node.baseX - node.x;
+    const dy = node.baseY - node.y;
+    node.vx = (node.vx + dx * 180 * dtSec) * Math.pow(0.08, dtSec);
+    node.vy = (node.vy + dy * 180 * dtSec) * Math.pow(0.08, dtSec);
+    node.x += node.vx * dtSec;
+    node.y += node.vy * dtSec;
+  }
+  for (let i = state.particles.length - 1; i >= 0; i--) {
+    const p = state.particles[i];
+    p.prevX = p.x;
+    p.prevY = p.y;
+    p.x += p.vx * dtSec;
+    p.y += p.vy * dtSec;
+    p.vx *= Math.pow(0.22, dtSec);
+    p.vy *= Math.pow(0.22, dtSec);
+    p.life -= dtSec;
+    p.alpha = Math.max(0, p.life / p.maxLife);
+    if (p.life <= 0) {
+      state.particles.splice(i, 1);
+    }
+  }
+  for (let i = state.shockwaves.length - 1; i >= 0; i--) {
+    const sw = state.shockwaves[i];
+    sw.radius += (sw.maxRadius - sw.radius) * Math.min(1, dtSec * 11);
+    sw.alpha -= dtSec * 2.6;
+    if (sw.alpha <= 0) {
+      state.shockwaves.splice(i, 1);
+    }
+  }
+  for (let i = state.lightningArcs.length - 1; i >= 0; i--) {
+    const arc = state.lightningArcs[i];
+    arc.life -= dtSec;
+    arc.alpha = Math.max(0, arc.life / 0.25);
+    if (arc.life <= 0) {
+      state.lightningArcs.splice(i, 1);
+    }
+  }
+  for (let i = state.callouts.length - 1; i >= 0; i--) {
+    const c = state.callouts[i];
+    c.y += c.vy * dtSec;
+    c.vy *= Math.pow(0.18, dtSec);
+    c.scaleVel += (-260 * (c.scale - 1) - 14 * c.scaleVel) * dtSec;
+    c.scale += c.scaleVel * dtSec;
+    c.life -= dtSec;
+    c.alpha = Math.max(0, Math.min(1, c.life * 2.2));
+    if (c.life <= 0) {
+      state.callouts.splice(i, 1);
+    }
+  }
+  for (const peg of state.pegs) {
+    if (peg.respawnTimer > 0) {
+      peg.respawnTimer = Math.max(0, peg.respawnTimer - dtSec);
+      if (peg.respawnTimer === 0) {
+        peg.hp = peg.maxHp;
+        peg.scale = 0.2;
+        peg.scaleVel = 8;
+      }
+    }
+    peg.scaleVel += (-310 * (peg.scale - 1) - 13 * peg.scaleVel) * dtSec;
+    peg.scale += peg.scaleVel * dtSec;
+    peg.hitFlash = Math.max(0, peg.hitFlash - dtSec * 4.5);
+    if (peg.kind === "hazard") {
+      peg.rotation += dtSec * (2.6 + state.heat * 4.5);
+      if (state.phase === "in_flight" && state.heat >= 0.55 && state.strikers[0]) {
+        const target = state.strikers[0];
+        const dx = target.x - peg.x;
+        const dy = target.y - peg.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        peg.vx += dx / dist * 58 * dtSec;
+        peg.vy += dy / dist * 58 * dtSec;
+      }
+    } else {
+      peg.rotation += dtSec * 0.45;
+    }
+    peg.vx += ((peg.baseX - peg.x) * 140 - peg.vx * 9) * dtSec;
+    peg.vy += ((peg.baseY - peg.y) * 140 - peg.vy * 9) * dtSec;
+    peg.x += peg.vx * dtSec;
+    peg.y += peg.vy * dtSec;
+  }
+  if (state.phase === "upgrade_draft" || state.phase === "game_over") {
+    return;
+  }
+  if (state.hasFiredFirstShot) {
+    state.roundTimerSec = Math.max(0, state.roundTimerSec - dtSec);
+    if (state.roundTimerSec <= 0) {
+      if (state.bankedScore + state.unbankedChips * state.comboMult >= state.roundQuota) {
+        if (state.phase === "in_flight" && state.unbankedChips > 0) {
+          bankUnbankedPot(state, audio);
+        } else {
+          triggerRoundClearDraft(state);
+        }
+        return;
+      } else {
+        state.shields = Math.max(0, state.shields - 1);
+        if (state.shields <= 0) {
+          state.phase = "game_over";
+          return;
+        } else {
+          state.roundTimerSec = ROUND_DURATION_SEC;
+          addCallout(state, 0, 0, "TIME EXPIRED! -1 SHIELD", "#fb7185", "TIMER RESET \xB7 KEEP PUSHING!", 1.6);
+          audio?.playBust();
+        }
+      }
+    }
+  }
+  for (const ball of state.strikers) {
+    if (!state.isDraggingAim) {
+      ball.velParallel += (-280 * (ball.squashParallel - 1) - 14 * ball.velParallel) * dtSec;
+      ball.velPerp += (-280 * (ball.squashPerp - 1) - 14 * ball.velPerp) * dtSec;
+      ball.squashParallel += ball.velParallel * dtSec;
+      ball.squashPerp += ball.velPerp * dtSec;
+    }
+  }
+  if (state.phase !== "in_flight") {
+    return;
+  }
+  state.flightTime += dtSec;
+  if (state.flightTime > 1.2 && state.unbankedChips > 0) {
+    state.heat = Math.min(1, state.heat + dtSec * 0.085);
+    if (state.heat >= 1) {
+      const primary = state.strikers[0];
+      triggerGreedBust(
+        state,
+        "100% THERMAL OVERLOAD",
+        primary ? primary.x : 0,
+        primary ? primary.y : 0,
+        audio
+      );
+      return;
+    }
+  }
+  for (let i = state.vortices.length - 1; i >= 0; i--) {
+    const v = state.vortices[i];
+    v.life -= dtSec;
+    if (v.life <= 0) {
+      state.vortices.splice(i, 1);
+      continue;
+    }
+    for (const ball of state.strikers) {
+      const dx = v.x - ball.x;
+      const dy = v.y - ball.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist < v.radius) {
+        const pull = (1 - dist / v.radius) * 520;
+        ball.vx += (dx / dist * pull - dy / dist * pull * 0.45) * dtSec;
+        ball.vy += (dy / dist * pull + dx / dist * pull * 0.45) * dtSec;
+      }
+    }
+  }
+  const subSteps = 2;
+  const subDt = dtSec / subSteps;
+  for (let step = 0; step < subSteps; step++) {
+    for (let bIdx = state.strikers.length - 1; bIdx >= 0; bIdx--) {
+      const ball = state.strikers[bIdx];
+      if (!ball) continue;
+      ball.x += ball.vx * subDt;
+      ball.y += ball.vy * subDt;
+      const curSpeed = Math.hypot(ball.vx, ball.vy);
+      if (curSpeed > 1 && curSpeed < 440) {
+        const boost = 440 / curSpeed;
+        ball.vx *= boost;
+        ball.vy *= boost;
+      } else if (curSpeed > 920) {
+        const cap = 920 / curSpeed;
+        ball.vx *= cap;
+        ball.vy *= cap;
+      }
+      if (step === 0) {
+        ball.trail.unshift({ x: ball.x, y: ball.y, alpha: 1 });
+        if (ball.trail.length > 16) {
+          ball.trail.pop();
+        }
+        for (let t = 0; t < ball.trail.length; t++) {
+          ball.trail[t].alpha = 1 - t / ball.trail.length;
+        }
+      }
+      if (!ball.isPhantom && state.activeUpgrades.includes("orbital_blades")) {
+        const orbitRadius = 38 + Math.min(48, state.comboMult * 2.4);
+        for (let arm = 0; arm < 2; arm++) {
+          const a = state.orbitalAngle + arm * Math.PI;
+          const ox = ball.x + Math.cos(a) * orbitRadius;
+          const oy = ball.y + Math.sin(a) * orbitRadius;
+          for (const peg of state.pegs) {
+            if (peg.respawnTimer > 0 || peg.kind === "hazard") continue;
+            if (state.flightTime - peg.lastHitTime > 0.25 && Math.hypot(ox - peg.x, oy - peg.y) <= peg.radius + 10) {
+              peg.lastHitTime = state.flightTime;
+              peg.scale = 1.38;
+              peg.hitFlash = 1;
+              state.unbankedChips += 35;
+              state.chainHits += 1;
+              state.comboMult = computeComboMultiplier(state.chainHits);
+              spawnImpactParticles(state, peg.x, peg.y, 0, -1, ball.vx, ball.vy, "#f472b6", 8);
+              audio?.playComboHit(state.chainHits, false, state.heat);
+            }
+          }
+        }
+      }
+      if (state.activeUpgrades.includes("pinball_flippers") && ball.y > ARENA_RADIUS * 0.62 && ball.vy > 0 && Math.abs(ball.x) < 155) {
+        ball.vy = -Math.abs(ball.vy) * 1.15;
+        ball.vx += (ball.x >= 0 ? 1 : -1) * 90;
+        state.comboMult += 3;
+        state.heat = Math.max(0, state.heat - 0.25);
+        if (ball.x < 0) state.flipperFlashLeft = 1;
+        else state.flipperFlashRight = 1;
+        ball.squashAngle = -Math.PI / 2;
+        ball.squashParallel = 1.5;
+        ball.squashPerp = 0.6;
+        addCallout(state, ball.x, ball.y - 20, "FLIPPER PARRY! +3x", "#facc15", "-25% HEAT", 1.5);
+        audio?.playComboHit(state.chainHits + 2, true, state.heat);
+      }
+      const distFromCenter = Math.hypot(ball.x, ball.y);
+      if (!ball.isPhantom && state.flightTime > 0.36 && state.unbankedChips > 0 && distFromCenter <= VAULT_RADIUS - 4) {
+        bankUnbankedPot(state, audio);
+        return;
+      }
+      for (const peg of state.pegs) {
+        if (peg.respawnTimer > 0) continue;
+        const dx = ball.x - peg.x;
+        const dy = ball.y - peg.y;
+        const minDist = ball.radius + peg.radius;
+        const dSq = dx * dx + dy * dy;
+        if (dSq < minDist * minDist) {
+          const dist = Math.sqrt(dSq) || 1;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const overlap = minDist - dist;
+          ball.x += nx * (overlap + 1);
+          ball.y += ny * (overlap + 1);
+          const dot = ball.vx * nx + ball.vy * ny;
+          if (dot < 0) {
+            const elasticity = peg.kind === "prism" ? 1.14 : peg.kind === "jackpot" ? 1.18 : 1.04;
+            ball.vx = (ball.vx - 2 * dot * nx) * elasticity;
+            ball.vy = (ball.vy - 2 * dot * ny) * elasticity;
+          }
+          handlePegCollision(state, ball, peg, nx, ny, audio);
+          if (state.phase !== "in_flight") return;
+        }
+      }
+      const boundaryDist = Math.hypot(ball.x, ball.y);
+      if (boundaryDist + ball.radius >= ARENA_RADIUS) {
+        const nx = -ball.x / (boundaryDist || 1);
+        const ny = -ball.y / (boundaryDist || 1);
+        if (state.activeUpgrades.includes("wormhole_walls") && Math.abs(ball.x) > Math.abs(ball.y)) {
+          const entryX = ball.x;
+          const entryY = ball.y;
+          ball.x = -ball.x * 0.92;
+          ball.vx *= 1.2;
+          ball.vy *= 1.2;
+          state.comboMult += 2;
+          state.lightningArcs.push({
+            x1: entryX,
+            y1: entryY,
+            x2: ball.x,
+            y2: ball.y,
+            color: "#818cf8",
+            alpha: 1,
+            life: 0.26
+          });
+          addCallout(state, ball.x * 0.7, ball.y * 0.7, "WORMHOLE +2x!", "#818cf8");
+          audio?.playComboHit(state.chainHits + 1, false, state.heat);
+        } else {
+          ball.x = -nx * (ARENA_RADIUS - ball.radius - 1);
+          ball.y = -ny * (ARENA_RADIUS - ball.radius - 1);
+          const dot = ball.vx * nx + ball.vy * ny;
+          if (dot < 0) {
+            ball.vx -= 2 * dot * nx;
+            ball.vy -= 2 * dot * ny;
+          }
+          ball.squashAngle = Math.atan2(ny, nx);
+          ball.squashParallel = 0.62;
+          ball.squashPerp = 1.38;
+          state.wallFlexAngle = Math.atan2(ball.y, ball.x);
+          state.wallFlexAmount = 16;
+          addDirectionalShake(state, nx, ny, 4);
+          spawnImpactParticles(state, ball.x, ball.y, nx, ny, ball.vx, ball.vy, "#64748b", 8);
+          audio?.playWallBounce(Math.hypot(ball.vx, ball.vy) / 800);
+        }
+      }
+    }
+  }
+}
+
+// games/13-ricochet-vault/src/renderer.ts
+function computeArenaTransform(width, height) {
+  const minDim = Math.min(width, height);
+  const scale = minDim * 0.445 / ARENA_RADIUS;
+  return {
+    cx: width * 0.5,
+    cy: height * 0.5,
+    scale
+  };
+}
+function renderRicochetVault(ctx, state, width, height, reducedMotion = false) {
+  const { cx, cy, scale } = computeArenaTransform(width, height);
+  const shakeFactor = reducedMotion ? 0.2 : 1;
+  const hitStopJitterX = state.hitStopMs > 0 && !reducedMotion ? Math.sin(state.hitStopVibrationPhase * 1.7) * 3.5 : 0;
+  const hitStopJitterY = state.hitStopMs > 0 && !reducedMotion ? Math.cos(state.hitStopVibrationPhase * 2.1) * 3.5 : 0;
+  const camX = cx + (state.shakeX + hitStopJitterX) * scale * shakeFactor;
+  const camY = cy + (state.shakeY + hitStopJitterY) * scale * shakeFactor;
+  ctx.save();
+  ctx.fillStyle = "#050814";
+  ctx.fillRect(0, 0, width, height);
+  const bgGrad = ctx.createRadialGradient(
+    camX,
+    camY,
+    20 * scale,
+    camX,
+    camY,
+    ARENA_RADIUS * 1.25 * scale
+  );
+  if (state.heat >= 0.6) {
+    bgGrad.addColorStop(0, "rgba(244, 63, 94, 0.16)");
+    bgGrad.addColorStop(0.55, "rgba(245, 158, 11, 0.09)");
+    bgGrad.addColorStop(1, "rgba(5, 8, 20, 0)");
+  } else {
+    bgGrad.addColorStop(0, "rgba(56, 189, 248, 0.12)");
+    bgGrad.addColorStop(0.6, "rgba(99, 102, 241, 0.06)");
+    bgGrad.addColorStop(1, "rgba(5, 8, 20, 0)");
+  }
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, width, height);
+  ctx.save();
+  ctx.translate(camX, camY);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = state.heat >= 0.6 ? "rgba(251, 113, 133, 0.24)" : "rgba(56, 189, 248, 0.19)";
+  for (const node of state.gridNodes) {
+    const disp = Math.hypot(node.x - node.baseX, node.y - node.baseY);
+    const r = 1.6 + Math.min(2.6, disp * 0.08);
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  drawArenaPerimeterRings(ctx, state);
+  for (const v of state.vortices) {
+    const ratio = v.life / v.maxLife;
+    const vGrad = ctx.createRadialGradient(v.x, v.y, 4, v.x, v.y, v.radius);
+    vGrad.addColorStop(0, `rgba(192, 132, 252, ${0.55 * ratio})`);
+    vGrad.addColorStop(0.6, `rgba(126, 34, 206, ${0.2 * ratio})`);
+    vGrad.addColorStop(1, "rgba(126, 34, 206, 0)");
+    ctx.fillStyle = vGrad;
+    ctx.beginPath();
+    ctx.arc(v.x, v.y, v.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(216, 180, 254, ${0.7 * ratio})`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.arc(v.x, v.y, v.radius * 0.55, state.orbitalAngle, state.orbitalAngle + Math.PI * 1.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if (state.activeUpgrades.includes("wormhole_walls")) {
+    ctx.save();
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = "#818cf8";
+    ctx.beginPath();
+    ctx.arc(0, 0, ARENA_RADIUS - 2, -0.45, 0.45);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, ARENA_RADIUS - 2, Math.PI - 0.45, Math.PI + 0.45);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (state.activeUpgrades.includes("pinball_flippers")) {
+    drawPinballFlippers(ctx, state);
+  }
+  drawCentralVaultAndShields(ctx, state);
+  if (state.phase === "in_flight" && state.strikers[0]) {
+    drawGreedyTether(ctx, state, state.strikers[0]);
+  }
+  if (state.phase === "aiming") {
+    drawAimingAndOnboarding(ctx, state);
+  }
+  for (const peg of state.pegs) {
+    if (peg.respawnTimer > 0) {
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.16)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(peg.baseX, peg.baseY, peg.radius * 0.65, 0, Math.PI * 2);
+      ctx.stroke();
+      continue;
+    }
+    drawPeg(ctx, state, peg);
+  }
+  for (const sw of state.shockwaves) {
+    ctx.save();
+    ctx.strokeStyle = sw.color;
+    ctx.globalAlpha = Math.max(0, sw.alpha);
+    ctx.lineWidth = sw.lineWidth;
+    ctx.beginPath();
+    ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+  for (const arc of state.lightningArcs) {
+    drawJaggedLightning(ctx, arc.x1, arc.y1, arc.x2, arc.y2, arc.color, arc.alpha);
+  }
+  for (const p of state.particles) {
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.strokeStyle = p.color;
+    ctx.fillStyle = p.color;
+    ctx.lineWidth = p.radius * 1.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(p.prevX, p.prevY);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * 0.75, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  for (const ball of state.strikers) {
+    drawStrikerBall(ctx, state, ball);
+  }
+  for (const c of state.callouts) {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.scale(c.scale, c.scale);
+    ctx.globalAlpha = c.alpha;
+    ctx.textAlign = "center";
+    ctx.font = '900 18px "Inter", system-ui, sans-serif';
+    ctx.fillStyle = "#020617";
+    ctx.fillText(c.text, 0, 2);
+    ctx.fillStyle = c.color;
+    ctx.fillText(c.text, 0, 0);
+    if (c.subtext) {
+      ctx.font = '800 11px "Inter", system-ui, sans-serif';
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillText(c.subtext, 0, 16);
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+  drawMinimalDiegeticOverlay(ctx, state, width, height);
+  const cardHitboxes = [];
+  if (state.phase === "upgrade_draft") {
+    cardHitboxes.push(...drawUpgradeDraftOverlay(ctx, state, width, height));
+  } else if (state.phase === "game_over") {
+    drawGameOverOverlay(ctx, state, width, height);
+  }
+  ctx.restore();
+  return { cx, cy, scale, cardHitboxes };
+}
+function drawArenaPerimeterRings(ctx, state) {
+  ctx.save();
+  const floorGrad = ctx.createRadialGradient(0, 0, VAULT_RADIUS, 0, 0, ARENA_RADIUS);
+  floorGrad.addColorStop(0, "rgba(15, 23, 42, 0.88)");
+  floorGrad.addColorStop(0.85, "rgba(9, 13, 28, 0.94)");
+  floorGrad.addColorStop(1, "rgba(30, 41, 59, 0.96)");
+  ctx.fillStyle = floorGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(51, 65, 85, 0.65)";
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.arc(0, 0, ARENA_RADIUS + 6, 0, Math.PI * 2);
+  ctx.stroke();
+  const bankedRatio = Math.min(1, state.bankedScore / Math.max(1, state.roundQuota));
+  const unbankedPot = state.unbankedChips * state.comboMult;
+  const projectedRatio = Math.min(
+    1,
+    (state.bankedScore + unbankedPot) / Math.max(1, state.roundQuota)
+  );
+  const startAngle = -Math.PI / 2;
+  if (projectedRatio > bankedRatio) {
+    ctx.strokeStyle = state.heat >= 0.58 ? "rgba(251, 113, 133, 0.65)" : "rgba(56, 189, 248, 0.55)";
+    ctx.lineWidth = 10;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(
+      0,
+      0,
+      ARENA_RADIUS + 6,
+      startAngle + bankedRatio * Math.PI * 2,
+      startAngle + projectedRatio * Math.PI * 2
+    );
+    ctx.stroke();
+  }
+  if (bankedRatio > 0) {
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = 10;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(0, 0, ARENA_RADIUS + 6, startAngle, startAngle + bankedRatio * Math.PI * 2);
+    ctx.stroke();
+  }
+  const timeRatio = Math.max(0, Math.min(1, state.roundTimerSec / ROUND_DURATION_SEC));
+  ctx.strokeStyle = state.roundTimerSec < 10 ? "#f43f5e" : state.roundTimerSec < 20 ? "#fbbf24" : "#38bdf8";
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, ARENA_RADIUS - 3, startAngle, startAngle + timeRatio * Math.PI * 2);
+  ctx.stroke();
+  ctx.textAlign = "center";
+  ctx.font = '900 13px "Inter", system-ui, sans-serif';
+  ctx.fillStyle = "#f8fafc";
+  const timerStr = `${Math.ceil(state.roundTimerSec)}s`;
+  ctx.fillText(
+    `ROUND ${state.round}  \xB7  VAULT ${state.bankedScore.toLocaleString()} / ${state.roundQuota.toLocaleString()}  \xB7  \u23F1 ${timerStr}`,
+    0,
+    -ARENA_RADIUS - 18
+  );
+  ctx.restore();
+}
+function drawCentralVaultAndShields(ctx, state) {
+  ctx.save();
+  const unbankedPot = Math.round(state.unbankedChips * state.comboMult);
+  const canBank = state.phase === "in_flight" && unbankedPot > 0;
+  const pulse = canBank ? 1 + Math.sin(state.onboardingPulseTime * 10) * 0.08 : 1;
+  const vaultGrad = ctx.createRadialGradient(0, 0, 6, 0, 0, VAULT_RADIUS * 1.3 * pulse);
+  if (canBank) {
+    vaultGrad.addColorStop(0, "rgba(250, 204, 21, 0.42)");
+    vaultGrad.addColorStop(0.7, "rgba(245, 158, 11, 0.16)");
+    vaultGrad.addColorStop(1, "rgba(245, 158, 11, 0)");
+  } else {
+    vaultGrad.addColorStop(0, "rgba(56, 189, 248, 0.24)");
+    vaultGrad.addColorStop(1, "rgba(56, 189, 248, 0)");
+  }
+  ctx.fillStyle = vaultGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, VAULT_RADIUS * 1.3 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#090d1e";
+  ctx.strokeStyle = canBank ? "#facc15" : "#38bdf8";
+  ctx.lineWidth = canBank ? 4 : 2.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, VAULT_RADIUS * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  const shieldRadius = VAULT_RADIUS + 11;
+  const segArc = Math.PI * 2 / state.maxShields;
+  const gap = 0.24;
+  for (let i = 0; i < state.maxShields; i++) {
+    const a0 = -Math.PI / 2 + i * segArc + gap * 0.5;
+    const a1 = -Math.PI / 2 + (i + 1) * segArc - gap * 0.5;
+    const active = i < state.shields;
+    ctx.strokeStyle = active ? "#10b981" : "rgba(71, 85, 105, 0.35)";
+    ctx.lineWidth = active ? 5.5 : 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(0, 0, shieldRadius, a0, a1);
+    ctx.stroke();
+  }
+  ctx.textAlign = "center";
+  if (canBank) {
+    ctx.font = '900 11px "Inter", system-ui, sans-serif';
+    ctx.fillStyle = "#fde047";
+    ctx.fillText("BANK NOW", 0, -6);
+    ctx.font = '900 14px "Inter", system-ui, sans-serif';
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(`+${unbankedPot.toLocaleString()}`, 0, 10);
+    ctx.font = '700 9px "Inter", system-ui, sans-serif';
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText("[R-CLICK / SPACE]", 0, 23);
+  } else if (state.phase === "in_flight") {
+    ctx.font = '800 10px "Inter", system-ui, sans-serif';
+    ctx.fillStyle = "#64748b";
+    ctx.fillText("RECALL", 0, 4);
+  }
+  ctx.restore();
+}
+function drawGreedyTether(ctx, state, ball) {
+  if (state.unbankedChips <= 0) return;
+  ctx.save();
+  const isOverdrive = state.heat >= 0.58;
+  const color = isOverdrive ? "#fb7185" : state.comboMult >= 5 ? "#facc15" : "#38bdf8";
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.35 + Math.min(0.55, state.heat * 0.55);
+  ctx.lineWidth = state.activeUpgrades.includes("supernova_recall") ? 4.5 : 2.5;
+  ctx.setLineDash([8, 6]);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(ball.x, ball.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+function drawAimingAndOnboarding(ctx, state) {
+  ctx.save();
+  const dirX = state.isDraggingAim ? state.aimDirX : Math.cos(-1.05 + Math.sin(state.onboardingPulseTime * 1.8) * 0.35);
+  const dirY = state.isDraggingAim ? state.aimDirY : Math.sin(-1.05 + Math.sin(state.onboardingPulseTime * 1.8) * 0.35);
+  const tension = state.isDraggingAim ? state.aimTension : 0.55 + Math.sin(state.onboardingPulseTime * 3.2) * 0.25;
+  const primary = state.strikers[0];
+  const startX = primary ? primary.x : 0;
+  const startY = primary ? primary.y : 0;
+  if (state.isDraggingAim) {
+    const perpX = -dirY * 14;
+    const perpY = dirX * 14;
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 3 + tension * 2.5;
+    ctx.beginPath();
+    ctx.moveTo(perpX, perpY);
+    ctx.lineTo(startX, startY);
+    ctx.lineTo(-perpX, -perpY);
+    ctx.stroke();
+  }
+  let hitDist = ARENA_RADIUS - 14;
+  let hitPeg = null;
+  for (const peg of state.pegs) {
+    if (peg.respawnTimer > 0) continue;
+    const proj = peg.x * dirX + peg.y * dirY;
+    if (proj <= 20) continue;
+    const perpSq = peg.x * peg.x + peg.y * peg.y - proj * proj;
+    const radSum = peg.radius + 14;
+    if (perpSq < radSum * radSum) {
+      const d = proj - Math.sqrt(radSum * radSum - perpSq);
+      if (d > 20 && d < hitDist) {
+        hitDist = d;
+        hitPeg = peg;
+      }
+    }
+  }
+  const impactX = dirX * hitDist;
+  const impactY = dirY * hitDist;
+  ctx.strokeStyle = state.isDraggingAim ? "#38bdf8" : "rgba(56, 189, 248, 0.68)";
+  ctx.lineWidth = state.isDraggingAim ? 3 : 2.2;
+  ctx.setLineDash([10, 8]);
+  ctx.lineDashOffset = -state.onboardingPulseTime * 48;
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(impactX, impactY);
+  ctx.stroke();
+  let nx = -impactX / (Math.hypot(impactX, impactY) || 1);
+  let ny = -impactY / (Math.hypot(impactX, impactY) || 1);
+  if (hitPeg) {
+    const dx = impactX - hitPeg.x;
+    const dy = impactY - hitPeg.y;
+    const d = Math.hypot(dx, dy) || 1;
+    nx = dx / d;
+    ny = dy / d;
+  }
+  const dot = dirX * nx + dirY * ny;
+  const rx = dirX - 2 * dot * nx;
+  const ry = dirY - 2 * dot * ny;
+  ctx.strokeStyle = "rgba(250, 204, 21, 0.55)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(impactX, impactY);
+  ctx.lineTo(impactX + rx * 115, impactY + ry * 115);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle = "#facc15";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(impactX, impactY, 10, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.textAlign = "center";
+  if (!state.hasFiredFirstShot) {
+    const bob = Math.sin(state.onboardingPulseTime * 4) * 4;
+    ctx.font = '900 15px "Inter", system-ui, sans-serif';
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillText("CLICK & DRAG TO SLINGSHOT", 0, VAULT_RADIUS + 42 + bob);
+    ctx.font = '700 12px "Inter", system-ui, sans-serif';
+    ctx.fillStyle = "#fde047";
+    ctx.fillText("RIGHT-CLICK OR [SPACE] MID-FLIGHT TO BANK COMBO POT", 0, VAULT_RADIUS + 60 + bob);
+  } else {
+    ctx.font = '800 12px "Inter", system-ui, sans-serif';
+    ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
+    ctx.fillText("DRAG TO AIM & LAUNCH  \xB7  [SPACE / RIGHT-CLICK] BANK POT", 0, VAULT_RADIUS + 38);
+  }
+  ctx.restore();
+}
+function drawPeg(ctx, state, peg) {
+  ctx.save();
+  ctx.translate(peg.x, peg.y);
+  ctx.scale(peg.scale, peg.scale);
+  if (peg.kind === "hazard") {
+    ctx.rotate(peg.rotation);
+    const teeth = 8;
+    ctx.fillStyle = peg.hitFlash > 0 ? "#ffffff" : "#f43f5e";
+    ctx.strokeStyle = "#fecdd3";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < teeth * 2; i++) {
+      const r = i % 2 === 0 ? peg.radius * 1.18 : peg.radius * 0.72;
+      const a = i / (teeth * 2) * Math.PI * 2;
+      if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#881337";
+    ctx.beginPath();
+    ctx.arc(0, 0, peg.radius * 0.42, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (peg.kind === "jackpot") {
+    ctx.rotate(peg.rotation);
+    const sides = 8;
+    ctx.fillStyle = peg.hitFlash > 0.2 ? "#ffffff" : "#f59e0b";
+    ctx.strokeStyle = "#fef08a";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const a = i / sides * Math.PI * 2;
+      const rx = Math.cos(a) * peg.radius;
+      const ry = Math.sin(a) * peg.radius;
+      if (i === 0) ctx.moveTo(rx, ry);
+      else ctx.lineTo(rx, ry);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.rotate(-peg.rotation);
+    ctx.fillStyle = "#020617";
+    ctx.font = '900 11px "Inter", system-ui, sans-serif';
+    ctx.textAlign = "center";
+    ctx.fillText("2X", 0, 4);
+  } else {
+    const isPrism = peg.kind === "prism";
+    ctx.fillStyle = peg.hitFlash > 0.2 ? "#ffffff" : isPrism ? "#d946ef" : "#0ea5e9";
+    ctx.strokeStyle = isPrism ? "#f5d0fe" : "#bae6fd";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, peg.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.65)";
+    ctx.beginPath();
+    ctx.arc(-peg.radius * 0.3, -peg.radius * 0.3, peg.radius * 0.24, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+function drawStrikerBall(ctx, state, ball) {
+  for (let i = 0; i < ball.trail.length; i++) {
+    const t = ball.trail[i];
+    const r = ball.radius * (1 - i / (ball.trail.length * 1.15));
+    ctx.fillStyle = state.heat >= 0.58 ? `rgba(251, 113, 133, ${t.alpha * 0.38})` : ball.isPhantom ? `rgba(192, 132, 252, ${t.alpha * 0.32})` : `rgba(56, 189, 248, ${t.alpha * 0.38})`;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, Math.max(2, r), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (!ball.isPhantom && state.activeUpgrades.includes("orbital_blades")) {
+    const orbitRadius = 38 + Math.min(48, state.comboMult * 2.4);
+    ctx.save();
+    ctx.strokeStyle = "rgba(244, 114, 182, 0.35)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, orbitRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let arm = 0; arm < 2; arm++) {
+      const a = state.orbitalAngle + arm * Math.PI;
+      const ox = ball.x + Math.cos(a) * orbitRadius;
+      const oy = ball.y + Math.sin(a) * orbitRadius;
+      ctx.fillStyle = "#f472b6";
+      ctx.strokeStyle = "#fdf2f8";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(ox, oy, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.translate(ball.x, ball.y);
+  ctx.rotate(ball.squashAngle);
+  ctx.scale(ball.squashParallel, ball.squashPerp);
+  const isOverdrive = state.heat >= 0.58;
+  ctx.fillStyle = state.hitStopMs > 0 ? "#ffffff" : isOverdrive ? "#fb7185" : ball.isPhantom ? "#c084fc" : "#38bdf8";
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 0, ball.radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  if (!ball.isPhantom && state.phase === "in_flight") {
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+    if (state.heat > 0.02) {
+      ctx.strokeStyle = state.heat >= 0.75 ? "#f43f5e" : state.heat >= 0.5 ? "#facc15" : "#38bdf8";
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, ball.radius + 7, -Math.PI / 2, -Math.PI / 2 + state.heat * Math.PI * 2);
+      ctx.stroke();
+    }
+    const pot = Math.round(state.unbankedChips * state.comboMult);
+    if (pot > 0) {
+      ctx.textAlign = "center";
+      ctx.font = '900 14px "Inter", system-ui, sans-serif';
+      ctx.fillStyle = "#020617";
+      ctx.fillText(`x${state.comboMult} \xB7 +${pot.toLocaleString()}`, 0, -ball.radius - 13);
+      ctx.fillStyle = state.heat >= 0.6 ? "#fda4af" : "#fde047";
+      ctx.fillText(`x${state.comboMult} \xB7 +${pot.toLocaleString()}`, 0, -ball.radius - 15);
+    }
+    ctx.restore();
+  }
+}
+function drawPinballFlippers(ctx, state) {
+  const y = ARENA_RADIUS * 0.66;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.strokeStyle = state.flipperFlashLeft > 0 ? "#ffffff" : "#facc15";
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.moveTo(-140, y - 14);
+  ctx.lineTo(-28, y + 8 - state.flipperFlashLeft * 22);
+  ctx.stroke();
+  ctx.strokeStyle = state.flipperFlashRight > 0 ? "#ffffff" : "#facc15";
+  ctx.beginPath();
+  ctx.moveTo(140, y - 14);
+  ctx.lineTo(28, y + 8 - state.flipperFlashRight * 22);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawJaggedLightning(ctx, x1, y1, x2, y2, color, alpha) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = 2.8;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  const segments = 4;
+  for (let i = 1; i < segments; i++) {
+    const t = i / segments;
+    const mx = x1 + (x2 - x1) * t + Math.sin(i * 19 + x1) * 12;
+    const my = y1 + (y2 - y1) * t + Math.cos(i * 23 + y1) * 12;
+    ctx.lineTo(mx, my);
+  }
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawMinimalDiegeticOverlay(ctx, state, width, height) {
+  if (state.activeUpgrades.length > 0) {
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.font = '800 12px "Inter", system-ui, sans-serif';
+    const labels = state.activeUpgrades.map((id) => {
+      const s = getUpgradeSpec(id);
+      return `${s.symbol} ${s.name}`;
+    });
+    ctx.fillStyle = "rgba(226, 232, 240, 0.85)";
+    ctx.fillText(labels.join("   \xB7   "), width * 0.5, height - 16);
+    ctx.restore();
+  }
+}
+function drawUpgradeDraftOverlay(ctx, state, width, height) {
+  const hitboxes = [];
+  ctx.save();
+  ctx.fillStyle = "rgba(2, 6, 23, 0.82)";
+  ctx.fillRect(0, 0, width, height);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fde047";
+  ctx.font = '900 14px "Inter", system-ui, sans-serif';
+  ctx.fillText(`ROUND ${state.round} QUOTA CLEARED!`, width * 0.5, height * 0.17);
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = '900 28px "Inter", system-ui, sans-serif';
+  ctx.fillText("PICK 1 RULE-BENDING SYNERGY", width * 0.5, height * 0.23);
+  const cardW = Math.min(280, (width - 80) / 3);
+  const cardH = Math.min(310, height * 0.52);
+  const gap = 20;
+  const totalW = cardW * state.draftChoices.length + gap * (state.draftChoices.length - 1);
+  const startX = (width - totalW) * 0.5;
+  const cardY = height * 0.29;
+  state.draftChoices.forEach((spec, idx) => {
+    const x = startX + idx * (cardW + gap);
+    const y = cardY;
+    ctx.fillStyle = "#0f172a";
+    ctx.strokeStyle = spec.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(x, y, cardW, cardH, 16);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = spec.color;
+    ctx.font = '900 12px "Inter", system-ui, sans-serif';
+    ctx.fillText(`PRESS [${idx + 1}] OR CLICK`, x + cardW * 0.5, y + 28);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
+    ctx.beginPath();
+    ctx.arc(x + cardW * 0.5, y + 88, 38, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = spec.color;
+    ctx.font = '900 34px "Inter", system-ui, sans-serif';
+    ctx.fillText(spec.symbol, x + cardW * 0.5, y + 100);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = '900 17px "Inter", system-ui, sans-serif';
+    ctx.fillText(spec.name, x + cardW * 0.5, y + 156);
+    ctx.fillStyle = spec.color;
+    ctx.font = '800 11px "Inter", system-ui, sans-serif';
+    ctx.fillText(spec.tagline, x + cardW * 0.5, y + 176);
+    ctx.fillStyle = "#cbd5e1";
+    ctx.font = '600 13px "Inter", system-ui, sans-serif';
+    wrapCanvasText(ctx, spec.ruleChange, x + cardW * 0.5, y + 206, cardW - 32, 18);
+    hitboxes.push({
+      index: idx,
+      spec,
+      x,
+      y,
+      w: cardW,
+      h: cardH
+    });
+  });
+  ctx.restore();
+  return hitboxes;
+}
+function drawGameOverOverlay(ctx, state, width, height) {
+  ctx.save();
+  ctx.fillStyle = "rgba(2, 6, 23, 0.86)";
+  ctx.fillRect(0, 0, width, height);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fb7185";
+  ctx.font = '900 36px "Inter", system-ui, sans-serif';
+  ctx.fillText("VAULT SHIELDS SHATTERED", width * 0.5, height * 0.38);
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = '800 20px "Inter", system-ui, sans-serif';
+  ctx.fillText(
+    `TOTAL BANKED SCORE: ${state.totalRunScore.toLocaleString()}  \xB7  ROUND ${state.round}`,
+    width * 0.5,
+    height * 0.46
+  );
+  if (state.lastBustReason) {
+    ctx.fillStyle = "#fda4af";
+    ctx.font = '700 15px "Inter", system-ui, sans-serif';
+    ctx.fillText(
+      `LAST GREED MISTAKE: ${state.lastBustReason} (Lost ${state.lastBustAmount.toLocaleString()} Unbanked Pot)`,
+      width * 0.5,
+      height * 0.52
+    );
+  }
+  ctx.fillStyle = "#fde047";
+  ctx.font = '900 18px "Inter", system-ui, sans-serif';
+  ctx.fillText("CLICK ANYWHERE OR PRESS [R / SPACE] FOR INSTANT REPLAY", width * 0.5, height * 0.62);
+  ctx.restore();
+}
+function wrapCanvasText(ctx, text, cx, startY, maxWidth, lineHeight) {
+  const words = text.split(" ");
+  let line = "";
+  let y = startY;
+  for (let i = 0; i < words.length; i++) {
+    const testLine = line ? `${line} ${words[i]}` : words[i];
+    if (ctx.measureText(testLine).width > maxWidth && line) {
+      ctx.fillText(line, cx, y);
+      line = words[i];
+      y += lineHeight;
+    } else {
+      line = testLine;
+    }
+  }
+  if (line) {
+    ctx.fillText(line, cx, y);
+  }
+}
+
+// games/13-ricochet-vault/src/index.ts
+var STORAGE_BEST_KEY = "ricochet_vault_best_v1";
+function mountGame(container, options) {
+  const initialSeed = options?.initialSeed ?? 20261108;
+  const audio = new VaultAudioEngine();
+  let state = createInitialState(initialSeed);
+  try {
+    const savedBest = Number(localStorage.getItem(STORAGE_BEST_KEY) ?? "0");
+    if (Number.isFinite(savedBest) && savedBest > 0) {
+      state.bestRunScore = savedBest;
+    }
+  } catch {
+  }
+  container.innerHTML = `
+    <style>
+      .rv-stage {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        min-height: 100dvh;
+        background: #050814;
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none;
+        /* Efficient Background Processing per modern-web-guidance */
+        content-visibility: auto;
+        contain-intrinsic-size: auto none auto 720px;
+      }
+
+      .rv-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+      }
+
+      .rv-corner-controls {
+        position: absolute;
+        top: 12px;
+        right: 14px;
+        display: flex;
+        gap: 8px;
+        z-index: 10;
+      }
+
+      .rv-icon-btn {
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        color: #e2e8f0;
+        font: 800 11px/1 "Inter", system-ui, sans-serif;
+        padding: 7px 10px;
+        border-radius: 999px;
+        cursor: pointer;
+        backdrop-filter: blur(6px);
+        transition: transform 0.14s ease, border-color 0.14s ease;
+      }
+
+      .rv-icon-btn:hover {
+        border-color: #38bdf8;
+        transform: scale(1.05);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .rv-icon-btn,
+        .rv-icon-btn:hover {
+          transition: none;
+          transform: none;
+        }
+      }
+    </style>
+    <div class="rv-stage" id="rv-stage-root">
+      <canvas class="rv-canvas" id="rv-canvas" aria-label="Ricochet Vault Interactive Game Arena"></canvas>
+      <div class="rv-corner-controls">
+        <button type="button" class="rv-icon-btn" id="rv-btn-bank" title="Bank Combo Now [Right-Click / Space]">
+          \u26A1 BANK [SPACE]
+        </button>
+        <button type="button" class="rv-icon-btn" id="rv-btn-mute" title="Toggle WebAudio [M]">
+          \u{1F50A} [M]
+        </button>
+        <button type="button" class="rv-icon-btn" id="rv-btn-restart" title="Instant Restart [R]">
+          \u21BB [R]
+        </button>
+      </div>
+    </div>
+  `;
+  const stageRoot = container.querySelector("#rv-stage-root");
+  const canvas = container.querySelector("#rv-canvas");
+  const btnBank = container.querySelector("#rv-btn-bank");
+  const btnMute = container.querySelector("#rv-btn-mute");
+  const btnRestart = container.querySelector("#rv-btn-restart");
+  const ctx = canvas.getContext("2d");
+  let width = 960;
+  let height = 720;
+  let lastRenderTransform = {
+    cx: 480,
+    cy: 360,
+    scale: 1,
+    cardHitboxes: []
+  };
+  const reducedMotionQuery = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  function resizeCanvas() {
+    const rect = stageRoot.getBoundingClientRect();
+    width = Math.max(320, Math.floor(rect.width || window.innerWidth || 960));
+    height = Math.max(320, Math.floor(rect.height || window.innerHeight || 720));
+    const dpr = Math.min(2, typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1);
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+  function clientToArena(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    const { cx, cy, scale } = computeArenaTransform(width, height);
+    return {
+      ax: (px - cx) / (scale || 1),
+      ay: (py - cy) / (scale || 1),
+      px,
+      py
+    };
+  }
+  let isPointerDown = false;
+  let dragStartArenaX = 0;
+  let dragStartArenaY = 0;
+  function onPointerDown(e) {
+    if (e.button === 2) {
+      e.preventDefault();
+      if (state.phase === "in_flight") {
+        bankUnbankedPot(state, audio);
+        persistBestScore();
+      }
+      return;
+    }
+    const { ax, ay, px, py } = clientToArena(e.clientX, e.clientY);
+    if (state.phase === "game_over") {
+      restartRun(state.seed + 1);
+      return;
+    }
+    if (state.phase === "upgrade_draft") {
+      for (const box of lastRenderTransform.cardHitboxes) {
+        if (px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h) {
+          selectUpgradeAndStartNextRound(state, box.spec.id, audio);
+          return;
+        }
+      }
+      return;
+    }
+    if (state.phase === "in_flight") {
+      const distFromVault = Math.hypot(ax, ay);
+      if (distFromVault <= VAULT_RADIUS * 1.45 || state.unbankedChips > 0) {
+        bankUnbankedPot(state, audio);
+        persistBestScore();
+      }
+      return;
+    }
+    if (state.phase === "aiming") {
+      isPointerDown = true;
+      dragStartArenaX = ax;
+      dragStartArenaY = ay;
+      const distFromCenter = Math.hypot(ax, ay);
+      if (distFromCenter > 8) {
+        const tension = Math.min(1, Math.max(0.35, distFromCenter / 220));
+        updateAimDrag(state, ax, ay, tension, audio);
+      }
+    }
+  }
+  function onPointerMove(e) {
+    if (state.phase !== "aiming") return;
+    const { ax, ay } = clientToArena(e.clientX, e.clientY);
+    if (isPointerDown) {
+      const dragDX = dragStartArenaX - ax;
+      const dragDY = dragStartArenaY - ay;
+      const dragDist = Math.hypot(dragDX, dragDY);
+      if (dragDist > 28 && Math.hypot(dragStartArenaX, dragStartArenaY) < VAULT_RADIUS * 1.8) {
+        const tension = Math.min(1, Math.max(0.3, dragDist / 160));
+        updateAimDrag(state, dragDX, dragDY, tension, audio);
+      } else {
+        const dist = Math.hypot(ax, ay);
+        const tension = Math.min(1, Math.max(0.35, dist / 240));
+        updateAimDrag(state, ax, ay, tension, audio);
+      }
+    } else {
+      const dist = Math.hypot(ax, ay);
+      if (dist > 10) {
+        updateAimDrag(state, ax, ay, Math.min(0.9, Math.max(0.4, dist / 260)));
+        state.isDraggingAim = false;
+      }
+    }
+  }
+  function onPointerUp(e) {
+    if (e.button === 2) return;
+    if (state.phase === "aiming" && isPointerDown) {
+      isPointerDown = false;
+      launchStriker(state, state.aimDirX, state.aimDirY, Math.max(0.55, state.aimTension), audio);
+    }
+  }
+  function onContextMenu(e) {
+    e.preventDefault();
+    if (state.phase === "in_flight") {
+      bankUnbankedPot(state, audio);
+      persistBestScore();
+    }
+  }
+  const keysHeld = /* @__PURE__ */ new Set();
+  function onKeyDown(e) {
+    const key = e.key.toLowerCase();
+    keysHeld.add(key);
+    if (key === "m") {
+      audio.muted = !audio.muted;
+      btnMute.textContent = audio.muted ? "\u{1F507} [M]" : "\u{1F50A} [M]";
+      return;
+    }
+    if (key === "r") {
+      restartRun(state.seed + 1);
+      return;
+    }
+    if (state.phase === "upgrade_draft") {
+      if (key === "1" && state.draftChoices[0]) {
+        selectUpgradeAndStartNextRound(state, state.draftChoices[0].id, audio);
+      } else if (key === "2" && state.draftChoices[1]) {
+        selectUpgradeAndStartNextRound(state, state.draftChoices[1].id, audio);
+      } else if (key === "3" && state.draftChoices[2]) {
+        selectUpgradeAndStartNextRound(state, state.draftChoices[2].id, audio);
+      }
+      return;
+    }
+    if (key === " " || e.code === "Space") {
+      e.preventDefault();
+      if (state.phase === "game_over") {
+        restartRun(state.seed + 1);
+      } else if (state.phase === "aiming") {
+        launchStriker(state, state.aimDirX, state.aimDirY, 0.92, audio);
+      } else if (state.phase === "in_flight") {
+        bankUnbankedPot(state, audio);
+        persistBestScore();
+      }
+    }
+  }
+  function onKeyUp(e) {
+    keysHeld.delete(e.key.toLowerCase());
+  }
+  function applyKeyboardAimOrNudge(dtSec) {
+    let kx = 0;
+    let ky = 0;
+    if (keysHeld.has("a") || keysHeld.has("arrowleft")) kx -= 1;
+    if (keysHeld.has("d") || keysHeld.has("arrowright")) kx += 1;
+    if (keysHeld.has("w") || keysHeld.has("arrowup")) ky -= 1;
+    if (keysHeld.has("s") || keysHeld.has("arrowdown")) ky += 1;
+    if (kx === 0 && ky === 0) return;
+    if (state.phase === "aiming") {
+      const curAngle = Math.atan2(state.aimDirY, state.aimDirX);
+      const nextAngle = curAngle + kx * 2.6 * dtSec;
+      updateAimDrag(state, Math.cos(nextAngle), Math.sin(nextAngle), 0.88);
+    } else if (state.phase === "in_flight") {
+      nudgeInFlightStrikers(state, kx, ky, dtSec);
+    }
+  }
+  function persistBestScore() {
+    try {
+      if (state.bestRunScore > 0) {
+        localStorage.setItem(STORAGE_BEST_KEY, String(state.bestRunScore));
+      }
+    } catch {
+    }
+  }
+  function restartRun(newSeed) {
+    const prevBest = state.bestRunScore;
+    state = createInitialState(newSeed);
+    state.bestRunScore = prevBest;
+  }
+  btnBank.addEventListener("click", () => {
+    if (state.phase === "in_flight") {
+      bankUnbankedPot(state, audio);
+      persistBestScore();
+    } else if (state.phase === "aiming") {
+      launchStriker(state, state.aimDirX, state.aimDirY, 0.92, audio);
+    }
+  });
+  btnMute.addEventListener("click", () => {
+    audio.muted = !audio.muted;
+    btnMute.textContent = audio.muted ? "\u{1F507} [M]" : "\u{1F50A} [M]";
+  });
+  btnRestart.addEventListener("click", () => {
+    restartRun(state.seed + 1);
+  });
+  canvas.addEventListener("pointerdown", onPointerDown);
+  window.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("contextmenu", onContextMenu);
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+  let rafId = 0;
+  let isPausedByVisibility = false;
+  let lastFrameTime = performance.now();
+  function frame(now) {
+    if (isPausedByVisibility) return;
+    const dtMs = Math.min(48, Math.max(0, now - lastFrameTime));
+    lastFrameTime = now;
+    applyKeyboardAimOrNudge(dtMs / 1e3);
+    stepSimulation(state, dtMs, audio);
+    lastRenderTransform = renderRicochetVault(
+      ctx,
+      state,
+      width,
+      height,
+      Boolean(reducedMotionQuery?.matches)
+    );
+    rafId = requestAnimationFrame(frame);
+  }
+  function startSimulationLoop() {
+    if (!isPausedByVisibility && rafId !== 0) return;
+    isPausedByVisibility = false;
+    lastFrameTime = performance.now();
+    rafId = requestAnimationFrame(frame);
+  }
+  function stopSimulationLoop() {
+    isPausedByVisibility = true;
+    if (rafId !== 0) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+  }
+  const onContentVisibilityChange = (event) => {
+    const cvEvent = event;
+    if (cvEvent.skipped) {
+      stopSimulationLoop();
+    } else {
+      startSimulationLoop();
+    }
+  };
+  stageRoot.addEventListener("contentvisibilityautostatechange", onContentVisibilityChange);
+  let intersectionObserver = null;
+  const isContentVisibilitySupported = typeof document !== "undefined" && "contentVisibility" in document.documentElement.style;
+  if (!isContentVisibilitySupported && typeof IntersectionObserver !== "undefined") {
+    intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            startSimulationLoop();
+          } else {
+            stopSimulationLoop();
+          }
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    intersectionObserver.observe(stageRoot);
+  }
+  lastRenderTransform = renderRicochetVault(
+    ctx,
+    state,
+    width,
+    height,
+    Boolean(reducedMotionQuery?.matches)
+  );
+  rafId = requestAnimationFrame(frame);
+  return {
+    destroy() {
+      stopSimulationLoop();
+      stageRoot.removeEventListener("contentvisibilityautostatechange", onContentVisibilityChange);
+      intersectionObserver?.disconnect();
+      window.removeEventListener("resize", resizeCanvas);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      container.innerHTML = "";
+    },
+    restartWithSeed(seed) {
+      restartRun(seed);
+    },
+    getStateSnapshot() {
+      return state;
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_13-ricochet-vault.ts
+mountGame(document.getElementById("app"));
+
+</script>
+  </body>
+</html>

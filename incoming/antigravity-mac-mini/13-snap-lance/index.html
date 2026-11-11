@@ -1,0 +1,2392 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SNAP-LANCE</title>
+  <style>
+/* games/13-snap-lance/src/style.css */
+@layer base, stage, overlay;
+@layer base {
+  :root {
+    --sl-bg: #0b0e14;
+    --sl-surface: rgba(15, 21, 33, 0.94);
+    --sl-power: #00f2fe;
+    --sl-apex: #fde047;
+    --sl-danger: #ff2a5f;
+    --sl-text: #f8fafc;
+    --sl-muted: #94a3b8;
+    --sl-font:
+      "Inter",
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+    --sl-mono:
+      "JetBrains Mono",
+      "SF Mono",
+      Consolas,
+      monospace;
+  }
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--sl-bg);
+    color: var(--sl-text);
+    font-family: var(--sl-font);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+@layer stage {
+  .sl-viewport {
+    position: relative;
+    width: 100vw;
+    height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--sl-bg);
+    overflow: hidden;
+  }
+  .sl-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .sl-hud {
+    position: absolute;
+    inset-block-start: 20px;
+    inset-inline: 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .sl-hud-number {
+    font-family: var(--sl-mono);
+    font-size: clamp(1.5rem, 3vw, 2.35rem);
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75);
+  }
+  .sl-hud-score {
+    color: var(--sl-power);
+  }
+  .sl-hud-timer {
+    color: var(--sl-text);
+    opacity: 0.85;
+  }
+}
+@layer overlay {
+  .sl-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(11, 14, 20, 0.82);
+    backdrop-filter: blur(8px);
+    z-index: 5;
+    padding: 24px;
+  }
+  .sl-overlay[hidden] {
+    display: none;
+  }
+  .sl-overlay-title {
+    margin: 0 0 20px;
+    font-size: clamp(1.35rem, 2.5vw, 1.85rem);
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sl-text);
+  }
+  .sl-cards-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(210px, 280px));
+    gap: 18px;
+    max-width: 900px;
+    width: 100%;
+  }
+  @media (max-width: 720px) {
+    .sl-cards-row {
+      grid-template-columns: 1fr;
+      max-width: 360px;
+    }
+  }
+  .sl-upgrade-card {
+    appearance: none;
+    background: var(--sl-surface);
+    border: 2px solid rgba(0, 242, 254, 0.32);
+    border-radius: 14px;
+    padding: 22px 20px;
+    color: var(--sl-text);
+    font-family: inherit;
+    text-align: start;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition:
+      transform 140ms cubic-bezier(0.2, 0.9, 0.3, 1.2),
+      border-color 140ms ease,
+      box-shadow 140ms ease;
+  }
+  .sl-upgrade-card:hover:not(:disabled),
+  .sl-upgrade-card:focus-visible {
+    transform: translateY(-5px) scale(1.02);
+    border-color: var(--sl-power);
+    box-shadow: 0 12px 32px rgba(0, 242, 254, 0.22);
+    outline: none;
+  }
+  .sl-card-tag {
+    font-family: var(--sl-mono);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: var(--sl-apex);
+    text-transform: uppercase;
+  }
+  .sl-card-name {
+    font-size: 1.15rem;
+    font-weight: 900;
+    letter-spacing: 0.03em;
+    color: var(--sl-power);
+  }
+  .sl-card-desc {
+    margin: 0;
+    font-size: 0.94rem;
+    line-height: 1.42;
+    color: var(--sl-text);
+    opacity: 0.92;
+  }
+  .sl-restart-btn {
+    appearance: none;
+    background: var(--sl-power);
+    color: var(--sl-bg);
+    border: none;
+    border-radius: 999px;
+    padding: 14px 34px;
+    font-family: inherit;
+    font-size: 1.05rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+  .sl-restart-btn:hover:not(:disabled) {
+    transform: scale(1.05);
+    box-shadow: 0 0 28px rgba(0, 242, 254, 0.55);
+  }
+}
+
+</style>
+</head>
+  <body>
+    <main id="app"></main>
+    <script type="module">
+// games/13-snap-lance/src/audio.ts
+var HARMONIC_SCALE_HZ = [
+  261.63,
+  // C4 (Streak 0-1)
+  293.66,
+  // D4 (Streak 2)
+  329.63,
+  // E4 (Streak 3)
+  392,
+  // G4 (Streak 4)
+  440,
+  // A4 (Streak 5)
+  523.25,
+  // C5 (Streak 6)
+  587.33,
+  // D5 (Streak 7)
+  659.25,
+  // E5 (Streak 8)
+  739.99,
+  // F#5 (Streak 9 - Lydian bright lift)
+  783.99,
+  // G5 (Streak 10)
+  880,
+  // A5 (Streak 11)
+  987.77,
+  // B5 (Streak 12)
+  1046.5,
+  // C6 (Streak 13)
+  1174.66,
+  // D6 (Streak 14)
+  1318.51,
+  // E6 (Streak 15)
+  1567.98
+  // G6 (Streak 16+)
+];
+function computeHarmonicFrequency(comboStreak, bounceIndex = 0) {
+  const safeStreak = Math.max(0, Math.floor(comboStreak));
+  const safeBounce = Math.max(0, Math.floor(bounceIndex));
+  const totalStep = safeStreak + safeBounce;
+  const idx = Math.min(HARMONIC_SCALE_HZ.length - 1, totalStep);
+  const baseFreq = HARMONIC_SCALE_HZ[idx];
+  const overflowSteps = Math.max(0, totalStep - (HARMONIC_SCALE_HZ.length - 1));
+  const overflowMultiplier = Math.pow(2, Math.min(overflowSteps, 12) / 12);
+  return Number((baseFreq * overflowMultiplier).toFixed(2));
+}
+var SnapLanceSynth = class {
+  ctx = null;
+  lastPlayedFreq = HARMONIC_SCALE_HZ[0];
+  ensureContext() {
+    if (typeof window === "undefined") return null;
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        try {
+          this.ctx = new AudioCtx();
+        } catch {
+          return null;
+        }
+      }
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      void this.ctx.resume().catch(() => {
+      });
+    }
+    return this.ctx;
+  }
+  getLastPlayedFrequency() {
+    return this.lastPlayedFreq;
+  }
+  /**
+   * Subtle rising tick as charge coils through tiers 1 -> 2 -> 3 (Apex Sweet-Spot).
+   */
+  playChargeTierLock(tier, comboStreak) {
+    const freq = computeHarmonicFrequency(comboStreak, tier * 2);
+    this.lastPlayedFreq = freq;
+    const ctx = this.ensureContext();
+    if (!ctx) return freq;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = tier === 3 ? "triangle" : "sine";
+    osc.frequency.setValueAtTime(freq * 0.85, now);
+    osc.frequency.exponentialRampToValueAtTime(freq, now + 0.055);
+    gain.gain.setValueAtTime(1e-3, now);
+    gain.gain.linearRampToValueAtTime(tier === 3 ? 0.16 : 0.09, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + (tier === 3 ? 0.16 : 0.09));
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + (tier === 3 ? 0.17 : 0.1));
+    if (tier === 3) {
+      const fifth = ctx.createOscillator();
+      const fifthGain = ctx.createGain();
+      fifth.type = "sine";
+      fifth.frequency.setValueAtTime(freq * 1.5, now);
+      fifthGain.gain.setValueAtTime(1e-3, now);
+      fifthGain.gain.linearRampToValueAtTime(0.09, now + 0.015);
+      fifthGain.gain.exponentialRampToValueAtTime(1e-3, now + 0.19);
+      fifth.connect(fifthGain);
+      fifthGain.connect(ctx.destination);
+      fifth.start(now);
+      fifth.stop(now + 0.2);
+    }
+    return freq;
+  }
+  /**
+   * Snap release transient: punchy kinetic launch thump + harmonic snap.
+   */
+  playLaunchSnap(chargeRatio, comboStreak) {
+    const freq = computeHarmonicFrequency(comboStreak, Math.round(chargeRatio * 3));
+    this.lastPlayedFreq = freq;
+    const ctx = this.ensureContext();
+    if (!ctx) return freq;
+    const now = ctx.currentTime;
+    const sub = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    sub.type = "triangle";
+    sub.frequency.setValueAtTime(150 + chargeRatio * 90, now);
+    sub.frequency.exponentialRampToValueAtTime(42, now + 0.13);
+    subGain.gain.setValueAtTime(1e-3, now);
+    subGain.gain.linearRampToValueAtTime(0.22, now + 8e-3);
+    subGain.gain.exponentialRampToValueAtTime(1e-3, now + 0.14);
+    sub.connect(subGain);
+    subGain.connect(ctx.destination);
+    sub.start(now);
+    sub.stop(now + 0.15);
+    const snap = ctx.createOscillator();
+    const snapGain = ctx.createGain();
+    snap.type = "sawtooth";
+    snap.frequency.setValueAtTime(freq * 1.25, now);
+    snap.frequency.exponentialRampToValueAtTime(freq * 0.5, now + 0.08);
+    snapGain.gain.setValueAtTime(1e-3, now);
+    snapGain.gain.linearRampToValueAtTime(0.08, now + 5e-3);
+    snapGain.gain.exponentialRampToValueAtTime(1e-3, now + 0.085);
+    snap.connect(snapGain);
+    snapGain.connect(ctx.destination);
+    snap.start(now);
+    snap.stop(now + 0.09);
+    return freq;
+  }
+  /**
+   * Harmonic impact / skewer chime that pitches up with the player's combo streak.
+   */
+  playComboKill(comboStreak, bounceCount = 0, isApex = false) {
+    const freq = computeHarmonicFrequency(comboStreak, bounceCount);
+    this.lastPlayedFreq = freq;
+    const ctx = this.ensureContext();
+    if (!ctx) return freq;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.015, now + 0.18);
+    gain.gain.setValueAtTime(1e-3, now);
+    gain.gain.linearRampToValueAtTime(0.22, now + 8e-3);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.24);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.25);
+    const overtone = ctx.createOscillator();
+    const overGain = ctx.createGain();
+    overtone.type = "sine";
+    overtone.frequency.setValueAtTime(freq * (isApex ? 2 : 1.5), now);
+    overGain.gain.setValueAtTime(1e-3, now);
+    overGain.gain.linearRampToValueAtTime(0.11, now + 0.01);
+    overGain.gain.exponentialRampToValueAtTime(1e-3, now + 0.28);
+    overtone.connect(overGain);
+    overGain.connect(ctx.destination);
+    overtone.start(now);
+    overtone.stop(now + 0.29);
+    return freq;
+  }
+  /**
+   * Elastic wall / bumper ricochet plink that pitches up with bounce index and combo.
+   */
+  playBounce(comboStreak, bounceIndex) {
+    const freq = computeHarmonicFrequency(comboStreak, bounceIndex + 1);
+    this.lastPlayedFreq = freq;
+    const ctx = this.ensureContext();
+    if (!ctx) return freq;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq * 0.75, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.15, now + 0.065);
+    gain.gain.setValueAtTime(1e-3, now);
+    gain.gain.linearRampToValueAtTime(0.14, now + 6e-3);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.09);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+    return freq;
+  }
+  /**
+   * Low dissonant thud when taking damage / losing a shield petal.
+   */
+  playDamageHit() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(135, now);
+    osc.frequency.exponentialRampToValueAtTime(38, now + 0.26);
+    gain.gain.setValueAtTime(1e-3, now);
+    gain.gain.linearRampToValueAtTime(0.24, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(1e-3, now + 0.28);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.29);
+  }
+  /**
+   * Bright chord arpeggio on wave clear / upgrade pick.
+   */
+  playUpgradeChime() {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    const now = ctx.currentTime;
+    notes.forEach((n, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const start = now + idx * 0.045;
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(n, start);
+      gain.gain.setValueAtTime(1e-3, start);
+      gain.gain.linearRampToValueAtTime(0.12, start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(1e-3, start + 0.24);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.25);
+    });
+  }
+};
+
+// games/13-snap-lance/src/engine.ts
+var UPGRADE_CATALOG = [
+  {
+    id: "split_prism",
+    title: "SPLIT PRISM",
+    description: "Wall bounces fire two angled cyan laser shards into the arena.",
+    tag: "RICOCHET"
+  },
+  {
+    id: "phantom_echo",
+    title: "PHANTOM ECHO",
+    description: "Your dash leaves a delayed cyan ghost that repeats your path.",
+    tag: "ECHO"
+  },
+  {
+    id: "gravity_tether",
+    title: "GRAVITY TETHER",
+    description: "Charging pulls nearby enemies directly into your aim line.",
+    tag: "CONTROL"
+  },
+  {
+    id: "shockwave_anchor",
+    title: "SHOCKWAVE ANCHOR",
+    description: "Braking at dash end unleashes a cyan ring that slams enemies.",
+    tag: "IMPACT"
+  },
+  {
+    id: "lightning_chain",
+    title: "ARC CONDUIT",
+    description: "Skewering an enemy arcs cyan lightning to the nearest target.",
+    tag: "CHAIN"
+  },
+  {
+    id: "pinball_decoy",
+    title: "PINBALL BUMPER",
+    description: "Launching drops a cyan bumper core that ricochets shots and foes.",
+    tag: "ARENA"
+  },
+  {
+    id: "boomerang_orb",
+    title: "BOOMERANG ORB",
+    description: "Releasing a dash hurls a spinning cyan orb that curves back.",
+    tag: "PROJECTILE"
+  },
+  {
+    id: "corner_nova",
+    title: "WALL NOVA",
+    description: "Every wall bounce detonates a cyan blast at the impact point.",
+    tag: "BLAST"
+  },
+  {
+    id: "sawblade_orbit",
+    title: "ORBITAL BLADE",
+    description: "A spinning cyan blade orbits you and expands while dashing.",
+    tag: "ORBIT"
+  }
+];
+var WAVE_DURATION_SECONDS = 30;
+var SnapLanceEngine = class {
+  width = 960;
+  height = 600;
+  wallPadding = 28;
+  score = 0;
+  comboStreak = 1;
+  bestStreak = 1;
+  wave = 1;
+  waveTimeRemaining = WAVE_DURATION_SECONDS;
+  phase = "playing";
+  // Mandatory Juice Budget state
+  hitStopMs = 0;
+  shakeX = 0;
+  shakeY = 0;
+  shakeVx = 0;
+  shakeVy = 0;
+  wallFlexLeft = 0;
+  wallFlexRight = 0;
+  wallFlexTop = 0;
+  wallFlexBottom = 0;
+  player;
+  enemies = [];
+  bumpers = [];
+  shards = [];
+  phantoms = [];
+  trail = [];
+  afterimages = [];
+  sparks = [];
+  shockRings = [];
+  slashFlashes = [];
+  callouts = [];
+  activeUpgrades = /* @__PURE__ */ new Set();
+  offeredUpgrades = [];
+  // Input state (works seamlessly with Mouse move + hold/release OR 2-3 keys)
+  pointerX = 680;
+  pointerY = 300;
+  pointerActive = false;
+  isHoldingCharge = false;
+  keyAimX = 0;
+  keyAimY = 0;
+  rngState = 20261108;
+  nextEnemyId = 1;
+  spawnCooldown = 0.2;
+  elapsedWaveTime = 0;
+  synth;
+  constructor(synth = new SnapLanceSynth(), seed = 20261108) {
+    this.synth = synth;
+    this.rngState = seed >>> 0 || 20261108;
+    this.player = this.createInitialPlayer();
+    this.setupWave(1);
+  }
+  random() {
+    let x = this.rngState;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    this.rngState = x >>> 0;
+    return (this.rngState & 268435455) / 268435456;
+  }
+  randomRange(min, max) {
+    return min + this.random() * (max - min);
+  }
+  createInitialPlayer() {
+    return {
+      x: this.width * 0.38,
+      y: this.height * 0.5,
+      vx: 0,
+      vy: 0,
+      radius: 18,
+      state: "glide",
+      aimAngle: 0,
+      chargeTime: 0,
+      maxChargeTime: 1.05,
+      chargeTier: 0,
+      dashTimeLeft: 0,
+      dashMaxTime: 0.42,
+      bouncesLeft: 0,
+      bouncesDoneThisDash: 0,
+      killsThisDash: 0,
+      isApexDash: false,
+      isDaredevilDash: false,
+      shields: 3,
+      maxShields: 3,
+      invulnTimer: 0,
+      scaleX: 1,
+      scaleY: 1,
+      scaleVx: 0,
+      scaleVy: 0,
+      stretchAngle: 0,
+      orbitAngle: 0,
+      currentDashWaypoints: []
+    };
+  }
+  resetRun(seed = 20261108) {
+    this.rngState = seed >>> 0 || 20261108;
+    this.score = 0;
+    this.comboStreak = 1;
+    this.bestStreak = 1;
+    this.wave = 1;
+    this.phase = "playing";
+    this.hitStopMs = 0;
+    this.shakeX = 0;
+    this.shakeY = 0;
+    this.shakeVx = 0;
+    this.shakeVy = 0;
+    this.activeUpgrades.clear();
+    this.offeredUpgrades = [];
+    this.enemies = [];
+    this.bumpers = [];
+    this.shards = [];
+    this.phantoms = [];
+    this.trail = [];
+    this.afterimages = [];
+    this.sparks = [];
+    this.shockRings = [];
+    this.slashFlashes = [];
+    this.callouts = [];
+    this.player = this.createInitialPlayer();
+    this.pointerX = this.width * 0.68;
+    this.pointerY = this.height * 0.5;
+    this.setupWave(1);
+  }
+  resize(width, height) {
+    this.width = Math.max(480, width);
+    this.height = Math.max(360, height);
+    const minX = this.wallPadding + this.player.radius;
+    const maxX = this.width - this.wallPadding - this.player.radius;
+    const minY = this.wallPadding + this.player.radius;
+    const maxY = this.height - this.wallPadding - this.player.radius;
+    this.player.x = Math.max(minX, Math.min(maxX, this.player.x));
+    this.player.y = Math.max(minY, Math.min(maxY, this.player.y));
+  }
+  /**
+   * Rule 3: Progressive Reveal — Wave 1 starts with ONLY the core mechanic and 1 enemy type (drifter).
+   * Each subsequent 30-second wave introduces ONE new hazard or enemy archetype.
+   */
+  setupWave(waveNum) {
+    this.wave = waveNum;
+    this.waveTimeRemaining = WAVE_DURATION_SECONDS;
+    this.elapsedWaveTime = 0;
+    this.phase = "playing";
+    this.enemies = [];
+    this.shards = [];
+    this.phantoms = [];
+    if (this.player.shields < this.player.maxShields) {
+      this.player.shields += 1;
+    }
+    this.bumpers = [];
+    if (waveNum >= 3) {
+      this.bumpers.push(
+        {
+          x: this.width * 0.34,
+          y: this.height * 0.5,
+          radius: 26,
+          squash: 1,
+          isTemporary: false,
+          life: 999
+        },
+        {
+          x: this.width * 0.66,
+          y: this.height * 0.5,
+          radius: 26,
+          squash: 1,
+          isTemporary: false,
+          life: 999
+        }
+      );
+    }
+    if (waveNum === 1) {
+      this.enemies.push({
+        id: this.nextEnemyId++,
+        kind: "drifter",
+        x: Math.min(this.width - 110, this.player.x + 220),
+        y: this.player.y,
+        vx: 0,
+        vy: 0,
+        radius: 20,
+        facingAngle: Math.PI,
+        spawnTelegraph: 0.35,
+        spawnMax: 0.35,
+        attackTelegraph: 0,
+        lungeTimer: 0,
+        lungeDirX: -1,
+        lungeDirY: 0,
+        scaleX: 1,
+        scaleY: 1,
+        stretchAngle: 0,
+        knockbackTimer: 0
+      });
+      this.spawnCooldown = 1.1;
+    } else {
+      this.spawnTargetForWave();
+      this.spawnCooldown = 0.8;
+    }
+  }
+  getAllowedEnemyKindsForWave(waveNum) {
+    if (waveNum <= 1) return ["drifter"];
+    if (waveNum === 2) return ["drifter", "charger"];
+    if (waveNum === 3) return ["drifter", "charger"];
+    if (waveNum === 4) return ["drifter", "charger", "shielded"];
+    return ["drifter", "charger", "shielded", "pulsar"];
+  }
+  getMaxActiveEnemiesForWave(waveNum) {
+    return Math.min(10, 4 + waveNum);
+  }
+  spawnTargetForWave(forcedKind, x, y) {
+    const allowed = this.getAllowedEnemyKindsForWave(this.wave);
+    const kind = forcedKind ?? (this.wave >= 2 && this.random() < 0.42 ? allowed[allowed.length - 1] : allowed[Math.floor(this.random() * allowed.length)]);
+    const margin = this.wallPadding + 48;
+    let spawnX = x ?? this.randomRange(margin, this.width - margin);
+    let spawnY = y ?? this.randomRange(margin, this.height - margin);
+    if (x === void 0 || y === void 0) {
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const candX = this.randomRange(margin, this.width - margin);
+        const candY = this.randomRange(margin, this.height - margin);
+        const dist = Math.hypot(candX - this.player.x, candY - this.player.y);
+        if (dist > 175) {
+          spawnX = candX;
+          spawnY = candY;
+          break;
+        }
+      }
+    }
+    const radius = kind === "shielded" ? 23 : kind === "pulsar" ? 22 : kind === "charger" ? 19 : 19;
+    const enemy = {
+      id: this.nextEnemyId++,
+      kind,
+      x: spawnX,
+      y: spawnY,
+      vx: 0,
+      vy: 0,
+      radius,
+      facingAngle: Math.atan2(this.player.y - spawnY, this.player.x - spawnX),
+      spawnTelegraph: 0.9,
+      // 0.9s honest shrinking ring telegraph before active
+      spawnMax: 0.9,
+      attackTelegraph: 0,
+      lungeTimer: 0,
+      lungeDirX: 0,
+      lungeDirY: 0,
+      scaleX: 0.4,
+      scaleY: 0.4,
+      stretchAngle: 0,
+      knockbackTimer: 0
+    };
+    this.enemies.push(enemy);
+    return enemy;
+  }
+  /**
+   * Begin holding charge (Mouse Down or Space Down)
+   */
+  beginCharge() {
+    if (this.phase !== "playing") return;
+    this.isHoldingCharge = true;
+    if (this.player.state !== "charging") {
+      this.player.state = "charging";
+      this.player.chargeTime = 0;
+      this.player.chargeTier = 1;
+      this.synth.playChargeTierLock(1, this.comboStreak);
+      this.applyPlayerSquash(0.76, 1.28, this.player.aimAngle);
+    }
+  }
+  /**
+   * Release charge to SNAP-LAUNCH the player core along aimAngle!
+   */
+  releaseCharge() {
+    if (!this.isHoldingCharge && this.player.state !== "charging") return;
+    this.isHoldingCharge = false;
+    if (this.phase !== "playing" || this.player.state !== "charging") return;
+    const p = this.player;
+    const ratio = Math.min(1, p.chargeTime / p.maxChargeTime);
+    const tier = p.chargeTier;
+    let closeCall = false;
+    for (const e of this.enemies) {
+      if (e.spawnTelegraph <= 0) {
+        const dist = Math.hypot(e.x - p.x, e.y - p.y);
+        if (dist <= 130 + e.radius) {
+          closeCall = true;
+          break;
+        }
+      }
+    }
+    const launchSpeed = tier === 3 ? 1780 : tier === 2 ? 1360 : 980;
+    const bounces = tier === 3 ? 5 : tier === 2 ? 3 : 1;
+    p.state = "dash";
+    p.dashMaxTime = tier === 3 ? 0.56 : tier === 2 ? 0.44 : 0.32;
+    p.dashTimeLeft = p.dashMaxTime;
+    p.bouncesLeft = bounces;
+    p.bouncesDoneThisDash = 0;
+    p.killsThisDash = 0;
+    p.isApexDash = tier === 3;
+    p.isDaredevilDash = closeCall;
+    const cos = Math.cos(p.aimAngle);
+    const sin = Math.sin(p.aimAngle);
+    p.vx = cos * launchSpeed;
+    p.vy = sin * launchSpeed;
+    this.applyPlayerSquash(1.75, 0.54, p.aimAngle);
+    const shakeForce = tier === 3 ? 11 : tier === 2 ? 7 : 4.5;
+    this.triggerDirectionalShake(-cos, -sin, shakeForce);
+    this.shockRings.push({
+      x: p.x,
+      y: p.y,
+      radius: p.radius * 0.7,
+      maxRadius: tier === 3 ? 92 : 60,
+      alpha: 0.9,
+      color: tier === 3 ? "gold" : "cyan",
+      lineWidth: tier === 3 ? 4 : 2.5
+    });
+    this.spawnBurstSparks(
+      p.x - cos * 12,
+      p.y - sin * 12,
+      -cos,
+      -sin,
+      tier === 3 ? 16 : 9,
+      tier === 3 ? "gold" : "cyan"
+    );
+    if (closeCall) {
+      this.comboStreak += 2;
+      this.bestStreak = Math.max(this.bestStreak, this.comboStreak);
+      this.callouts.push({
+        x: p.x,
+        y: p.y - 28,
+        vy: -45,
+        text: "DAREDEVIL +2X!",
+        alpha: 1,
+        scale: 1.25,
+        color: "gold"
+      });
+    }
+    p.currentDashWaypoints = [{ x: p.x, y: p.y, angle: p.aimAngle }];
+    if (this.activeUpgrades.has("pinball_decoy")) {
+      const tempCount = this.bumpers.filter((b) => b.isTemporary).length;
+      if (tempCount >= 2) {
+        const idx = this.bumpers.findIndex((b) => b.isTemporary);
+        if (idx >= 0) this.bumpers.splice(idx, 1);
+      }
+      this.bumpers.push({
+        x: p.x,
+        y: p.y,
+        radius: 22,
+        squash: 1.35,
+        isTemporary: true,
+        life: 8
+      });
+    }
+    if (this.activeUpgrades.has("boomerang_orb")) {
+      this.shards.push({
+        x: p.x + cos * 22,
+        y: p.y + sin * 22,
+        vx: cos * 920,
+        vy: sin * 920,
+        radius: 13,
+        bouncesLeft: 2,
+        life: 1.6,
+        isBoomerang: true,
+        trail: []
+      });
+    }
+    p.chargeTime = 0;
+    p.chargeTier = 0;
+    this.synth.playLaunchSnap(ratio, this.comboStreak);
+  }
+  applyPlayerSquash(scaleX, scaleY, angle) {
+    this.player.scaleX = scaleX;
+    this.player.scaleY = scaleY;
+    this.player.stretchAngle = angle;
+  }
+  /**
+   * Rule 6: Directional screen shake proportional to force along impact vector (nx, ny)
+   */
+  triggerDirectionalShake(nx, ny, force) {
+    this.shakeVx += nx * force * 65;
+    this.shakeVy += ny * force * 65;
+    this.shakeX += nx * force * 1.6;
+    this.shakeY += ny * force * 1.6;
+  }
+  /**
+   * Rule 6: 30-50ms hit-stop frames on heavy impacts
+   */
+  triggerHitStop(durationMs = 42) {
+    const clamped = Math.max(30, Math.min(50, durationMs));
+    this.hitStopMs = Math.max(this.hitStopMs, clamped);
+  }
+  /**
+   * Computes the multi-bounce laser sightline while charging or aiming
+   */
+  computeRaycastBouncePath(maxBounces = 1) {
+    const segments = [];
+    const minX = this.wallPadding + this.player.radius;
+    const maxX = this.width - this.wallPadding - this.player.radius;
+    const minY = this.wallPadding + this.player.radius;
+    const maxY = this.height - this.wallPadding - this.player.radius;
+    let currX = this.player.x;
+    let currY = this.player.y;
+    let dirX = Math.cos(this.player.aimAngle);
+    let dirY = Math.sin(this.player.aimAngle);
+    const totalSegments = Math.max(1, maxBounces + 1);
+    for (let i = 0; i < totalSegments; i++) {
+      let tMin = 2e3;
+      let hitNx = 0;
+      let hitNy = 0;
+      if (dirX > 1e-4) {
+        const tx = (maxX - currX) / dirX;
+        if (tx < tMin) {
+          tMin = tx;
+          hitNx = -1;
+          hitNy = 0;
+        }
+      } else if (dirX < -1e-4) {
+        const tx = (minX - currX) / dirX;
+        if (tx < tMin) {
+          tMin = tx;
+          hitNx = 1;
+          hitNy = 0;
+        }
+      }
+      if (dirY > 1e-4) {
+        const ty = (maxY - currY) / dirY;
+        if (ty < tMin) {
+          tMin = ty;
+          hitNx = 0;
+          hitNy = -1;
+        }
+      } else if (dirY < -1e-4) {
+        const ty = (minY - currY) / dirY;
+        if (ty < tMin) {
+          tMin = ty;
+          hitNx = 0;
+          hitNy = 1;
+        }
+      }
+      const nextX = currX + dirX * tMin;
+      const nextY = currY + dirY * tMin;
+      segments.push({
+        x1: currX,
+        y1: currY,
+        x2: nextX,
+        y2: nextY,
+        normalX: hitNx,
+        normalY: hitNy
+      });
+      currX = nextX;
+      currY = nextY;
+      if (hitNx !== 0) dirX = -dirX;
+      if (hitNy !== 0) dirY = -dirY;
+    }
+    return segments;
+  }
+  /**
+   * Main 60fps simulation step (`dt` in seconds)
+   */
+  step(dt) {
+    const safeDt = Math.min(0.05, Math.max(1e-3, dt));
+    this.updateCameraSpring(safeDt);
+    this.updateVisualEffects(safeDt);
+    if (this.phase !== "playing") return;
+    if (this.hitStopMs > 0) {
+      this.hitStopMs = Math.max(0, this.hitStopMs - safeDt * 1e3);
+      return;
+    }
+    this.elapsedWaveTime += safeDt;
+    this.waveTimeRemaining = Math.max(0, this.waveTimeRemaining - safeDt);
+    if (this.waveTimeRemaining <= 0) {
+      this.completeWaveAndOfferUpgrades();
+      return;
+    }
+    this.updatePlayer(safeDt);
+    this.updateShardsAndPhantoms(safeDt);
+    this.updateBumpers(safeDt);
+    this.updateEnemies(safeDt);
+    this.handleEnemySpawning(safeDt);
+  }
+  updateCameraSpring(dt) {
+    const stiffness = 290;
+    const damping = 18;
+    const ax = -stiffness * this.shakeX - damping * this.shakeVx;
+    const ay = -stiffness * this.shakeY - damping * this.shakeVy;
+    this.shakeVx += ax * dt;
+    this.shakeVy += ay * dt;
+    this.shakeX += this.shakeVx * dt;
+    this.shakeY += this.shakeVy * dt;
+    if (Math.abs(this.shakeX) < 0.05 && Math.abs(this.shakeVx) < 0.5) {
+      this.shakeX = 0;
+      this.shakeVx = 0;
+    }
+    if (Math.abs(this.shakeY) < 0.05 && Math.abs(this.shakeVy) < 0.5) {
+      this.shakeY = 0;
+      this.shakeVy = 0;
+    }
+    const flexDecay = Math.exp(-14 * dt);
+    this.wallFlexLeft *= flexDecay;
+    this.wallFlexRight *= flexDecay;
+    this.wallFlexTop *= flexDecay;
+    this.wallFlexBottom *= flexDecay;
+  }
+  updateVisualEffects(dt) {
+    for (let i = this.sparks.length - 1; i >= 0; i--) {
+      const s = this.sparks[i];
+      s.prevX = s.x;
+      s.prevY = s.y;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.vx *= Math.pow(0.08, dt);
+      s.vy *= Math.pow(0.08, dt);
+      const minX = this.wallPadding;
+      const maxX = this.width - this.wallPadding;
+      const minY = this.wallPadding;
+      const maxY = this.height - this.wallPadding;
+      if (s.x < minX || s.x > maxX) s.vx = -s.vx * 0.7;
+      if (s.y < minY || s.y > maxY) s.vy = -s.vy * 0.7;
+      s.life -= dt;
+      if (s.life <= 0) this.sparks.splice(i, 1);
+    }
+    for (let i = this.shockRings.length - 1; i >= 0; i--) {
+      const r = this.shockRings[i];
+      r.radius += (r.maxRadius - r.radius) * Math.min(1, dt * 14);
+      r.alpha -= dt * 3.2;
+      if (r.alpha <= 0) this.shockRings.splice(i, 1);
+    }
+    for (let i = this.slashFlashes.length - 1; i >= 0; i--) {
+      const f = this.slashFlashes[i];
+      f.alpha -= dt * 7.5;
+      if (f.alpha <= 0) this.slashFlashes.splice(i, 1);
+    }
+    for (let i = this.afterimages.length - 1; i >= 0; i--) {
+      const a = this.afterimages[i];
+      a.alpha -= dt * 4.5;
+      if (a.alpha <= 0) this.afterimages.splice(i, 1);
+    }
+    for (let i = this.callouts.length - 1; i >= 0; i--) {
+      const c = this.callouts[i];
+      c.y += c.vy * dt;
+      c.vy *= Math.pow(0.15, dt);
+      c.alpha -= dt * 1.35;
+      if (c.alpha <= 0) this.callouts.splice(i, 1);
+    }
+  }
+  updatePlayer(dt) {
+    const p = this.player;
+    if (p.invulnTimer > 0) {
+      p.invulnTimer = Math.max(0, p.invulnTimer - dt);
+    }
+    p.orbitAngle += dt * (p.state === "dash" ? 14 : 5.5);
+    if (this.keyAimX !== 0 || this.keyAimY !== 0) {
+      p.aimAngle = Math.atan2(this.keyAimY, this.keyAimX);
+    } else {
+      const dx = this.pointerX - p.x;
+      const dy = this.pointerY - p.y;
+      if (Math.hypot(dx, dy) > 4) {
+        p.aimAngle = Math.atan2(dy, dx);
+      }
+    }
+    if (p.state === "charging") {
+      p.vx *= Math.pow(15e-4, dt);
+      p.vy *= Math.pow(15e-4, dt);
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      const prevTier = p.chargeTier;
+      p.chargeTime = Math.min(p.maxChargeTime * 1.4, p.chargeTime + dt);
+      const ratio = Math.min(1, p.chargeTime / p.maxChargeTime);
+      if (ratio >= 0.78) {
+        p.chargeTier = 3;
+      } else if (ratio >= 0.36) {
+        p.chargeTier = 2;
+      } else {
+        p.chargeTier = 1;
+      }
+      if (p.chargeTier > prevTier && (p.chargeTier === 2 || p.chargeTier === 3)) {
+        this.synth.playChargeTierLock(p.chargeTier, this.comboStreak);
+        this.shockRings.push({
+          x: p.x,
+          y: p.y,
+          radius: p.radius * 2.2,
+          maxRadius: p.radius * 0.9,
+          alpha: 0.75,
+          color: p.chargeTier === 3 ? "gold" : "cyan",
+          lineWidth: 2.5
+        });
+      }
+      const targetScaleX = 1 - ratio * 0.42;
+      const targetScaleY = 1 + ratio * 0.38;
+      p.scaleX += (targetScaleX - p.scaleX) * Math.min(1, dt * 18);
+      p.scaleY += (targetScaleY - p.scaleY) * Math.min(1, dt * 18);
+      p.stretchAngle = p.aimAngle;
+      if (this.activeUpgrades.has("gravity_tether")) {
+        const aimCos = Math.cos(p.aimAngle);
+        const aimSin = Math.sin(p.aimAngle);
+        for (const e of this.enemies) {
+          if (e.spawnTelegraph > 0) continue;
+          const relX = e.x - p.x;
+          const relY = e.y - p.y;
+          const proj = relX * aimCos + relY * aimSin;
+          if (proj > 20 && proj < 420) {
+            const closestX = p.x + aimCos * proj;
+            const closestY = p.y + aimSin * proj;
+            const perpDx = closestX - e.x;
+            const perpDy = closestY - e.y;
+            const perpDist = Math.hypot(perpDx, perpDy);
+            if (perpDist > 4 && perpDist < 175) {
+              e.x += perpDx / perpDist * 185 * dt;
+              e.y += perpDy / perpDist * 185 * dt;
+            }
+          }
+        }
+      }
+    } else if (p.state === "dash") {
+      p.dashTimeLeft -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      const speed = Math.hypot(p.vx, p.vy);
+      if (speed > 20) {
+        p.stretchAngle = Math.atan2(p.vy, p.vx);
+      }
+      const targetScaleX = 1.52;
+      const targetScaleY = 0.64;
+      p.scaleX += (targetScaleX - p.scaleX) * Math.min(1, dt * 16);
+      p.scaleY += (targetScaleY - p.scaleY) * Math.min(1, dt * 16);
+      this.afterimages.push({
+        x: p.x,
+        y: p.y,
+        angle: p.stretchAngle,
+        scaleX: p.scaleX,
+        scaleY: p.scaleY,
+        alpha: p.isApexDash ? 0.55 : 0.38
+      });
+      this.handlePlayerWallCollisions();
+      if (p.dashTimeLeft <= 0) {
+        p.state = "glide";
+        p.vx *= 0.28;
+        p.vy *= 0.28;
+        p.currentDashWaypoints.push({ x: p.x, y: p.y, angle: p.stretchAngle });
+        if (p.killsThisDash === 0 && this.comboStreak > 1) {
+          this.comboStreak = 1;
+        }
+        if (this.activeUpgrades.has("shockwave_anchor")) {
+          this.detonateFriendlyNova(p.x, p.y, 135, "cyan");
+        }
+        if (this.activeUpgrades.has("phantom_echo") && p.currentDashWaypoints.length >= 2) {
+          const startWp = p.currentDashWaypoints[0];
+          this.phantoms.push({
+            waypoints: [...p.currentDashWaypoints],
+            delayTimer: 0.22,
+            segmentIndex: 0,
+            segmentProgress: 0,
+            x: startWp.x,
+            y: startWp.y,
+            angle: startWp.angle,
+            radius: p.radius * 0.95,
+            hitIds: /* @__PURE__ */ new Set()
+          });
+        }
+      }
+    } else {
+      let desiredVx = 0;
+      let desiredVy = 0;
+      const maxGlideSpeed = 320;
+      if (this.keyAimX !== 0 || this.keyAimY !== 0) {
+        const mag = Math.hypot(this.keyAimX, this.keyAimY) || 1;
+        desiredVx = this.keyAimX / mag * maxGlideSpeed;
+        desiredVy = this.keyAimY / mag * maxGlideSpeed;
+      } else if (this.pointerActive) {
+        const dx = this.pointerX - p.x;
+        const dy = this.pointerY - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 28) {
+          const factor = Math.min(1, (dist - 28) / 110);
+          desiredVx = dx / dist * maxGlideSpeed * factor;
+          desiredVy = dy / dist * maxGlideSpeed * factor;
+        }
+      }
+      const accel = 11.5;
+      p.vx += (desiredVx - p.vx) * Math.min(1, accel * dt);
+      p.vy += (desiredVy - p.vy) * Math.min(1, accel * dt);
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      const speed = Math.hypot(p.vx, p.vy);
+      if (speed > 15) {
+        p.stretchAngle = Math.atan2(p.vy, p.vx);
+      } else {
+        p.stretchAngle = p.aimAngle;
+      }
+      const stretchAmt = Math.min(0.22, speed / maxGlideSpeed * 0.18);
+      const targetScaleX = 1 + stretchAmt;
+      const targetScaleY = 1 - stretchAmt * 0.7;
+      p.scaleX += (targetScaleX - p.scaleX) * Math.min(1, dt * 14);
+      p.scaleY += (targetScaleY - p.scaleY) * Math.min(1, dt * 14);
+      this.handlePlayerWallCollisions();
+    }
+    if (this.activeUpgrades.has("sawblade_orbit")) {
+      const orbitDist = p.state === "dash" ? 66 : 46;
+      const bladeX = p.x + Math.cos(p.orbitAngle) * orbitDist;
+      const bladeY = p.y + Math.sin(p.orbitAngle) * orbitDist;
+      const bladeRadius = 12;
+      for (let i = this.enemies.length - 1; i >= 0; i--) {
+        const e = this.enemies[i];
+        if (e.spawnTelegraph > 0) continue;
+        if (Math.hypot(e.x - bladeX, e.y - bladeY) <= e.radius + bladeRadius) {
+          this.killEnemy(i, bladeX, bladeY, Math.cos(p.orbitAngle), Math.sin(p.orbitAngle), false);
+        }
+      }
+    }
+    this.trail.push({
+      x: p.x,
+      y: p.y,
+      radius: p.radius * (p.state === "dash" ? 0.95 : 0.65),
+      alpha: 1,
+      isDash: p.state === "dash"
+    });
+    if (this.trail.length > 20) {
+      this.trail.shift();
+    }
+    for (const pt of this.trail) {
+      pt.alpha *= Math.pow(0.05, dt);
+    }
+  }
+  handlePlayerWallCollisions() {
+    const p = this.player;
+    const minX = this.wallPadding + p.radius;
+    const maxX = this.width - this.wallPadding - p.radius;
+    const minY = this.wallPadding + p.radius;
+    const maxY = this.height - this.wallPadding - p.radius;
+    let bouncedX = false;
+    let bouncedY = false;
+    let hitNx = 0;
+    let hitNy = 0;
+    if (p.x < minX) {
+      p.x = minX;
+      bouncedX = true;
+      hitNx = 1;
+      this.wallFlexLeft = 1;
+    } else if (p.x > maxX) {
+      p.x = maxX;
+      bouncedX = true;
+      hitNx = -1;
+      this.wallFlexRight = 1;
+    }
+    if (p.y < minY) {
+      p.y = minY;
+      bouncedY = true;
+      hitNy = 1;
+      this.wallFlexTop = 1;
+    } else if (p.y > maxY) {
+      p.y = maxY;
+      bouncedY = true;
+      hitNy = -1;
+      this.wallFlexBottom = 1;
+    }
+    if (!bouncedX && !bouncedY) return;
+    if (p.state === "dash") {
+      if (p.bouncesLeft > 0) {
+        p.bouncesLeft -= 1;
+        p.bouncesDoneThisDash += 1;
+        p.dashTimeLeft = Math.min(p.dashMaxTime, p.dashTimeLeft + 0.14);
+        if (bouncedX) p.vx = -p.vx;
+        if (bouncedY) p.vy = -p.vy;
+        p.aimAngle = Math.atan2(p.vy, p.vx);
+        p.currentDashWaypoints.push({ x: p.x, y: p.y, angle: p.aimAngle });
+        const normalAngle = Math.atan2(hitNy, hitNx);
+        this.applyPlayerSquash(0.48, 1.55, normalAngle);
+        this.triggerDirectionalShake(-hitNx, -hitNy, 7.5);
+        this.synth.playBounce(this.comboStreak, p.bouncesDoneThisDash);
+        this.shockRings.push({
+          x: p.x,
+          y: p.y,
+          radius: 8,
+          maxRadius: 58,
+          alpha: 0.85,
+          color: p.isApexDash ? "gold" : "cyan",
+          lineWidth: 3
+        });
+        this.spawnBurstSparks(p.x, p.y, hitNx, hitNy, 11, p.isApexDash ? "gold" : "cyan");
+        if (this.activeUpgrades.has("split_prism")) {
+          const baseAngle = Math.atan2(p.vy, p.vx);
+          for (const offset of [-0.35, 0.35]) {
+            const a = baseAngle + offset;
+            this.shards.push({
+              x: p.x,
+              y: p.y,
+              vx: Math.cos(a) * 1050,
+              vy: Math.sin(a) * 1050,
+              radius: 8,
+              bouncesLeft: 1,
+              life: 0.9,
+              isBoomerang: false,
+              trail: []
+            });
+          }
+        }
+        if (this.activeUpgrades.has("corner_nova")) {
+          this.detonateFriendlyNova(p.x, p.y, 125, "cyan");
+        }
+      } else {
+        if (bouncedX) p.vx = -p.vx * 0.25;
+        if (bouncedY) p.vy = -p.vy * 0.25;
+        p.dashTimeLeft = 0;
+      }
+    } else {
+      if (bouncedX) p.vx = -p.vx * 0.5;
+      if (bouncedY) p.vy = -p.vy * 0.5;
+    }
+  }
+  updateBumpers(dt) {
+    const p = this.player;
+    for (let i = this.bumpers.length - 1; i >= 0; i--) {
+      const b = this.bumpers[i];
+      b.squash += (1 - b.squash) * Math.min(1, dt * 14);
+      if (b.isTemporary) {
+        b.life -= dt;
+        if (b.life <= 0) {
+          this.bumpers.splice(i, 1);
+          continue;
+        }
+      }
+      const dx = p.x - b.x;
+      const dy = p.y - b.y;
+      const dist = Math.hypot(dx, dy);
+      const minDist = p.radius + b.radius;
+      if (dist < minDist && dist > 1e-3) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        p.x = b.x + nx * minDist;
+        p.y = b.y + ny * minDist;
+        b.squash = 1.42;
+        if (p.state === "dash") {
+          const speed = Math.min(2050, Math.hypot(p.vx, p.vy) * 1.18);
+          p.vx = nx * speed;
+          p.vy = ny * speed;
+          p.aimAngle = Math.atan2(p.vy, p.vx);
+          p.bouncesLeft += 1;
+          p.bouncesDoneThisDash += 1;
+          p.dashTimeLeft = Math.min(p.dashMaxTime, p.dashTimeLeft + 0.18);
+          p.currentDashWaypoints.push({ x: p.x, y: p.y, angle: p.aimAngle });
+          this.applyPlayerSquash(0.46, 1.56, Math.atan2(ny, nx));
+          this.triggerDirectionalShake(nx, ny, 8.5);
+          this.synth.playBounce(this.comboStreak, p.bouncesDoneThisDash + 1);
+          this.detonateFriendlyNova(b.x, b.y, 110, "cyan");
+        } else {
+          p.vx = nx * 360;
+          p.vy = ny * 360;
+        }
+      }
+    }
+  }
+  updateShardsAndPhantoms(dt) {
+    for (let i = this.shards.length - 1; i >= 0; i--) {
+      const s = this.shards[i];
+      s.life -= dt;
+      if (s.life <= 0) {
+        this.shards.splice(i, 1);
+        continue;
+      }
+      if (s.isBoomerang && s.life < 1.15) {
+        const toPx = this.player.x - s.x;
+        const toPy = this.player.y - s.y;
+        const d = Math.hypot(toPx, toPy) || 1;
+        s.vx += toPx / d * 2400 * dt;
+        s.vy += toPy / d * 2400 * dt;
+      }
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.trail.push({ x: s.x, y: s.y });
+      if (s.trail.length > 8) s.trail.shift();
+      const minX = this.wallPadding + s.radius;
+      const maxX = this.width - this.wallPadding - s.radius;
+      const minY = this.wallPadding + s.radius;
+      const maxY = this.height - this.wallPadding - s.radius;
+      if (s.x < minX || s.x > maxX) {
+        if (s.bouncesLeft > 0) {
+          s.bouncesLeft -= 1;
+          s.vx = -s.vx;
+          s.x = Math.max(minX, Math.min(maxX, s.x));
+        } else {
+          this.shards.splice(i, 1);
+          continue;
+        }
+      }
+      if (s.y < minY || s.y > maxY) {
+        if (s.bouncesLeft > 0) {
+          s.bouncesLeft -= 1;
+          s.vy = -s.vy;
+          s.y = Math.max(minY, Math.min(maxY, s.y));
+        } else {
+          this.shards.splice(i, 1);
+          continue;
+        }
+      }
+      for (let j = this.enemies.length - 1; j >= 0; j--) {
+        const e = this.enemies[j];
+        if (e.spawnTelegraph > 0) continue;
+        if (Math.hypot(e.x - s.x, e.y - s.y) <= e.radius + s.radius) {
+          const speed = Math.hypot(s.vx, s.vy) || 1;
+          this.killEnemy(j, s.x, s.y, s.vx / speed, s.vy / speed, false);
+          if (!s.isBoomerang) {
+            this.shards.splice(i, 1);
+            break;
+          }
+        }
+      }
+    }
+    for (let i = this.phantoms.length - 1; i >= 0; i--) {
+      const ph = this.phantoms[i];
+      if (ph.delayTimer > 0) {
+        ph.delayTimer -= dt;
+        continue;
+      }
+      const wps = ph.waypoints;
+      if (ph.segmentIndex >= wps.length - 1) {
+        this.phantoms.splice(i, 1);
+        continue;
+      }
+      const a = wps[ph.segmentIndex];
+      const b = wps[ph.segmentIndex + 1];
+      const segLen = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+      const ghostSpeed = 1450;
+      ph.segmentProgress += ghostSpeed * dt / segLen;
+      if (ph.segmentProgress >= 1) {
+        ph.segmentIndex += 1;
+        ph.segmentProgress = 0;
+        ph.x = b.x;
+        ph.y = b.y;
+      } else {
+        ph.x = a.x + (b.x - a.x) * ph.segmentProgress;
+        ph.y = a.y + (b.y - a.y) * ph.segmentProgress;
+        ph.angle = Math.atan2(b.y - a.y, b.x - a.x);
+      }
+      for (let j = this.enemies.length - 1; j >= 0; j--) {
+        const e = this.enemies[j];
+        if (e.spawnTelegraph > 0 || ph.hitIds.has(e.id)) continue;
+        if (Math.hypot(e.x - ph.x, e.y - ph.y) <= e.radius + ph.radius) {
+          ph.hitIds.add(e.id);
+          this.killEnemy(j, ph.x, ph.y, Math.cos(ph.angle), Math.sin(ph.angle), false);
+        }
+      }
+    }
+  }
+  updateEnemies(dt) {
+    const p = this.player;
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      e.scaleX += (1 - e.scaleX) * Math.min(1, dt * 12);
+      e.scaleY += (1 - e.scaleY) * Math.min(1, dt * 12);
+      if (e.spawnTelegraph > 0) {
+        e.spawnTelegraph = Math.max(0, e.spawnTelegraph - dt);
+        const progress = 1 - e.spawnTelegraph / e.spawnMax;
+        e.scaleX = 0.35 + progress * 0.65;
+        e.scaleY = 0.35 + progress * 0.65;
+        continue;
+      }
+      const toPx = p.x - e.x;
+      const toPy = p.y - e.y;
+      const distToPlayer = Math.hypot(toPx, toPy) || 1;
+      const dirX = toPx / distToPlayer;
+      const dirY = toPy / distToPlayer;
+      if (e.knockbackTimer > 0) {
+        e.knockbackTimer = Math.max(0, e.knockbackTimer - dt);
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+        e.vx *= Math.pow(0.08, dt);
+        e.vy *= Math.pow(0.08, dt);
+      } else if (e.kind === "drifter") {
+        const speed = 105 + Math.min(60, this.wave * 8);
+        e.vx = dirX * speed;
+        e.vy = dirY * speed;
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+        e.facingAngle = Math.atan2(dirY, dirX);
+      } else if (e.kind === "charger") {
+        if (e.lungeTimer > 0) {
+          e.lungeTimer -= dt;
+          e.x += e.lungeDirX * 540 * dt;
+          e.y += e.lungeDirY * 540 * dt;
+          e.scaleX = 1.38;
+          e.scaleY = 0.72;
+          e.stretchAngle = e.facingAngle;
+        } else if (e.attackTelegraph > 0) {
+          e.attackTelegraph -= dt;
+          e.scaleX = 0.72;
+          e.scaleY = 1.28;
+          e.stretchAngle = e.facingAngle;
+          if (e.attackTelegraph <= 0) {
+            e.lungeTimer = 0.36;
+          }
+        } else if (distToPlayer < 290) {
+          e.attackTelegraph = 0.8;
+          e.lungeDirX = dirX;
+          e.lungeDirY = dirY;
+          e.facingAngle = Math.atan2(dirY, dirX);
+        } else {
+          const speed = 135;
+          e.x += dirX * speed * dt;
+          e.y += dirY * speed * dt;
+          e.facingAngle = Math.atan2(dirY, dirX);
+        }
+      } else if (e.kind === "shielded") {
+        const targetAngle = Math.atan2(dirY, dirX);
+        let diff = targetAngle - e.facingAngle;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        e.facingAngle += Math.sign(diff) * Math.min(Math.abs(diff), 1.9 * dt);
+        const speed = 82;
+        e.x += dirX * speed * dt;
+        e.y += dirY * speed * dt;
+      } else if (e.kind === "pulsar") {
+        if (e.attackTelegraph > 0) {
+          e.attackTelegraph += dt;
+          if (e.attackTelegraph >= 1.45) {
+            e.attackTelegraph = 0;
+            this.shockRings.push({
+              x: e.x,
+              y: e.y,
+              radius: e.radius,
+              maxRadius: 115,
+              alpha: 0.95,
+              color: "crimson",
+              lineWidth: 4
+            });
+            if (distToPlayer <= 115 + p.radius && p.state !== "dash") {
+              this.damagePlayer(e.x, e.y);
+            }
+          }
+        } else if (distToPlayer < 210) {
+          e.attackTelegraph = 0.01;
+        } else {
+          e.x += dirX * 92 * dt;
+          e.y += dirY * 92 * dt;
+        }
+      }
+      const minX = this.wallPadding + e.radius;
+      const maxX = this.width - this.wallPadding - e.radius;
+      const minY = this.wallPadding + e.radius;
+      const maxY = this.height - this.wallPadding - e.radius;
+      e.x = Math.max(minX, Math.min(maxX, e.x));
+      e.y = Math.max(minY, Math.min(maxY, e.y));
+      const hitAllowance = p.state === "dash" ? 8 : -3;
+      if (distToPlayer <= p.radius + e.radius + hitAllowance) {
+        if (p.state === "dash") {
+          if (e.kind === "shielded" && !p.isApexDash) {
+            const impactAngle = Math.atan2(p.y - e.y, p.x - e.x);
+            let angleDiff = Math.abs(impactAngle - e.facingAngle);
+            while (angleDiff > Math.PI) angleDiff = Math.abs(angleDiff - Math.PI * 2);
+            if (angleDiff < 1.05) {
+              p.vx = -p.vx * 0.85;
+              p.vy = -p.vy * 0.85;
+              p.x = e.x + Math.cos(impactAngle) * (p.radius + e.radius + 6);
+              p.y = e.y + Math.sin(impactAngle) * (p.radius + e.radius + 6);
+              p.bouncesLeft += 1;
+              p.dashTimeLeft = Math.min(p.dashMaxTime, p.dashTimeLeft + 0.15);
+              e.knockbackTimer = 0.18;
+              e.vx = -Math.cos(impactAngle) * 220;
+              e.vy = -Math.sin(impactAngle) * 220;
+              this.applyPlayerSquash(0.5, 1.48, impactAngle);
+              this.triggerDirectionalShake(Math.cos(impactAngle), Math.sin(impactAngle), 6.5);
+              this.synth.playBounce(this.comboStreak, p.bouncesDoneThisDash);
+              this.callouts.push({
+                x: e.x,
+                y: e.y - 26,
+                vy: -40,
+                text: "SHIELD! FLANK OR OVERCHARGE",
+                alpha: 1,
+                scale: 0.95,
+                color: "cyan"
+              });
+              continue;
+            }
+          }
+          const speed = Math.hypot(p.vx, p.vy) || 1;
+          this.killEnemy(i, e.x, e.y, p.vx / speed, p.vy / speed, true);
+        } else if (p.invulnTimer <= 0) {
+          this.damagePlayer(e.x, e.y);
+        }
+      }
+    }
+  }
+  killEnemy(enemyIndex, impactX, impactY, dirX, dirY, fromPlayerDash) {
+    const e = this.enemies[enemyIndex];
+    if (!e) return;
+    this.enemies.splice(enemyIndex, 1);
+    const p = this.player;
+    if (fromPlayerDash) {
+      p.killsThisDash += 1;
+      p.dashTimeLeft = Math.min(p.dashMaxTime, p.dashTimeLeft + 0.09);
+    }
+    this.comboStreak += 1;
+    this.bestStreak = Math.max(this.bestStreak, this.comboStreak);
+    const bounceMult = 1 + p.bouncesDoneThisDash;
+    const apexMult = p.isApexDash ? 2 : 1;
+    const pointsEarned = 100 * this.comboStreak * bounceMult * apexMult;
+    this.score += pointsEarned;
+    const hitStopDuration = p.isApexDash || p.bouncesDoneThisDash > 0 ? 46 : 36;
+    this.triggerHitStop(hitStopDuration);
+    const force = p.isApexDash ? 11.5 : 8;
+    this.triggerDirectionalShake(dirX, dirY, force);
+    this.applyPlayerSquash(1.65, 0.58, Math.atan2(dirY, dirX));
+    this.synth.playComboKill(this.comboStreak, p.bouncesDoneThisDash, p.isApexDash);
+    this.slashFlashes.push({
+      x1: impactX - dirX * 48,
+      y1: impactY - dirY * 48,
+      x2: impactX + dirX * 48,
+      y2: impactY + dirY * 48,
+      alpha: 1,
+      color: p.isApexDash ? "gold" : "cyan"
+    });
+    this.shockRings.push({
+      x: impactX,
+      y: impactY,
+      radius: 10,
+      maxRadius: p.isApexDash ? 95 : 68,
+      alpha: 0.95,
+      color: p.isApexDash ? "gold" : "cyan",
+      lineWidth: 3.5
+    });
+    this.spawnBurstSparks(
+      impactX,
+      impactY,
+      dirX,
+      dirY,
+      14,
+      p.isApexDash ? "gold" : "cyan"
+    );
+    const label = p.bouncesDoneThisDash > 0 ? `BANK SHOT x${this.comboStreak}!` : this.comboStreak >= 3 ? `${this.comboStreak}x STREAK!` : `+${pointsEarned}`;
+    this.callouts.push({
+      x: impactX,
+      y: impactY - 18,
+      vy: -52,
+      text: label,
+      alpha: 1,
+      scale: p.isApexDash ? 1.25 : 1,
+      color: p.isApexDash ? "gold" : "cyan"
+    });
+    if (e.kind === "pulsar" && e.attackTelegraph > 0) {
+      this.detonateFriendlyNova(impactX, impactY, 130, "cyan");
+    }
+    if (this.activeUpgrades.has("lightning_chain") && fromPlayerDash) {
+      let nearestIdx = -1;
+      let nearestDist = 230;
+      for (let j = 0; j < this.enemies.length; j++) {
+        const other = this.enemies[j];
+        if (other.spawnTelegraph > 0) continue;
+        const d = Math.hypot(other.x - impactX, other.y - impactY);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestIdx = j;
+        }
+      }
+      if (nearestIdx >= 0) {
+        const target = this.enemies[nearestIdx];
+        this.slashFlashes.push({
+          x1: impactX,
+          y1: impactY,
+          x2: target.x,
+          y2: target.y,
+          alpha: 1,
+          color: "cyan"
+        });
+        const ldx = target.x - impactX;
+        const ldy = target.y - impactY;
+        const lmag = Math.hypot(ldx, ldy) || 1;
+        this.killEnemy(nearestIdx, target.x, target.y, ldx / lmag, ldy / lmag, false);
+      }
+    }
+  }
+  detonateFriendlyNova(x, y, radius, color) {
+    this.shockRings.push({
+      x,
+      y,
+      radius: 12,
+      maxRadius: radius,
+      alpha: 0.9,
+      color,
+      lineWidth: 4
+    });
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (e.spawnTelegraph > 0) continue;
+      const dx = e.x - x;
+      const dy = e.y - y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d <= radius + e.radius) {
+        this.killEnemy(i, e.x, e.y, dx / d, dy / d, false);
+      }
+    }
+  }
+  damagePlayer(sourceX, sourceY) {
+    const p = this.player;
+    if (p.invulnTimer > 0) return;
+    p.shields -= 1;
+    p.invulnTimer = 1.35;
+    p.state = "glide";
+    this.isHoldingCharge = false;
+    p.chargeTime = 0;
+    p.chargeTier = 0;
+    this.comboStreak = 1;
+    const dx = p.x - sourceX;
+    const dy = p.y - sourceY;
+    const dist = Math.hypot(dx, dy) || 1;
+    const nx = dx / dist;
+    const ny = dy / dist;
+    p.vx = nx * 460;
+    p.vy = ny * 460;
+    this.triggerHitStop(48);
+    this.triggerDirectionalShake(nx, ny, 12);
+    this.applyPlayerSquash(0.52, 1.48, Math.atan2(ny, nx));
+    this.synth.playDamageHit();
+    this.shockRings.push({
+      x: p.x,
+      y: p.y,
+      radius: p.radius,
+      maxRadius: 170,
+      alpha: 1,
+      color: "crimson",
+      lineWidth: 4
+    });
+    this.spawnBurstSparks(p.x, p.y, nx, ny, 16, "crimson");
+    for (const e of this.enemies) {
+      const edx = e.x - p.x;
+      const edy = e.y - p.y;
+      const ed = Math.hypot(edx, edy) || 1;
+      if (ed < 190) {
+        e.knockbackTimer = 0.45;
+        e.vx = edx / ed * 480;
+        e.vy = edy / ed * 480;
+      }
+    }
+    if (p.shields <= 0) {
+      this.phase = "gameover";
+    }
+  }
+  handleEnemySpawning(dt) {
+    this.spawnCooldown -= dt;
+    const maxActive = this.getMaxActiveEnemiesForWave(this.wave);
+    if (this.enemies.length === 0 && this.spawnCooldown > 0.25) {
+      this.spawnCooldown = 0.2;
+    }
+    if (this.spawnCooldown <= 0 && this.enemies.length < maxActive) {
+      this.spawnTargetForWave();
+      const baseInterval = Math.max(0.75, 1.75 - this.wave * 0.14);
+      this.spawnCooldown = baseInterval;
+    }
+  }
+  completeWaveAndOfferUpgrades() {
+    this.phase = "upgrade_draft";
+    this.isHoldingCharge = false;
+    this.player.state = "glide";
+    this.player.chargeTime = 0;
+    this.player.chargeTier = 0;
+    this.enemies = [];
+    this.synth.playUpgradeChime();
+    const unowned = UPGRADE_CATALOG.filter((u) => !this.activeUpgrades.has(u.id));
+    const pool = unowned.length >= 3 ? [...unowned] : [...UPGRADE_CATALOG];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(this.random() * (i + 1));
+      const tmp = pool[i];
+      pool[i] = pool[j];
+      pool[j] = tmp;
+    }
+    this.offeredUpgrades = pool.slice(0, 3);
+  }
+  /**
+   * Rule 7: Pick 1 of 3 dead-simple, game-changing upgrades between waves
+   */
+  selectUpgrade(indexOrId) {
+    if (this.phase !== "upgrade_draft") return false;
+    const chosen = typeof indexOrId === "number" ? this.offeredUpgrades[indexOrId] : this.offeredUpgrades.find((u) => u.id === indexOrId) ?? UPGRADE_CATALOG.find((u) => u.id === indexOrId);
+    if (!chosen) return false;
+    this.activeUpgrades.add(chosen.id);
+    this.synth.playUpgradeChime();
+    this.setupWave(this.wave + 1);
+    return true;
+  }
+  spawnBurstSparks(x, y, dirX, dirY, count, color) {
+    const baseAngle = Math.atan2(dirY, dirX);
+    for (let i = 0; i < count; i++) {
+      const spread = (this.random() - 0.5) * 1.45;
+      const angle = baseAngle + spread;
+      const speed = this.randomRange(180, 620);
+      const life = this.randomRange(0.18, 0.42);
+      this.sparks.push({
+        x,
+        y,
+        prevX: x,
+        prevY: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life,
+        maxLife: life,
+        color,
+        thickness: this.randomRange(1.8, 3.2)
+      });
+    }
+  }
+};
+
+// games/13-snap-lance/src/index.ts
+var STORAGE_KEY = "argon.snapLance.v1";
+var COLORS = {
+  bgDeep: "#0b0e14",
+  bgGrid: "#121824",
+  wallBorder: "#223049",
+  cyanPower: "#00f2fe",
+  cyanSoft: "rgba(0, 242, 254, 0.24)",
+  cyanGlow: "rgba(0, 242, 254, 0.65)",
+  goldApex: "#fde047",
+  goldSoft: "rgba(253, 224, 71, 0.28)",
+  crimsonDanger: "#ff2a5f",
+  crimsonSoft: "rgba(255, 42, 95, 0.24)",
+  white: "#f8fafc",
+  mutedText: "#475569"
+};
+function mountGame(container, options = {}) {
+  const synth = new SnapLanceSynth();
+  const engine = new SnapLanceEngine(synth, options.initialSeed ?? 20261108);
+  container.innerHTML = `
+    <div class="sl-viewport" id="sl-viewport">
+      <div class="sl-hud" aria-live="off">
+        <span id="sl-hud-score" class="sl-hud-number sl-hud-score">0</span>
+        <span id="sl-hud-timer" class="sl-hud-number sl-hud-timer">30</span>
+      </div>
+      <canvas id="sl-canvas" class="sl-canvas"></canvas>
+      <div id="sl-upgrade-overlay" class="sl-overlay" hidden>
+        <h2 id="sl-overlay-title" class="sl-overlay-title">PICK 1 UPGRADE</h2>
+        <div id="sl-cards-row" class="sl-cards-row"></div>
+      </div>
+    </div>
+  `;
+  const viewport = container.querySelector("#sl-viewport");
+  const canvas = container.querySelector("#sl-canvas");
+  const scoreEl = container.querySelector("#sl-hud-score");
+  const timerEl = container.querySelector("#sl-hud-timer");
+  const overlayEl = container.querySelector("#sl-upgrade-overlay");
+  const overlayTitleEl = container.querySelector("#sl-overlay-title");
+  const cardsRowEl = container.querySelector("#sl-cards-row");
+  const ctx = canvas.getContext("2d");
+  let lastRenderedPhase = "playing";
+  let animFrameId = null;
+  let lastTimestamp = 0;
+  let hasDashedOnce = false;
+  const heldKeys = /* @__PURE__ */ new Set();
+  function syncCanvasSize() {
+    const rect = viewport.getBoundingClientRect();
+    const w = rect.width > 100 ? Math.round(rect.width) : 960;
+    const h = rect.height > 100 ? Math.round(rect.height) : 600;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      engine.resize(w, h);
+    }
+  }
+  syncCanvasSize();
+  function updateKeyboardAim() {
+    let kx = 0;
+    let ky = 0;
+    if (heldKeys.has("ArrowLeft") || heldKeys.has("KeyA")) kx -= 1;
+    if (heldKeys.has("ArrowRight") || heldKeys.has("KeyD")) kx += 1;
+    if (heldKeys.has("ArrowUp") || heldKeys.has("KeyW")) ky -= 1;
+    if (heldKeys.has("ArrowDown") || heldKeys.has("KeyS")) ky += 1;
+    engine.keyAimX = kx;
+    engine.keyAimY = ky;
+  }
+  function renderUpgradeOverlay(cards) {
+    overlayTitleEl.textContent = `WAVE ${engine.wave} CLEAR \u2014 PICK 1 UPGRADE`;
+    cardsRowEl.innerHTML = cards.map(
+      (c, idx) => `
+        <button type="button" class="sl-upgrade-card" data-upgrade-index="${idx}" data-upgrade-id="${c.id}">
+          <span class="sl-card-tag">[${idx + 1}] ${c.tag}</span>
+          <span class="sl-card-name">${c.title}</span>
+          <p class="sl-card-desc">${c.description}</p>
+        </button>
+      `
+    ).join("");
+    overlayEl.hidden = false;
+  }
+  function renderGameOverOverlay() {
+    try {
+      const prevBest = Number(localStorage.getItem(STORAGE_KEY) || "0");
+      if (engine.score > prevBest) {
+        localStorage.setItem(STORAGE_KEY, String(engine.score));
+      }
+    } catch {
+    }
+    overlayTitleEl.textContent = `CORE SHATTERED \u2014 SCORE ${engine.score.toLocaleString()}`;
+    cardsRowEl.innerHTML = `
+      <button type="button" id="sl-btn-restart" class="sl-restart-btn">
+        CLICK OR PRESS SPACE TO PLAY AGAIN
+      </button>
+    `;
+    overlayEl.hidden = false;
+  }
+  const onOverlayClick = (e) => {
+    const target = e.target;
+    if (!target) return;
+    const cardBtn = target.closest("[data-upgrade-index]");
+    if (cardBtn && engine.phase === "upgrade_draft") {
+      const idx = Number(cardBtn.dataset.upgradeIndex);
+      if (engine.selectUpgrade(idx)) {
+        overlayEl.hidden = true;
+        lastRenderedPhase = "playing";
+      }
+      return;
+    }
+    if (engine.phase === "gameover") {
+      engine.resetRun();
+      overlayEl.hidden = true;
+      lastRenderedPhase = "playing";
+    }
+  };
+  overlayEl.addEventListener("click", onOverlayClick);
+  const onPointerMove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      engine.pointerX = (e.clientX - rect.left) / rect.width * engine.width;
+      engine.pointerY = (e.clientY - rect.top) / rect.height * engine.height;
+    } else {
+      engine.pointerX = e.clientX;
+      engine.pointerY = e.clientY;
+    }
+    engine.pointerActive = true;
+  };
+  const onPointerDown = (e) => {
+    if (e.button !== 0) return;
+    onPointerMove(e);
+    if (engine.phase === "gameover") {
+      engine.resetRun();
+      overlayEl.hidden = true;
+      lastRenderedPhase = "playing";
+      return;
+    }
+    engine.beginCharge();
+  };
+  const onPointerUp = () => {
+    if (engine.isHoldingCharge || engine.player.state === "charging") {
+      hasDashedOnce = true;
+      engine.releaseCharge();
+    }
+  };
+  const onKeyDown = (e) => {
+    if (engine.phase === "upgrade_draft") {
+      if (e.key === "1" || e.key === "2" || e.key === "3") {
+        const idx = Number(e.key) - 1;
+        if (engine.selectUpgrade(idx)) {
+          overlayEl.hidden = true;
+          lastRenderedPhase = "playing";
+        }
+      }
+      return;
+    }
+    if (engine.phase === "gameover" && (e.code === "Space" || e.code === "Enter")) {
+      e.preventDefault();
+      engine.resetRun();
+      overlayEl.hidden = true;
+      lastRenderedPhase = "playing";
+      return;
+    }
+    if (e.code === "ArrowLeft" || e.code === "ArrowRight" || e.code === "ArrowUp" || e.code === "ArrowDown" || e.code === "KeyW" || e.code === "KeyA" || e.code === "KeyS" || e.code === "KeyD") {
+      heldKeys.add(e.code);
+      updateKeyboardAim();
+    }
+    if (e.code === "Space" && !e.repeat) {
+      e.preventDefault();
+      engine.beginCharge();
+    }
+  };
+  const onKeyUp = (e) => {
+    if (heldKeys.has(e.code)) {
+      heldKeys.delete(e.code);
+      updateKeyboardAim();
+    }
+    if (e.code === "Space") {
+      e.preventDefault();
+      hasDashedOnce = true;
+      engine.releaseCharge();
+    }
+  };
+  const onResize = () => {
+    syncCanvasSize();
+  };
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerdown", onPointerDown);
+  window.addEventListener("pointerup", onPointerUp);
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("resize", onResize);
+  function drawEnemy(c, e) {
+    c.save();
+    c.translate(e.x, e.y);
+    if (e.spawnTelegraph > 0) {
+      const ratio = e.spawnTelegraph / e.spawnMax;
+      const ringRadius = e.radius + ratio * 38;
+      c.strokeStyle = COLORS.crimsonDanger;
+      c.lineWidth = 2;
+      c.globalAlpha = 0.75 * (1 - ratio * 0.5);
+      c.beginPath();
+      c.arc(0, 0, ringRadius, 0, Math.PI * 2);
+      c.stroke();
+      c.fillStyle = COLORS.crimsonSoft;
+      c.beginPath();
+      c.arc(0, 0, e.radius * (1 - ratio * 0.6), 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+      return;
+    }
+    if (e.kind === "charger" && e.attackTelegraph > 0) {
+      c.save();
+      c.strokeStyle = COLORS.crimsonDanger;
+      c.lineWidth = 2.5;
+      c.setLineDash([7, 6]);
+      c.beginPath();
+      c.moveTo(0, 0);
+      c.lineTo(e.lungeDirX * 260, e.lungeDirY * 260);
+      c.stroke();
+      c.restore();
+    }
+    if (e.kind === "pulsar" && e.attackTelegraph > 0) {
+      const progress = Math.min(1, e.attackTelegraph / 1.45);
+      c.strokeStyle = COLORS.crimsonDanger;
+      c.lineWidth = 1.8;
+      c.beginPath();
+      c.arc(0, 0, 115, 0, Math.PI * 2);
+      c.stroke();
+      c.fillStyle = COLORS.crimsonSoft;
+      c.beginPath();
+      c.arc(0, 0, 115 * progress, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.rotate(e.stretchAngle || e.facingAngle);
+    c.scale(e.scaleX, e.scaleY);
+    c.fillStyle = COLORS.crimsonDanger;
+    c.strokeStyle = COLORS.white;
+    c.lineWidth = 2;
+    if (e.kind === "charger") {
+      const r = e.radius * 1.15;
+      c.beginPath();
+      c.moveTo(r, 0);
+      c.lineTo(-r * 0.8, -r * 0.78);
+      c.lineTo(-r * 0.45, 0);
+      c.lineTo(-r * 0.8, r * 0.78);
+      c.closePath();
+      c.fill();
+      c.stroke();
+    } else if (e.kind === "pulsar") {
+      c.beginPath();
+      for (let k = 0; k < 6; k++) {
+        const a = k * Math.PI / 3;
+        const px = Math.cos(a) * e.radius;
+        const py = Math.sin(a) * e.radius;
+        if (k === 0) c.moveTo(px, py);
+        else c.lineTo(px, py);
+      }
+      c.closePath();
+      c.fill();
+      c.stroke();
+    } else {
+      c.beginPath();
+      c.arc(0, 0, e.radius, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+    }
+    if (e.kind === "shielded") {
+      c.strokeStyle = COLORS.white;
+      c.lineWidth = 6;
+      c.beginPath();
+      c.arc(0, 0, e.radius + 6, -0.95, 0.95);
+      c.stroke();
+    }
+    c.restore();
+  }
+  function renderFrame() {
+    if (!ctx) return;
+    const w = engine.width;
+    const h = engine.height;
+    const pad = engine.wallPadding;
+    const p = engine.player;
+    scoreEl.textContent = String(engine.score);
+    timerEl.textContent = String(Math.ceil(engine.waveTimeRemaining));
+    if (engine.phase !== lastRenderedPhase) {
+      lastRenderedPhase = engine.phase;
+      if (engine.phase === "upgrade_draft") {
+        renderUpgradeOverlay(engine.offeredUpgrades);
+      } else if (engine.phase === "gameover") {
+        renderGameOverOverlay();
+      } else {
+        overlayEl.hidden = true;
+      }
+    }
+    ctx.save();
+    ctx.fillStyle = COLORS.bgDeep;
+    ctx.fillRect(0, 0, w, h);
+    ctx.translate(engine.shakeX, engine.shakeY);
+    ctx.strokeStyle = COLORS.bgGrid;
+    ctx.lineWidth = 1;
+    const gridStep = 64;
+    ctx.beginPath();
+    for (let x = pad; x <= w - pad; x += gridStep) {
+      ctx.moveTo(x, pad);
+      ctx.lineTo(x, h - pad);
+    }
+    for (let y = pad; y <= h - pad; y += gridStep) {
+      ctx.moveTo(pad, y);
+      ctx.lineTo(w - pad, y);
+    }
+    ctx.stroke();
+    const leftX = pad - engine.wallFlexLeft * 8;
+    const rightX = w - pad + engine.wallFlexRight * 8;
+    const topY = pad - engine.wallFlexTop * 8;
+    const bottomY = h - pad + engine.wallFlexBottom * 8;
+    ctx.strokeStyle = engine.wallFlexLeft + engine.wallFlexRight + engine.wallFlexTop + engine.wallFlexBottom > 0.15 ? COLORS.cyanPower : COLORS.wallBorder;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(leftX, topY, rightX - leftX, bottomY - topY);
+    if (engine.wave === 1 && !hasDashedOnce && p.state !== "dash") {
+      ctx.save();
+      ctx.fillStyle = COLORS.mutedText;
+      ctx.font = "800 14px Inter, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("HOLD & RELEASE TO SNAP-LANCE", w * 0.5, h - pad - 18);
+      ctx.restore();
+    }
+    if (engine.comboStreak >= 2) {
+      ctx.save();
+      ctx.fillStyle = engine.comboStreak >= 6 ? "rgba(253, 224, 71, 0.13)" : "rgba(0, 242, 254, 0.10)";
+      ctx.font = '900 92px "JetBrains Mono", monospace';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`${engine.comboStreak}x`, w * 0.5, h * 0.5);
+      ctx.restore();
+    }
+    if (p.state === "charging" || p.state === "glide") {
+      const bouncesToPreview = p.state === "charging" ? p.chargeTier === 3 ? 5 : p.chargeTier === 2 ? 3 : 1 : 0;
+      const segments = engine.computeRaycastBouncePath(bouncesToPreview);
+      const isApex = p.chargeTier === 3;
+      ctx.save();
+      ctx.strokeStyle = isApex ? COLORS.goldApex : COLORS.cyanPower;
+      ctx.lineWidth = p.state === "charging" ? isApex ? 3 : 2 : 1.2;
+      ctx.setLineDash(p.state === "charging" ? [10, 8] : [4, 10]);
+      segments.forEach((seg, idx) => {
+        ctx.globalAlpha = p.state === "charging" ? Math.max(0.2, 0.85 - idx * 0.14) : 0.22;
+        ctx.beginPath();
+        ctx.moveTo(seg.x1, seg.y1);
+        ctx.lineTo(seg.x2, seg.y2);
+        ctx.stroke();
+        if (p.state === "charging" && idx < segments.length - 1) {
+          ctx.fillStyle = isApex ? COLORS.goldApex : COLORS.cyanPower;
+          ctx.beginPath();
+          ctx.arc(seg.x2, seg.y2, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+      ctx.restore();
+    }
+    for (const b of engine.bumpers) {
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.scale(b.squash, b.squash);
+      ctx.fillStyle = COLORS.cyanSoft;
+      ctx.strokeStyle = COLORS.cyanPower;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, b.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, b.radius * 0.45, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (engine.trail.length > 1) {
+      for (let i = 1; i < engine.trail.length; i++) {
+        const prev = engine.trail[i - 1];
+        const curr = engine.trail[i];
+        const ratio = i / engine.trail.length;
+        ctx.strokeStyle = curr.isDash && p.isApexDash ? COLORS.goldApex : COLORS.cyanPower;
+        ctx.globalAlpha = ratio * (curr.isDash ? 0.65 : 0.28);
+        ctx.lineWidth = Math.max(2, curr.radius * 1.35 * ratio);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(prev.x, prev.y);
+        ctx.lineTo(curr.x, curr.y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    for (const a of engine.afterimages) {
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.rotate(a.angle);
+      ctx.scale(a.scaleX, a.scaleY);
+      ctx.globalAlpha = a.alpha * 0.5;
+      ctx.fillStyle = p.isApexDash ? COLORS.goldApex : COLORS.cyanPower;
+      ctx.beginPath();
+      ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    for (const s of engine.shards) {
+      ctx.save();
+      ctx.fillStyle = COLORS.cyanPower;
+      ctx.strokeStyle = COLORS.white;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (const ph of engine.phantoms) {
+      if (ph.delayTimer > 0) continue;
+      ctx.save();
+      ctx.translate(ph.x, ph.y);
+      ctx.rotate(ph.angle);
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = COLORS.cyanPower;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, ph.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (const e of engine.enemies) {
+      drawEnemy(ctx, e);
+    }
+    if (engine.activeUpgrades.has("sawblade_orbit")) {
+      const orbitDist = p.state === "dash" ? 66 : 46;
+      const bx = p.x + Math.cos(p.orbitAngle) * orbitDist;
+      const by = p.y + Math.sin(p.orbitAngle) * orbitDist;
+      ctx.save();
+      ctx.strokeStyle = COLORS.cyanSoft;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, orbitDist, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = COLORS.cyanPower;
+      ctx.strokeStyle = COLORS.white;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(bx, by, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.save();
+    const chargeRatio = Math.min(1, p.chargeTime / p.maxChargeTime);
+    const pullback = p.state === "charging" ? chargeRatio * 10 : 0;
+    const jitterX = p.state === "charging" ? Math.sin(p.chargeTime * 75) * chargeRatio * 2.2 : 0;
+    const jitterY = p.state === "charging" ? Math.cos(p.chargeTime * 85) * chargeRatio * 2.2 : 0;
+    const renderX = p.x - Math.cos(p.aimAngle) * pullback + jitterX;
+    const renderY = p.y - Math.sin(p.aimAngle) * pullback + jitterY;
+    if (p.state === "charging") {
+      const ringColor = p.chargeTier === 3 ? COLORS.goldApex : COLORS.cyanPower;
+      ctx.strokeStyle = ringColor;
+      ctx.lineWidth = p.chargeTier === 3 ? 4 : 2.5;
+      ctx.beginPath();
+      ctx.arc(
+        p.x,
+        p.y,
+        p.radius + 14,
+        -Math.PI / 2,
+        -Math.PI / 2 + Math.PI * 2 * chargeRatio
+      );
+      ctx.stroke();
+    }
+    for (let s = 0; s < p.shields; s++) {
+      const petalAngle = p.orbitAngle * 0.6 + s * Math.PI * 2 / p.maxShields;
+      const px = renderX + Math.cos(petalAngle) * (p.radius + 9);
+      const py = renderY + Math.sin(petalAngle) * (p.radius + 9);
+      ctx.fillStyle = COLORS.cyanPower;
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.translate(renderX, renderY);
+    ctx.rotate(p.stretchAngle);
+    ctx.scale(p.scaleX, p.scaleY);
+    if (p.invulnTimer > 0 && Math.floor(p.invulnTimer * 16) % 2 === 0) {
+      ctx.globalAlpha = 0.45;
+    }
+    const coreColor = p.state === "charging" && p.chargeTier === 3 || p.state === "dash" && p.isApexDash ? COLORS.goldApex : COLORS.cyanPower;
+    ctx.fillStyle = coreColor;
+    ctx.strokeStyle = COLORS.white;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = COLORS.bgDeep;
+    ctx.beginPath();
+    ctx.moveTo(p.radius * 0.65, 0);
+    ctx.lineTo(-p.radius * 0.35, -p.radius * 0.45);
+    ctx.lineTo(-p.radius * 0.15, 0);
+    ctx.lineTo(-p.radius * 0.35, p.radius * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    for (const r of engine.shockRings) {
+      ctx.save();
+      ctx.strokeStyle = r.color === "gold" ? COLORS.goldApex : r.color === "crimson" ? COLORS.crimsonDanger : COLORS.cyanPower;
+      ctx.globalAlpha = Math.max(0, r.alpha);
+      ctx.lineWidth = r.lineWidth;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (const f of engine.slashFlashes) {
+      ctx.save();
+      ctx.strokeStyle = f.color === "gold" ? COLORS.goldApex : f.color === "crimson" ? COLORS.crimsonDanger : COLORS.white;
+      ctx.globalAlpha = Math.max(0, f.alpha);
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(f.x1, f.y1);
+      ctx.lineTo(f.x2, f.y2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (const sp of engine.sparks) {
+      ctx.save();
+      ctx.strokeStyle = sp.color === "gold" ? COLORS.goldApex : sp.color === "crimson" ? COLORS.crimsonDanger : sp.color === "white" ? COLORS.white : COLORS.cyanPower;
+      ctx.globalAlpha = Math.max(0, sp.life / sp.maxLife);
+      ctx.lineWidth = sp.thickness;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(sp.prevX, sp.prevY);
+      ctx.lineTo(sp.x, sp.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (const c of engine.callouts) {
+      ctx.save();
+      ctx.fillStyle = c.color === "gold" ? COLORS.goldApex : c.color === "crimson" ? COLORS.crimsonDanger : COLORS.cyanPower;
+      ctx.globalAlpha = Math.max(0, c.alpha);
+      ctx.font = `900 ${Math.round(15 * c.scale)}px "JetBrains Mono", monospace`;
+      ctx.textAlign = "center";
+      ctx.fillText(c.text, c.x, c.y);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  function loop(timestamp) {
+    if (!lastTimestamp) lastTimestamp = timestamp;
+    const dt = (timestamp - lastTimestamp) / 1e3;
+    lastTimestamp = timestamp;
+    engine.step(dt);
+    renderFrame();
+    animFrameId = requestAnimationFrame(loop);
+  }
+  renderFrame();
+  if (typeof requestAnimationFrame !== "undefined") {
+    animFrameId = requestAnimationFrame(loop);
+  }
+  return {
+    engine,
+    destroy() {
+      if (animFrameId !== null && typeof cancelAnimationFrame !== "undefined") {
+        cancelAnimationFrame(animFrameId);
+      }
+      overlayEl.removeEventListener("click", onOverlayClick);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("resize", onResize);
+      container.innerHTML = "";
+    },
+    restartWithSeed(seed) {
+      engine.resetRun(seed);
+      overlayEl.hidden = true;
+      lastRenderedPhase = "playing";
+      renderFrame();
+    },
+    toggleDebug() {
+    },
+    getStateSnapshot() {
+      return {
+        score: engine.score,
+        comboStreak: engine.comboStreak,
+        wave: engine.wave,
+        waveTimeRemaining: engine.waveTimeRemaining,
+        phase: engine.phase,
+        playerState: engine.player.state,
+        shields: engine.player.shields,
+        activeUpgrades: Array.from(engine.activeUpgrades)
+      };
+    }
+  };
+}
+
+// ../../.gemini/antigravity/brain/4004abe0-2d4e-4e91-aa47-22eeb5e44fc3/scratch/_entry_13-snap-lance.ts
+var app = document.getElementById("app");
+if (app) {
+  mountGame(app);
+}
+
+</script>
+  </body>
+</html>
