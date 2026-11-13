@@ -2,7 +2,7 @@
 
 Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the MacBook, Antigravity on the Mac mini, and Antigravity and Claude Cowork on the MacBook Air. Games marked "In the arcade" are in `games/<slug>/` and linked from the arcade page; everything else stays in its incoming PR so nothing is lost.
 
-- In the arcade: 112
+- In the arcade: 113
 - Held: 1
 - Source only or own repo: 4
 - Archived older versions and extras: 7
@@ -11,7 +11,7 @@ Every game collected on Nov 8, 2026 from Claude (cloud), Codex and Kimi on the M
 
 The arcade page groups the games into these sections:
 
-- Sports GM and dynasty sims: 16
+- Sports GM and dynasty sims: 17
 - Sports arcade: 12
 - Action, arena and shooters: 19
 - Pinball, ricochet and breakers: 10
@@ -24,7 +24,7 @@ The arcade page groups the games into these sections:
 
 Made by (the AI model or agent that built each game, as the collection notes record it):
 
-- Claude: 36
+- Claude: 37
 - Gemini (Antigravity): 28
 - Kimi: 12
 - Claude Opus: 10
@@ -46,6 +46,7 @@ Made by (the AI model or agent that built each game, as the collection notes rec
 | Fourth & Forever '05 | football franchise sim | Gemini (Antigravity) | Antigravity (Mac mini) | Mac mini PR #4 | [play](games/fourth-and-forever/) | Formerly a football franchise sim built on real league names; league, teams, players, coaches, host and brands are now fictional |
 | Franchise Dynasty | football GM sim | Claude | Games project | cloud PR #2 | [play](games/franchise-dynasty/) |  |
 | HARDCOURT | basketball franchise sim | Codex | Codex (MacBook) | MacBook PR #3 | [play](games/hardcourt/) | Also has a native Mac app and ZIPs in the MacBook PR |
+| HUNDREDTHS — Swim Dynasty | swimming dynasty sim | Claude | Codex (Art Paseo) | Codex Art Paseo PR #34 (Nov 13) | [play](games/hundredths-swim-dynasty/) | v1.2.1. Built by Claude in Cowork, packaged by Codex; source and tests stay in the original zip. Every club except Blue Springs Power Cats is made up |
 | Lane Four: Pro Swimming Dynasty | swimming dynasty sim | Claude | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/lane-four-dynasty/) | Real swim club names other than Blue Springs Power Cats were replaced with made-up ones. Different game from the Lane Four swim racer |
 | Meridian Football League | football GM sim | Claude | Claude (Cowork, MacBook Air) | Claude Cowork MacBook Air PR #26 (Nov 10) | [play](games/meridian-football-league/) | Was titled Front Office, which echoed a real football sim |
 | National Pro Swimming League | pro swim franchise sim | Antigravity | Codex (MacBook) | Codex MacBook PR #25 (Nov 10) | [play](games/national-pro-swimming-league/) | Real swim club names other than Blue Springs Power Cats were replaced with made-up ones |
@@ -244,6 +245,7 @@ Made by (the AI model or agent that built each game, as the collection notes rec
 - Claude Cowork MacBook Air brought Emberward on Nov 9, and Lane Four was updated to its newest build.
 - PR #20 brought 5 more new Argon games (Aegis: Volt-Lash, Ricochet Vault, SLINGCORE, SNAP-LANCE, SNAPBACK). A sixth, Aegis-Zero: Graze Overclock, came later through PR #4 on Nov 9. Its perks were named after real game studios and games, so those names were replaced with made-up ones. The other new Wave 12 and Wave 13 copies in PR #4 were already here.
 - Codex MacBook PR #25 and Claude Cowork MacBook Air PR #26 brought 17 new games on Nov 10. Gravity Heist, Signal Garden and Tide Caller each came in a Kimi build and an Antigravity build, so both are here under separate folders. Five swim dynasty sims used real swim club names; every club name except Blue Springs Power Cats was replaced with a made-up one (cities kept). The Cowork baseball sim stayed on the MacBook Air because it used a real league name.
+- Codex Art Paseo PR #34 brought HUNDREDTHS — Swim Dynasty v1.2.1 on Nov 13 (playable file and README only). Its README credits World Aquatics rankings as the source of the real-world age averages the game compares against; no real swimmer appears in the game.
 - Cloud copies newer than the arcade's first PR (#1): 20 of its 22 games are older; this PR uses the live versions.
 
 ## Checks
